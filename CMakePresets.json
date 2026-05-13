@@ -1,0 +1,224 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CPKT_BUILD_DEPENDENCIES": "ON",
+        "CPKT_BUILD_TESTS": "ON",
+        "CPKT_DIST_DIR": "${sourceDir}/dist"
+      }
+    },
+    {
+      "name": "x86_64-linux-gnu-release",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CPKT_TARGET_ARCH": "x86_64",
+        "CPKT_TARGET_OS": "linux",
+        "CPKT_TARGET_LIBC": "gnu"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "x86_64-linux-gnu-release"
+    },
+    {
+      "name": "x86_64-linux-musl-release",
+      "inherits": "x86_64-linux-gnu-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-musl.cmake",
+      "cacheVariables": {
+        "CPKT_TARGET_ARCH": "x86_64",
+        "CPKT_TARGET_OS": "linux",
+        "CPKT_TARGET_LIBC": "musl"
+      }
+    },
+    {
+      "name": "aarch64-linux-gnu-release",
+      "inherits": "x86_64-linux-gnu-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/aarch64-linux-gnu.cmake",
+      "cacheVariables": {
+        "CPKT_TARGET_ARCH": "aarch64",
+        "CPKT_TARGET_OS": "linux",
+        "CPKT_TARGET_LIBC": "gnu"
+      }
+    },
+    {
+      "name": "aarch64-linux-musl-release",
+      "inherits": "x86_64-linux-gnu-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/aarch64-linux-musl.cmake",
+      "cacheVariables": {
+        "CPKT_TARGET_ARCH": "aarch64",
+        "CPKT_TARGET_OS": "linux",
+        "CPKT_TARGET_LIBC": "musl"
+      }
+    },
+    {
+      "name": "armhf-linux-gnu-release",
+      "inherits": "x86_64-linux-gnu-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/armhf-linux-gnu.cmake",
+      "cacheVariables": {
+        "CPKT_TARGET_ARCH": "armhf",
+        "CPKT_TARGET_OS": "linux",
+        "CPKT_TARGET_LIBC": "gnu"
+      }
+    },
+    {
+      "name": "armhf-linux-musl-release",
+      "inherits": "x86_64-linux-gnu-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/armhf-linux-musl.cmake",
+      "cacheVariables": {
+        "CPKT_TARGET_ARCH": "armhf",
+        "CPKT_TARGET_OS": "linux",
+        "CPKT_TARGET_LIBC": "musl"
+      }
+    },
+    {
+      "name": "arm64-apple-darwin-release",
+      "inherits": "x86_64-linux-gnu-release",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/arm64-apple-darwin.cmake",
+      "cacheVariables": {
+        "CPKT_TARGET_ARCH": "arm64",
+        "CPKT_TARGET_OS": "darwin",
+        "CPKT_TARGET_LIBC": ""
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x86_64-linux-gnu-release",
+      "configurePreset": "x86_64-linux-gnu-release"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "x86_64-linux-musl-release",
+      "configurePreset": "x86_64-linux-musl-release"
+    },
+    {
+      "name": "aarch64-linux-gnu-release",
+      "configurePreset": "aarch64-linux-gnu-release"
+    },
+    {
+      "name": "aarch64-linux-musl-release",
+      "configurePreset": "aarch64-linux-musl-release"
+    },
+    {
+      "name": "armhf-linux-gnu-release",
+      "configurePreset": "armhf-linux-gnu-release"
+    },
+    {
+      "name": "armhf-linux-musl-release",
+      "configurePreset": "armhf-linux-musl-release"
+    },
+    {
+      "name": "arm64-apple-darwin-release",
+      "configurePreset": "arm64-apple-darwin-release"
+    },
+    {
+      "name": "package-x86_64-linux-gnu-release",
+      "configurePreset": "x86_64-linux-gnu-release",
+      "targets": [
+        "package-bundle"
+      ]
+    },
+    {
+      "name": "package-x86_64-linux-musl-release",
+      "configurePreset": "x86_64-linux-musl-release",
+      "targets": [
+        "package-bundle"
+      ]
+    },
+    {
+      "name": "package-aarch64-linux-gnu-release",
+      "configurePreset": "aarch64-linux-gnu-release",
+      "targets": [
+        "package-bundle"
+      ]
+    },
+    {
+      "name": "package-aarch64-linux-musl-release",
+      "configurePreset": "aarch64-linux-musl-release",
+      "targets": [
+        "package-bundle"
+      ]
+    },
+    {
+      "name": "package-armhf-linux-gnu-release",
+      "configurePreset": "armhf-linux-gnu-release",
+      "targets": [
+        "package-bundle"
+      ]
+    },
+    {
+      "name": "package-armhf-linux-musl-release",
+      "configurePreset": "armhf-linux-musl-release",
+      "targets": [
+        "package-bundle"
+      ]
+    },
+    {
+      "name": "package-arm64-apple-darwin-release",
+      "configurePreset": "arm64-apple-darwin-release",
+      "targets": [
+        "package-bundle",
+        "package-darwin-smoke-test"
+      ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "x86_64-linux-gnu-release",
+      "configurePreset": "x86_64-linux-gnu-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "x86_64-linux-musl-release",
+      "configurePreset": "x86_64-linux-musl-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "aarch64-linux-gnu-release",
+      "configurePreset": "aarch64-linux-gnu-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "aarch64-linux-musl-release",
+      "configurePreset": "aarch64-linux-musl-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "armhf-linux-gnu-release",
+      "configurePreset": "armhf-linux-gnu-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "armhf-linux-musl-release",
+      "configurePreset": "armhf-linux-musl-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
