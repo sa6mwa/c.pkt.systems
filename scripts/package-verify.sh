@@ -19,6 +19,8 @@ else
   fi
 fi
 
+bash "$repo_root/tests/package_install_smoke_args_test.sh"
+
 for target_id in $targets; do
   archive="$repo_root/dist/c.pkt.systems-$bundle_version-$target_id.tar.gz"
   cmake \
@@ -45,6 +47,12 @@ for target_id in $targets; do
   esac
   case "$target_id" in
     *-linux-*)
+      bash "$repo_root/scripts/package-install-smoke.sh" \
+        "$archive" \
+        "$target_id" \
+        "$repo_root/examples/abi_smoke.c"
+      ;;
+    arm64-apple-darwin)
       bash "$repo_root/scripts/package-install-smoke.sh" \
         "$archive" \
         "$target_id" \

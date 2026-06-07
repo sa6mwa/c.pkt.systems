@@ -106,6 +106,7 @@ Package verification must:
 - Verify no sanitizer runtime, sanitizer symbols, debug-only paths, generated service state, package-manager build state, credentials, VCS metadata, dependency caches, or local paths appear in artifacts.
 - Verify shipped CMake config files give actionable errors for missing external dependencies and include any installed helper modules they call.
 - Verify shipped pkg-config files are relocatable from their installed `lib/pkgconfig` or multiarch path and declare public/private dependencies correctly.
+- For SDKs that bundle static dependency archives, verify extracted downstream consumers link through the shipped CMake imported targets and `pkg-config --static` metadata without consumer-supplied private workaround libraries such as `-ldl`, `-lm`, `-lz`, `-pthread`, platform frameworks, or raw transitive archive lists. The test should fail if removing the metadata would still pass because the consumer hard-codes the closure.
 
 Per-target SDK smoke contract:
 
@@ -117,6 +118,7 @@ Per-target SDK smoke contract:
 - Configure and build a minimal CMake consumer with `find_package(<project> CONFIG REQUIRED)`.
 - Configure and build a minimal pkg-config consumer when `lib/pkgconfig/<project>.pc` is shipped.
 - Link static and shared consumers when both static and shared libraries are shipped.
+- For static pkg-config smoke tests, force an actual static link when the target toolchain supports it; otherwise document that the test is only validating metadata expansion, not static linkability.
 - Run consumers and shipped CLI binaries only when executable on the host or through an explicitly supported runner. Otherwise, build/link smoke checks are enough for cross targets.
 - For CLI binaries, run `--version` or the project equivalent when execution is supported.
 - Verify runtime paths after extraction.

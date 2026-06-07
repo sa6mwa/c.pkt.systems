@@ -47,6 +47,12 @@ function(cpkt_assert_archive_contains regex description)
   endif()
 endfunction()
 
+function(cpkt_assert_archive_lacks regex description)
+  if(_listing MATCHES "${regex}")
+    message(FATAL_ERROR "archive contains forbidden ${description}: ${regex}")
+  endif()
+endfunction()
+
 function(cpkt_extract_archive_for_assertions out_var)
   string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef _extract_suffix)
   set(_extract_root "${CMAKE_CURRENT_BINARY_DIR}/package-assertions-${_archive_stem}-${_extract_suffix}")
@@ -91,15 +97,32 @@ foreach(_path
     "include/openssl/ssl.h"
     "lib/libssl.a"
     "lib/libcrypto.a"
+    "lib/cmake/OpenSSL/OpenSSLConfig.cmake"
+    "lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake"
+    "lib/pkgconfig/libssl.pc"
+    "lib/pkgconfig/libcrypto.pc"
+    "lib/pkgconfig/openssl.pc"
     "include/curl/curl.h"
     "lib/libcurl.a"
+    "lib/cmake/CURL/CURLConfig.cmake"
+    "lib/cmake/CURL/CURLConfigVersion.cmake"
+    "lib/pkgconfig/libcurl.pc"
     "include/libssh2.h"
     "include/libssh2_sftp.h"
     "lib/libssh2.a"
+    "lib/cmake/libssh2/libssh2-config.cmake"
+    "lib/cmake/libssh2/libssh2-config-version.cmake"
+    "lib/pkgconfig/libssh2.pc"
     "include/zlib.h"
     "lib/libz.a"
+    "lib/cmake/zlib/ZLIBConfig.cmake"
+    "lib/cmake/zlib/ZLIBConfigVersion.cmake"
+    "lib/pkgconfig/zlib.pc"
     "include/nghttp2/nghttp2.h"
     "lib/libnghttp2.a"
+    "lib/cmake/nghttp2/nghttp2Config.cmake"
+    "lib/cmake/nghttp2/nghttp2ConfigVersion.cmake"
+    "lib/pkgconfig/libnghttp2.pc"
     "share/c.pkt.systems/manifest.txt"
     "share/doc/c.pkt.systems/third_party/openssl/LICENSE"
     "share/doc/c.pkt.systems/third_party/curl/LICENSE"
@@ -108,6 +131,27 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
 endforeach()
+
+foreach(_path
+    "lib/cmake/Libssh2/"
+    "lib/cmake/ZLIB/")
+  cpkt_assert_archive_lacks("(^|\n)${_archive_stem_re}/${_path}" "${_path}")
+endforeach()
+
+cpkt_extract_archive_for_assertions(_metadata_extract_root)
+file(GLOB_RECURSE _metadata_files
+  "${_metadata_extract_root}/${_archive_stem}/lib/cmake/*"
+  "${_metadata_extract_root}/${_archive_stem}/lib/pkgconfig/*")
+foreach(_metadata_file IN LISTS _metadata_files)
+  if(IS_DIRECTORY "${_metadata_file}")
+    continue()
+  endif()
+  file(READ "${_metadata_file}" _metadata_text)
+  if(_metadata_text MATCHES "(/home/|/tmp/|/var/tmp/|\\.cache|deps-build|package-stage|CMakeFiles|CPKT_EXTERNAL_ROOT|CPKT_DEPENDENCY_BUILD_ROOT)")
+    message(FATAL_ERROR "package metadata contains local build/cache path material: ${_metadata_file}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_metadata_extract_root}")
 
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   foreach(_path
