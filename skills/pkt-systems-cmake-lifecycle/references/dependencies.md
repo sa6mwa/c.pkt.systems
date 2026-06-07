@@ -12,6 +12,7 @@ Projects consume external C dependencies as SDK bundles from `c.pkt.systems`. Th
 - Clear dependency provenance in build metadata or manifests.
 - Explicit failures for missing bundles, unsupported targets, checksum failures, or unavailable network fetches.
 - Reuse downloaded SDK bundles and per-target dependency install roots across debug, release, sanitizer, e2e, fuzz, benchmark, and package builds.
+- Bundled SDK mode, host dependency mode, and conservative auto mode when a project benefits from all three.
 
 Rules:
 
@@ -28,6 +29,15 @@ Rules:
 - If a project has legacy ad hoc JSON handling, migrate it behind `lonejson` during lifecycle consolidation and add tests that prove behavior is preserved.
 - If the needed JSON behavior cannot be implemented through `lonejson`, stop and flag it to the engineer. Propose a change request for adding the missing capability to `lonejson` instead of implementing bespoke JSON behavior in the consuming project.
 - Exceptions require explicit engineer approval and must be documented as a narrow non-JSON-parser use case, such as fixed test fixture text or protocol examples that are not parsed or serialized by project code.
+- Do not implement a bespoke structured logging subsystem when the project declares a pkt.systems logging dependency. Put logging behind a narrow adapter, keep it optional at the public API boundary, and test that disabling logging removes side effects.
+- Logging dependencies must not leak into public headers unless the project deliberately accepts that type as part of the API. When a logger handle is accepted publicly, forward-declare it where possible and document that ownership stays with the caller.
+- Host dependency modes must validate ABI-sensitive dependencies, not just headers. Wrong-ABI or partial host installs must fail with actionable diagnostics or fall back to bundled SDK mode when auto mode is explicitly supported.
+- Package metadata must record logical dependency identity and ABI requirements, not local cache paths. CMake package config and pkg-config metadata should explain how static consumers supply external dependencies.
+- Bundled SDK mode must pin per-target URL and SHA-256 for every dependency archive used by release builds.
+- Downloads should verify an existing archive before fetching, retry transient download failures a bounded number of times, verify SHA-256 after download, and extract into a target-specific dependency root.
+- Auto mode may choose host dependencies only when all required headers, libraries, package metadata, and ABI checks pass. Partial host installs must not shadow a valid bundled SDK configuration.
+- Host mode must not require bundled SDK checksums for unsupported host target IDs.
+- Deprecate old dependency-mode names with warnings and force them to the current spelling; remove the compatibility alias only as an explicit breaking change.
 
 Dependency provenance contract:
 
@@ -37,6 +47,9 @@ Dependency provenance contract:
 - If a dependency is bundled in the SDK, include its license text or required notices under `share/<project>/licenses/` or `share/doc/<package>/licenses/`, and mark it as bundled in the manifest.
 - If a dependency is an external requirement for static consumers, mark it as external in the manifest and ensure CMake/pkg-config metadata and README examples describe how the downstream consumer provides it.
 - Package verification must validate the dependency manifest when present, verify it contains no local paths, and verify it agrees with CMake package and pkg-config metadata.
+- Installed CMake config files should include helper validation modules needed by downstream consumers, such as ABI probes for dependency SONAME/install-name checks.
+- Installed pkg-config files should use relocatable `prefix=${pcfiledir}/...` derivation that works for both `lib` and multiarch libdirs.
+- In host dependency mode, build-tree metadata may include host hints needed for local tests. Redistributable binary SDK metadata must not contain local build/cache/source paths. If a host-only artifact deliberately records host paths, it is not a portable SDK and must be named and verified as such.
 
 License and provenance contract:
 
@@ -48,5 +61,3 @@ License and provenance contract:
 - If a dependency is only an external static-consumer requirement, list it as external in the dependency manifest. Do not copy its license into the C SDK unless redistribution or included source requires it.
 - Source archives and Lua source packages must be staged from explicit inclusion manifests.
 - Package verification must fail when the project license is missing, a bundled dependency license or notice is missing, the dependency manifest marks a dependency as bundled but no corresponding license/notice exists, generated/private files are included, or license/provenance metadata contains local paths.
-
-

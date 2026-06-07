@@ -81,6 +81,7 @@ Package generation must:
 - Fix Darwin install names when shipping Darwin dynamic libraries.
 - Produce deterministic tar/gzip output as far as the toolchain reasonably allows.
 - Generate checksums after all artifacts are present.
+- Use an explicit artifact manifest or narrow, version-qualified artifact patterns for checksum generation. Do not include build intermediates, package staging directories, or stale artifacts by accident.
 
 Package verification must:
 
@@ -94,6 +95,7 @@ Package verification must:
 - Verify `gh release create` arguments are derived from checksum-listed files only, never from a `dist/` glob.
 - Verify archive layout and single root.
 - Verify required headers, libraries, CMake config, pkg-config file, docs, examples, and metadata.
+- Verify generated version headers are installed and agree with package metadata.
 - Verify forbidden bundled headers and libraries are absent unless explicitly part of the artifact contract.
 - Verify install-tree CMake consumers for static and shared imported targets.
 - Verify pkg-config consumers when pkg-config metadata is shipped.
@@ -102,6 +104,8 @@ Package verification must:
 - Verify every shipped ELF executable and shared object that has runtime library lookup metadata uses `$ORIGIN`-relative RPATH/RUNPATH only.
 - Verify no shipped Mach-O dynamic library or executable contains local build paths in install names or dependency paths; project-owned Darwin install names should be `@rpath`-relative.
 - Verify no sanitizer runtime, sanitizer symbols, debug-only paths, generated service state, package-manager build state, credentials, VCS metadata, dependency caches, or local paths appear in artifacts.
+- Verify shipped CMake config files give actionable errors for missing external dependencies and include any installed helper modules they call.
+- Verify shipped pkg-config files are relocatable from their installed `lib/pkgconfig` or multiarch path and declare public/private dependencies correctly.
 
 Per-target SDK smoke contract:
 
@@ -130,6 +134,12 @@ Runtime path invariant:
 ## Source And Single-Header Artifacts
 
 Source archives must be staged from an explicit manifest, not from an unfiltered repository copy. Include source, public headers, CMake, scripts needed to build from source, tests or smoke tests, examples, docs, license, version file, and release manifest. Exclude generated output.
+
+Source archive staging must write `RELEASE_MANIFEST` into the staged tree. In a git worktree, derive it from tracked, non-ignored files and add only deliberate generated release files such as `VERSION` and `RELEASE_MANIFEST`. Outside git, require an existing release manifest instead of copying the whole tree.
+
+Source archive verification must extract the tarball to a generated temporary directory, configure from the extracted tree, build, run the local tests that do not require unavailable external services, and verify the configured version, generated version header, CMake package metadata, pkg-config metadata, and archive `VERSION` agree. When the source archive is produced from a git worktree, verify the archive payload exactly matches the tracked non-ignored release manifest plus deliberate generated release files.
+
+Source archives may carry release scripts and deterministic fixtures needed to rebuild and test the source package. They must not carry generated dependency archives, local `.env` files, package-manager state, service volumes, VCS metadata, or private review notes unless explicitly part of a public source distribution.
 
 Single-header artifacts, when present, must be generated from public header and implementation parts, formatted, version-stamped from the release version, compressed under `dist/`, and verified by decompressing and checking version macros plus a compile smoke test.
 
@@ -160,5 +170,3 @@ Rules:
 - `upgrade` refuses dirty upstream state.
 - Verification clones or copies the upstream to a temporary generated directory, applies the patch series, and builds it there.
 - Vendored build output must not leak into release artifacts.
-
-

@@ -51,6 +51,7 @@ When the skill already covers a lifecycle-mechanical decision, do not ask for pe
 
 Read references only after the request and repository state indicate they are relevant. All references are first-level files under `references/`.
 
+- Read [references/api-design.md](references/api-design.md) when creating or changing public C APIs, handle/object boundaries, receiver-style functions, examples, streaming APIs, error/ownership rules, or implementation layering.
 - Read [references/operability.md](references/operability.md) for repository layout, CMake presets, Make targets, script surfaces, cache discipline, diagnostics, and lifecycle command shape.
 - Read [references/dependencies.md](references/dependencies.md) when touching SDK dependencies, cache invalidation, dependency provenance, bundled/external dependency rules, license provenance, or any JSON behavior owned by `lonejson`.
 - Read [references/local-ci.md](references/local-ci.md) when touching build/test gates, API or ABI behavior, sanitizer coverage, fuzzing, benchmarks, install-tree consumers, or quality contracts.
@@ -63,8 +64,8 @@ Read references only after the request and repository state indicate they are re
 
 Suggested starting sets:
 
-- Blank repository from a spec: `bootstrap`, `operability`, `dependencies`, `local-ci`, `packaging`; add `lua` or `docker-compose-e2e` only when the spec calls for them.
-- Existing repository consolidation: `migration`, `operability`, then inspect and load the affected surface references.
+- Blank repository from a spec: `bootstrap`, `api-design`, `operability`, `dependencies`, `local-ci`, `packaging`; add `lua` or `docker-compose-e2e` only when the spec calls for them.
+- Existing repository consolidation: `migration`, `operability`, `api-design`, then inspect and load the affected surface references.
 - Ordinary feature or fix: inspect first, then load only the affected surface references. Do not run the migration procedure unless the feature requires lifecycle restructuring.
 - Release: `release`, `packaging`, `local-ci`, and any optional surface references whose artifacts or gates are part of the release.
 

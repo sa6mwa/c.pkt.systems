@@ -160,7 +160,12 @@ Required configure presets:
 
 - `base`: hidden, Ninja generator, build directory `build/${presetName}`, compile commands on.
 - `debug`: host Debug build with tests and examples.
+- `debug-lua`, when Lua is supported.
 - `asan`: host Debug build with ASan and UBSan.
+- `tsan`, when the toolchain and test subset support ThreadSanitizer.
+- `msan`, when the toolchain and dependency mode support MemorySanitizer.
+- `fuzz`, when fuzzing exists.
+- `integration`, when opt-in integration tests exist.
 - `x86_64-linux-gnu-release`
 - `x86_64-linux-musl-release`
 - `aarch64-linux-gnu-release`
@@ -174,13 +179,20 @@ Optional configure presets:
 - `release`: alias or host release preset only when useful.
 - `host`: host-native Release or benchmark build when separate from `debug`.
 - `coverage`
-- `fuzz`
 - `e2e`
-- `integration`
 - `profile`
 - install-tree or shared-check presets when package validation needs a dedicated configuration.
 
 Build presets mirror configure presets. Test presets exist for each executable test configuration. Release presets must set target identity explicitly through project-prefixed variables.
+
+Preset rules:
+
+- The hidden `base` preset pins the default dependency mode. Do not let stale CMake cache state silently change sanitizer, fuzz, integration, or release dependency resolution.
+- Debug presets may enable ASan/UBSan by default when that is the accepted local debug posture; still keep `asan` as an explicit public target.
+- Sanitizer presets select a compiler/toolchain known to support that sanitizer.
+- Release presets set `<P>_DIST_DIR` and `<P>_TARGET_ID` explicitly.
+- Optional cross presets may reference standard toolchain files or documented environment-owned compiler paths. If a cross toolchain is unavailable, release matrix scripts may skip that target only with an explicit message.
+- Add a local test that verifies required presets, required cache variables, and dependency-mode defaults.
 
 Use project-prefixed CMake options:
 
@@ -202,11 +214,13 @@ Use project-prefixed CMake options:
 - `<P>_TARGET_ARCH`
 - `<P>_TARGET_OS`
 - `<P>_TARGET_LIBC`
+- `<P>_DEPENDENCY_MODE`, when the project supports bundled SDK, host, or auto dependency resolution.
+- `<P>_VERSION_OVERRIDE`, for local release-candidate builds only.
 
 
 ## Make Surface
 
-Required targets:
+Core targets:
 
 - `make help`
 - `make deps-debug`
@@ -220,15 +234,22 @@ Required targets:
 - `make test-all`
 - `make asan`
 - `make package`
+- `make package-source`
+- `make package-source-smoke`
 - `make package-checksums`
 - `make package-verify`
 - `make verify-release-archives`
+- `make release-matrix`
+- `make finalize-slice`
+- `make prerelease`
+- `make prerelease-hardening`
 - `make release`
+- `make print-release-version`
 - `make format`
 - `make clean`
 - `make clean-dist`
 
-Optional targets, only when the surface exists:
+Conditional standard targets, required when the surface exists:
 
 - `make build-host`
 - `make test-host`
@@ -240,6 +261,8 @@ Optional targets, only when the surface exists:
 - `make fuzz`
 - `make fuzz-smoke`
 - `make fuzz-long`
+- `make tsan`
+- `make msan`
 - `make bench`
 - `make benchmarks`
 - `make bench-check`
@@ -257,14 +280,15 @@ Optional targets, only when the surface exists:
 - `make dev-ps`
 - `make dev-logs`
 - `make test-install-tree`
-- `make world`
+- `make example-smoke-local`
+- `make example-smoke-live`
+- `make prerelease-live`
 - `make lua-rock`
+- `make lua-env`
 - `make lua-test`
 - `make release-lua-artifacts`
 - `make lua-bench`
 - `make lua-bench-gate`
-- `make package-source`
-- `make package-source-smoke`
 - `make package-single-header`
 - `make release-darwin-smoke-bundle`
 - `make vendor-<name>`
@@ -273,6 +297,19 @@ Optional targets, only when the surface exists:
 - `make vendor-<name>-upgrade`
 - `make build-<name>`
 - `make verify-<name>-patches`
+- `make world`
+
+Make rules:
+
+- `make help` must list every root target intended for humans or agents, including required opt-in environment variables for integration, live, service, and package-manager targets.
+- `make print-release-version` prints exactly the version that packaging/release targets will use.
+- `make finalize-slice` is the default pre-commit gate for ordinary implementation slices: format plus the narrow local tests that catch common regressions quickly.
+- `make prerelease` is deterministic local verification. It must not require real credentials or live external providers.
+- `make prerelease-live` is credentialed or external-provider verification and must refuse to run without an explicit project-prefixed opt-in variable.
+- `make prerelease-hardening` is expensive and may combine deterministic, live, long fuzz, benchmark, and release-matrix gates.
+- `make release-matrix` builds, tests, packages, checksums, and verifies the release target set without requiring a clean tree. `make release` is the clean final pipeline.
+- `make package-source-smoke` extracts the source archive and proves it can configure, build, test, and resolve the same version without repository metadata.
+- Core targets are the default lifecycle vocabulary. Conditional standard targets are not optional once the matching surface exists in the project.
 
 Every target listed in `make help` must work or fail with an actionable missing-prerequisite message.
 
@@ -318,10 +355,10 @@ Script safety contract:
 - Use strict shell behavior for lifecycle scripts: fail on errors and unset variables where practical.
 - Quote paths and variables.
 - Resolve the repository root once and operate relative to it.
+- Validate argument count and required files before mutating generated state.
 - Trap cleanup for temporary directories, child processes, local daemons, and service state created by the script.
 - Destructive cleanup must be limited to known generated directories such as `build/`, `dist/`, `.cache/`, package-manager build roots, temporary directories, and `devenv/volumes`.
+- Scripts that delete or recreate a directory must refuse empty paths, `/`, the repository root, parent directories, home directories, and any path outside the expected generated-state root.
 - Never remove source-controlled files, parent directories, home directories, or arbitrary user-provided paths.
 - Print actionable errors with the failed surface, phase, and next step. Use the structured diagnostic block for important lifecycle failures.
 - Keep long orchestration in scripts and expose it through Make targets.
-
-

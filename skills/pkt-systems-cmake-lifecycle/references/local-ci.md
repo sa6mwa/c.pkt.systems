@@ -25,12 +25,23 @@ Release confidence:
 
 Do not require `make world` merely because the lifecycle is being consolidated. Add it when the repository benefits from one top-level exhaustive local gate. Otherwise, make the release procedure call the explicit applicable gates directly.
 
+Recommended production-loop tiers:
+
+- `make finalize-slice`: formatting plus the narrow debug tests needed before committing a small slice.
+- `make prerelease`: local, deterministic pre-release confidence. Include formatting, debug unit tests, sanitizer targets supported by the project, fuzz smoke, Lua tests, local example smoke, and deterministic local e2e when those surfaces exist.
+- `make prerelease-live`: opt-in external-provider or credentialed integration tests. Refuse to run unless a project-prefixed environment variable explicitly enables them.
+- `make prerelease-hardening`: the expensive tier. Include `prerelease`, live checks when explicitly enabled, long fuzz runs, benchmark gates when applicable, and the release matrix.
+- `make release-matrix`: incrementally build, test, package, checksum, and verify every release target and optional release artifact. This is the artifact production rehearsal before the final clean release.
+
+These names are preferred over project-specific gate names. Compatibility aliases are acceptable only for already documented public commands.
+
 
 ## Quality Contracts
 
 Add tests that assert observable behavior:
 
 - Public API success and failure paths.
+- Preferred public API usage style, including receiver-style handle operations when that is the project convention.
 - ABI and exported symbol expectations where ABI is promised.
 - Header self-sufficiency and C-only consumer builds.
 - C89 or project-selected C standard compatibility for installed SDK consumers.
@@ -39,9 +50,25 @@ Add tests that assert observable behavior:
 - Install-tree downstream consumers through CMake `find_package`.
 - Install-tree downstream consumers through pkg-config when pkg-config is shipped.
 - Examples built from the source tree and, when shipped, from installed examples.
+- Example help/version smoke tests and deterministic local example workflows.
 - Version resolution from `VERSION` and `vX.Y.Z` tags.
+- Version override behavior for release-candidate builds, including Make, CMake, Lua artifacts, source archives, and dry-run packaging targets.
+- CMake preset presence and option defaults that are part of the lifecycle contract.
+- Dependency mode behavior, including host mode, bundled SDK mode, auto mode fallback, unsupported targets, and wrong-ABI dependency rejection.
 - Package archive layout and forbidden payload checks.
+- Source archive extraction, configure, build, version agreement, and test smoke.
+- Source archive manifest exactness: tracked non-ignored files plus deliberate generated release files, no more and no less.
 - Release privacy scans for local paths, parent-relative paths, credentials, VCS metadata, generated service state, dependency caches, and sanitizer artifacts.
+
+Test registration:
+
+- Large unit suites should expose named test groups or labels so agents can run narrow checks while still allowing broad gates.
+- Generate or verify the list of registered unit groups when possible, so adding a test function without registering it fails locally.
+- Use CTest labels consistently: `unit`, `smoke`, `local`, `packaging`, `fuzz`, `integration`, `example-smoke`, and additional project-specific labels only when they help select meaningful gates.
+- Keep deterministic local integration separate from live external integration. Use a distinct label such as `offline` for integration-shaped tests that do not require credentials or real providers.
+- Live tests must be opt-in and must never be required by `make test` or fast local confidence.
+- Put explicit timeouts on CTest tests. Short local tests should fail quickly; live or long integration tests should have bounded, documented longer timeouts.
+- Tests that intentionally skip unless an opt-in variable is set should print a clear `SKIP` line and exit successfully only when absence is acceptable for that gate.
 
 
 ## API And ABI Contract
@@ -56,7 +83,7 @@ Rules:
 - Public headers must compile standalone.
 - Public headers must support C consumers with the selected project C standard.
 - Public headers must support C++ consumers when the project claims C++ compatibility.
-- Public structs should be opaque unless their layout is intentionally part of the API.
+- Public structs should be opaque unless their layout is intentionally part of the API. Receiver-shell structs with public method fields and private `impl` pointers are an intentional public layout and must be treated accordingly.
 - Changing function signatures, public struct layout, enum values, constants, ownership rules, error semantics, CLI behavior, CMake target names, pkg-config names, or artifact paths can be breaking and requires engineer discussion.
 - Shared libraries must set `SOVERSION` or the platform equivalent explicitly when ABI stability is promised.
 - Linux shared libraries must have the intended SONAME and symlink set.
@@ -64,6 +91,22 @@ Rules:
 - Removing or changing exported ABI symbols is breaking unless the symbol was explicitly private.
 - ABI symbol checks are required when the project promises stable ABI; otherwise, at minimum verify the shipped shared library exposes only intended public symbols.
 - Breaking API or ABI changes do not automatically imply a major bump. They require engineer discussion under the semver contract.
+
+
+## Sanitizers
+
+Sanitizers are first-class hardening gates, not ad hoc debug flags.
+
+Contract:
+
+- `asan` preset builds with AddressSanitizer and UndefinedBehaviorSanitizer where supported.
+- `tsan` preset builds and runs a ThreadSanitizer-compatible subset when the project has concurrency, shared state, callbacks, service wrappers, or lock-sensitive behavior.
+- `msan` preset builds and runs a MemorySanitizer-compatible subset when the toolchain and dependencies support it.
+- Sanitizer tests run serially as separate Make targets.
+- If `make prerelease` already includes a sanitizer target, release procedures should not rerun that same target unless a clean rebuild or changed environment makes the rerun meaningful.
+- Label tests that cannot run under a sanitizer because of external dependency boundaries, unsupported interceptors, or intentional process behavior. The skip must be explicit and narrow.
+- MSan gates may run a smoke subset when external SDK dependencies are not fully MSan-instrumented. Label that subset and document the boundary.
+- Release package verification must fail if sanitizer runtimes, sanitizer symbols, or sanitizer build paths appear in shipped libraries, binaries, CMake metadata, pkg-config files, source archives, Lua artifacts, or checksum-listed artifacts.
 
 
 ## Fuzzing
@@ -78,6 +121,7 @@ Contract:
 - `make fuzz` runs standard bounded local jobs.
 - `make fuzz-long` is opt-in and may run longer.
 - Regression seeds that fixed bugs should be committed.
+- Fuzzer targets should be added through a small CMake helper so compile flags, link flags, corpus paths, labels, and smoke tests remain consistent.
 - Generated large corpora stay out of source unless deliberately curated.
 
 
@@ -94,5 +138,3 @@ Contract:
 - Language parity benchmarks, including Go benchmark harnesses, live behind explicit targets such as `benchmarks-go` or `benchmarks-gobencher`.
 - Benchmark-generated source or fixture data must have deterministic regeneration targets.
 - Benchmarks used as gates must use stable thresholds and actionable failure output.
-
-

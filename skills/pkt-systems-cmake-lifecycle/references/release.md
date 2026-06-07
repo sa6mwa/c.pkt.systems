@@ -35,6 +35,8 @@ Version decision:
 - Treat `perf:`, `refactor:`, `build:`, `ci:`, `test:`, `docs:`, and `chore:` as patch unless they introduce a public feature or breaking change.
 - For `0.y.z` projects, breaking changes may stay within major version `0`; choose minor or patch only after stating the breaking nature of the change and getting engineer agreement on the bump.
 - Ensure `VERSION`, generated headers, package metadata, Lua rockspecs, source archives, and single-header artifacts agree with the selected version.
+- Version detection should prefer an exact `vX.Y.Z` tag on `HEAD`, then a source-archive `VERSION` file when building outside git, then a deliberate project-prefixed version override for release candidates, and finally `0.0.0` only for untagged development builds.
+- Release-candidate overrides must be tested through both CMake and Make surfaces so Lua artifacts, source archives, package metadata, and checksum names cannot silently fall back to `0.0.0`.
 - Verify the selected `vX.Y.Z` tag does not already exist locally or on origin.
 - Verify the selected version is greater than the highest existing stable `vX.Y.Z` tag.
 - Ignore prerelease tags for stable version ordering unless the release being prepared is explicitly a prerelease.
@@ -58,13 +60,29 @@ Release plan preview:
 Pre-release gate on the candidate branch:
 
 1. `make clean`
-2. `make test-all`
-3. `make asan`
-4. `make fuzz-smoke` when fuzzing exists
-5. `make bench-gate` or `make perf-gate` when performance gates exist
-6. `make test-e2e` when deterministic e2e exists
-7. `make package-verify`
-8. `make world` only when the repository defines it and it is the accepted exhaustive gate
+2. `make prerelease` when the repository defines it; otherwise run `make test-all` and the explicit local gates below.
+3. `make asan` when supported and not already included in `prerelease`.
+4. `make tsan` when supported and not already included in `prerelease`.
+5. `make msan` when supported and not already included in `prerelease`.
+6. `make fuzz-smoke` when fuzzing exists and is not already included in `prerelease`.
+7. `make bench-gate` or `make perf-gate` when performance gates exist.
+8. `make test-e2e` when deterministic e2e exists and is not already included in `prerelease`.
+9. `make lua-test` when Lua exists and is not already included in `prerelease`.
+10. `make package-source-smoke` when source archives are shipped.
+11. `make package-verify`
+12. `make prerelease-live` only when release authority includes live external-provider verification and required credentials are available.
+13. `make prerelease-hardening` when the repository defines it and the engineer expects the expensive hardening tier before release.
+14. `make world` only when the repository defines it and it is the accepted exhaustive gate.
+
+Release matrix gate:
+
+- The release matrix builds every supported target preset.
+- It runs host-executable release tests for the host target.
+- It packages every target archive.
+- It builds source, Lua, single-header, and smoke-bundle artifacts when those surfaces exist.
+- It generates the checksum manifest after all artifacts exist.
+- It runs artifact verification from the checksum manifest.
+- It may skip optional targets whose cross toolchain is unavailable only with a clear message and only when that target is not mandatory for the release.
 
 Squash and tag:
 
@@ -81,7 +99,7 @@ Final release gate from tagged main:
 
 1. Clean generated output.
 2. Run final confirmation tests.
-3. Build release artifacts under `dist/` using the lightweight tag on `HEAD` as the version source.
+3. Build release artifacts under `dist/` using the lightweight tag on `HEAD` as the version source, preferably through `make release-matrix` or the repository's equivalent single release-artifact pipeline.
 4. Run package verification and checksum verification.
 5. Verify `dist/<project>-<version>-CHECKSUMS` lists exactly the intended upload artifacts.
 6. Assert every checksum-listed artifact exists under `dist/`.
@@ -105,4 +123,3 @@ Release retry protocol:
 - If the pushed tag is wrong, stop immediately. Do not publish or repair silently.
 
 Do not publish a release from an untagged commit, from a dirty worktree, from artifacts built before the final tag, from a tag that is not on `HEAD`, or from a `dist/` glob.
-
