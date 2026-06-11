@@ -41,6 +41,21 @@ Failure taxonomy:
 - `release-authority`: unclear version, branch, tag, GitHub release, or engineer approval state.
 - `external-tool-unavailable`: optional tool unavailable; skip only when absence is acceptable and documented.
 
+External tool discovery:
+
+- Lifecycle scripts must not assume cross-target inspection or fixup tools are on `PATH`.
+- The pkt.systems default osxcross root is `${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}` and the default Darwin host is `${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}`. The default Darwin tools are therefore under `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-*`, for example `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-otool`, `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-install_name_tool`, and `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-strip`.
+- Discover target tools from configured project state before falling back to ambient tools. Prefer CMake cache or toolchain values such as `CMAKE_C_COMPILER`, `CMAKE_STRIP`, `CMAKE_INSTALL_NAME_TOOL`, `CPKT_OTOOL`, `CMAKE_OTOOL` when present, `CMAKE_READELF`, and project-prefixed tool override variables when the repository defines them.
+- When a configured compiler path is known, inspect the compiler directory for sibling target-prefixed tools before falling back to `PATH`. For osxcross-style Darwin toolchains, look for names such as `<host>-otool`, `<host>-install_name_tool`, and `<host>-strip` next to `<host>-cc` or `<host>-clang`; with pkt.systems defaults, `<host>` is `arm64-apple-darwin25`.
+- Package generation must use the discovered target-correct mutation tools, such as `strip` and `install_name_tool`, rather than host tools with the same basename.
+- Package verification must use the discovered target-correct inspection tools, such as `readelf` and `otool`, and should report the exact lookup path tried when a required verification tool is unavailable.
+- Absence of an optional inspection tool may skip only that optional inspection and only with an explicit message. Absence of a tool required to prove a release invariant is a verification failure, not a silent pass.
+- Repositories that package cross-target artifacts should centralize this logic in one helper instead of reimplementing lookup in package, smoke, and privacy scripts. Use `scripts/discover_target_tools.sh` when the behavior exists.
+- `scripts/discover_target_tools.sh` should accept at least a configured build directory or preset-derived build directory, a target ID, and optional project-prefixed overrides. It should print stable `KEY=value` shell assignments or another simple machine-readable format for `CC`, `STRIP`, `INSTALL_NAME_TOOL`, `OTOOL`, `READELF`, and any target host prefix it derived.
+- The helper should read configured CMake cache values from the same build directory that produced the artifact being packaged or verified. It must not infer target tools from an unrelated host/debug build.
+- Package generation, package verification, Darwin smoke bundle creation, and release privacy verification should consume the same discovered tool values. A mismatch between generation and verification tool discovery is a lifecycle bug.
+- Add tests for the discovery helper with temporary fake toolchain directories. Cover configured CMake cache values, target-prefixed osxcross sibling tools, unprefixed compiler sibling tools, `PATH` fallback, and refusal to select a known host tool for a cross-built Darwin artifact.
+
 Structured diagnostics:
 
 - Major lifecycle scripts should end important failures with a compact diagnostic block in plain key/value text.
@@ -113,7 +128,8 @@ Use this layout unless the project has a proven product reason to diverge:
 CMakeLists.txt
 CMakePresets.json
 Makefile
-VERSION
+.clang-format
+.gitignore
 README.md
 LICENSE
 cmake/
@@ -145,6 +161,8 @@ Rules:
 
 - `Makefile` is the public command surface.
 - `CMakePresets.json` is the build configuration surface.
+- `.clang-format` is checked in and starts from `clang-format -style=llvm -dump-config`; project style changes are explicit edits to that file, not hidden formatter defaults.
+- `VERSION` is not checked into git for normal repositories. Add `/VERSION` to `.gitignore`; generate or inject it only for source archives and other non-git build contexts.
 - `scripts/` holds stateful orchestration and long logic.
 - `cmake/` holds CMake modules, toolchains, package scripts, archive assertions, version logic, and config templates.
 - `dist/`, `build/`, generated dependency roots, local service state, and package-manager build directories are generated.
@@ -239,6 +257,7 @@ Core targets:
 - `make package-checksums`
 - `make package-verify`
 - `make verify-release-archives`
+- `make verify-release-privacy`
 - `make release-matrix`
 - `make finalize-slice`
 - `make prerelease`
@@ -302,12 +321,14 @@ Conditional standard targets, required when the surface exists:
 Make rules:
 
 - `make help` must list every root target intended for humans or agents, including required opt-in environment variables for integration, live, service, and package-manager targets.
+- `make format` formats project-owned C, headers, examples, tests, and generated single-header inputs with clang-format using the checked-in `.clang-format`.
 - `make print-release-version` prints exactly the version that packaging/release targets will use.
 - `make finalize-slice` is the default pre-commit gate for ordinary implementation slices: format plus the narrow local tests that catch common regressions quickly.
 - `make prerelease` is deterministic local verification. It must not require real credentials or live external providers.
 - `make prerelease-live` is credentialed or external-provider verification and must refuse to run without an explicit project-prefixed opt-in variable.
 - `make prerelease-hardening` is expensive and may combine deterministic, live, long fuzz, benchmark, and release-matrix gates.
 - `make release-matrix` builds, tests, packages, checksums, and verifies the release target set without requiring a clean tree. `make release` is the clean final pipeline.
+- `make package-verify` must include release privacy verification for checksum-listed artifacts. `make verify-release-privacy` may exist as a focused gate for the same invariant, but it is not a substitute for including the check in package verification.
 - `make package-source-smoke` extracts the source archive and proves it can configure, build, test, and resolve the same version without repository metadata.
 - Core targets are the default lifecycle vocabulary. Conditional standard targets are not optional once the matching surface exists in the project.
 
@@ -339,10 +360,12 @@ Use these script names when the behavior exists:
 - `scripts/test-e2e.sh`
 - `scripts/run_timed.sh`
 - `scripts/osxcross_available.sh`
+- `scripts/discover_target_tools.sh`
 - `scripts/release_version.sh`
 - `scripts/stage_release_sources.sh`
 - `scripts/test_release_from_source.sh`
 - `scripts/verify_release_artifacts.sh`
+- `scripts/verify_release_privacy.sh`
 - `scripts/build_lua_rock.sh`
 - `scripts/render_release_rockspec.sh`
 - `scripts/stage_lua_rock_sources.sh`

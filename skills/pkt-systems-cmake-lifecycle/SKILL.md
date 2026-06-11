@@ -20,6 +20,7 @@ This skill is the process authority. It must not require external example reposi
 
 - Do not tell the user or future agents to derive this lifecycle from other repositories.
 - Do not write source-repository provenance, workstation-local paths, parent-relative project paths, credentials, or temporary machine paths into generated repository files.
+- Release artifacts must be relocatable and must not contain `$HOME`, source repository paths, build directory paths, dependency cache paths, package-manager temporary paths, or any absolute local workstation path. The release gate must expand and scan all checksum-listed artifacts, including nested source rocks and nested source archives, inspect runtime loader metadata, and fail before release on any local path or non-relocatable runtime path.
 - Preserve project-specific behavior, but move lifecycle behavior behind the standard surfaces when doing lifecycle work. Do not broaden ordinary engineering requests into lifecycle migrations unless the requested change requires it.
 - Verification is the release gate. Each new lifecycle behavior must have an executable check.
 - Build, test, package, release, service, package-manager, and long-running operational commands run serially.

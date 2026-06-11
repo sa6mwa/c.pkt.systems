@@ -28,13 +28,19 @@ dist/<project>-<version>-CHECKSUMS
 
 The checksum manifest is the release upload manifest. It must be SHA-256, must list every artifact intended for the GitHub release, and must be the only source used to select `gh release create` upload arguments.
 
+When Lua artifacts exist, the checksum manifest must include the standalone Lua source package, the rendered release rockspec, and the LuaRocks `.src.rock`, in addition to C binary and source archives.
+
+Release artifact privacy and relocatability are hard packaging invariants, not cosmetic cleanup. Every artifact that can be uploaded or consumed must be free of workstation-local paths, including binary SDK tarballs, CLI tarballs, source archives, Lua source rocks, rockspecs, checksum manifests, smoke bundles, and nested archives inside package formats.
+
 Optional artifacts:
 
 ```text
 dist/<project>-<version>.tar.gz
 dist/<project>-<version>.h.gz
 dist/<project>-<version>-<target-id>-smoke-test.zip
-dist/<lua-artifacts>
+dist/<project>-lua-<version>.tar.gz
+dist/<project>-<version>-1.rockspec
+dist/<project>-<version>-1.src.rock
 ```
 
 Binary SDK archive contract:
@@ -58,6 +64,7 @@ Binary SDK archive contract:
 - Do not include Lua runtime files, Lua rockspecs, Lua source modules, Lua package-manager state, or Lua C binding/facade source files in C binary SDK tarballs.
 - Do not include benchmark harness internals, fuzz-only helpers, e2e fixtures, local dev-service config, vendored upstream worktrees, migration ledgers, or lifecycle diagnostics in C binary SDK tarballs unless the engineer explicitly defines them as product artifacts.
 - Do not include third-party dependency headers or libraries unless the project explicitly ships a bundled SDK artifact. If bundled dependencies are shipped, their layout and license files must be specified and verified as part of the artifact contract.
+- Do not include `$HOME`, source repository paths, build directories, dependency cache roots, package-manager temporary paths, parent-relative source provenance, absolute `file://` source URLs, or other workstation-local paths in any shipped file or metadata.
 
 For each target archive, answer these questions in the package verification tests:
 
@@ -67,6 +74,7 @@ For each target archive, answer these questions in the package verification test
 - Are all target executables under `bin/`, executable, and built for the archive target?
 - Are CMake package files under `lib/cmake/<project>/` relocatable and free of build/cache paths?
 - Is pkg-config metadata under `lib/pkgconfig/` relocatable and free of build/cache paths?
+- Are all release-consumer metadata files free of `$HOME`, repository paths, build roots, dependency caches, package-manager temporary paths, and absolute local `file://` URLs?
 - Are docs, license, examples, and metadata under `share/` only?
 - Are Lua files and Lua C binding/facade sources absent from the C binary SDK archive?
 - Are all runtime paths relocatable according to the runtime path invariant?
@@ -79,9 +87,15 @@ Package generation must:
 - Stage through `cmake --install`.
 - Strip project-owned libraries where appropriate.
 - Fix Darwin install names when shipping Darwin dynamic libraries.
+- Treat absolute build, install, dependency-cache, toolchain, and package-manager paths in generated metadata or binary loader/debug metadata as release-blocking defects.
+- Generate pkg-config files with `${pcfiledir}` or another relocatable prefix, never with the staging or install-time `CMAKE_INSTALL_PREFIX`.
+- Generate CMake package files without source roots, build roots, dependency cache paths, or machine-local package-manager paths.
+- Configure Darwin package builds with target-correct `CMAKE_INSTALL_NAME_TOOL` and `CMAKE_STRIP` when the toolchain provides them, so install-name fixes and stripping use the same target toolchain as the compiler.
+- When a repository has `scripts/discover_target_tools.sh`, use its discovered tool values for package generation instead of duplicating tool lookup in packaging scripts.
 - Produce deterministic tar/gzip output as far as the toolchain reasonably allows.
 - Generate checksums after all artifacts are present.
 - Use an explicit artifact manifest or narrow, version-qualified artifact patterns for checksum generation. Do not include build intermediates, package staging directories, or stale artifacts by accident.
+- Package artifacts correctly in the first place. Do not rely on a sanitized repack step to hide local paths after generation.
 
 Package verification must:
 
@@ -89,10 +103,12 @@ Package verification must:
 - Verify `dist/<project>-<version>-CHECKSUMS` is present and is the only active checksum manifest for the release.
 - Verify every checksum-listed artifact exists under `dist/`.
 - Verify every checksum-listed artifact validates successfully.
+- Scan the checksum manifest itself for local paths and absolute local `file://` URLs.
 - Verify every release-looking artifact under `dist/` is listed in the checksum manifest unless explicitly ignored by a documented rule.
 - Verify no stale release artifact for a different version remains under `dist/`.
 - Verify deprecated checksum files such as `SHA256SUMS` are absent unless the project explicitly preserves them as compatibility artifacts.
 - Verify `gh release create` arguments are derived from checksum-listed files only, never from a `dist/` glob.
+- Extract every checksum-listed archive and recursively expand nested `.tar.gz`, `.tgz`, `.tar.xz`, `.zip`, `.rock`, and `.src.rock` payloads that are part of the released package format before privacy and relocatability scanning.
 - Verify archive layout and single root.
 - Verify required headers, libraries, CMake config, pkg-config file, docs, examples, and metadata.
 - Verify generated version headers are installed and agree with package metadata.
@@ -103,10 +119,13 @@ Package verification must:
 - Verify shared-library runpaths use relocatable paths and do not contain build roots.
 - Verify every shipped ELF executable and shared object that has runtime library lookup metadata uses `$ORIGIN`-relative RPATH/RUNPATH only.
 - Verify no shipped Mach-O dynamic library or executable contains local build paths in install names or dependency paths; project-owned Darwin install names should be `@rpath`-relative.
-- Verify no sanitizer runtime, sanitizer symbols, debug-only paths, generated service state, package-manager build state, credentials, VCS metadata, dependency caches, or local paths appear in artifacts.
+- Verify no shipped runtime loader metadata contains absolute non-system paths. ELF RPATH/RUNPATH and Darwin install names/dependency paths are release artifacts and must be inspected after extraction.
+- Scan both text and binary files in extracted artifacts. Verify no sanitizer runtime, sanitizer symbols, debug-only paths, generated service state, package-manager build state, credentials, VCS metadata, dependency caches, `$HOME`, repository path, temporary build path, package-manager temporary path, absolute local `file://` URL, or other local path appears in artifacts.
 - Verify shipped CMake config files give actionable errors for missing external dependencies and include any installed helper modules they call.
 - Verify shipped pkg-config files are relocatable from their installed `lib/pkgconfig` or multiarch path and declare public/private dependencies correctly.
 - For SDKs that bundle static dependency archives, verify extracted downstream consumers link through the shipped CMake imported targets and `pkg-config --static` metadata without consumer-supplied private workaround libraries such as `-ldl`, `-lm`, `-lz`, `-pthread`, platform frameworks, or raw transitive archive lists. The test should fail if removing the metadata would still pass because the consumer hard-codes the closure.
+- Include negative regression fixtures or generated throwaway artifacts that prove the privacy gate fails on a repository path, `$HOME`, `file://$HOME`, `file://<repo>`, absolute local or non-system RPATH/RUNPATH, and Darwin project-owned install names outside `@rpath`. These tests must inspect extracted release artifacts, not package staging directories.
+- Verify target-tool discovery itself when cross-target artifacts are shipped. Package verification should prove the configured build directory, target ID, and fake or real toolchain resolve to the same target-correct tools used by package generation.
 
 Per-target SDK smoke contract:
 
@@ -122,7 +141,7 @@ Per-target SDK smoke contract:
 - Run consumers and shipped CLI binaries only when executable on the host or through an explicitly supported runner. Otherwise, build/link smoke checks are enough for cross targets.
 - For CLI binaries, run `--version` or the project equivalent when execution is supported.
 - Verify runtime paths after extraction.
-- For Darwin artifacts, inspect install names and dependency paths with `otool` when available, and run Darwin smoke bundles only when the required runtime/toolchain exists.
+- For shipped Darwin artifacts, inspect install names and dependency paths with the discovered target-correct `otool`. Optional Darwin targets may be skipped before packaging when the toolchain is unavailable, but a packaged Darwin artifact must not skip install-name verification. Run Darwin smoke bundles only when the required runtime/toolchain exists.
 
 Runtime path invariant:
 
@@ -130,18 +149,48 @@ Runtime path invariant:
 - Prefer no RPATH/RUNPATH when the artifact does not need one.
 - When runtime lookup metadata is needed, use `$ORIGIN` or `$ORIGIN/<relative-lib-dir>` so the artifact is relocatable inside the extracted SDK.
 - Package verification must inspect every shipped executable and shared object with `readelf -d` or an equivalent tool and fail on absolute paths, local paths, sanitizer runtime dependencies, or non-relocatable runpaths.
+- Discover ELF inspection tools from configured build state before `PATH` when cross targets are involved. Prefer configured values such as `CMAKE_READELF`, then target-prefixed sibling tools next to `CMAKE_C_COMPILER`, then `readelf` or an equivalent tool on `PATH`.
 - Do not rely on CMake defaults for this. Set install/build RPATH policy explicitly for shipped targets and test the installed package tree, not only the build tree.
+
+Darwin tool discovery:
+
+- Do not assume Darwin inspection tools are on `PATH`.
+- The pkt.systems standard osxcross install location is `${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}`. The default Darwin host is `${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}`. Therefore the default tool paths are `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-otool`, `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-install_name_tool`, and `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-strip`.
+- Prefer configured CMake tool state when locating Darwin tools: `CMAKE_C_COMPILER`, `CMAKE_STRIP`, `CMAKE_INSTALL_NAME_TOOL`, `CPKT_OTOOL`, and `CMAKE_OTOOL` when present.
+- Discover configured CMake tool state from the active preset build directory, normally by reading `CMakeCache.txt` or using non-mutating CMake cache introspection after configure. Tool lookup scripts should accept an explicit build directory or target ID so they inspect the same configured build that produced the package.
+- Prefer a shared `scripts/discover_target_tools.sh` helper for this lookup so package generation, package verification, Darwin smoke bundles, and release privacy verification agree on the selected tools.
+- The lookup order for each Darwin tool is:
+  1. an explicit project-prefixed override variable, when the repository defines one;
+  2. the configured CMake cache value for that tool;
+  3. target-prefixed sibling tools next to `CMAKE_C_COMPILER`;
+  4. unprefixed sibling tools next to `CMAKE_C_COMPILER`;
+  5. `PATH` as the last fallback.
+- For osxcross-style toolchains, derive the host prefix from `CPKT_OSXCROSS_HOST`, the configured compiler name, or the configured target host. If the compiler is `/path/to/toolchain/bin/<host>-cc` or `/path/to/toolchain/bin/<host>-clang`, check `/path/to/toolchain/bin/<host>-otool`, `/path/to/toolchain/bin/<host>-install_name_tool`, and `/path/to/toolchain/bin/<host>-strip` before checking unprefixed names.
+- Darwin package generation must use the discovered target-correct `install_name_tool` and `strip`; host `/usr/bin/strip` or another non-target strip must not be used on cross-built Mach-O artifacts. Darwin package verification must use the discovered `otool` to inspect install names and dependency paths.
+- Validate discovered Darwin tools before trusting them when practical, for example by checking they exist, are executable, and can inspect or mutate a generated target Mach-O artifact in the package verification workflow.
+- If a Darwin artifact is shipped and no target-correct `otool`, `install_name_tool`, or `strip` can be found from configured overrides, CMake state, compiler siblings, or `PATH`, package generation or verification must report an `external-tool-unavailable` diagnostic for that target instead of silently skipping install-name verification or stripping with the wrong tool.
+
+Release privacy gate:
+
+- `make package-verify` must include the privacy and relocatability gate for every checksum-listed release artifact.
+- Projects may expose `make verify-release-privacy` as a focused alias, but it must not be the only place the privacy gate runs.
+- The privacy gate must report the exact artifact and extracted file that leaked local material.
+- It must fail on the current repository path, `$HOME`, `file://$HOME`, `file://<repo>`, absolute local or non-system RPATH/RUNPATH, Darwin project-owned install names outside `@rpath`, and dependency paths pointing at local build trees.
 
 
 ## Source And Single-Header Artifacts
 
-Source archives must be staged from an explicit manifest, not from an unfiltered repository copy. Include source, public headers, CMake, scripts needed to build from source, tests or smoke tests, examples, docs, license, version file, and release manifest. Exclude generated output.
+Source archives must be staged from an explicit manifest, not from an unfiltered repository copy. Include source, public headers, CMake, scripts needed to build from source, tests or smoke tests, examples, docs, license, an injected `VERSION` file for the non-git build path, and release manifest. Exclude generated output.
 
-Source archive staging must write `RELEASE_MANIFEST` into the staged tree. In a git worktree, derive it from tracked, non-ignored files and add only deliberate generated release files such as `VERSION` and `RELEASE_MANIFEST`. Outside git, require an existing release manifest instead of copying the whole tree.
+Source archive staging must write `RELEASE_MANIFEST` into the staged tree. In a git worktree, derive it from tracked, non-ignored files and add only deliberate generated release files such as source-archive `VERSION` and `RELEASE_MANIFEST`. `/VERSION` remains ignored in the repository and must not be treated as tracked release metadata. Outside git, require an existing release manifest instead of copying the whole tree.
 
 Source archive verification must extract the tarball to a generated temporary directory, configure from the extracted tree, build, run the local tests that do not require unavailable external services, and verify the configured version, generated version header, CMake package metadata, pkg-config metadata, and archive `VERSION` agree. When the source archive is produced from a git worktree, verify the archive payload exactly matches the tracked non-ignored release manifest plus deliberate generated release files.
 
 Source archives may carry release scripts and deterministic fixtures needed to rebuild and test the source package. They must not carry generated dependency archives, local `.env` files, package-manager state, service volumes, VCS metadata, or private review notes unless explicitly part of a public source distribution.
+
+Source archives, source rocks, rockspecs, and single-header artifacts must not embed local source URLs, local checkout paths, build paths, package-manager temporary paths, or user home paths. LuaRocks release rockspecs must not use absolute `file://` URLs.
+
+Lua source packages are source archives for the Lua facade, but they are separate artifacts from the C source archive. Stage them from an explicit Lua manifest, write an injected `VERSION` and `RELEASE_MANIFEST`, package them as `dist/<project>-lua-<version>.tar.gz`, include them in checksums, and verify them directly as well as through any `.src.rock` that embeds them.
 
 Single-header artifacts, when present, must be generated from public header and implementation parts, formatted, version-stamped from the release version, compressed under `dist/`, and verified by decompressing and checking version macros plus a compile smoke test.
 

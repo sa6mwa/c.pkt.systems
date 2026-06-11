@@ -43,12 +43,18 @@ Release contract:
 
 - `make release-lua-artifacts` writes all Lua release artifacts under `dist/`.
 - Render a release rockspec with the exact release version.
-- Stage a minimal Lua source tree with `LICENSE`, `README.md`, `VERSION`, `RELEASE_MANIFEST`, the rockspec template, build/render scripts, Lua sources, C facade sources, and required public C headers.
-- Build a source archive and `.src.rock` through LuaRocks.
-- Build source rocks from staged source, not from the live worktree.
-- Include Lua artifacts in the checksum manifest.
-- Verify rockspec and rock contents for private paths, generated state, credentials, and missing source inputs.
+- Treat development rockspecs and release rockspecs as different outputs when local development needs repo-local sources. A development rockspec may point at generated local state under `build/`, but no rendered release rockspec, source rock, checksum-listed Lua artifact, or nested source archive may contain a repo-local or `$HOME` source URL.
+- Stage a minimal Lua source tree with `LICENSE`, `README.md`, injected source-package `VERSION`, `RELEASE_MANIFEST`, the rockspec template, build/render scripts, Lua sources, C facade sources, docs needed by Lua users, and required public C headers.
+- Produce a standalone Lua source package under `dist/` named `dist/<project>-lua-<version>.tar.gz`. This package is separate from the C source archive and from per-target C SDK tarballs.
+- Build the release `.src.rock` through LuaRocks from a staged Lua source package, not from the live worktree. The source rock must contain the rendered rockspec and the same `<project>-lua-<version>.tar.gz` payload, with the rockspec `source.url` rewritten to a release-local or public source URL and `source.dir` set to the staged root such as `<project>-<version>` when needed.
+- Keep the rendered release rockspec under `dist/<project>-<version>-1.rockspec` when useful for inspection and checksum coverage.
+- Include the standalone Lua source package, rendered release rockspec, and `.src.rock` in the checksum manifest alongside C release artifacts.
+- Render release rockspec source URLs as release-appropriate logical or public URLs, such as the final release source archive URL or another deliberately public source location. Do not use absolute `file://` URLs pointing at the repository, `$HOME`, package-manager temporary directories, or staged local source trees.
+- Verify rendered release rockspecs, standalone Lua source packages, and source rock contents for private paths, generated state, credentials, absolute local `file://` URLs, and missing source inputs.
+- `scripts/validate_luarocks.sh`, when present, must inspect the rendered release rockspec, unpack each `.src.rock`, inspect the rockspec inside it, and expand and scan any nested source archive payloads.
+- Expand `.src.rock` artifacts during release privacy verification and scan their nested Lua source package payloads, not only the outer rock file.
+- Add a Lua artifact regression test that proves validation fails when a rendered release rockspec, standalone Lua source package, or `.src.rock` contains `file://$HOME`, `file://<repo>`, a package-manager temporary path, or a live-worktree source path.
 - Verify Lua release artifact versions agree with the C release version, generated headers, source archive `VERSION`, and checksum manifest.
 - When Lua e2e mirrors C behavior, include deterministic local Lua e2e in local smoke gates and live Lua e2e in the explicit live prerelease tier.
 - Do not install Lua runtime files, Lua rockspecs, Lua source files, Lua package-manager state, or Lua C binding/facade source files into C binary SDK artifacts.
-- Lua C binding/facade code belongs in Lua source packages and source rocks, not in per-target C SDK tarballs, unless the engineer explicitly defines a combined artifact.
+- Lua C binding/facade code belongs in standalone Lua source packages and source rocks, not in per-target C SDK tarballs, unless the engineer explicitly defines a combined artifact.

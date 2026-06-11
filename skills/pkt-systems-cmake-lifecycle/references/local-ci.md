@@ -51,14 +51,17 @@ Add tests that assert observable behavior:
 - Install-tree downstream consumers through pkg-config when pkg-config is shipped.
 - Examples built from the source tree and, when shipped, from installed examples.
 - Example help/version smoke tests and deterministic local example workflows.
-- Version resolution from `VERSION` and `vX.Y.Z` tags.
+- Version resolution from lightweight `vX.Y.Z` tags in git worktrees, and from injected `VERSION` files only in non-git source archive builds. Include negative checks proving a git worktree with no exact lightweight `vX.Y.Z` tag on `HEAD` resolves to `0.0.0`, not `0.1.0`, a planned next release version, or a repository-local `VERSION` file.
 - Version override behavior for release-candidate builds, including Make, CMake, Lua artifacts, source archives, and dry-run packaging targets.
 - CMake preset presence and option defaults that are part of the lifecycle contract.
 - Dependency mode behavior, including host mode, bundled SDK mode, auto mode fallback, unsupported targets, and wrong-ABI dependency rejection.
 - Package archive layout and forbidden payload checks.
+- Release artifact privacy and relocatability checks that expand checksum-listed artifacts and nested payloads before scanning and inspecting runtime loader metadata.
+- Negative release privacy fixtures that create release-shaped throwaway artifacts containing representative leaks and prove the gate fails with the exact artifact/file path. Cover at least repository paths, `$HOME`, absolute local `file://` URLs, absolute local or non-system ELF RPATH/RUNPATH, and local Darwin install names when the platform/tooling surface exists.
+- Lua release artifact checks, when Lua artifacts exist, that build `dist/<project>-lua-<version>.tar.gz`, render the release rockspec, build the `.src.rock`, verify the standalone Lua source package layout and manifest, unpack the `.src.rock`, expand the embedded Lua source package, and fail on absolute local `file://` URLs or live-worktree source paths.
 - Source archive extraction, configure, build, version agreement, and test smoke.
 - Source archive manifest exactness: tracked non-ignored files plus deliberate generated release files, no more and no less.
-- Release privacy scans for local paths, parent-relative paths, credentials, VCS metadata, generated service state, dependency caches, and sanitizer artifacts.
+- Release privacy and relocatability scans for `$HOME`, repository paths, build roots, dependency caches, package-manager temporary paths, parent-relative paths, absolute local `file://` URLs, credentials, VCS metadata, generated service state, sanitizer artifacts, ELF RPATH/RUNPATH, Darwin install names/dependency paths, and unstripped binary metadata that exposes local toolchain or home paths.
 
 Test registration:
 
