@@ -5,6 +5,10 @@
 #include <cmocka.h>
 #include <curl/curl.h>
 #include <libssh2.h>
+#include <libxml/parser.h>
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
 #include <nghttp2/nghttp2.h>
 #include <openssl/crypto.h>
 #include <openssl/ssl.h>
@@ -15,6 +19,8 @@ static void cpkt_dependency_symbols_are_linkable(void **state) {
   const char *ssh2_version;
   nghttp2_info *http2_info;
   SSL_CTX *ctx;
+  xmlDocPtr xml_doc;
+  lua_State *lua_state;
   unsigned long zlib_flags;
 
   (void)state;
@@ -36,6 +42,16 @@ static void cpkt_dependency_symbols_are_linkable(void **state) {
 
   zlib_flags = zlibCompileFlags();
   (void)zlib_flags;
+
+  xml_doc = xmlReadMemory("<root/>", 7, "memory.xml", NULL, 0);
+  assert_non_null(xml_doc);
+  xmlFreeDoc(xml_doc);
+  xmlCleanupParser();
+
+  lua_state = luaL_newstate();
+  assert_non_null(lua_state);
+  luaL_openlibs(lua_state);
+  lua_close(lua_state);
 }
 
 int main(void) {

@@ -29,7 +29,7 @@ endif()
 if(_listing MATCHES "(^|\n)\\./")
   message(FATAL_ERROR "archive entries must be rooted at ${_archive_stem}, not ./")
 endif()
-foreach(_internal_root cmocka curl libssh2 nghttp2 openssl zlib)
+foreach(_internal_root cmocka curl libssh2 libxml2 lua nghttp2 openssl zlib)
   if(_listing MATCHES "(^|\n)${_internal_root}/")
     message(FATAL_ERROR "archive exposes internal dependency root: ${_internal_root}/")
   endif()
@@ -123,12 +123,32 @@ foreach(_path
     "lib/cmake/nghttp2/nghttp2Config.cmake"
     "lib/cmake/nghttp2/nghttp2ConfigVersion.cmake"
     "lib/pkgconfig/libnghttp2.pc"
+    "include/libxml2/libxml/parser.h"
+    "lib/libxml2.a"
+    "lib/cmake/libxml2/libxml2-config.cmake"
+    "lib/cmake/libxml2/libxml2-config-version.cmake"
+    "lib/pkgconfig/libxml-2.0.pc"
+    "include/lua.h"
+    "include/lauxlib.h"
+    "include/lualib.h"
+    "include/cpkt/lua_runtime.h"
+    "lib/liblua.a"
+    "lib/libcpkt_lua_runtime.a"
+    "lib/cmake/Lua/LuaConfig.cmake"
+    "lib/cmake/Lua/LuaConfigVersion.cmake"
+    "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
+    "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
+    "lib/pkgconfig/lua.pc"
+    "lib/pkgconfig/lua5.5.pc"
+    "lib/pkgconfig/cpkt-lua-runtime.pc"
     "share/c.pkt.systems/manifest.txt"
     "share/doc/c.pkt.systems/third_party/openssl/LICENSE"
     "share/doc/c.pkt.systems/third_party/curl/LICENSE"
     "share/doc/c.pkt.systems/third_party/libssh2/LICENSE"
     "share/doc/c.pkt.systems/third_party/zlib/LICENSE"
-    "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE")
+    "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE"
+    "share/doc/c.pkt.systems/third_party/libxml2/LICENSE"
+    "share/doc/c.pkt.systems/third_party/lua/LICENSE")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
 endforeach()
 
@@ -153,6 +173,28 @@ foreach(_metadata_file IN LISTS _metadata_files)
 endforeach()
 file(REMOVE_RECURSE "${_metadata_extract_root}")
 
+cpkt_extract_archive_for_assertions(_facade_header_extract_root)
+set(_facade_header "${_facade_header_extract_root}/${_archive_stem}/include/cpkt/lua_runtime.h")
+if(NOT EXISTS "${_facade_header}")
+  message(FATAL_ERROR "missing Lua C89 facade header: ${_facade_header}")
+endif()
+file(READ "${_facade_header}" _facade_header_text)
+foreach(_forbidden_header_token
+    "lua.h"
+    "lauxlib.h"
+    "lualib.h"
+    "lua_State"
+    "lua_Integer"
+    "lua_Number"
+    "lua_Unsigned"
+    "long long"
+    "inline")
+  if(_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "Lua C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_facade_header_extract_root}")
+
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   foreach(_path
       "lib/libssl.dylib"
@@ -161,7 +203,12 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libssh2.1.dylib"
       "lib/libz.dylib"
       "lib/libz.1.dylib"
-      "lib/libnghttp2.dylib")
+      "lib/libnghttp2.dylib"
+      "lib/libxml2.dylib"
+      "lib/libxml2.16.dylib"
+      "lib/liblua.dylib"
+      "lib/liblua.5.5.dylib"
+      "lib/libcpkt_lua_runtime.dylib")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
 else()
@@ -174,7 +221,14 @@ else()
       "lib/libssh2.so.1.0.1"
       "lib/libz.so"
       "lib/libz.so.1"
-      "lib/libnghttp2.so")
+      "lib/libnghttp2.so"
+      "lib/libxml2.so"
+      "lib/libxml2.so.16"
+      "lib/libxml2.so.16.1.3"
+      "lib/liblua.so"
+      "lib/liblua.so.5.5"
+      "lib/liblua.so.5.5.0"
+      "lib/libcpkt_lua_runtime.so")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
@@ -182,7 +236,9 @@ else()
       "lib/libcrypto.so.3"
       "lib/libssl.so.3"
       "lib/libssh2.so.1.0.1"
-      "lib/libcurl.so.4.8.0")
+      "lib/libcurl.so.4.8.0"
+      "lib/libxml2.so.16.1.3"
+      "lib/libcpkt_lua_runtime.so")
     cpkt_assert_elf_runpath(
       "${_assert_extract_root}/${_archive_stem}/${_runpath_library}"
       "\\$ORIGIN"

@@ -139,7 +139,7 @@ fi
 
 mkdir -p "$work_root/bin"
 
-common_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"
+common_flags="-std=c99 -Wall -Wextra -Wpedantic -isystem $prefix/include"
 assert_package_file() {
   package_path=$1
   if [ ! -f "$prefix/$package_path" ]; then
@@ -156,6 +156,17 @@ assert_package_dir_absent() {
   fi
 }
 
+assert_file_contains() {
+  file_path=$1
+  expected=$2
+  description=$3
+  if ! grep -F -- "$expected" "$file_path" >/dev/null 2>&1; then
+    printf '%s does not contain expected metadata-propagated item: %s\n' "$description" "$expected" >&2
+    printf 'inspected file: %s\n' "$file_path" >&2
+    exit 1
+  fi
+}
+
 assert_package_file "lib/cmake/OpenSSL/OpenSSLConfig.cmake"
 assert_package_file "lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake"
 assert_package_file "lib/cmake/zlib/ZLIBConfig.cmake"
@@ -166,8 +177,22 @@ assert_package_file "lib/cmake/libssh2/libssh2-config.cmake"
 assert_package_file "lib/cmake/libssh2/libssh2-config-version.cmake"
 assert_package_file "lib/cmake/CURL/CURLConfig.cmake"
 assert_package_file "lib/cmake/CURL/CURLConfigVersion.cmake"
+assert_package_file "lib/cmake/libxml2/libxml2-config.cmake"
+assert_package_file "lib/cmake/libxml2/libxml2-config-version.cmake"
+assert_package_file "lib/cmake/Lua/LuaConfig.cmake"
+assert_package_file "lib/cmake/Lua/LuaConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
+assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
+assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "find_dependency(Iconv REQUIRED)" "libxml2 CMake config"
+assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "Iconv::Iconv" "libxml2 CMake config"
 assert_package_dir_absent "lib/cmake/ZLIB"
 assert_package_dir_absent "lib/cmake/Libssh2"
+
+if grep -E 'lua\.h|lauxlib\.h|lualib\.h|lua_State|lua_Integer|lua_Number|lua_Unsigned|long long|inline' \
+    "$prefix/include/cpkt/lua_runtime.h" >/dev/null 2>&1; then
+  printf 'Lua runtime facade header is not C89-clean\n' >&2
+  exit 1
+fi
 
 cmake_source_dir="$work_root/cmake-consumer-src"
 cmake_build_dir="$work_root/cmake-consumer-build"
@@ -221,10 +246,299 @@ int main(void) {
   return curl_version_info(CURLVERSION_NOW)->version == 0;
 }
 EOF
+cat > "$cmake_source_dir/cpkt_libxml2.c" <<'EOF'
+#include <libxml/parser.h>
+
+int main(void) {
+  xmlDocPtr doc = xmlReadMemory("<root/>", 7, "memory.xml", 0, 0);
+  if (doc == 0) {
+    return 1;
+  }
+  xmlFreeDoc(doc);
+  xmlCleanupParser();
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_lua.c" <<'EOF'
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
+
+int main(void) {
+  lua_State *state = luaL_newstate();
+  if (state == 0) {
+    return 1;
+  }
+  luaL_openlibs(state);
+  lua_close(state);
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_lua_runtime_strict.c" <<'EOF'
+#include <cpkt/lua_runtime.h>
+
+#include <stdlib.h>
+#include <string.h>
+
+int cpkt_strict_host_open(void *lua_state);
+
+struct cpkt_strict_allocator {
+  size_t alloc_calls;
+  size_t realloc_calls;
+  size_t free_calls;
+  size_t bytes_live;
+};
+
+static void *cpkt_strict_alloc(void *user, size_t size) {
+  struct cpkt_strict_allocator *allocator;
+  void *ptr;
+
+  allocator = (struct cpkt_strict_allocator *)user;
+  allocator->alloc_calls += 1;
+  ptr = malloc(size);
+  if (ptr != 0) {
+    allocator->bytes_live += size;
+  }
+  return ptr;
+}
+
+static void *cpkt_strict_realloc(void *user, void *ptr, size_t old_size, size_t new_size) {
+  struct cpkt_strict_allocator *allocator;
+  void *next;
+
+  allocator = (struct cpkt_strict_allocator *)user;
+  allocator->realloc_calls += 1;
+  next = realloc(ptr, new_size);
+  if (next != 0) {
+    if (allocator->bytes_live >= old_size) {
+      allocator->bytes_live -= old_size;
+    } else {
+      allocator->bytes_live = 0;
+    }
+    allocator->bytes_live += new_size;
+  }
+  return next;
+}
+
+static void cpkt_strict_free(void *user, void *ptr, size_t size) {
+  struct cpkt_strict_allocator *allocator;
+
+  allocator = (struct cpkt_strict_allocator *)user;
+  allocator->free_calls += 1;
+  if (allocator->bytes_live >= size) {
+    allocator->bytes_live -= size;
+  } else {
+    allocator->bytes_live = 0;
+  }
+  free(ptr);
+}
+
+static int cpkt_check(cpkt_lua_runtime_status status) {
+  return status == CPKT_LUA_RUNTIME_OK ? 0 : 1;
+}
+
+int main(int argc, char **argv) {
+  static const unsigned char preload_source[] = "return {value = 'chunk'}";
+  static const unsigned char buffer_source[] =
+      "local h = require('host')\n"
+      "local c = require('chunkmod')\n"
+      "if h.context ~= 'strict-context' then error('bad context') end\n"
+      "if c.value ~= 'chunk' then error('bad chunk') end\n"
+      "if arg[0] ~= 'buffer.lua' then error('bad arg0') end\n"
+      "if arg[1] ~= 'one' or arg[2] ~= 'two' then error('bad argv') end\n";
+  static const unsigned char side_effect_source[] = "required_side_effect = 'ok'; return true";
+  static const unsigned char limit_source[] = "while true do end";
+  const char *script_argv[2];
+  struct cpkt_strict_allocator allocator;
+  cpkt_lua_runtime_allocator_config allocator_config;
+  cpkt_lua_runtime *runtime;
+  cpkt_lua_runtime *limited_runtime;
+  cpkt_lua_runtime_status status;
+  const char *limit_error;
+
+  if (argc != 2) {
+    return 2;
+  }
+
+  if (cpkt_lua_runtime_lua_version() == 0 || cpkt_lua_runtime_facade_version() == 0) {
+    return 3;
+  }
+
+  memset(&allocator, 0, sizeof(allocator));
+  memset(&allocator_config, 0, sizeof(allocator_config));
+  allocator_config.user = &allocator;
+  allocator_config.alloc_fn = cpkt_strict_alloc;
+  allocator_config.realloc_fn = cpkt_strict_realloc;
+  allocator_config.free_fn = cpkt_strict_free;
+  allocator_config.max_bytes = 16 * 1024 * 1024;
+  status = cpkt_lua_runtime_new_with_allocator(&runtime, &allocator_config);
+  if (status != CPKT_LUA_RUNTIME_OK) {
+    return 4;
+  }
+
+  cpkt_lua_runtime_set_context(runtime, (void *)"strict-context");
+  if (cpkt_check(cpkt_lua_runtime_open_libs(
+          runtime,
+          CPKT_LUA_RUNTIME_LIB_BASE |
+              CPKT_LUA_RUNTIME_LIB_PACKAGE |
+              CPKT_LUA_RUNTIME_LIB_TABLE |
+              CPKT_LUA_RUNTIME_LIB_STRING |
+              CPKT_LUA_RUNTIME_LIB_MATH)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 5;
+  }
+  if (cpkt_lua_runtime_context(runtime) == 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 6;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_traceback(runtime, 1)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 7;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_package_path(runtime, "first/?.lua")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 8;
+  }
+  if (cpkt_check(cpkt_lua_runtime_prepend_package_path(runtime, "zero/?.lua")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 9;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_package_cpath(runtime, "first/?.so")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 10;
+  }
+  if (cpkt_check(cpkt_lua_runtime_prepend_package_cpath(runtime, "zero/?.so")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 11;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_global_string(runtime, "strict_name", "facade")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 12;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_global_boolean(runtime, "strict_flag", 1)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 13;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_global_integer(runtime, "strict_count", 7)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 14;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_global_number(runtime, "strict_number", 2.5)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 15;
+  }
+  if (cpkt_check(cpkt_lua_runtime_register_c_module(runtime, "host", cpkt_strict_host_open)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 16;
+  }
+  if (cpkt_check(cpkt_lua_runtime_register_lua_module(
+          runtime,
+          "chunkmod",
+          preload_source,
+          sizeof(preload_source) - 1,
+          "chunkmod.lua")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 17;
+  }
+  if (cpkt_check(cpkt_lua_runtime_register_lua_module(
+          runtime,
+          "sideeffect",
+          side_effect_source,
+          sizeof(side_effect_source) - 1,
+          "sideeffect.lua")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 18;
+  }
+  if (cpkt_check(cpkt_lua_runtime_require(runtime, "sideeffect")) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 19;
+  }
+
+  script_argv[0] = "one";
+  script_argv[1] = "two";
+  if (cpkt_check(cpkt_lua_runtime_run_buffer(
+          runtime,
+          buffer_source,
+          sizeof(buffer_source) - 1,
+          "buffer.lua",
+          2,
+          script_argv,
+          0)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 20;
+  }
+  if (cpkt_check(cpkt_lua_runtime_run_file(runtime, argv[1], 2, script_argv, 0)) != 0) {
+    cpkt_lua_runtime_free(runtime);
+    return 21;
+  }
+
+  cpkt_lua_runtime_free(runtime);
+  if (allocator.alloc_calls == 0 || allocator.free_calls == 0) {
+    return 22;
+  }
+
+  status = cpkt_lua_runtime_new(&limited_runtime);
+  if (status != CPKT_LUA_RUNTIME_OK) {
+    return 23;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_traceback(limited_runtime, 1)) != 0) {
+    cpkt_lua_runtime_free(limited_runtime);
+    return 24;
+  }
+  if (cpkt_check(cpkt_lua_runtime_set_instruction_limit(limited_runtime, 1000)) != 0) {
+    cpkt_lua_runtime_free(limited_runtime);
+    return 25;
+  }
+  status = cpkt_lua_runtime_run_buffer(
+      limited_runtime,
+      limit_source,
+      sizeof(limit_source) - 1,
+      "limit.lua",
+      0,
+      0,
+      0);
+  if (status != CPKT_LUA_RUNTIME_ERR_LIMIT) {
+    cpkt_lua_runtime_free(limited_runtime);
+    return 26;
+  }
+  limit_error = cpkt_lua_runtime_error(limited_runtime);
+  if (limit_error == 0 || strstr(limit_error, "instruction limit") == 0) {
+    cpkt_lua_runtime_free(limited_runtime);
+    return 27;
+  }
+  if (cpkt_check(cpkt_lua_runtime_clear_instruction_limit(limited_runtime)) != 0) {
+    cpkt_lua_runtime_free(limited_runtime);
+    return 28;
+  }
+  cpkt_lua_runtime_clear_error(limited_runtime);
+  if (cpkt_lua_runtime_error(limited_runtime)[0] != '\0') {
+    cpkt_lua_runtime_free(limited_runtime);
+    return 29;
+  }
+  cpkt_lua_runtime_free(limited_runtime);
+
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_lua_runtime_module.c" <<'EOF'
+#include <cpkt/lua_runtime.h>
+
+#include <lua.h>
+
+int cpkt_strict_host_open(void *lua_state) {
+  lua_State *state = (lua_State *)lua_state;
+  const char *context = (const char *)cpkt_lua_runtime_context_from_state(lua_state);
+
+  lua_newtable(state);
+  lua_pushstring(state, context != 0 ? context : "");
+  lua_setfield(state, -2, "context");
+  return 1;
+}
+EOF
 cat > "$cmake_source_dir/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.21)
 project(cpkt_package_cmake_static_smoke LANGUAGES C)
-set(CMAKE_C_STANDARD 90)
+set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
@@ -233,6 +547,9 @@ find_package(ZLIB CONFIG REQUIRED)
 find_package(nghttp2 CONFIG REQUIRED)
 find_package(Libssh2 CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
+find_package(libxml2 CONFIG REQUIRED)
+find_package(Lua CONFIG REQUIRED)
+find_package(CpktLuaRuntime CONFIG REQUIRED)
 
 function(cpkt_add_static_smoke target_name source_name link_target)
   add_executable("\${target_name}" "\${source_name}")
@@ -246,7 +563,36 @@ cpkt_add_static_smoke(cpkt_cmake_crypto cpkt_crypto.c OpenSSL::Crypto)
 cpkt_add_static_smoke(cpkt_cmake_ssl cpkt_ssl.c OpenSSL::SSL)
 cpkt_add_static_smoke(cpkt_cmake_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_smoke(cpkt_cmake_curl cpkt_curl.c CURL::libcurl)
-cpkt_add_static_smoke(cpkt_cmake_all cpkt_all.c CURL::libcurl)
+cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
+cpkt_add_static_smoke(cpkt_cmake_lua cpkt_lua.c Lua::Lua)
+add_executable(cpkt_cmake_all cpkt_all.c)
+target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua)
+
+file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/strict_file.lua"
+  "local h = require('host')\\n"
+  "local c = require('chunkmod')\\n"
+  "if h.context ~= 'strict-context' then error('bad file context') end\\n"
+  "if c.value ~= 'chunk' then error('bad file chunk') end\\n"
+  "if package.path ~= 'zero/?.lua;first/?.lua' then error('bad file package path') end\\n"
+  "if package.cpath ~= 'zero/?.so;first/?.so' then error('bad file package cpath') end\\n"
+  "if strict_name ~= 'facade' then error('bad file string global') end\\n"
+  "if strict_flag ~= true then error('bad file boolean global') end\\n"
+  "if strict_count ~= 7 then error('bad file integer global') end\\n"
+  "if strict_number ~= 2.5 then error('bad file number global') end\\n"
+  "if required_side_effect ~= 'ok' then error('bad file require side effect') end\\n"
+  "if arg[0] ~= '\${CMAKE_CURRENT_BINARY_DIR}/strict_file.lua' then error('bad file arg0') end\\n"
+  "if arg[1] ~= 'one' or arg[2] ~= 'two' then error('bad file argv') end\\n")
+add_executable(cpkt_cmake_lua_runtime_strict
+  cpkt_lua_runtime_strict.c
+  cpkt_lua_runtime_module.c)
+set_source_files_properties(cpkt_lua_runtime_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic")
+set_source_files_properties(cpkt_lua_runtime_module.c PROPERTIES
+  COMPILE_OPTIONS "-std=c99;-Wall;-Wextra;-Wpedantic")
+target_link_libraries(cpkt_cmake_lua_runtime_strict PRIVATE cpkt::lua_runtime)
+target_compile_definitions(cpkt_cmake_lua_runtime_strict PRIVATE
+  CPKT_STRICT_FILE="\${CMAKE_CURRENT_BINARY_DIR}/strict_file.lua")
 EOF
 cmake_args=(
   -G "$cmake_generator" \
@@ -259,6 +605,9 @@ cmake_args=(
   -Dnghttp2_DIR="$prefix/lib/cmake/nghttp2" \
   -DLibssh2_DIR="$prefix/lib/cmake/libssh2" \
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
+  -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
+  -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
 if [ -n "$cmake_toolchain_file" ]; then
@@ -268,17 +617,6 @@ if [ -n "$cmake_toolchain_file" ]; then
 fi
 cmake "${cmake_args[@]}"
 cmake --build "$cmake_build_dir"
-
-assert_file_contains() {
-  file_path=$1
-  expected=$2
-  description=$3
-  if ! grep -F -- "$expected" "$file_path" >/dev/null 2>&1; then
-    printf '%s does not contain expected metadata-propagated item: %s\n' "$description" "$expected" >&2
-    printf 'inspected file: %s\n' "$file_path" >&2
-    exit 1
-  fi
-}
 
 assert_words_contain() {
   words=$1
@@ -315,14 +653,18 @@ assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib
 assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib/libssl.a" "CURL::libcurl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib/libcrypto.a" "CURL::libcurl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib/libz.a" "CURL::libcurl link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "$prefix/lib/libz.a" "LibXml2::LibXml2 link line"
 case "$target_id" in
   *-linux-gnu)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_crypto.dir/link.txt" "-ldl" "OpenSSL::Crypto link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "-ldl" "CURL::libcurl link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "-ldl" "LibXml2::LibXml2 link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_lua.dir/link.txt" "-ldl" "Lua::Lua link line"
     ;;
   arm64-apple-darwin)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "CoreFoundation" "CURL::libcurl link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "SystemConfiguration" "CURL::libcurl link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "iconv" "LibXml2::LibXml2 link line"
     ;;
 esac
 
@@ -339,7 +681,7 @@ cpkt_cmake_direct_dir_smoke() {
   cat > "$direct_source_dir/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.21)
 project(cpkt_package_cmake_direct_${package_name}_smoke LANGUAGES C)
-set(CMAKE_C_STANDARD 90)
+set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
@@ -379,6 +721,16 @@ assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libssl.a" "di
 assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libcrypto.a" "direct CURL_DIR link line"
 assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libz.a" "direct CURL_DIR link line"
 
+cpkt_cmake_direct_dir_smoke libxml2 "$prefix/lib/cmake/libxml2" cpkt_direct_libxml2 cpkt_libxml2.c LibXml2::LibXml2
+direct_libxml2_link_dir="$work_root/cmake-direct-libxml2-build/CMakeFiles/cpkt_direct_libxml2.dir"
+assert_file_contains "$direct_libxml2_link_dir/link.txt" "$prefix/lib/libz.a" "direct libxml2_DIR link line"
+case "$target_id" in
+  arm64-apple-darwin)
+    assert_file_contains "$direct_libxml2_link_dir/link.txt" "iconv" "direct libxml2_DIR link line"
+    ;;
+esac
+
+cpkt_cmake_direct_dir_smoke Lua "$prefix/lib/cmake/Lua" cpkt_direct_lua cpkt_lua.c Lua::Lua
 example_cmake_build_dir="$work_root/example-cmake-consumer-build"
 example_cmake_args=(
   -G "$cmake_generator" \
@@ -387,6 +739,8 @@ example_cmake_args=(
   -DCMAKE_C_COMPILER="$cc" \
   -DCMAKE_PREFIX_PATH="$prefix" \
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
+  -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
+  -DLua_DIR="$prefix/lib/cmake/Lua" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
 if [ -n "$cmake_toolchain_file" ]; then
@@ -396,6 +750,24 @@ if [ -n "$cmake_toolchain_file" ]; then
 fi
 cmake "${example_cmake_args[@]}"
 cmake --build "$example_cmake_build_dir"
+
+lua_runtime_example_cmake_build_dir="$work_root/example-lua-runtime-c89-cmake-build"
+lua_runtime_example_cmake_args=(
+  -G "$cmake_generator" \
+  -S "$repo_root/examples/lua-runtime-c89" \
+  -B "$lua_runtime_example_cmake_build_dir" \
+  -DCMAKE_C_COMPILER="$cc" \
+  -DCMAKE_PREFIX_PATH="$prefix" \
+  -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+)
+if [ -n "$cmake_toolchain_file" ]; then
+  lua_runtime_example_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
+  lua_runtime_example_cmake_args+=("${cmake_toolchain_args[@]}")
+  lua_runtime_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+fi
+cmake "${lua_runtime_example_cmake_args[@]}"
+cmake --build "$lua_runtime_example_cmake_build_dir"
 
 pkg_config_libdir="$prefix/lib/pkgconfig"
 pkg_config_words() {
@@ -413,6 +785,9 @@ zlib_words=$(pkg_config_words zlib)
 nghttp2_words=$(pkg_config_words libnghttp2)
 libssh2_words=$(pkg_config_words libssh2)
 libcurl_words=$(pkg_config_words libcurl)
+libxml2_words=$(pkg_config_words libxml-2.0)
+lua_words=$(pkg_config_words lua)
+lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
 openssl_default_words=$(pkg_config_default_words openssl)
 
 case "$target_id" in
@@ -421,14 +796,21 @@ case "$target_id" in
     assert_words_contain "$libssl_words" "-ldl" "libssl.pc --static output"
     assert_words_contain "$openssl_words" "-ldl" "openssl.pc --static output"
     assert_words_contain "$libcurl_words" "-ldl" "libcurl.pc --static output"
+    assert_words_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
+    assert_words_contain "$lua_words" "-ldl" "lua.pc --static output"
+    assert_words_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
     ;;
   arm64-apple-darwin)
     assert_words_contain "$libcurl_words" "CoreFoundation" "libcurl.pc --static output"
     assert_words_contain "$libcurl_words" "SystemConfiguration" "libcurl.pc --static output"
+    assert_words_contain "$libxml2_words" "-liconv" "libxml-2.0.pc --static output"
     assert_words_not_contain "$libcrypto_words" "-ldl" "libcrypto.pc --static output"
     assert_words_not_contain "$libssl_words" "-ldl" "libssl.pc --static output"
     assert_words_not_contain "$openssl_words" "-ldl" "openssl.pc --static output"
     assert_words_not_contain "$libcurl_words" "-ldl" "libcurl.pc --static output"
+    assert_words_not_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
+    assert_words_not_contain "$lua_words" "-ldl" "lua.pc --static output"
+    assert_words_not_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
     ;;
 esac
 case "$target_id" in
@@ -449,6 +831,11 @@ assert_words_contain "$libcurl_words" "-lnghttp2" "libcurl.pc --static output"
 assert_words_contain "$libcurl_words" "-lssl" "libcurl.pc --static output"
 assert_words_contain "$libcurl_words" "-lcrypto" "libcurl.pc --static output"
 assert_words_contain "$libcurl_words" "-lz" "libcurl.pc --static output"
+assert_words_contain "$libxml2_words" "-lz" "libxml-2.0.pc --static output"
+assert_words_contain "$libxml2_words" "-lm" "libxml-2.0.pc --static output"
+assert_words_contain "$lua_words" "-lm" "lua.pc --static output"
+assert_words_contain "$lua_runtime_words" "-llua" "cpkt-lua-runtime.pc --static output"
+assert_words_contain "$lua_runtime_words" "-lm" "cpkt-lua-runtime.pc --static output"
 
 cpkt_pkg_config_static_smoke() {
   pc_name=$1
@@ -467,6 +854,8 @@ cpkt_pkg_config_static_smoke libssl cpkt_ssl.c
 cpkt_pkg_config_static_smoke openssl cpkt_ssl.c
 cpkt_pkg_config_static_smoke libssh2 cpkt_libssh2.c
 cpkt_pkg_config_static_smoke libcurl cpkt_curl.c
+cpkt_pkg_config_static_smoke libxml-2.0 cpkt_libxml2.c
+cpkt_pkg_config_static_smoke lua cpkt_lua.c
 
 example_pkg_config_output="$work_root/bin/cpkt_example_pkg_config_consumer"
 CPKT_SDK_PREFIX="$prefix" \
@@ -474,6 +863,29 @@ CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_static_flag $pkg_config_toolchain_flags $common_flags" \
 CPKT_EXAMPLE_LDFLAGS="$static_extra_libs" \
   "$repo_root/examples/pkg-config-consumer/build.sh" "$example_pkg_config_output"
+
+lua_runtime_example_pkg_file="$work_root/lua-runtime-c89-pkg-file.lua"
+cat > "$lua_runtime_example_pkg_file" <<EOF
+local host = require('example_host')
+local chunk = require('example_chunk')
+if host.context ~= 'example-context' then error('bad file context') end
+if chunk.value ~= 'chunk' then error('bad file chunk') end
+if package.path ~= 'zero/?.lua;first/?.lua' then error('bad package path') end
+if package.cpath ~= 'zero/?.so;first/?.so' then error('bad package cpath') end
+if example_name ~= 'facade' then error('bad string global') end
+if example_flag ~= true then error('bad boolean global') end
+if example_count ~= 7 then error('bad integer global') end
+if example_number ~= 2.5 then error('bad number global') end
+if required_side_effect ~= 'ok' then error('bad require side effect') end
+if arg[0] ~= '$lua_runtime_example_pkg_file' then error('bad arg0') end
+if arg[1] ~= 'one' or arg[2] ~= 'two' then error('bad argv') end
+EOF
+lua_runtime_example_pkg_config_output="$work_root/bin/cpkt_lua_runtime_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_toolchain_flags $pkg_config_static_flag $static_extra_libs" \
+  "$repo_root/examples/lua-runtime-c89/build-pkg-config.sh" "$lua_runtime_example_pkg_config_output"
 
 cpkt_pkg_config_smoke() {
   pc_name=$1
@@ -497,6 +909,9 @@ if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_ssl"
   "$cmake_build_dir/cpkt_cmake_libssh2"
   "$cmake_build_dir/cpkt_cmake_curl"
+  "$cmake_build_dir/cpkt_cmake_libxml2"
+  "$cmake_build_dir/cpkt_cmake_lua"
+  "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   "$cmake_build_dir/cpkt_cmake_all"
   "$work_root/bin/cpkt_pkg_zlib"
   "$work_root/bin/cpkt_pkg_libnghttp2"
@@ -505,8 +920,12 @@ if [ -z "$run_prefix" ]; then
   "$work_root/bin/cpkt_pkg_openssl"
   "$work_root/bin/cpkt_pkg_libssh2"
   "$work_root/bin/cpkt_pkg_libcurl"
+  "$work_root/bin/cpkt_pkg_libxml-2.0"
+  "$work_root/bin/cpkt_pkg_lua"
   "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
   "$example_pkg_config_output"
+  "$lua_runtime_example_cmake_build_dir/cpkt_lua_runtime_c89_example" "$lua_runtime_example_cmake_build_dir/example_file.lua"
+  "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
 else
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_zlib"
@@ -520,6 +939,12 @@ else
   $run_prefix "$cmake_build_dir/cpkt_cmake_libssh2"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_curl"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_libxml2"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_lua"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_all"
   # shellcheck disable=SC2086
@@ -537,7 +962,15 @@ else
   # shellcheck disable=SC2086
   $run_prefix "$work_root/bin/cpkt_pkg_libcurl"
   # shellcheck disable=SC2086
+  $run_prefix "$work_root/bin/cpkt_pkg_libxml-2.0"
+  # shellcheck disable=SC2086
+  $run_prefix "$work_root/bin/cpkt_pkg_lua"
+  # shellcheck disable=SC2086
   $run_prefix "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
   # shellcheck disable=SC2086
   $run_prefix "$example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$lua_runtime_example_cmake_build_dir/cpkt_lua_runtime_c89_example" "$lua_runtime_example_cmake_build_dir/example_file.lua"
+  # shellcheck disable=SC2086
+  $run_prefix "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
 fi

@@ -738,6 +738,324 @@ function(cpkt_add_curl)
 
 endfunction()
 
+function(cpkt_add_libxml2)
+  set(project_name_shared "cpkt_libxml2_shared_project")
+  set(project_name_static "cpkt_libxml2_static_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2")
+  set(source_dir "${prefix_dir}/src")
+  set(shared_build_dir "${prefix_dir}/build-shared")
+  set(static_build_dir "${prefix_dir}/build-static")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/libxml2/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  find_package(Iconv REQUIRED)
+  set(libxml2_static_iconv_link_libraries Iconv::Iconv)
+  set(libxml2_shared_iconv_link_libraries Iconv::Iconv)
+  if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+    list(APPEND libxml2_static_iconv_link_libraries iconv)
+    list(APPEND libxml2_shared_iconv_link_libraries iconv)
+  endif()
+  file(MAKE_DIRECTORY "${install_dir}/include/libxml2" "${install_dir}/lib")
+
+  set(libxml2_static_library "${install_dir}/lib/libxml2${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(libxml2_shared_library "${install_dir}/lib/libxml2.16${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(libxml2_shared_link "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(libxml2_install_rpath "@loader_path")
+    set(libxml2_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-liconv")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(libxml2_shared_library "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}.16.1.3")
+    set(libxml2_shared_link "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(libxml2_install_rpath "$ORIGIN")
+    set(libxml2_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags")
+  else()
+    set(libxml2_shared_library "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(libxml2_shared_link "${libxml2_shared_library}")
+    set(libxml2_install_rpath "")
+    set(libxml2_platform_linker_flags "")
+  endif()
+
+  set(libxml2_common_cmake_args
+    -DCMAKE_INSTALL_PREFIX=${install_dir}
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DCMAKE_INSTALL_SYSCONFDIR=/etc
+    -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
+    -DCMAKE_INSTALL_RPATH=${libxml2_install_rpath}
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+    -DCMAKE_BUILD_RPATH=
+    -DCMAKE_SKIP_INSTALL_RPATH=OFF
+    ${libxml2_platform_linker_flags}
+    -DLIBXML2_WITH_CATALOG=ON
+    -DLIBXML2_WITH_C14N=ON
+    -DLIBXML2_WITH_DEBUG=ON
+    -DLIBXML2_WITH_DOCS=OFF
+    -DLIBXML2_WITH_HTML=ON
+    -DLIBXML2_WITH_HTTP=OFF
+    -DLIBXML2_WITH_ICONV=ON
+    -DLIBXML2_WITH_ICU=OFF
+    -DLIBXML2_WITH_LEGACY=OFF
+    -DLIBXML2_WITH_MODULES=ON
+    -DLIBXML2_WITH_OUTPUT=ON
+    -DLIBXML2_WITH_PATTERN=ON
+    -DLIBXML2_WITH_PROGRAMS=OFF
+    -DLIBXML2_WITH_PUSH=ON
+    -DLIBXML2_WITH_PYTHON=OFF
+    -DLIBXML2_WITH_READLINE=OFF
+    -DLIBXML2_WITH_READER=ON
+    -DLIBXML2_WITH_REGEXPS=ON
+    -DLIBXML2_WITH_RELAXNG=ON
+    -DLIBXML2_WITH_SAX1=ON
+    -DLIBXML2_WITH_SCHEMAS=ON
+    -DLIBXML2_WITH_SCHEMATRON=ON
+    -DLIBXML2_WITH_TESTS=OFF
+    -DLIBXML2_WITH_THREADS=ON
+    -DLIBXML2_WITH_THREAD_ALLOC=ON
+    -DLIBXML2_WITH_TLS=ON
+    -DLIBXML2_WITH_VALID=ON
+    -DLIBXML2_WITH_WRITER=ON
+    -DLIBXML2_WITH_XINCLUDE=ON
+    -DLIBXML2_WITH_XPATH=ON
+    -DLIBXML2_WITH_XPTR=ON
+    -DLIBXML2_WITH_ZLIB=ON
+    -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
+    -DZLIB_DIR=${CPKT_ZLIB_PREFIX}/lib/cmake/zlib
+    -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+    ${common_cmake_args}
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    ExternalProject_Add(${project_name_shared}
+      URL "https://download.gnome.org/sources/libxml2/2.15/libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
+      URL_HASH "SHA256=78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07"
+      DOWNLOAD_NAME "libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${shared_build_dir}"
+      STAMP_DIR "${stamp_dir}/shared"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_zlib_project
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=ON
+        ${libxml2_common_cmake_args}
+        -DZLIB_LIBRARY=${CPKT_ZLIB_SHARED_LIBRARY}
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_BYPRODUCTS "${libxml2_shared_library}"
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+
+    ExternalProject_Add(${project_name_static}
+      URL "https://download.gnome.org/sources/libxml2/2.15/libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
+      URL_HASH "SHA256=78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07"
+      DOWNLOAD_NAME "libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${static_build_dir}"
+      STAMP_DIR "${stamp_dir}/static"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS ${project_name_shared}
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=OFF
+        ${libxml2_common_cmake_args}
+        -DZLIB_LIBRARY=${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${libxml2_static_library}"
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+  endif()
+
+  add_library(cpkt::libxml2_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::libxml2_static
+    PROPERTIES
+      IMPORTED_LOCATION "${libxml2_static_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include/libxml2"
+      INTERFACE_LINK_LIBRARIES "cpkt::zlib_static;${libxml2_static_iconv_link_libraries};${CMAKE_DL_LIBS};Threads::Threads;m"
+  )
+
+  add_library(cpkt::libxml2_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::libxml2_shared
+    PROPERTIES
+      IMPORTED_LOCATION "${libxml2_shared_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include/libxml2"
+      INTERFACE_LINK_LIBRARIES "cpkt::zlib_shared;${libxml2_shared_iconv_link_libraries};${CMAKE_DL_LIBS};Threads::Threads;m"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::libxml2_static ${project_name_static})
+    add_dependencies(cpkt::libxml2_shared ${project_name_shared})
+    cpkt_record_dependency_target(${project_name_static})
+  else()
+    cpkt_require_dependency_file("${libxml2_static_library}" "libxml2 static library")
+    cpkt_require_dependency_file("${libxml2_shared_library}" "libxml2 shared library")
+    cpkt_require_dependency_file("${libxml2_shared_link}" "libxml2 shared-library linker symlink")
+    cpkt_require_dependency_file("${install_dir}/include/libxml2/libxml/parser.h" "libxml2 parser header")
+  endif()
+
+  set(CPKT_LIBXML2_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_lua)
+  set(project_name "cpkt_lua_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/lua")
+  set(source_dir "${prefix_dir}/src")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/lua/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(lua_shared_library "liblua.5.5.0${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(lua_shared_soname "liblua.5.5${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(lua_shared_link "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(lua_shared_link_flags -dynamiclib -Wl,-install_name,@rpath/${lua_shared_soname})
+    set(lua_shared_libs -lm)
+  else()
+    set(lua_shared_library "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}.5.5.0")
+    set(lua_shared_soname "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}.5.5")
+    set(lua_shared_link "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(lua_shared_link_flags -shared -Wl,-soname,${lua_shared_soname})
+    set(lua_shared_libs -lm)
+    if(CMAKE_DL_LIBS)
+      list(APPEND lua_shared_libs "-l${CMAKE_DL_LIBS}")
+    endif()
+  endif()
+  set(lua_static_library "${install_dir}/lib/liblua${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(lua_shared_library_path "${install_dir}/lib/${lua_shared_library}")
+
+  cpkt_get_external_c_flags(lua_external_cflags)
+  set(lua_my_cflags "${lua_external_cflags} -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN")
+  set(lua_shared_extra_link_flags "")
+  if(CMAKE_SHARED_LINKER_FLAGS)
+    separate_arguments(lua_shared_extra_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
+  endif()
+
+  set(lua_base_objects
+    "${source_dir}/src/lapi.o"
+    "${source_dir}/src/lcode.o"
+    "${source_dir}/src/lctype.o"
+    "${source_dir}/src/ldebug.o"
+    "${source_dir}/src/ldo.o"
+    "${source_dir}/src/ldump.o"
+    "${source_dir}/src/lfunc.o"
+    "${source_dir}/src/lgc.o"
+    "${source_dir}/src/llex.o"
+    "${source_dir}/src/lmem.o"
+    "${source_dir}/src/lobject.o"
+    "${source_dir}/src/lopcodes.o"
+    "${source_dir}/src/lparser.o"
+    "${source_dir}/src/lstate.o"
+    "${source_dir}/src/lstring.o"
+    "${source_dir}/src/ltable.o"
+    "${source_dir}/src/ltm.o"
+    "${source_dir}/src/lundump.o"
+    "${source_dir}/src/lvm.o"
+    "${source_dir}/src/lzio.o"
+    "${source_dir}/src/lauxlib.o"
+    "${source_dir}/src/lbaselib.o"
+    "${source_dir}/src/lcorolib.o"
+    "${source_dir}/src/ldblib.o"
+    "${source_dir}/src/liolib.o"
+    "${source_dir}/src/lmathlib.o"
+    "${source_dir}/src/loadlib.o"
+    "${source_dir}/src/loslib.o"
+    "${source_dir}/src/lstrlib.o"
+    "${source_dir}/src/ltablib.o"
+    "${source_dir}/src/lutf8lib.o"
+    "${source_dir}/src/linit.o"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    ExternalProject_Add(${project_name}
+      URL "https://lua.org/ftp/lua-${CPKT_LUA_VERSION}.tar.gz"
+      URL_HASH "SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d"
+      DOWNLOAD_NAME "lua-${CPKT_LUA_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ""
+      BUILD_COMMAND
+        ${CMAKE_COMMAND} -E env MAKEFLAGS= make -C "${source_dir}/src" clean
+        COMMAND
+          ${CMAKE_COMMAND} -E env MAKEFLAGS= make -C "${source_dir}/src" a -j1
+            CC=${CMAKE_C_COMPILER}
+            AR=${CMAKE_AR}\ rcu
+            RANLIB=${CMAKE_RANLIB}
+            MYCFLAGS=${lua_my_cflags}
+        COMMAND
+          ${CMAKE_C_COMPILER}
+          ${lua_shared_link_flags}
+          ${lua_shared_extra_link_flags}
+          -o "${source_dir}/src/${lua_shared_library}"
+          ${lua_base_objects}
+          ${lua_shared_libs}
+      INSTALL_COMMAND
+        ${CMAKE_COMMAND}
+          -DCPKT_LUA_SOURCE_DIR=${source_dir}
+          -DCPKT_LUA_INSTALL_DIR=${install_dir}
+          -DCPKT_LUA_VERSION=${CPKT_LUA_VERSION}
+          -DCPKT_LUA_SHARED_LIBRARY=${lua_shared_library}
+          -DCPKT_LUA_SHARED_SONAME=${lua_shared_soname}
+          -DCPKT_LUA_SHARED_LINK=${lua_shared_link}
+          -P ${CMAKE_SOURCE_DIR}/cmake/install_lua.cmake
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS
+        "${lua_static_library}"
+        "${lua_shared_library_path}"
+      BUILD_IN_SOURCE 1
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+  endif()
+
+  add_library(cpkt::lua_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::lua_static
+    PROPERTIES
+      IMPORTED_LOCATION "${lua_static_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "m;${CMAKE_DL_LIBS}"
+  )
+
+  add_library(cpkt::lua_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::lua_shared
+    PROPERTIES
+      IMPORTED_LOCATION "${lua_shared_library_path}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "m;${CMAKE_DL_LIBS}"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::lua_static ${project_name})
+    add_dependencies(cpkt::lua_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${lua_static_library}" "Lua static library")
+    cpkt_require_dependency_file("${lua_shared_library_path}" "Lua shared library")
+    cpkt_require_dependency_file("${install_dir}/include/lua.h" "Lua header")
+    cpkt_require_dependency_file("${install_dir}/include/lauxlib.h" "Lua auxiliary header")
+    cpkt_require_dependency_file("${install_dir}/include/lualib.h" "Lua standard library header")
+  endif()
+
+  set(CPKT_LUA_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_add_cmocka)
   set(project_name "cpkt_cmocka_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/cmocka")
@@ -800,6 +1118,8 @@ function(cpkt_configure_dependencies)
   cpkt_add_libssh2()
   cpkt_add_nghttp2()
   cpkt_add_curl()
+  cpkt_add_libxml2()
+  cpkt_add_lua()
 
   if(CPKT_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     cpkt_add_cmocka()

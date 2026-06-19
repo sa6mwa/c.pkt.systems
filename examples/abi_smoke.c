@@ -4,6 +4,10 @@
 
 #include <curl/curl.h>
 #include <libssh2.h>
+#include <libxml/parser.h>
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
 #include <nghttp2/nghttp2.h>
 #include <openssl/crypto.h>
 #include <openssl/ssl.h>
@@ -16,6 +20,8 @@ static int cpkt_dependency_symbols_are_linkable(void) {
   const char *ssh2_version;
   nghttp2_info *http2_info;
   SSL_CTX *ctx;
+  xmlDocPtr xml_doc;
+  lua_State *lua_state;
   unsigned long zlib_flags;
 
   curl_version = curl_version_info(CURLVERSION_NOW)->version;
@@ -44,6 +50,20 @@ static int cpkt_dependency_symbols_are_linkable(void) {
 
   zlib_flags = zlibCompileFlags();
   (void)zlib_flags;
+
+  xml_doc = xmlReadMemory("<root/>", 7, "memory.xml", NULL, 0);
+  if (!cpkt_nonnull(xml_doc)) {
+    return 6;
+  }
+  xmlFreeDoc(xml_doc);
+  xmlCleanupParser();
+
+  lua_state = luaL_newstate();
+  if (!cpkt_nonnull(lua_state)) {
+    return 7;
+  }
+  luaL_openlibs(lua_state);
+  lua_close(lua_state);
 
   return 0;
 }

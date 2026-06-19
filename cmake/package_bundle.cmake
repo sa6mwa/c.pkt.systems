@@ -10,7 +10,12 @@ foreach(_required
     CPKT_CURL_VERSION
     CPKT_NGHTTP2_VERSION
     CPKT_LIBSSH2_VERSION
-    CPKT_CMOCKA_VERSION)
+    CPKT_CMOCKA_VERSION
+    CPKT_LIBXML2_VERSION
+    CPKT_LUA_VERSION
+    CPKT_LUA_RUNTIME_INCLUDE_DIR
+    CPKT_LUA_RUNTIME_STATIC_LIBRARY
+    CPKT_LUA_RUNTIME_SHARED_LIBRARY)
   if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
     message(FATAL_ERROR "${_required} is required")
   endif()
@@ -29,9 +34,13 @@ set(_cpkt_static_library_suffix ".a")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_shared_library_suffix ".dylib")
   set(_cpkt_libssh2_shared_library_name "libssh2.1.dylib")
+  set(_cpkt_libxml2_shared_library_name "libxml2.dylib")
+  set(_cpkt_lua_shared_library_name "liblua.dylib")
 else()
   set(_cpkt_shared_library_suffix ".so")
   set(_cpkt_libssh2_shared_library_name "libssh2.so")
+  set(_cpkt_libxml2_shared_library_name "libxml2.so")
+  set(_cpkt_lua_shared_library_name "liblua.so")
 endif()
 file(REMOVE_RECURSE "${_stage_parent}")
 file(MAKE_DIRECTORY "${_stage_root}/include" "${_stage_root}/lib" "${CPKT_DIST_DIR}")
@@ -49,7 +58,7 @@ function(cpkt_stage_dependency_install dependency_name)
   endforeach()
 endfunction()
 
-foreach(_dependency openssl zlib nghttp2 libssh2 curl)
+foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua)
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
 
@@ -64,6 +73,15 @@ file(GLOB _libtool_archives "${_stage_root}/lib/*.la")
 if(_libtool_archives)
   file(REMOVE ${_libtool_archives})
 endif()
+file(COPY "${CPKT_LUA_RUNTIME_INCLUDE_DIR}/cpkt" DESTINATION "${_stage_root}/include")
+file(COPY_FILE
+  "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
+  "${_stage_root}/lib/libcpkt_lua_runtime${_cpkt_static_library_suffix}"
+)
+file(COPY_FILE
+  "${CPKT_LUA_RUNTIME_SHARED_LIBRARY}"
+  "${_stage_root}/lib/libcpkt_lua_runtime${_cpkt_shared_library_suffix}"
+)
 
 function(cpkt_write_config_version package_dir config_stem package_version)
   file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/${package_dir}")
@@ -88,6 +106,23 @@ endif()
 set(_cpkt_openssl_static_private_pc_libs "")
 if(CPKT_TARGET_ID MATCHES "-linux-")
   set(_cpkt_openssl_static_private_pc_libs "-ldl -pthread ${_cpkt_armhf_static_extra_pc_libs}")
+endif()
+set(_cpkt_libxml2_static_private_pc_libs "-lm")
+set(_cpkt_libxml2_static_iconv_pc_libs "")
+set(_cpkt_libxml2_static_iconv_cmake_libs "Iconv::Iconv")
+set(_cpkt_libxml2_shared_iconv_cmake_libs "Iconv::Iconv")
+set(_cpkt_lua_static_private_pc_libs "-lm")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  set(_cpkt_libxml2_static_private_pc_libs "-ldl -lm -pthread")
+  set(_cpkt_lua_static_private_pc_libs "-lm -ldl")
+elseif(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_libxml2_static_iconv_pc_libs "-liconv")
+  set(_cpkt_libxml2_static_iconv_cmake_libs "Iconv::Iconv;iconv")
+  set(_cpkt_libxml2_shared_iconv_cmake_libs "Iconv::Iconv;iconv")
+endif()
+set(_cpkt_libxml2_static_private_pc_libs_full "${_cpkt_libxml2_static_private_pc_libs}")
+if(_cpkt_libxml2_static_iconv_pc_libs)
+  string(APPEND _cpkt_libxml2_static_private_pc_libs_full " ${_cpkt_libxml2_static_iconv_pc_libs}")
 endif()
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/OpenSSL")
@@ -265,6 +300,105 @@ file(WRITE "${_stage_root}/lib/cmake/CURL/CURLConfig.cmake"
 )
 cpkt_write_config_version("CURL" "CURL" "${CPKT_CURL_VERSION}")
 
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/libxml2")
+file(WRITE "${_stage_root}/lib/cmake/libxml2/libxml2-config.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_libxml2_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(ZLIB_DIR \"\${_cpkt_libxml2_prefix}/lib/cmake/zlib\")\n"
+  "find_dependency(ZLIB CONFIG REQUIRED)\n"
+  "find_dependency(Iconv REQUIRED)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "set(libxml2_FOUND TRUE)\n"
+  "set(LibXml2_FOUND TRUE)\n"
+  "set(LIBXML2_FOUND TRUE)\n"
+  "set(libxml2_VERSION \"${CPKT_LIBXML2_VERSION}\")\n"
+  "set(LibXml2_VERSION \"${CPKT_LIBXML2_VERSION}\")\n"
+  "set(LIBXML2_VERSION_STRING \"${CPKT_LIBXML2_VERSION}\")\n"
+  "set(LIBXML2_INCLUDE_DIR \"\${_cpkt_libxml2_prefix}/include/libxml2\")\n"
+  "set(LIBXML2_INCLUDE_DIRS \"\${LIBXML2_INCLUDE_DIR}\")\n"
+  "set(LIBXML2_LIBRARIES LibXml2::LibXml2)\n"
+  "if(NOT TARGET LibXml2::LibXml2)\n"
+  "  add_library(LibXml2::LibXml2 STATIC IMPORTED)\n"
+  "  set_target_properties(LibXml2::LibXml2 PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_libxml2_prefix}/lib/libxml2${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${LIBXML2_INCLUDE_DIR}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"ZLIB::ZLIB;${_cpkt_libxml2_static_iconv_cmake_libs};Threads::Threads;\${CMAKE_DL_LIBS};m\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::libxml2_shared)\n"
+  "  add_library(cpkt::libxml2_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::libxml2_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_libxml2_prefix}/lib/${_cpkt_libxml2_shared_library_name}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${LIBXML2_INCLUDE_DIR}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::zlib_shared;${_cpkt_libxml2_shared_iconv_cmake_libs}\"\n"
+  "  )\n"
+  "endif()\n"
+)
+file(WRITE "${_stage_root}/lib/cmake/libxml2/libxml2-config-version.cmake"
+  "set(PACKAGE_VERSION \"${CPKT_LIBXML2_VERSION}\")\n"
+  "if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)\n"
+  "  set(PACKAGE_VERSION_EXACT TRUE)\n"
+  "endif()\n"
+  "if(PACKAGE_FIND_VERSION VERSION_LESS_EQUAL PACKAGE_VERSION)\n"
+  "  set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+  "endif()\n"
+)
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/Lua")
+file(WRITE "${_stage_root}/lib/cmake/Lua/LuaConfig.cmake"
+  "get_filename_component(_cpkt_lua_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(Lua_FOUND TRUE)\n"
+  "set(LUA_FOUND TRUE)\n"
+  "set(Lua_VERSION \"${CPKT_LUA_VERSION}\")\n"
+  "set(LUA_VERSION_STRING \"${CPKT_LUA_VERSION}\")\n"
+  "set(LUA_INCLUDE_DIR \"\${_cpkt_lua_prefix}/include\")\n"
+  "set(LUA_INCLUDE_DIRS \"\${LUA_INCLUDE_DIR}\")\n"
+  "set(LUA_LIBRARIES Lua::Lua)\n"
+  "if(NOT TARGET Lua::Lua)\n"
+  "  add_library(Lua::Lua STATIC IMPORTED)\n"
+  "  set_target_properties(Lua::Lua PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_prefix}/lib/liblua${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${LUA_INCLUDE_DIR}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"m;\${CMAKE_DL_LIBS}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::lua_shared)\n"
+  "  add_library(cpkt::lua_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::lua_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_prefix}/lib/${_cpkt_lua_shared_library_name}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${LUA_INCLUDE_DIR}\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("Lua" "Lua" "${CPKT_LUA_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktLuaRuntime")
+file(WRITE "${_stage_root}/lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_lua_runtime_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(Lua_DIR \"\${_cpkt_lua_runtime_prefix}/lib/cmake/Lua\")\n"
+  "find_dependency(Lua CONFIG REQUIRED)\n"
+  "set(CpktLuaRuntime_FOUND TRUE)\n"
+  "set(CpktLuaRuntime_VERSION \"${CPKT_LUA_VERSION}\")\n"
+  "if(NOT TARGET cpkt::lua_runtime)\n"
+  "  add_library(cpkt::lua_runtime STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::lua_runtime PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_runtime_prefix}/lib/libcpkt_lua_runtime${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_lua_runtime_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES Lua::Lua\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::lua_runtime_shared)\n"
+  "  add_library(cpkt::lua_runtime_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::lua_runtime_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_runtime_prefix}/lib/libcpkt_lua_runtime${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_lua_runtime_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::lua_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktLuaRuntime" "CpktLuaRuntime" "${CPKT_LUA_VERSION}")
+
 file(MAKE_DIRECTORY "${_stage_root}/lib/pkgconfig")
 file(WRITE "${_stage_root}/lib/pkgconfig/libcrypto.pc"
   "prefix=\${pcfiledir}/../..\n"
@@ -356,6 +490,48 @@ file(WRITE "${_stage_root}/lib/pkgconfig/libcurl.pc"
   "Libs.private: -pthread ${_cpkt_curl_static_platform_pc_libs}\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/libxml-2.0.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: libXML\n"
+  "Description: XML C parser and toolkit from c.pkt.systems\n"
+  "Version: ${CPKT_LIBXML2_VERSION}\n"
+  "Requires.private: zlib\n"
+  "Libs: -L\${libdir} -lxml2\n"
+  "Libs.private: ${_cpkt_libxml2_static_private_pc_libs_full}\n"
+  "Cflags: -I\${includedir}/libxml2\n"
+)
+foreach(_lua_pc_name lua lua5.5)
+  file(WRITE "${_stage_root}/lib/pkgconfig/${_lua_pc_name}.pc"
+    "prefix=\${pcfiledir}/../..\n"
+    "exec_prefix=\${prefix}\n"
+    "libdir=\${prefix}/lib\n"
+    "includedir=\${prefix}/include\n"
+    "\n"
+    "Name: Lua\n"
+    "Description: Lua language runtime from c.pkt.systems\n"
+    "Version: ${CPKT_LUA_VERSION}\n"
+    "Libs: -L\${libdir} -llua\n"
+    "Libs.private: ${_cpkt_lua_static_private_pc_libs}\n"
+    "Cflags: -I\${includedir}\n"
+  )
+endforeach()
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-lua-runtime.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-lua-runtime\n"
+  "Description: C89-safe Lua runtime facade from c.pkt.systems\n"
+  "Version: ${CPKT_LUA_VERSION}\n"
+  "Requires.private: lua\n"
+  "Libs: -L\${libdir} -lcpkt_lua_runtime\n"
+  "Cflags: -I\${includedir}\n"
+)
 
 file(MAKE_DIRECTORY "${_stage_root}/share/c.pkt.systems")
 file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
@@ -366,6 +542,8 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "curl_version=${CPKT_CURL_VERSION}\n"
   "nghttp2_version=${CPKT_NGHTTP2_VERSION}\n"
   "libssh2_version=${CPKT_LIBSSH2_VERSION}\n"
+  "libxml2_version=${CPKT_LIBXML2_VERSION}\n"
+  "lua_version=${CPKT_LUA_VERSION}\n"
 )
 
 function(cpkt_stage_license package_name source_path)
@@ -384,6 +562,8 @@ cpkt_stage_license("curl" "${CPKT_DEPENDENCY_BUILD_ROOT}/curl/src/COPYING")
 cpkt_stage_license("libssh2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libssh2/src/COPYING")
 cpkt_stage_license("zlib" "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib/src/LICENSE")
 cpkt_stage_license("nghttp2" "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2/src/COPYING")
+cpkt_stage_license("libxml2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2/src/Copyright")
+cpkt_stage_license("lua" "${CPKT_DEPENDENCY_BUILD_ROOT}/lua/src/src/lua.h")
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}" -E tar czf "${_archive_path}" "${_archive_stem}"

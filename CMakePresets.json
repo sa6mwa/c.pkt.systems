@@ -33,6 +33,60 @@
       "inherits": "x86_64-linux-gnu-release"
     },
     {
+      "name": "debug",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CPKT_TARGET_ARCH": "x86_64",
+        "CPKT_TARGET_OS": "linux",
+        "CPKT_TARGET_LIBC": "gnu"
+      }
+    },
+    {
+      "name": "asan",
+      "inherits": "debug",
+      "cacheVariables": {
+        "CPKT_BUILD_DEPENDENCIES": "OFF",
+        "CPKT_FACADE_ONLY": "ON",
+        "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined",
+        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=address,undefined",
+        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=address,undefined"
+      }
+    },
+    {
+      "name": "tsan",
+      "inherits": "debug",
+      "cacheVariables": {
+        "CPKT_BUILD_DEPENDENCIES": "OFF",
+        "CPKT_FACADE_ONLY": "ON",
+        "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fno-omit-frame-pointer -fsanitize=thread",
+        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=thread",
+        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=thread"
+      }
+    },
+    {
+      "name": "msan",
+      "inherits": "debug",
+      "cacheVariables": {
+        "CPKT_BUILD_DEPENDENCIES": "OFF",
+        "CPKT_FACADE_ONLY": "ON",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fno-omit-frame-pointer -fsanitize=memory -fsanitize-memory-track-origins=2",
+        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=memory -fsanitize-memory-track-origins=2",
+        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=memory -fsanitize-memory-track-origins=2"
+      }
+    },
+    {
+      "name": "fuzz",
+      "inherits": "debug",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CPKT_BUILD_DEPENDENCIES": "OFF",
+        "CPKT_FACADE_ONLY": "ON",
+        "CPKT_ENABLE_FUZZING": "ON"
+      }
+    },
+    {
       "name": "x86_64-linux-musl-release",
       "inherits": "x86_64-linux-gnu-release",
       "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-musl.cmake",
@@ -101,6 +155,26 @@
     {
       "name": "release",
       "configurePreset": "release"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan"
+    },
+    {
+      "name": "msan",
+      "configurePreset": "msan"
+    },
+    {
+      "name": "fuzz",
+      "configurePreset": "fuzz"
     },
     {
       "name": "x86_64-linux-musl-release",
@@ -181,6 +255,34 @@
     {
       "name": "x86_64-linux-gnu-release",
       "configurePreset": "x86_64-linux-gnu-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "msan",
+      "configurePreset": "msan",
       "output": {
         "outputOnFailure": true
       }
