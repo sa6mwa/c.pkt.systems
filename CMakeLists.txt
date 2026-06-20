@@ -119,6 +119,7 @@ set(CPKT_LIBSSH2_VERSION "1.11.1" CACHE STRING "Pinned libssh2 release.")
 set(CPKT_CMOCKA_VERSION "2.0.2" CACHE STRING "Pinned cmocka release.")
 set(CPKT_LIBXML2_VERSION "2.15.3" CACHE STRING "Pinned libxml2 release.")
 set(CPKT_LUA_VERSION "5.5.0" CACHE STRING "Pinned Lua release.")
+set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Shared source archive download root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
 set(CPKT_TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Artifact architecture name.")
@@ -225,6 +226,8 @@ target_link_libraries(cpkt_lua_runtime_shared PUBLIC cpkt::lua_shared)
 set_target_properties(cpkt_lua_runtime_shared PROPERTIES
   OUTPUT_NAME cpkt_lua_runtime
   POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_LUA_RUNTIME_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}"
 )
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   set_target_properties(cpkt_lua_runtime_shared PROPERTIES
@@ -407,6 +410,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_CMOCKA_VERSION=${CPKT_CMOCKA_VERSION}
         -DCPKT_LIBXML2_VERSION=${CPKT_LIBXML2_VERSION}
         -DCPKT_LUA_VERSION=${CPKT_LUA_VERSION}
+        -DCPKT_LUA_RUNTIME_ABI_VERSION=${CPKT_LUA_RUNTIME_ABI_VERSION}
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>

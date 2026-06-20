@@ -1,3 +1,53 @@
+function(cpkt_find_darwin_otool out_var)
+  if(DEFINED CPKT_OTOOL AND NOT "${CPKT_OTOOL}" STREQUAL "")
+    if(EXISTS "${CPKT_OTOOL}")
+      set(${out_var} "${CPKT_OTOOL}" PARENT_SCOPE)
+      return()
+    endif()
+    message(FATAL_ERROR "configured CPKT_OTOOL does not exist: ${CPKT_OTOOL}")
+  endif()
+
+  set(_osxcross_host "${CPKT_OSXCROSS_HOST}")
+  if(_osxcross_host STREQUAL "" AND DEFINED ENV{CPKT_OSXCROSS_HOST})
+    set(_osxcross_host "$ENV{CPKT_OSXCROSS_HOST}")
+  endif()
+  if(_osxcross_host STREQUAL "")
+    set(_osxcross_host "arm64-apple-darwin25")
+  endif()
+
+  set(_osxcross_root "${CPKT_OSXCROSS_ROOT}")
+  if(_osxcross_root STREQUAL "" AND DEFINED ENV{OSXCROSS_ROOT})
+    set(_osxcross_root "$ENV{OSXCROSS_ROOT}")
+  endif()
+  if(_osxcross_root STREQUAL "" AND DEFINED ENV{HOME})
+    set(_osxcross_root "$ENV{HOME}/.local/cross/osxcross")
+  endif()
+
+  set(_otool_hints "")
+  if(NOT _osxcross_root STREQUAL "")
+    list(APPEND _otool_hints "${_osxcross_root}/bin")
+  endif()
+  if(DEFINED ENV{HOME})
+    list(APPEND _otool_hints "$ENV{HOME}/.local/cross/osxcross/bin")
+  endif()
+
+  find_program(_cpkt_otool_bin
+    NAMES "${_osxcross_host}-otool" arm64-apple-darwin25-otool otool
+    HINTS ${_otool_hints})
+  if(NOT _cpkt_otool_bin)
+    message(FATAL_ERROR
+      "otool is required to verify Darwin package artifacts; tried ${_osxcross_host}-otool, arm64-apple-darwin25-otool, and otool")
+  endif()
+
+  set(${out_var} "${_cpkt_otool_bin}" PARENT_SCOPE)
+endfunction()
+
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP)
+  cpkt_find_darwin_otool(_cpkt_test_otool)
+  message(STATUS "CPKT_TEST_OTOOL=${_cpkt_test_otool}")
+  return()
+endif()
+
 foreach(_required CPKT_ARCHIVE CPKT_TARGET_ID CPKT_BUNDLE_VERSION)
   if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
     message(FATAL_ERROR "${_required} is required")
@@ -7,6 +57,7 @@ endforeach()
 if(NOT EXISTS "${CPKT_ARCHIVE}")
   message(FATAL_ERROR "missing package archive: ${CPKT_ARCHIVE}")
 endif()
+get_filename_component(CPKT_ARCHIVE "${CPKT_ARCHIVE}" ABSOLUTE)
 get_filename_component(_archive_dir "${CPKT_ARCHIVE}" DIRECTORY)
 get_filename_component(_archive_name "${CPKT_ARCHIVE}" NAME)
 set(_archive_stem "c.pkt.systems-${CPKT_BUNDLE_VERSION}-${CPKT_TARGET_ID}")
@@ -53,6 +104,20 @@ function(cpkt_assert_archive_lacks regex description)
   endif()
 endfunction()
 
+function(cpkt_assert_archive_exact_matches regex expected_count description)
+  string(REPLACE "\n" ";" _listing_lines "${_listing}")
+  set(_actual_count 0)
+  foreach(_listing_line IN LISTS _listing_lines)
+    if(_listing_line MATCHES "${regex}")
+      math(EXPR _actual_count "${_actual_count} + 1")
+    endif()
+  endforeach()
+  if(NOT _actual_count EQUAL expected_count)
+    message(FATAL_ERROR
+      "archive must contain exactly ${expected_count} ${description}, found ${_actual_count}: ${regex}")
+  endif()
+endfunction()
+
 function(cpkt_extract_archive_for_assertions out_var)
   string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef _extract_suffix)
   set(_extract_root "${CMAKE_CURRENT_BINARY_DIR}/package-assertions-${_archive_stem}-${_extract_suffix}")
@@ -69,6 +134,26 @@ function(cpkt_extract_archive_for_assertions out_var)
   endif()
   set(${out_var} "${_extract_root}" PARENT_SCOPE)
 endfunction()
+
+cpkt_extract_archive_for_assertions(_manifest_extract_root)
+set(_manifest_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/manifest.txt")
+if(NOT EXISTS "${_manifest_path}")
+  message(FATAL_ERROR "missing package manifest: ${_manifest_path}")
+endif()
+file(READ "${_manifest_path}" _manifest_text)
+if(NOT _manifest_text MATCHES "(^|\n)lua_runtime_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing lua_runtime_abi_version")
+endif()
+set(_manifest_lua_runtime_abi_version "${CMAKE_MATCH_2}")
+if(DEFINED CPKT_LUA_RUNTIME_ABI_VERSION AND NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "${_manifest_lua_runtime_abi_version}")
+    message(FATAL_ERROR
+      "configured Lua runtime ABI ${CPKT_LUA_RUNTIME_ABI_VERSION} does not match package manifest ABI ${_manifest_lua_runtime_abi_version}")
+  endif()
+else()
+  set(CPKT_LUA_RUNTIME_ABI_VERSION "${_manifest_lua_runtime_abi_version}")
+endif()
+file(REMOVE_RECURSE "${_manifest_extract_root}")
 
 function(cpkt_assert_elf_runpath file_path expected_runpath description)
   find_program(CPKT_READELF_BIN NAMES readelf)
@@ -90,6 +175,52 @@ function(cpkt_assert_elf_runpath file_path expected_runpath description)
   endif()
   if(NOT _readelf_output MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[${expected_runpath}\\]")
     message(FATAL_ERROR "${description} must have RUNPATH/RPATH [${expected_runpath}]")
+  endif()
+endfunction()
+
+function(cpkt_assert_elf_soname file_path expected_soname description)
+  find_program(CPKT_READELF_BIN NAMES readelf)
+  if(NOT CPKT_READELF_BIN)
+    message(FATAL_ERROR "readelf is required to verify ${description}")
+  endif()
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_READELF_BIN}" -d "${file_path}"
+    RESULT_VARIABLE _readelf_result
+    OUTPUT_VARIABLE _readelf_output
+    ERROR_VARIABLE _readelf_error
+  )
+  if(NOT _readelf_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
+  endif()
+  if(NOT _readelf_output MATCHES "\\(SONAME\\)[^\n]*\\[${expected_soname}\\]")
+    message(FATAL_ERROR "${description} must have SONAME [${expected_soname}]")
+  endif()
+endfunction()
+
+function(cpkt_assert_darwin_install_name file_path expected_install_name description)
+  cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
+  if(NOT CPKT_OTOOL_BIN)
+    message(FATAL_ERROR "otool is required to verify ${description}")
+  endif()
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
+    RESULT_VARIABLE _otool_result
+    OUTPUT_VARIABLE _otool_output
+    ERROR_VARIABLE _otool_error
+  )
+  if(NOT _otool_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_otool_error}")
+  endif()
+  if(NOT _otool_output MATCHES "(^|\n)${expected_install_name}(\n|$)")
+    message(FATAL_ERROR "${description} must have Darwin install name [${expected_install_name}]")
   endif()
 endfunction()
 
@@ -196,6 +327,10 @@ endforeach()
 file(REMOVE_RECURSE "${_facade_header_extract_root}")
 
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_lua_runtime([^/]*)?\\.dylib$"
+    3
+    "Lua runtime facade Darwin shared library entries")
   foreach(_path
       "lib/libssl.dylib"
       "lib/libcrypto.dylib"
@@ -208,10 +343,22 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libxml2.16.dylib"
       "lib/liblua.dylib"
       "lib/liblua.5.5.dylib"
-      "lib/libcpkt_lua_runtime.dylib")
+      "lib/libcpkt_lua_runtime.dylib"
+      "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
+      "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
+  cpkt_extract_archive_for_assertions(_assert_extract_root)
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
+    "libcpkt_lua_runtime Darwin install name")
+  file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_lua_runtime\\.so([^/]*)?$"
+    3
+    "Lua runtime facade Linux shared library entries")
   foreach(_path
       "lib/libssl.so"
       "lib/libcrypto.so"
@@ -228,7 +375,9 @@ else()
       "lib/liblua.so"
       "lib/liblua.so.5.5"
       "lib/liblua.so.5.5.0"
-      "lib/libcpkt_lua_runtime.so")
+      "lib/libcpkt_lua_runtime.so"
+      "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
+      "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
@@ -244,6 +393,10 @@ else()
       "\\$ORIGIN"
       "${_runpath_library}")
   endforeach()
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
+    "libcpkt_lua_runtime SONAME")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 endif()
 

@@ -13,6 +13,7 @@ foreach(_required
     CPKT_CMOCKA_VERSION
     CPKT_LIBXML2_VERSION
     CPKT_LUA_VERSION
+    CPKT_LUA_RUNTIME_ABI_VERSION
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
     CPKT_LUA_RUNTIME_SHARED_LIBRARY)
@@ -33,11 +34,17 @@ set(_checksums_path "${CPKT_DIST_DIR}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECK
 set(_cpkt_static_library_suffix ".a")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_shared_library_suffix ".dylib")
+  set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
+  set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib")
+  set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_libssh2_shared_library_name "libssh2.1.dylib")
   set(_cpkt_libxml2_shared_library_name "libxml2.dylib")
   set(_cpkt_lua_shared_library_name "liblua.dylib")
 else()
   set(_cpkt_shared_library_suffix ".so")
+  set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.so")
+  set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}")
+  set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_libssh2_shared_library_name "libssh2.so")
   set(_cpkt_libxml2_shared_library_name "libxml2.so")
   set(_cpkt_lua_shared_library_name "liblua.so")
@@ -78,10 +85,37 @@ file(COPY_FILE
   "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
   "${_stage_root}/lib/libcpkt_lua_runtime${_cpkt_static_library_suffix}"
 )
-file(COPY_FILE
+get_filename_component(_cpkt_lua_runtime_shared_library_dir
   "${CPKT_LUA_RUNTIME_SHARED_LIBRARY}"
-  "${_stage_root}/lib/libcpkt_lua_runtime${_cpkt_shared_library_suffix}"
+  DIRECTORY)
+set(_cpkt_lua_runtime_shared_library_real_path
+  "${_cpkt_lua_runtime_shared_library_dir}/${_cpkt_lua_runtime_shared_library_real_name}")
+if(NOT EXISTS "${_cpkt_lua_runtime_shared_library_real_path}")
+  message(FATAL_ERROR
+    "missing Lua runtime facade shared library ${_cpkt_lua_runtime_shared_library_real_name} in ${_cpkt_lua_runtime_shared_library_dir}")
+endif()
+file(COPY_FILE
+  "${_cpkt_lua_runtime_shared_library_real_path}"
+  "${_stage_root}/lib/${_cpkt_lua_runtime_shared_library_real_name}"
 )
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E create_symlink
+    "${_cpkt_lua_runtime_shared_library_real_name}"
+    "${_stage_root}/lib/${_cpkt_lua_runtime_shared_library_abi_name}"
+  RESULT_VARIABLE _cpkt_lua_runtime_abi_symlink_result
+)
+if(NOT _cpkt_lua_runtime_abi_symlink_result EQUAL 0)
+  message(FATAL_ERROR "failed to create Lua runtime facade ABI symlink")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E create_symlink
+    "${_cpkt_lua_runtime_shared_library_abi_name}"
+    "${_stage_root}/lib/${_cpkt_lua_runtime_shared_library_link_name}"
+  RESULT_VARIABLE _cpkt_lua_runtime_link_symlink_result
+)
+if(NOT _cpkt_lua_runtime_link_symlink_result EQUAL 0)
+  message(FATAL_ERROR "failed to create Lua runtime facade linker symlink")
+endif()
 
 function(cpkt_write_config_version package_dir config_stem package_version)
   file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/${package_dir}")
@@ -544,6 +578,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "libssh2_version=${CPKT_LIBSSH2_VERSION}\n"
   "libxml2_version=${CPKT_LIBXML2_VERSION}\n"
   "lua_version=${CPKT_LUA_VERSION}\n"
+  "lua_runtime_abi_version=${CPKT_LUA_RUNTIME_ABI_VERSION}\n"
 )
 
 function(cpkt_stage_license package_name source_path)
