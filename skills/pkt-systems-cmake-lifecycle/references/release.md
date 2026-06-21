@@ -7,9 +7,10 @@ Prerequisites:
 - All intended source, version, lifecycle, and documentation changes are committed before release flow proceeds. The worktree must be clean except ignored generated files.
 - If releasing from a feature or fix branch, that branch contains the committed work intended for release.
 - If releasing directly from the release branch, that branch's current `HEAD` contains the committed work intended for release.
-- All review issues are addressed.
-- Required local gates pass.
+- All review issues are already addressed before release proceeds.
+- Required local gates already pass before release proceeds.
 - Release authority is clear.
+- Release gates are stop-only. Reviews, tests, package verification, artifact checks, checksum checks, privacy checks, and publish preconditions must fail the release process when they find an issue. Do not fix code, amend commits, move tags, regenerate artifacts after a failed gate, or otherwise continue the release as part of the same flow unless the engineer explicitly starts a separate fix iteration.
 
 Branch decision:
 
@@ -47,10 +48,10 @@ Version decision:
 Review gate:
 
 - Run an independent local Codex review on the candidate branch with `codex review --base <release-branch>`.
-- Use `codex review --uncommitted` only for local uncommitted fixes before committing or amending.
+- Use `codex review --uncommitted` only outside the release flow during a separate fix iteration.
 - After squashing onto the local release branch, use `codex review --commit HEAD` when a final commit-level review is useful before tagging.
-- Treat actionable findings as blockers.
-- Iterate with the engineer until there are no unresolved review issues.
+- Treat actionable findings as blockers and stop the release process.
+- Do not address review findings during the release process. Report them and wait for the engineer to start or approve a separate fix iteration.
 
 Release plan preview:
 
@@ -77,7 +78,7 @@ Run this on the feature or fix branch before touching the release branch. The go
 13. `make prerelease-hardening` when the repository defines it and the engineer expects the expensive hardening tier before release.
 14. `make world` only when the repository defines it and it is the accepted exhaustive gate.
 
-If `make clean release` fails only because the repository currently refuses untagged release builds, treat that as a lifecycle gap to fix when in scope. Otherwise run the closest clean full-release rehearsal available, document the gap in the release plan, and do not squash until the candidate branch has passed the strongest available clean gate.
+If `make clean release` fails, stop the release process. If the failure is only that the repository refuses untagged release rehearsals, report that lifecycle gap and the closest available clean gate, but do not patch the lifecycle, squash, tag, push, or publish in the same release flow.
 
 Release matrix gate:
 
@@ -108,7 +109,7 @@ Tagged release artifact generation from the release branch:
 2. The release pipeline must clean generated output, build release artifacts under `dist/` using the lightweight `vX.Y.Z` tag on `HEAD` as the version source, generate checksums, and run package verification. If no exact lightweight `vX.Y.Z` tag is on `HEAD`, the release pipeline must resolve the version as `0.0.0` and fail before publishing release artifacts rather than silently using `0.1.0` or another inferred version.
 3. Run checksum verification when it is not already part of the release pipeline.
 4. Run release privacy and relocatability verification when it is exposed as a focused target; otherwise confirm it is included in package verification or the release pipeline.
-5. Do not rebuild artifacts after this point unless the release pipeline failed and the local tag recovery path below is followed.
+5. Do not rebuild artifacts after this point.
 6. Verify `dist/<project>-<version>-CHECKSUMS` lists exactly the intended upload artifacts.
 7. Assert every checksum-listed artifact exists under `dist/`.
 8. Assert no extra release-looking artifact under `dist/` is omitted from the checksum manifest unless deliberately excluded.
@@ -119,13 +120,14 @@ Tagged release artifact generation from the release branch:
 13. Verify the remote tag identifies the same commit as local `HEAD`.
 14. Create the GitHub release with `gh release create vX.Y.Z` using only checksum-listed artifacts.
 
-If tagged release artifact generation or verification fails after the local lightweight tag is created, do not push the release branch, do not push the tag, and do not create the GitHub release. Delete the local tag, fix the problem on the local release branch, amend the squashed release commit when the fix belongs to the same release change, recreate the lightweight tag, and rerun the tagged release artifact generation pipeline. This path should be rare because the feature branch pre-release gates are expected to catch failures before the release branch is touched.
+If tagged release artifact generation or verification fails after the local lightweight tag is created, stop the release process. Do not push the release branch, push the tag, create the GitHub release, delete or move the tag, fix code, amend the release commit, or rebuild artifacts in the same release flow. Report the failing gate and current local state so the engineer can decide whether to start a separate fix iteration and how to handle the local tag.
 
 Release retry protocol:
 
-- If pushing the release branch fails, stop before pushing the tag. Resolve the branch push problem, verify the local release branch still points at the tagged commit, rerun only the checks needed to prove no local state changed, then retry pushing the release branch to `<release-remote>`.
-- If pushing the tag fails after the release branch was pushed, verify the remote release branch points at the same commit as the local release branch, verify local `vX.Y.Z` points at `HEAD`, verify no remote tag with a different object exists, then retry pushing the tag.
-- If `gh release create` fails after the release branch and the tag were pushed, do not rebuild artifacts and do not move the tag. Verify `<release-remote>/<release-branch>`, local `HEAD`, local `vX.Y.Z`, and remote `vX.Y.Z` all identify the same commit. Re-verify the checksum manifest and retry only the GitHub release creation using the same checksum-listed artifacts.
+- Retry only transient external publish failures that do not indicate a correctness problem in the release contents. Do not retry review, build, test, package, checksum, privacy, artifact, or metadata failures inside the release flow.
+- If pushing the release branch fails, stop before pushing the tag. Retry only after verifying the failure was external or operational, the local release branch still points at the tagged commit, and no local content changed.
+- If pushing the tag fails after the release branch was pushed, retry only after verifying the failure was external or operational, the remote release branch points at the same commit as the local release branch, local `vX.Y.Z` points at `HEAD`, and no remote tag with a different object exists.
+- If `gh release create` fails after the release branch and the tag were pushed, do not rebuild artifacts and do not move the tag. Retry only after verifying the failure was external or operational, `<release-remote>/<release-branch>`, local `HEAD`, local `vX.Y.Z`, and remote `vX.Y.Z` all identify the same commit, and the checksum manifest still verifies the same checksum-listed artifacts.
 - If a GitHub release was partially created, inspect it with `gh release view vX.Y.Z`. If it exists but assets are missing, upload only the missing checksum-listed assets after verifying their checksums. If it exists with wrong assets, stop and ask before deleting or replacing anything.
 - Never force-push the release branch or retarget an already-pushed release tag without explicit engineer approval.
 - If the pushed tag is wrong, stop immediately. Do not publish or repair silently.

@@ -23,6 +23,7 @@ This skill is the process authority. It must not require external example reposi
 - Release artifacts must be relocatable and must not contain `$HOME`, source repository paths, build directory paths, dependency cache paths, package-manager temporary paths, or any absolute local workstation path. The release gate must expand and scan all checksum-listed artifacts, including nested source rocks and nested source archives, inspect runtime loader metadata, and fail before release on any local path or non-relocatable runtime path.
 - Preserve project-specific behavior, but move lifecycle behavior behind the standard surfaces when doing lifecycle work. Do not broaden ordinary engineering requests into lifecycle migrations unless the requested change requires it.
 - Verification is the release gate. Each new lifecycle behavior must have an executable check.
+- During release work, reviews and verification commands are gates only. If a release gate finds review issues, test failures, packaging errors, artifact problems, or other correctness issues, stop the release process and report the blocker. Do not fix, amend, retag, rebuild, push, or publish as part of the same release flow unless the engineer explicitly starts a separate fix iteration.
 - Build, test, package, release, service, package-manager, and long-running operational commands run serially.
 - Make `make help` the authoritative human command index.
 - `dist/` is generated output, not the release manifest. Release uploads must come from a verified checksum or manifest file.
@@ -45,6 +46,8 @@ The normal operating loop is:
 ```text
 inspect -> classify affected surfaces -> load references -> edit -> narrow gate -> repair -> broader gate -> summarize
 ```
+
+For release work, replace the edit/repair loop with a stop-only gate loop: inspect -> classify -> load release references -> run the prescribed gates -> stop on any issue or publish only after all gates pass. Release gates are not invitations to repair during release.
 
 When the skill already covers a lifecycle-mechanical decision, do not ask for permission. Implement, verify, and report.
 
