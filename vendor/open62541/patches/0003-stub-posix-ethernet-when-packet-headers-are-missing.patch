@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: c.pkt.systems <noreply@pkt.systems>
+Date: Tue, 23 Jun 2026 00:00:00 +0000
+Subject: [PATCH] Stub POSIX Ethernet when packet headers are missing
+
+SPDX-License-Identifier: MPL-2.0
+---
+ arch/posix/eventloop_posix_eth.c | 22 ++++++++++++++++++++--
+ 1 file changed, 20 insertions(+), 2 deletions(-)
+
+diff --git a/arch/posix/eventloop_posix_eth.c b/arch/posix/eventloop_posix_eth.c
+--- a/arch/posix/eventloop_posix_eth.c
++++ b/arch/posix/eventloop_posix_eth.c
+@@ -10,7 +10,19 @@
+ 
+ #include "eventloop_posix.h"
+ 
+-#if defined(UA_ARCHITECTURE_POSIX) && !defined(UA_ARCHITECTURE_LWIP) && defined(__linux__)
++/* c.pkt.systems patch: Native musl toolchains do not always ship Linux
++ * packet headers. Keep the public Ethernet constructor symbol available while
++ * compiling the real transport only when the required headers exist.
++ * SPDX-License-Identifier: MPL-2.0 */
++#if defined(__has_include)
++# if __has_include(<linux/if_packet.h>) && __has_include(<linux/net_tstamp.h>)
++#  define UA_HAVE_LINUX_PACKET_HEADERS 1
++# endif
++#else
++# define UA_HAVE_LINUX_PACKET_HEADERS 1
++#endif
++
++#if defined(UA_ARCHITECTURE_POSIX) && !defined(UA_ARCHITECTURE_LWIP) && defined(__linux__) && defined(UA_HAVE_LINUX_PACKET_HEADERS)
+ 
+ #include <arpa/inet.h> /* htons */
+ #include <net/ethernet.h> /* ETH_P_*/
+@@ -1112 +1124,9 @@ UA_ConnectionManager_new_POSIX_Ethernet(const UA_String eventSourceName) {
+-#endif /* defined(UA_ARCHITECTURE_POSIX) && defined(__linux__) */
++#else
++
++UA_ConnectionManager *
++UA_ConnectionManager_new_POSIX_Ethernet(const UA_String eventSourceName) {
++    (void)eventSourceName;
++    return NULL;
++}
++
++#endif /* defined(UA_ARCHITECTURE_POSIX) && defined(__linux__) && defined(UA_HAVE_LINUX_PACKET_HEADERS) */
+-- 
+2.43.0

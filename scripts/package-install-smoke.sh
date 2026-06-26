@@ -15,6 +15,9 @@ source_file=$3
 run_consumers=1
 pkg_config_static_flag=-static
 pkg_config_toolchain_flags=
+pkg_config_compile_toolchain_flags=
+pkg_config_link_toolchain_flags=
+example_runtime_ldflags=
 cmake_generator="Unix Makefiles"
 cmake_toolchain_file=
 cmake_toolchain_args=()
@@ -23,6 +26,7 @@ case "$target_id" in
   x86_64-linux-gnu)
     cc=${CC:-/usr/bin/cc}
     run_prefix=
+    pkg_config_static_flag=
     static_extra_libs=
     ;;
   x86_64-linux-musl)
@@ -33,11 +37,13 @@ case "$target_id" in
   aarch64-linux-gnu)
     cc=${CC:-/usr/bin/aarch64-linux-gnu-gcc}
     run_prefix="/usr/bin/qemu-aarch64 -L /usr/aarch64-linux-gnu"
+    pkg_config_static_flag=
     static_extra_libs=
     ;;
   armhf-linux-gnu)
     cc=${CC:-/usr/bin/arm-linux-gnueabihf-gcc}
     run_prefix="/usr/bin/qemu-arm -L /usr/arm-linux-gnueabihf"
+    pkg_config_static_flag=
     static_extra_libs=-latomic
     ;;
   aarch64-linux-musl)
@@ -61,7 +67,9 @@ case "$target_id" in
     static_extra_libs=
     pkg_config_static_flag=
     macos_deployment_target=${CPKT_MACOS_DEPLOYMENT_TARGET:-15.0}
-    pkg_config_toolchain_flags="--ld-path=$osxcross_root/bin/$osxcross_host-ld -mmacosx-version-min=$macos_deployment_target"
+    pkg_config_toolchain_flags="-mmacosx-version-min=$macos_deployment_target"
+    pkg_config_compile_toolchain_flags="$pkg_config_toolchain_flags"
+    pkg_config_link_toolchain_flags="--ld-path=$osxcross_root/bin/$osxcross_host-ld $pkg_config_toolchain_flags"
     cmake_toolchain_file="$repo_root/cmake/toolchains/arm64-apple-darwin.cmake"
     cmake_toolchain_args=(
       "-DCPKT_OSXCROSS_ROOT=$osxcross_root"
@@ -129,13 +137,72 @@ fi
 
 work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-install-smoke.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
+diagnostic_dir="$work_root/diagnostics"
+mkdir -p "$diagnostic_dir"
+
+cpkt_safe_log_name() {
+  printf '%s\n' "$1" | tr -c 'A-Za-z0-9_.-' '_'
+}
+
+cpkt_run_checked() {
+  description=$1
+  shift
+  log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
+
+  if ! "$@" >"$log_file" 2>&1; then
+    printf '%s failed\n' "$description" >&2
+    cat "$log_file" >&2
+    exit 1
+  fi
+  if grep -E '(^|[[:space:]:])warning:' "$log_file" >/dev/null 2>&1; then
+    printf '%s emitted warnings\n' "$description" >&2
+    cat "$log_file" >&2
+    exit 1
+  fi
+  cat "$log_file"
+}
+
+cpkt_run_shell_checked() {
+  description=$1
+  command_text=$2
+  log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
+
+  if ! sh -c "$command_text" >"$log_file" 2>&1; then
+    printf '%s failed\n' "$description" >&2
+    cat "$log_file" >&2
+    exit 1
+  fi
+  if grep -E '(^|[[:space:]:])warning:' "$log_file" >/dev/null 2>&1; then
+    printf '%s emitted warnings\n' "$description" >&2
+    cat "$log_file" >&2
+    exit 1
+  fi
+  cat "$log_file"
+}
 
 (cd "$work_root" && cmake -E tar xf "$archive")
-prefix=$(find "$work_root" -mindepth 1 -maxdepth 1 -type d | head -n1)
-if [ -z "$prefix" ]; then
-  printf 'archive did not extract to a top-level prefix: %s\n' "$archive" >&2
+prefix_count=0
+prefix=
+for candidate in "$work_root"/*; do
+  if [ ! -d "$candidate" ] || [ "$candidate" = "$diagnostic_dir" ]; then
+    continue
+  fi
+  prefix_count=$((prefix_count + 1))
+  prefix=$candidate
+done
+if [ "$prefix_count" -ne 1 ]; then
+  printf 'archive must extract to exactly one top-level SDK prefix, found %s: %s\n' "$prefix_count" "$archive" >&2
   exit 1
 fi
+if [ "${CPKT_PACKAGE_INSTALL_SMOKE_PRINT_EXTRACTED_PREFIX:-0}" = 1 ]; then
+  basename -- "$prefix"
+  exit 0
+fi
+case "$target_id" in
+  *-linux-gnu)
+    example_runtime_ldflags="-Wl,-rpath,$prefix/lib"
+    ;;
+esac
 
 mkdir -p "$work_root/bin"
 
@@ -181,10 +248,32 @@ assert_package_file "lib/cmake/libxml2/libxml2-config.cmake"
 assert_package_file "lib/cmake/libxml2/libxml2-config-version.cmake"
 assert_package_file "lib/cmake/Lua/LuaConfig.cmake"
 assert_package_file "lib/cmake/Lua/LuaConfigVersion.cmake"
+assert_package_file "lib/cmake/mqtt-c/mqtt-cConfig.cmake"
+assert_package_file "lib/cmake/mqtt-c/mqtt-cConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
 assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
+assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
+assert_package_file "lib/cmake/open62541/open62541Config.cmake"
+assert_package_file "lib/cmake/open62541/open62541ConfigVersion.cmake"
+assert_package_file "share/doc/c.pkt.systems/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/README.md"
+assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
+assert_package_file "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/host_module.c"
+assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/mqttc_smoke.c"
+assert_package_file "share/doc/c.pkt.systems/examples/opcua-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/opcua-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/opcua-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/pkg-config-consumer/build.sh"
 assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "find_dependency(Iconv REQUIRED)" "libxml2 CMake config"
 assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "Iconv::Iconv" "libxml2 CMake config"
+assert_file_contains "$prefix/lib/cmake/open62541/open62541Config.cmake" "find_dependency(OpenSSL CONFIG REQUIRED)" "open62541 CMake config"
+assert_file_contains "$prefix/lib/cmake/mqtt-c/mqtt-cConfig.cmake" "find_dependency(Threads REQUIRED)" "mqtt-c CMake config"
 assert_package_dir_absent "lib/cmake/ZLIB"
 assert_package_dir_absent "lib/cmake/Libssh2"
 
@@ -193,6 +282,12 @@ if grep -E 'lua\.h|lauxlib\.h|lualib\.h|lua_State|lua_Integer|lua_Number|lua_Uns
   printf 'Lua runtime facade header is not C89-clean\n' >&2
   exit 1
 fi
+if grep -E 'open62541/|UA_Client|UA_Server|UA_StatusCode|UA_NodeId|UA_Variant|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
+    "$prefix/include/cpkt/opcua.h" >/dev/null 2>&1; then
+  printf 'OPC UA facade header is not C89-clean\n' >&2
+  exit 1
+fi
+installed_examples_dir="$prefix/share/doc/c.pkt.systems/examples"
 
 cmake_source_dir="$work_root/cmake-consumer-src"
 cmake_build_dir="$work_root/cmake-consumer-build"
@@ -271,6 +366,231 @@ int main(void) {
   }
   luaL_openlibs(state);
   lua_close(state);
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_open62541.c" <<'EOF'
+#include <open62541/client.h>
+#include <open62541/server.h>
+
+int main(void) {
+  UA_Client *client = UA_Client_new();
+  UA_Server *server;
+
+  if (client == 0) {
+    return 1;
+  }
+  UA_Client_delete(client);
+
+  server = UA_Server_new();
+  if (server == 0) {
+    return 2;
+  }
+  UA_Server_delete(server);
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_mqttc.c" <<'EOF'
+#include <mqtt.h>
+
+int main(void) {
+  const char *message = mqtt_error_str(MQTT_ERROR_NULLPTR);
+  return message == 0 || message[0] == '\0';
+}
+EOF
+cat > "$cmake_source_dir/cpkt_opcua_facade_strict.c" <<'EOF'
+#include <cpkt/opcua.h>
+
+#include <string.h>
+
+struct cpkt_strict_browse_seen {
+  int object_seen;
+  int child_seen;
+};
+
+static int cpkt_strict_browse(const cpkt_opcua_browse_entry *entry, void *user) {
+  struct cpkt_strict_browse_seen *seen;
+
+  seen = (struct cpkt_strict_browse_seen *)user;
+  if (entry == 0 || seen == 0) {
+    return 1;
+  }
+  if (entry->browse_name != 0 && strcmp(entry->browse_name, "strictObject") == 0) {
+    seen->object_seen = 1;
+  }
+  if (entry->browse_name != 0 && strcmp(entry->browse_name, "strictChild") == 0) {
+    seen->child_seen = 1;
+  }
+  return 0;
+}
+
+static cpkt_opcua_result cpkt_strict_method(
+    const cpkt_opcua_value *inputs,
+    size_t input_count,
+    cpkt_opcua_value *output,
+    void *user) {
+  long factor;
+
+  if (inputs == 0 || input_count != 1 || output == 0 || user == 0 ||
+      inputs[0].type != CPKT_OPCUA_VALUE_INTEGER) {
+    return CPKT_OPCUA_ERR_ARG;
+  }
+  factor = *(long *)user;
+  cpkt_opcua_value_integer(output, inputs[0].integer_value * factor);
+  return CPKT_OPCUA_OK;
+}
+
+static void cpkt_strict_data_change(
+    cpkt_opcua_subscription_id subscription_id,
+    cpkt_opcua_monitored_item_id monitored_item_id,
+    const cpkt_opcua_value *value,
+    cpkt_opcua_status status,
+    void *user) {
+  (void)subscription_id;
+  (void)monitored_item_id;
+  (void)value;
+  (void)status;
+  (void)user;
+}
+
+int main(void) {
+  static const unsigned char json_config[] =
+      "{ applicationDescription: { applicationUri: \"urn:cpkt:package:opcua-json\" } }";
+  cpkt_opcua_server *server;
+  cpkt_opcua_node_id node_id;
+  cpkt_opcua_node_id object_id;
+  cpkt_opcua_node_id child_id;
+  cpkt_opcua_node_id method_id;
+  cpkt_opcua_value value;
+  cpkt_opcua_value out;
+  cpkt_opcua_status status;
+  cpkt_opcua_subscription_id subscription_id;
+  cpkt_opcua_monitored_item_id monitored_item_id;
+  struct cpkt_strict_browse_seen browse_seen;
+  char endpoint[64];
+  size_t required;
+  int method_input_types[1];
+  long method_factor;
+
+  if (cpkt_opcua_open62541_version() == 0 || cpkt_opcua_facade_version() == 0) {
+    return 1;
+  }
+  if (cpkt_opcua_server_new_from_json(&server, json_config, sizeof(json_config) - 1, &status) !=
+      CPKT_OPCUA_OK) {
+    return 2;
+  }
+  if (cpkt_opcua_server_set_endpoint(server, "127.0.0.1", 4840) != CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 16;
+  }
+  node_id = cpkt_opcua_node_id_numeric(1, 7001);
+  object_id = cpkt_opcua_node_id_numeric(1, 7002);
+  child_id = cpkt_opcua_node_id_numeric(1, 7003);
+  method_id = cpkt_opcua_node_id_numeric(1, 7004);
+  method_input_types[0] = CPKT_OPCUA_VALUE_INTEGER;
+  method_factor = 2;
+  cpkt_opcua_value_integer(&value, 11);
+  if (cpkt_opcua_server_add_variable(server, node_id, "strictValue", "Strict Value", &value, &status) !=
+      CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 3;
+  }
+  if (cpkt_opcua_server_add_object(
+          server,
+          object_id,
+          cpkt_opcua_node_id_numeric(0, 85),
+          "strictObject",
+          "Strict Object",
+          &status) != CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 4;
+  }
+  if (cpkt_opcua_server_add_variable_under(
+          server,
+          child_id,
+          object_id,
+          "strictChild",
+          "Strict Child",
+          &value,
+          &status) != CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 5;
+  }
+  if (cpkt_opcua_server_add_method(
+          server,
+          method_id,
+          object_id,
+          "strictMethod",
+          "Strict Method",
+          method_input_types,
+          1,
+          CPKT_OPCUA_VALUE_INTEGER,
+          cpkt_strict_method,
+          &method_factor,
+          &status) != CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 6;
+  }
+  browse_seen.object_seen = 0;
+  browse_seen.child_seen = 0;
+  if (cpkt_opcua_server_browse_children(
+          server,
+          cpkt_opcua_node_id_numeric(0, 85),
+          cpkt_strict_browse,
+          &browse_seen,
+          &status) != CPKT_OPCUA_OK || browse_seen.object_seen == 0) {
+    cpkt_opcua_server_free(server);
+    return 7;
+  }
+  browse_seen.object_seen = 0;
+  browse_seen.child_seen = 0;
+  if (cpkt_opcua_server_browse_children(
+          server,
+          object_id,
+          cpkt_strict_browse,
+          &browse_seen,
+          &status) != CPKT_OPCUA_OK || browse_seen.child_seen == 0) {
+    cpkt_opcua_server_free(server);
+    return 8;
+  }
+  cpkt_opcua_value_integer(&value, 12);
+  if (cpkt_opcua_server_write(server, node_id, &value, &status) != CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 9;
+  }
+  if (cpkt_opcua_server_read(server, node_id, &out, 0, 0, 0, &status) != CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 10;
+  }
+  if (out.type != CPKT_OPCUA_VALUE_INTEGER || out.integer_value != 12) {
+    cpkt_opcua_server_free(server);
+    return 11;
+  }
+  if (cpkt_opcua_server_endpoint_url(server, endpoint, sizeof(endpoint), &required) != CPKT_OPCUA_OK) {
+    cpkt_opcua_server_free(server);
+    return 12;
+  }
+  if (required == 0 || strstr(endpoint, "opc.tcp://127.0.0.1:") != endpoint) {
+    cpkt_opcua_server_free(server);
+    return 13;
+  }
+  if (cpkt_opcua_client_create_subscription(0, 1.0, &subscription_id, &status) != CPKT_OPCUA_ERR_ARG) {
+    cpkt_opcua_server_free(server);
+    return 14;
+  }
+  if (cpkt_opcua_client_monitor_value(
+          0,
+          1,
+          node_id,
+          1.0,
+          cpkt_strict_data_change,
+          0,
+          &monitored_item_id,
+          &status) != CPKT_OPCUA_ERR_ARG) {
+    cpkt_opcua_server_free(server);
+    return 15;
+  }
+  cpkt_opcua_server_free(server);
   return 0;
 }
 EOF
@@ -549,11 +869,14 @@ find_package(Libssh2 CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(libxml2 CONFIG REQUIRED)
 find_package(Lua CONFIG REQUIRED)
+find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
+find_package(CpktOpcUa CONFIG REQUIRED)
+find_package(open62541 CONFIG REQUIRED)
 
 function(cpkt_add_static_smoke target_name source_name link_target)
   add_executable("\${target_name}" "\${source_name}")
-  target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic)
+  target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries("\${target_name}" PRIVATE "\${link_target}")
 endfunction()
 
@@ -565,9 +888,14 @@ cpkt_add_static_smoke(cpkt_cmake_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_smoke(cpkt_cmake_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
 cpkt_add_static_smoke(cpkt_cmake_lua cpkt_lua.c Lua::Lua)
+cpkt_add_static_smoke(cpkt_cmake_mqttc cpkt_mqttc.c MQTT-C::mqttc)
+cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541)
+cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 add_executable(cpkt_cmake_all cpkt_all.c)
-target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua)
+target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua open62541::open62541)
 
 file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/strict_file.lua"
   "local h = require('host')\\n"
@@ -587,9 +915,9 @@ add_executable(cpkt_cmake_lua_runtime_strict
   cpkt_lua_runtime_strict.c
   cpkt_lua_runtime_module.c)
 set_source_files_properties(cpkt_lua_runtime_strict.c PROPERTIES
-  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic")
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_lua_runtime_module.c PROPERTIES
-  COMPILE_OPTIONS "-std=c99;-Wall;-Wextra;-Wpedantic")
+  COMPILE_OPTIONS "-std=c99;-Wall;-Wextra;-Wpedantic;-Werror")
 target_link_libraries(cpkt_cmake_lua_runtime_strict PRIVATE cpkt::lua_runtime)
 target_compile_definitions(cpkt_cmake_lua_runtime_strict PRIVATE
   CPKT_STRICT_FILE="\${CMAKE_CURRENT_BINARY_DIR}/strict_file.lua")
@@ -607,7 +935,10 @@ cmake_args=(
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
+  -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
 if [ -n "$cmake_toolchain_file" ]; then
@@ -615,8 +946,8 @@ if [ -n "$cmake_toolchain_file" ]; then
   cmake_args+=("${cmake_toolchain_args[@]}")
   cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
-cmake "${cmake_args[@]}"
-cmake --build "$cmake_build_dir"
+cpkt_run_checked "cmake aggregate consumer configure" cmake "${cmake_args[@]}"
+cpkt_run_checked "cmake aggregate consumer build" cmake --build "$cmake_build_dir"
 
 assert_words_contain() {
   words=$1
@@ -654,12 +985,18 @@ assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib
 assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib/libcrypto.a" "CURL::libcurl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib/libz.a" "CURL::libcurl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "$prefix/lib/libz.a" "LibXml2::LibXml2 link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_mqttc.dir/link.txt" "$prefix/lib/libmqttc.a" "MQTT-C::mqttc link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libssl.a" "open62541::open62541 link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libcrypto.a" "open62541::open62541 link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libcpkt_opcua.a" "cpkt::opcua link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libopen62541.a" "cpkt::opcua link line"
 case "$target_id" in
   *-linux-gnu)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_crypto.dir/link.txt" "-ldl" "OpenSSL::Crypto link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "-ldl" "CURL::libcurl link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "-ldl" "LibXml2::LibXml2 link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_lua.dir/link.txt" "-ldl" "Lua::Lua link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "-lrt" "open62541::open62541 link line"
     ;;
   arm64-apple-darwin)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "CoreFoundation" "CURL::libcurl link line"
@@ -688,7 +1025,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 find_package($package_name CONFIG REQUIRED)
 
 add_executable($executable_name "$source_name")
-target_compile_options($executable_name PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options($executable_name PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries($executable_name PRIVATE "$link_target")
 EOF
   direct_cmake_args=(
@@ -704,8 +1041,8 @@ EOF
     direct_cmake_args+=("${cmake_toolchain_args[@]}")
     direct_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
   fi
-  cmake "${direct_cmake_args[@]}"
-  cmake --build "$direct_build_dir"
+  cpkt_run_checked "cmake direct ${package_name} configure" cmake "${direct_cmake_args[@]}"
+  cpkt_run_checked "cmake direct ${package_name} build" cmake --build "$direct_build_dir"
 }
 
 cpkt_cmake_direct_dir_smoke Libssh2 "$prefix/lib/cmake/libssh2" cpkt_direct_libssh2 cpkt_libssh2.c Libssh2::libssh2
@@ -731,16 +1068,23 @@ case "$target_id" in
 esac
 
 cpkt_cmake_direct_dir_smoke Lua "$prefix/lib/cmake/Lua" cpkt_direct_lua cpkt_lua.c Lua::Lua
+cpkt_cmake_direct_dir_smoke mqtt-c "$prefix/lib/cmake/mqtt-c" cpkt_direct_mqttc cpkt_mqttc.c MQTT-C::mqttc
+cpkt_cmake_direct_dir_smoke open62541 "$prefix/lib/cmake/open62541" cpkt_direct_open62541 cpkt_open62541.c open62541::open62541
+direct_open62541_link_dir="$work_root/cmake-direct-open62541-build/CMakeFiles/cpkt_direct_open62541.dir"
+assert_file_contains "$direct_open62541_link_dir/link.txt" "$prefix/lib/libssl.a" "direct open62541_DIR link line"
+assert_file_contains "$direct_open62541_link_dir/link.txt" "$prefix/lib/libcrypto.a" "direct open62541_DIR link line"
 example_cmake_build_dir="$work_root/example-cmake-consumer-build"
 example_cmake_args=(
   -G "$cmake_generator" \
-  -S "$repo_root/examples/cmake-consumer" \
+  -S "$installed_examples_dir/cmake-consumer" \
   -B "$example_cmake_build_dir" \
   -DCMAKE_C_COMPILER="$cc" \
+  "-DCMAKE_C_FLAGS=-Werror" \
   -DCMAKE_PREFIX_PATH="$prefix" \
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
 if [ -n "$cmake_toolchain_file" ]; then
@@ -748,15 +1092,16 @@ if [ -n "$cmake_toolchain_file" ]; then
   example_cmake_args+=("${cmake_toolchain_args[@]}")
   example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
-cmake "${example_cmake_args[@]}"
-cmake --build "$example_cmake_build_dir"
+cpkt_run_checked "example cmake consumer configure" cmake "${example_cmake_args[@]}"
+cpkt_run_checked "example cmake consumer build" cmake --build "$example_cmake_build_dir"
 
 lua_runtime_example_cmake_build_dir="$work_root/example-lua-runtime-c89-cmake-build"
 lua_runtime_example_cmake_args=(
   -G "$cmake_generator" \
-  -S "$repo_root/examples/lua-runtime-c89" \
+  -S "$installed_examples_dir/lua-runtime-c89" \
   -B "$lua_runtime_example_cmake_build_dir" \
   -DCMAKE_C_COMPILER="$cc" \
+  "-DCMAKE_C_FLAGS=-Werror" \
   -DCMAKE_PREFIX_PATH="$prefix" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
@@ -766,8 +1111,27 @@ if [ -n "$cmake_toolchain_file" ]; then
   lua_runtime_example_cmake_args+=("${cmake_toolchain_args[@]}")
   lua_runtime_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
-cmake "${lua_runtime_example_cmake_args[@]}"
-cmake --build "$lua_runtime_example_cmake_build_dir"
+cpkt_run_checked "lua runtime cmake example configure" cmake "${lua_runtime_example_cmake_args[@]}"
+cpkt_run_checked "lua runtime cmake example build" cmake --build "$lua_runtime_example_cmake_build_dir"
+
+opcua_example_cmake_build_dir="$work_root/example-opcua-c89-cmake-build"
+opcua_example_cmake_args=(
+  -G "$cmake_generator" \
+  -S "$installed_examples_dir/opcua-c89" \
+  -B "$opcua_example_cmake_build_dir" \
+  -DCMAKE_C_COMPILER="$cc" \
+  "-DCMAKE_C_FLAGS=-Werror" \
+  -DCMAKE_PREFIX_PATH="$prefix" \
+  -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+)
+if [ -n "$cmake_toolchain_file" ]; then
+  opcua_example_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
+  opcua_example_cmake_args+=("${cmake_toolchain_args[@]}")
+  opcua_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+fi
+cpkt_run_checked "opcua cmake example configure" cmake "${opcua_example_cmake_args[@]}"
+cpkt_run_checked "opcua cmake example build" cmake --build "$opcua_example_cmake_build_dir"
 
 pkg_config_libdir="$prefix/lib/pkgconfig"
 pkg_config_words() {
@@ -787,7 +1151,10 @@ libssh2_words=$(pkg_config_words libssh2)
 libcurl_words=$(pkg_config_words libcurl)
 libxml2_words=$(pkg_config_words libxml-2.0)
 lua_words=$(pkg_config_words lua)
+mqttc_words=$(pkg_config_words mqtt-c)
 lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
+open62541_words=$(pkg_config_words open62541)
+opcua_words=$(pkg_config_words cpkt-opcua)
 openssl_default_words=$(pkg_config_default_words openssl)
 
 case "$target_id" in
@@ -799,6 +1166,9 @@ case "$target_id" in
     assert_words_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
     assert_words_contain "$lua_words" "-ldl" "lua.pc --static output"
     assert_words_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
+    assert_words_contain "$opcua_words" "-lrt" "cpkt-opcua.pc --static output"
+    assert_words_contain "$mqttc_words" "-pthread" "mqtt-c.pc --static output"
+    assert_words_contain "$open62541_words" "-lrt" "open62541.pc --static output"
     ;;
   arm64-apple-darwin)
     assert_words_contain "$libcurl_words" "CoreFoundation" "libcurl.pc --static output"
@@ -811,6 +1181,8 @@ case "$target_id" in
     assert_words_not_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
     assert_words_not_contain "$lua_words" "-ldl" "lua.pc --static output"
     assert_words_not_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
+    assert_words_not_contain "$opcua_words" "-ldl" "cpkt-opcua.pc --static output"
+    assert_words_not_contain "$open62541_words" "-ldl" "open62541.pc --static output"
     ;;
 esac
 case "$target_id" in
@@ -836,15 +1208,58 @@ assert_words_contain "$libxml2_words" "-lm" "libxml-2.0.pc --static output"
 assert_words_contain "$lua_words" "-lm" "lua.pc --static output"
 assert_words_contain "$lua_runtime_words" "-llua" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$lua_runtime_words" "-lm" "cpkt-lua-runtime.pc --static output"
+assert_words_contain "$mqttc_words" "-lmqttc" "mqtt-c.pc --static output"
+assert_words_contain "$open62541_words" "-lssl" "open62541.pc --static output"
+assert_words_contain "$open62541_words" "-lcrypto" "open62541.pc --static output"
+assert_words_contain "$open62541_words" "-lm" "open62541.pc --static output"
+assert_words_contain "$opcua_words" "-lcpkt_opcua" "cpkt-opcua.pc --static output"
+assert_words_contain "$opcua_words" "-lopen62541" "cpkt-opcua.pc --static output"
+assert_words_contain "$opcua_words" "-lssl" "cpkt-opcua.pc --static output"
+assert_words_contain "$opcua_words" "-lcrypto" "cpkt-opcua.pc --static output"
+assert_words_contain "$opcua_words" "-lm" "cpkt-opcua.pc --static output"
 
 cpkt_pkg_config_static_smoke() {
   pc_name=$1
   source_name=$2
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
-  "$cc" $pkg_config_static_flag $pkg_config_toolchain_flags $common_flags "$cmake_source_dir/$source_name" \
+  pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs "$pc_name")
+  case "$target_id" in
+    *-linux-gnu)
+      pkg_config_link_words=$(printf '%s\n' "$pkg_config_link_words" | awk '
+        BEGIN {
+          bundled["-lcrypto"] = 1
+          bundled["-lssl"] = 1
+          bundled["-lz"] = 1
+          bundled["-lnghttp2"] = 1
+          bundled["-lssh2"] = 1
+          bundled["-lcurl"] = 1
+          bundled["-lxml2"] = 1
+          bundled["-llua"] = 1
+          bundled["-lcpkt_lua_runtime"] = 1
+          bundled["-lmqttc"] = 1
+          bundled["-lopen62541"] = 1
+          bundled["-lcpkt_opcua"] = 1
+        }
+        {
+          for (i = 1; i <= NF; ++i) {
+            if ($i in bundled) {
+              printf " -Wl,-Bstatic %s", $i
+            } else if ($i ~ /^-l/ || $i == "-pthread") {
+              printf " -Wl,-Bdynamic %s", $i
+            } else {
+              printf " %s", $i
+            }
+          }
+          printf " -Wl,-Bdynamic"
+        }')
+      ;;
+  esac
+  cpkt_run_shell_checked "pkg-config static ${pc_name} build" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/$source_name\" \
     -o "$output_path" \
-    $(cpkt_pkg_config --static --cflags --libs "$pc_name") \
-    $static_extra_libs
+    $pkg_config_link_toolchain_flags \
+    $pkg_config_link_words \
+    $static_extra_libs"
 }
 
 cpkt_pkg_config_static_smoke zlib cpkt_zlib.c
@@ -856,13 +1271,17 @@ cpkt_pkg_config_static_smoke libssh2 cpkt_libssh2.c
 cpkt_pkg_config_static_smoke libcurl cpkt_curl.c
 cpkt_pkg_config_static_smoke libxml-2.0 cpkt_libxml2.c
 cpkt_pkg_config_static_smoke lua cpkt_lua.c
+cpkt_pkg_config_static_smoke mqtt-c cpkt_mqttc.c
+cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
+cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
 
 example_pkg_config_output="$work_root/bin/cpkt_example_pkg_config_consumer"
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
-CPKT_EXAMPLE_CFLAGS="$pkg_config_static_flag $pkg_config_toolchain_flags $common_flags" \
-CPKT_EXAMPLE_LDFLAGS="$static_extra_libs" \
-  "$repo_root/examples/pkg-config-consumer/build.sh" "$example_pkg_config_output"
+CPKT_EXAMPLE_CFLAGS="$pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "example pkg-config consumer build" \
+    "$installed_examples_dir/pkg-config-consumer/build.sh" "$example_pkg_config_output"
 
 lua_runtime_example_pkg_file="$work_root/lua-runtime-c89-pkg-file.lua"
 cat > "$lua_runtime_example_pkg_file" <<EOF
@@ -883,17 +1302,28 @@ EOF
 lua_runtime_example_pkg_config_output="$work_root/bin/cpkt_lua_runtime_c89_pkg_example"
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
-CPKT_EXAMPLE_CFLAGS="$pkg_config_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_toolchain_flags $pkg_config_static_flag $static_extra_libs" \
-  "$repo_root/examples/lua-runtime-c89/build-pkg-config.sh" "$lua_runtime_example_pkg_config_output"
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "lua runtime pkg-config example build" \
+    "$installed_examples_dir/lua-runtime-c89/build-pkg-config.sh" "$lua_runtime_example_pkg_config_output"
+
+opcua_example_pkg_config_output="$work_root/bin/cpkt_opcua_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "opcua pkg-config example build" \
+    "$installed_examples_dir/opcua-c89/build-pkg-config.sh" "$opcua_example_pkg_config_output"
 
 cpkt_pkg_config_smoke() {
   pc_name=$1
   source_name=$2
   output_path="$work_root/bin/cpkt_pkg_${pc_name}_default"
-  "$cc" $pkg_config_toolchain_flags $common_flags "$cmake_source_dir/$source_name" \
+  cpkt_run_shell_checked "pkg-config default ${pc_name} build" \
+    "\"$cc\" $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/$source_name\" \
     -o "$output_path" \
-    $(cpkt_pkg_config --cflags --libs "$pc_name")
+    $pkg_config_link_toolchain_flags \
+    $(cpkt_pkg_config --cflags --libs "$pc_name")"
 }
 
 cpkt_pkg_config_smoke openssl cpkt_ssl.c
@@ -911,6 +1341,9 @@ if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_curl"
   "$cmake_build_dir/cpkt_cmake_libxml2"
   "$cmake_build_dir/cpkt_cmake_lua"
+  "$cmake_build_dir/cpkt_cmake_mqttc"
+  "$cmake_build_dir/cpkt_cmake_open62541"
+  "$cmake_build_dir/cpkt_cmake_opcua_facade"
   "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   "$cmake_build_dir/cpkt_cmake_all"
   "$work_root/bin/cpkt_pkg_zlib"
@@ -922,10 +1355,15 @@ if [ -z "$run_prefix" ]; then
   "$work_root/bin/cpkt_pkg_libcurl"
   "$work_root/bin/cpkt_pkg_libxml-2.0"
   "$work_root/bin/cpkt_pkg_lua"
+  "$work_root/bin/cpkt_pkg_mqtt-c"
+  "$work_root/bin/cpkt_pkg_open62541"
+  "$work_root/bin/cpkt_pkg_cpkt-opcua"
   "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
   "$example_pkg_config_output"
   "$lua_runtime_example_cmake_build_dir/cpkt_lua_runtime_c89_example" "$lua_runtime_example_cmake_build_dir/example_file.lua"
   "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
+  "$opcua_example_cmake_build_dir/cpkt_opcua_c89_example"
+  "$opcua_example_pkg_config_output"
 else
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_zlib"
@@ -943,6 +1381,12 @@ else
   $run_prefix "$cmake_build_dir/cpkt_cmake_libxml2"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_lua"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_mqttc"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_open62541"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_opcua_facade"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   # shellcheck disable=SC2086
@@ -966,6 +1410,12 @@ else
   # shellcheck disable=SC2086
   $run_prefix "$work_root/bin/cpkt_pkg_lua"
   # shellcheck disable=SC2086
+  $run_prefix "$work_root/bin/cpkt_pkg_mqtt-c"
+  # shellcheck disable=SC2086
+  $run_prefix "$work_root/bin/cpkt_pkg_open62541"
+  # shellcheck disable=SC2086
+  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-opcua"
+  # shellcheck disable=SC2086
   $run_prefix "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
   # shellcheck disable=SC2086
   $run_prefix "$example_pkg_config_output"
@@ -973,4 +1423,8 @@ else
   $run_prefix "$lua_runtime_example_cmake_build_dir/cpkt_lua_runtime_c89_example" "$lua_runtime_example_cmake_build_dir/example_file.lua"
   # shellcheck disable=SC2086
   $run_prefix "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
+  # shellcheck disable=SC2086
+  $run_prefix "$opcua_example_cmake_build_dir/cpkt_opcua_c89_example"
+  # shellcheck disable=SC2086
+  $run_prefix "$opcua_example_pkg_config_output"
 fi

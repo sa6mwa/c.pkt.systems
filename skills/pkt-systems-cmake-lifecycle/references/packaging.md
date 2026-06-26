@@ -26,7 +26,7 @@ Checksum manifest:
 dist/<project>-<version>-CHECKSUMS
 ```
 
-The checksum manifest is the release upload manifest. It must be SHA-256, must list every artifact intended for the GitHub release, and must be the only source used to select `gh release create` upload arguments.
+The checksum manifest is the release upload manifest. It must be SHA-256, must list every artifact intended for the GitHub release, must itself be uploaded to the GitHub release, and must be the only source used to select non-manifest `gh release create` upload arguments.
 
 When Lua artifacts exist, the checksum manifest must include the standalone Lua source package, the rendered release rockspec, and the LuaRocks `.src.rock`, in addition to C binary and source archives.
 
@@ -107,7 +107,7 @@ Package verification must:
 - Verify every release-looking artifact under `dist/` is listed in the checksum manifest unless explicitly ignored by a documented rule.
 - Verify no stale release artifact for a different version remains under `dist/`.
 - Verify deprecated checksum files such as `SHA256SUMS` are absent unless the project explicitly preserves them as compatibility artifacts.
-- Verify `gh release create` arguments are derived from checksum-listed files only, never from a `dist/` glob.
+- Verify `gh release create` arguments are derived from checksum-listed files plus the checksum manifest itself, never from a `dist/` glob.
 - Extract every checksum-listed archive and recursively expand nested `.tar.gz`, `.tgz`, `.tar.xz`, `.zip`, `.rock`, and `.src.rock` payloads that are part of the released package format before privacy and relocatability scanning.
 - Verify archive layout and single root.
 - Verify required headers, libraries, CMake config, pkg-config file, docs, examples, and metadata.

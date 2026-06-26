@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: c.pkt.systems <noreply@pkt.systems>
+Date: Tue, 23 Jun 2026 00:00:00 +0000
+Subject: [PATCH] Avoid glibc private stdio limit header on musl
+
+SPDX-License-Identifier: MPL-2.0
+---
+ arch/posix/eventloop_posix.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/arch/posix/eventloop_posix.h b/arch/posix/eventloop_posix.h
+--- a/arch/posix/eventloop_posix.h
++++ b/arch/posix/eventloop_posix.h
+@@ -277,7 +277,9 @@
+ 
+ #ifndef __ANDROID__
+ #ifndef __APPLE__
+-#include <bits/stdio_lim.h>
++#if defined(__GLIBC__)
++# include <bits/stdio_lim.h>
++#endif /* __GLIBC__ */
+ #endif /* !__APPLE__ */
+ #endif /* !__ANDROID__ */
+ 
+-- 
+2.43.0

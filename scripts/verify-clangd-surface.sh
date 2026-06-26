@@ -50,6 +50,7 @@ require_hover_comment() {
 require_compile_command "examples/abi_smoke.c"
 require_compile_command "examples/lua-runtime-c89/main.c"
 require_compile_command "examples/lua-runtime-c89/host_module.c"
+require_compile_command "examples/opcua-c89/main.c"
 
 require_hover_comment "typedef struct cpkt_lua_runtime cpkt_lua_runtime;"
 require_hover_comment "typedef enum cpkt_lua_runtime_status"
@@ -99,3 +100,4 @@ fi
 clangd --check="${SOURCE_DIR}/examples/abi_smoke.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/host_module.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
+clangd --check="${SOURCE_DIR}/examples/opcua-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null

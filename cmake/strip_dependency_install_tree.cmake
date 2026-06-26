@@ -37,8 +37,12 @@ function(cpkt_fix_darwin_dylib install_dylib)
   endif()
 
   get_filename_component(_dylib_name "${install_dylib}" NAME)
+  set(_dylib_install_name "${_dylib_name}")
+  if(_dylib_name MATCHES "^libmqttc\\.([0-9]+)(\\.[0-9]+)*\\.dylib$")
+    set(_dylib_install_name "libmqttc.${CMAKE_MATCH_1}.dylib")
+  endif()
   execute_process(
-    COMMAND "${CPKT_INSTALL_NAME_TOOL}" -id "@rpath/${_dylib_name}" "${install_dylib}"
+    COMMAND "${CPKT_INSTALL_NAME_TOOL}" -id "@rpath/${_dylib_install_name}" "${install_dylib}"
     RESULT_VARIABLE _id_result
     ERROR_VARIABLE _id_error
   )

@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: c.pkt.systems <noreply@pkt.systems>
+Date: Tue, 23 Jun 2026 00:00:00 +0000
+Subject: [PATCH] Prefix embedded MQTT-C symbols
+
+SPDX-License-Identifier: MPL-2.0
+---
+ arch/common/eventloop_mqtt.c | 48 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 48 insertions(+)
+
+diff --git a/arch/common/eventloop_mqtt.c b/arch/common/eventloop_mqtt.c
+--- a/arch/common/eventloop_mqtt.c
++++ b/arch/common/eventloop_mqtt.c
+@@ -67,6 +67,54 @@ typedef MQTTBrokerConnection * mqtt_pal_socket_handle;
+ static ssize_t mqtt_pal_sendall(mqtt_pal_socket_handle fd, const void* buf, size_t len, int flags);
+ static ssize_t mqtt_pal_recvall(mqtt_pal_socket_handle fd, void* buf, size_t bufsz, int flags);
+ 
++/* c.pkt.systems patch: open62541 embeds MQTT-C directly so it can provide a
++ * custom PAL backed by the open62541 EventLoop. Prefix the embedded MQTT-C
++ * external symbols to avoid collisions with applications that also link a
++ * standalone MQTT-C library. SPDX-License-Identifier: MPL-2.0 */
++#define __mqtt_next_pid cpkt_open62541_mqtt_next_pid
++#define __mqtt_pack_str cpkt_open62541_mqtt_pack_str
++#define __mqtt_pack_uint16 cpkt_open62541_mqtt_pack_uint16
++#define __mqtt_ping cpkt_open62541_mqtt_ping_internal
++#define __mqtt_puback cpkt_open62541_mqtt_puback
++#define __mqtt_pubcomp cpkt_open62541_mqtt_pubcomp
++#define __mqtt_pubrec cpkt_open62541_mqtt_pubrec
++#define __mqtt_pubrel cpkt_open62541_mqtt_pubrel
++#define __mqtt_recv cpkt_open62541_mqtt_recv
++#define __mqtt_send cpkt_open62541_mqtt_send
++#define __mqtt_unpack_uint16 cpkt_open62541_mqtt_unpack_uint16
++#define mqtt_connect cpkt_open62541_mqtt_connect
++#define mqtt_disconnect cpkt_open62541_mqtt_disconnect
++#define mqtt_error_str cpkt_open62541_mqtt_error_str
++#define mqtt_fixed_header_rules cpkt_open62541_mqtt_fixed_header_rules
++#define mqtt_init cpkt_open62541_mqtt_init
++#define mqtt_init_reconnect cpkt_open62541_mqtt_init_reconnect
++#define mqtt_mq_clean cpkt_open62541_mqtt_mq_clean
++#define mqtt_mq_find cpkt_open62541_mqtt_mq_find
++#define mqtt_mq_init cpkt_open62541_mqtt_mq_init
++#define mqtt_mq_register cpkt_open62541_mqtt_mq_register
++#define mqtt_pack_connection_request cpkt_open62541_mqtt_pack_connection_request
++#define mqtt_pack_disconnect cpkt_open62541_mqtt_pack_disconnect
++#define mqtt_pack_fixed_header cpkt_open62541_mqtt_pack_fixed_header
++#define mqtt_pack_ping_request cpkt_open62541_mqtt_pack_ping_request
++#define mqtt_pack_publish_request cpkt_open62541_mqtt_pack_publish_request
++#define mqtt_pack_pubxxx_request cpkt_open62541_mqtt_pack_pubxxx_request
++#define mqtt_pack_subscribe_request cpkt_open62541_mqtt_pack_subscribe_request
++#define mqtt_pack_unsubscribe_request cpkt_open62541_mqtt_pack_unsubscribe_request
++#define mqtt_ping cpkt_open62541_mqtt_ping
++#define mqtt_publish cpkt_open62541_mqtt_publish
++#define mqtt_reconnect cpkt_open62541_mqtt_reconnect
++#define mqtt_reinit cpkt_open62541_mqtt_reinit
++#define mqtt_subscribe cpkt_open62541_mqtt_subscribe
++#define mqtt_sync cpkt_open62541_mqtt_sync
++#define mqtt_unpack_connack_response cpkt_open62541_mqtt_unpack_connack_response
++#define mqtt_unpack_fixed_header cpkt_open62541_mqtt_unpack_fixed_header
++#define mqtt_unpack_publish_response cpkt_open62541_mqtt_unpack_publish_response
++#define mqtt_unpack_pubxxx_response cpkt_open62541_mqtt_unpack_pubxxx_response
++#define mqtt_unpack_response cpkt_open62541_mqtt_unpack_response
++#define mqtt_unpack_suback_response cpkt_open62541_mqtt_unpack_suback_response
++#define mqtt_unpack_unsuback_response cpkt_open62541_mqtt_unpack_unsuback_response
++#define mqtt_unsubscribe cpkt_open62541_mqtt_unsubscribe
++
+ /* Include headers and source files! We need deep integration to use the above definitions. */
+ #include "../../deps/mqtt-c/include/mqtt.h"
+ #include "../../deps/mqtt-c/src/mqtt.c"
+-- 
+2.43.0

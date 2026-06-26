@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: c.pkt.systems <noreply@pkt.systems>
+Date: Tue, 23 Jun 2026 00:00:00 +0000
+Subject: [PATCH] Avoid cert store path strncpy warning
+
+SPDX-License-Identifier: MPL-2.0
+---
+ plugins/crypto/ua_certificategroup_filestore.c | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/plugins/crypto/ua_certificategroup_filestore.c b/plugins/crypto/ua_certificategroup_filestore.c
+--- a/plugins/crypto/ua_certificategroup_filestore.c
++++ b/plugins/crypto/ua_certificategroup_filestore.c
+@@ -384,14 +384,22 @@ static UA_StatusCode
+ FileCertStore_setupStorePath(char *directory, char *rootDirectory,
+                              size_t rootDirectorySize, UA_String *out) {
+     char path[UA_PATH_MAX] = {0};
+-    size_t pathSize = 0;
++    size_t directorySize = 0;
+ 
+-    strncpy(path, rootDirectory, UA_PATH_MAX - 1);
+-    path[UA_PATH_MAX - 1] = '\0';
+-    pathSize = strnlen(path, UA_PATH_MAX);
++    /* c.pkt.systems patch: Use the caller-provided root length and bounded
++     * copies so GCC does not diagnose the intentional fixed-size path buffer
++     * handling as a potentially truncated strncpy.
++     * SPDX-License-Identifier: MPL-2.0 */
++    if(rootDirectorySize >= UA_PATH_MAX)
++        return UA_STATUSCODE_BADINTERNALERROR;
+ 
+-    strncpy(&path[pathSize], directory, UA_PATH_MAX - pathSize);
++    directorySize = strnlen(directory, UA_PATH_MAX);
++    if(directorySize >= UA_PATH_MAX - rootDirectorySize)
++        return UA_STATUSCODE_BADINTERNALERROR;
+ 
++    memcpy(path, rootDirectory, rootDirectorySize);
++    memcpy(&path[rootDirectorySize], directory, directorySize);
++    path[rootDirectorySize + directorySize] = '\0';
+     *out = UA_STRING_ALLOC(path);
+ 
+     mkpath(path, 0777);
+-- 
+2.43.0

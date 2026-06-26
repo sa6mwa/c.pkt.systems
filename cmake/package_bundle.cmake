@@ -13,10 +13,17 @@ foreach(_required
     CPKT_CMOCKA_VERSION
     CPKT_LIBXML2_VERSION
     CPKT_LUA_VERSION
+    CPKT_MQTTC_VERSION
+    CPKT_MQTTC_COMMIT
+    CPKT_OPEN62541_VERSION
+    CPKT_OPEN62541_PATCHSET
     CPKT_LUA_RUNTIME_ABI_VERSION
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
-    CPKT_LUA_RUNTIME_SHARED_LIBRARY)
+    CPKT_LUA_RUNTIME_SHARED_LIBRARY
+    CPKT_OPCUA_ABI_VERSION
+    CPKT_OPCUA_STATIC_LIBRARY
+    CPKT_OPCUA_SHARED_LIBRARY)
   if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
     message(FATAL_ERROR "${_required} is required")
   endif()
@@ -25,6 +32,9 @@ endforeach()
 if(NOT EXISTS "${CPKT_EXTERNAL_ROOT}")
   message(FATAL_ERROR "dependency install root does not exist: ${CPKT_EXTERNAL_ROOT}")
 endif()
+
+include("${CPKT_SOURCE_DIR}/cmake/gnu_tar.cmake")
+cpkt_find_gnu_tar(_cpkt_gnu_tar)
 
 set(_archive_stem "c.pkt.systems-${CPKT_BUNDLE_VERSION}-${CPKT_TARGET_ID}")
 set(_stage_parent "${CMAKE_CURRENT_BINARY_DIR}/package-stage")
@@ -37,17 +47,27 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.dylib")
+  set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.${CPKT_OPCUA_ABI_VERSION}.dylib")
+  set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_libssh2_shared_library_name "libssh2.1.dylib")
   set(_cpkt_libxml2_shared_library_name "libxml2.dylib")
   set(_cpkt_lua_shared_library_name "liblua.dylib")
+  set(_cpkt_mqttc_shared_library_name "libmqttc.dylib")
+  set(_cpkt_open62541_shared_library_name "libopen62541.dylib")
 else()
   set(_cpkt_shared_library_suffix ".so")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.so")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.so")
+  set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.so.${CPKT_OPCUA_ABI_VERSION}")
+  set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_libssh2_shared_library_name "libssh2.so")
   set(_cpkt_libxml2_shared_library_name "libxml2.so")
   set(_cpkt_lua_shared_library_name "liblua.so")
+  set(_cpkt_mqttc_shared_library_name "libmqttc.so")
+  set(_cpkt_open62541_shared_library_name "libopen62541.so")
 endif()
 file(REMOVE_RECURSE "${_stage_parent}")
 file(MAKE_DIRECTORY "${_stage_root}/include" "${_stage_root}/lib" "${CPKT_DIST_DIR}")
@@ -65,9 +85,29 @@ function(cpkt_stage_dependency_install dependency_name)
   endforeach()
 endfunction()
 
-foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua)
+foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua mqtt-c open62541)
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
+
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  if(NOT DEFINED CPKT_INSTALL_NAME_TOOL OR "${CPKT_INSTALL_NAME_TOOL}" STREQUAL "")
+    message(FATAL_ERROR "CPKT_INSTALL_NAME_TOOL is required for Darwin package install-name fixups")
+  endif()
+  if(NOT EXISTS "${CPKT_INSTALL_NAME_TOOL}")
+    message(FATAL_ERROR "Darwin install_name_tool does not exist: ${CPKT_INSTALL_NAME_TOOL}")
+  endif()
+  execute_process(
+    COMMAND "${CPKT_INSTALL_NAME_TOOL}"
+      -id "@rpath/libmqttc.1.dylib"
+      "${_stage_root}/lib/libmqttc.${CPKT_MQTTC_VERSION}.dylib"
+    RESULT_VARIABLE _cpkt_mqttc_install_name_result
+    ERROR_VARIABLE _cpkt_mqttc_install_name_error
+  )
+  if(NOT _cpkt_mqttc_install_name_result EQUAL 0)
+    message(FATAL_ERROR
+      "failed to rewrite MQTT-C Darwin install name\n${_cpkt_mqttc_install_name_error}")
+  endif()
+endif()
 
 file(REMOVE_RECURSE
   "${_stage_root}/lib/engines-3"
@@ -79,6 +119,12 @@ file(REMOVE_RECURSE
 file(GLOB _libtool_archives "${_stage_root}/lib/*.la")
 if(_libtool_archives)
   file(REMOVE ${_libtool_archives})
+endif()
+file(GLOB _legacy_open62541_shared_libraries
+  "${_stage_root}/lib/libopen62541.so.0.4"
+  "${_stage_root}/lib/libopen62541.so.0.4.*")
+if(_legacy_open62541_shared_libraries)
+  file(REMOVE ${_legacy_open62541_shared_libraries})
 endif()
 file(COPY "${CPKT_LUA_RUNTIME_INCLUDE_DIR}/cpkt" DESTINATION "${_stage_root}/include")
 file(COPY_FILE
@@ -116,6 +162,41 @@ execute_process(
 if(NOT _cpkt_lua_runtime_link_symlink_result EQUAL 0)
   message(FATAL_ERROR "failed to create Lua runtime facade linker symlink")
 endif()
+file(COPY_FILE
+  "${CPKT_OPCUA_STATIC_LIBRARY}"
+  "${_stage_root}/lib/libcpkt_opcua${_cpkt_static_library_suffix}"
+)
+get_filename_component(_cpkt_opcua_shared_library_dir
+  "${CPKT_OPCUA_SHARED_LIBRARY}"
+  DIRECTORY)
+set(_cpkt_opcua_shared_library_real_path
+  "${_cpkt_opcua_shared_library_dir}/${_cpkt_opcua_shared_library_real_name}")
+if(NOT EXISTS "${_cpkt_opcua_shared_library_real_path}")
+  message(FATAL_ERROR
+    "missing OPC UA facade shared library ${_cpkt_opcua_shared_library_real_name} in ${_cpkt_opcua_shared_library_dir}")
+endif()
+file(COPY_FILE
+  "${_cpkt_opcua_shared_library_real_path}"
+  "${_stage_root}/lib/${_cpkt_opcua_shared_library_real_name}"
+)
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E create_symlink
+    "${_cpkt_opcua_shared_library_real_name}"
+    "${_stage_root}/lib/${_cpkt_opcua_shared_library_abi_name}"
+  RESULT_VARIABLE _cpkt_opcua_abi_symlink_result
+)
+if(NOT _cpkt_opcua_abi_symlink_result EQUAL 0)
+  message(FATAL_ERROR "failed to create OPC UA facade ABI symlink")
+endif()
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E create_symlink
+    "${_cpkt_opcua_shared_library_abi_name}"
+    "${_stage_root}/lib/${_cpkt_opcua_shared_library_link_name}"
+  RESULT_VARIABLE _cpkt_opcua_link_symlink_result
+)
+if(NOT _cpkt_opcua_link_symlink_result EQUAL 0)
+  message(FATAL_ERROR "failed to create OPC UA facade linker symlink")
+endif()
 
 function(cpkt_write_config_version package_dir config_stem package_version)
   file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/${package_dir}")
@@ -146,9 +227,11 @@ set(_cpkt_libxml2_static_iconv_pc_libs "")
 set(_cpkt_libxml2_static_iconv_cmake_libs "Iconv::Iconv")
 set(_cpkt_libxml2_shared_iconv_cmake_libs "Iconv::Iconv")
 set(_cpkt_lua_static_private_pc_libs "-lm")
+set(_cpkt_open62541_static_private_pc_libs "-lm")
 if(CPKT_TARGET_ID MATCHES "-linux-")
   set(_cpkt_libxml2_static_private_pc_libs "-ldl -lm -pthread")
   set(_cpkt_lua_static_private_pc_libs "-lm -ldl")
+  set(_cpkt_open62541_static_private_pc_libs "-lm -lrt")
 elseif(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_libxml2_static_iconv_pc_libs "-liconv")
   set(_cpkt_libxml2_static_iconv_cmake_libs "Iconv::Iconv;iconv")
@@ -433,6 +516,100 @@ file(WRITE "${_stage_root}/lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
 )
 cpkt_write_config_version("CpktLuaRuntime" "CpktLuaRuntime" "${CPKT_LUA_VERSION}")
 
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/open62541")
+file(WRITE "${_stage_root}/lib/cmake/open62541/open62541Config.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_open62541_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_open62541_prefix}/lib/cmake/OpenSSL\")\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "set(open62541_FOUND TRUE)\n"
+  "set(open62541_VERSION \"${CPKT_OPEN62541_VERSION}\")\n"
+  "set(open62541_INCLUDE_DIR \"\${_cpkt_open62541_prefix}/include\")\n"
+  "set(open62541_INCLUDE_DIRS \"\${open62541_INCLUDE_DIR}\")\n"
+  "set(open62541_LIBRARIES open62541::open62541)\n"
+  "set(_cpkt_open62541_static_system_libs m)\n"
+  "if(CMAKE_SYSTEM_NAME STREQUAL \"Linux\")\n"
+  "  list(APPEND _cpkt_open62541_static_system_libs rt)\n"
+  "endif()\n"
+  "if(NOT TARGET open62541::open62541)\n"
+  "  add_library(open62541::open62541 STATIC IMPORTED)\n"
+  "  set_target_properties(open62541::open62541 PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_open62541_prefix}/lib/libopen62541${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${open62541_INCLUDE_DIR}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"OpenSSL::SSL;OpenSSL::Crypto;\${_cpkt_open62541_static_system_libs}\"\n"
+  "    INTERFACE_COMPILE_DEFINITIONS _GNU_SOURCE\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::open62541_shared)\n"
+  "  add_library(cpkt::open62541_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::open62541_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_open62541_prefix}/lib/${_cpkt_open62541_shared_library_name}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${open62541_INCLUDE_DIR}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared\"\n"
+  "    INTERFACE_COMPILE_DEFINITIONS _GNU_SOURCE\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("open62541" "open62541" "${CPKT_OPEN62541_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktOpcUa")
+file(WRITE "${_stage_root}/lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_opcua_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(open62541_DIR \"\${_cpkt_opcua_prefix}/lib/cmake/open62541\")\n"
+  "find_dependency(open62541 CONFIG REQUIRED)\n"
+  "set(CpktOpcUa_FOUND TRUE)\n"
+  "set(CpktOpcUa_VERSION \"${CPKT_OPEN62541_VERSION}\")\n"
+  "if(NOT TARGET cpkt::opcua)\n"
+  "  add_library(cpkt::opcua STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::opcua PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_opcua_prefix}/lib/libcpkt_opcua${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_opcua_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES open62541::open62541\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::opcua_shared)\n"
+  "  add_library(cpkt::opcua_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::opcua_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_opcua_prefix}/lib/libcpkt_opcua${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_opcua_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::open62541_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktOpcUa" "CpktOpcUa" "${CPKT_OPEN62541_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/mqtt-c")
+file(WRITE "${_stage_root}/lib/cmake/mqtt-c/mqtt-cConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_mqttc_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(mqtt-c_FOUND TRUE)\n"
+  "set(MQTTC_FOUND TRUE)\n"
+  "set(MQTTC_VERSION \"${CPKT_MQTTC_VERSION}\")\n"
+  "set(MQTTC_COMMIT \"${CPKT_MQTTC_COMMIT}\")\n"
+  "set(MQTTC_INCLUDE_DIR \"\${_cpkt_mqttc_prefix}/include\")\n"
+  "set(MQTTC_INCLUDE_DIRS \"\${MQTTC_INCLUDE_DIR}\")\n"
+  "set(MQTTC_LIBRARIES MQTT-C::mqttc)\n"
+  "if(NOT TARGET MQTT-C::mqttc)\n"
+  "  add_library(MQTT-C::mqttc STATIC IMPORTED)\n"
+  "  set_target_properties(MQTT-C::mqttc PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_mqttc_prefix}/lib/libmqttc${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${MQTTC_INCLUDE_DIR}\"\n"
+  "    INTERFACE_LINK_LIBRARIES Threads::Threads\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::mqttc_shared)\n"
+  "  add_library(cpkt::mqttc_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::mqttc_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_mqttc_prefix}/lib/${_cpkt_mqttc_shared_library_name}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${MQTTC_INCLUDE_DIR}\"\n"
+  "    INTERFACE_LINK_LIBRARIES Threads::Threads\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("mqtt-c" "mqtt-c" "${CPKT_MQTTC_VERSION}")
+
 file(MAKE_DIRECTORY "${_stage_root}/lib/pkgconfig")
 file(WRITE "${_stage_root}/lib/pkgconfig/libcrypto.pc"
   "prefix=\${pcfiledir}/../..\n"
@@ -566,6 +743,46 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-lua-runtime.pc"
   "Libs: -L\${libdir} -lcpkt_lua_runtime\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/open62541.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: open62541\n"
+  "Description: OPC UA client and server library from c.pkt.systems\n"
+  "Version: ${CPKT_OPEN62541_VERSION}\n"
+  "Requires.private: openssl\n"
+  "Libs: -L\${libdir} -lopen62541\n"
+  "Libs.private: ${_cpkt_open62541_static_private_pc_libs}\n"
+  "Cflags: -I\${includedir} -D_GNU_SOURCE\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-opcua.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-opcua\n"
+  "Description: C89-safe OPC UA facade from c.pkt.systems\n"
+  "Version: ${CPKT_OPEN62541_VERSION}\n"
+  "Requires.private: open62541\n"
+  "Libs: -L\${libdir} -lcpkt_opcua\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/mqtt-c.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: MQTT-C\n"
+  "Description: Portable MQTT v3.1.1 client library from c.pkt.systems\n"
+  "Version: ${CPKT_MQTTC_VERSION}\n"
+  "Libs: -L\${libdir} -lmqttc\n"
+  "Libs.private: -pthread\n"
+  "Cflags: -I\${includedir}\n"
+)
 
 file(MAKE_DIRECTORY "${_stage_root}/share/c.pkt.systems")
 file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
@@ -578,8 +795,29 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "libssh2_version=${CPKT_LIBSSH2_VERSION}\n"
   "libxml2_version=${CPKT_LIBXML2_VERSION}\n"
   "lua_version=${CPKT_LUA_VERSION}\n"
+  "mqtt_c_version=${CPKT_MQTTC_VERSION}\n"
+  "mqtt_c_commit=${CPKT_MQTTC_COMMIT}\n"
+  "open62541_version=${CPKT_OPEN62541_VERSION}\n"
+  "open62541_patchset=${CPKT_OPEN62541_PATCHSET}\n"
   "lua_runtime_abi_version=${CPKT_LUA_RUNTIME_ABI_VERSION}\n"
+  "opcua_abi_version=${CPKT_OPCUA_ABI_VERSION}\n"
 )
+
+file(MAKE_DIRECTORY
+  "${_stage_root}/share/doc/c.pkt.systems"
+  "${_stage_root}/share/doc/c.pkt.systems/docs")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/LICENSE"
+  "${_stage_root}/share/doc/c.pkt.systems/LICENSE")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/README.md"
+  "${_stage_root}/share/doc/c.pkt.systems/README.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/opcua-c89-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md")
+file(COPY
+  "${CPKT_SOURCE_DIR}/examples/"
+  DESTINATION "${_stage_root}/share/doc/c.pkt.systems/examples")
 
 function(cpkt_stage_license package_name source_path)
   if(NOT EXISTS "${source_path}")
@@ -599,9 +837,31 @@ cpkt_stage_license("zlib" "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib/src/LICENSE")
 cpkt_stage_license("nghttp2" "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2/src/COPYING")
 cpkt_stage_license("libxml2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2/src/Copyright")
 cpkt_stage_license("lua" "${CPKT_DEPENDENCY_BUILD_ROOT}/lua/src/src/lua.h")
+cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
+cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src/LICENSE")
+file(MAKE_DIRECTORY "${_stage_root}/share/doc/c.pkt.systems/third_party/open62541/patches")
+file(COPY
+  "${CPKT_SOURCE_DIR}/vendor/open62541/patches/series"
+  DESTINATION "${_stage_root}/share/doc/c.pkt.systems/third_party/open62541/patches")
+file(READ "${CPKT_SOURCE_DIR}/vendor/open62541/patches/series" _cpkt_open62541_patch_series)
+string(REPLACE "\r\n" "\n" _cpkt_open62541_patch_series "${_cpkt_open62541_patch_series}")
+string(REPLACE "\n" ";" _cpkt_open62541_patch_entries "${_cpkt_open62541_patch_series}")
+foreach(_cpkt_open62541_patch IN LISTS _cpkt_open62541_patch_entries)
+  string(STRIP "${_cpkt_open62541_patch}" _cpkt_open62541_patch)
+  if(_cpkt_open62541_patch STREQUAL "" OR _cpkt_open62541_patch MATCHES "^#")
+    continue()
+  endif()
+  set(_cpkt_open62541_patch_path "${CPKT_SOURCE_DIR}/vendor/open62541/patches/${_cpkt_open62541_patch}")
+  if(NOT EXISTS "${_cpkt_open62541_patch_path}")
+    message(FATAL_ERROR "open62541 patch listed in series does not exist: ${_cpkt_open62541_patch_path}")
+  endif()
+  file(COPY
+    "${_cpkt_open62541_patch_path}"
+    DESTINATION "${_stage_root}/share/doc/c.pkt.systems/third_party/open62541/patches")
+endforeach()
 
 execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E tar czf "${_archive_path}" "${_archive_stem}"
+  COMMAND "${_cpkt_gnu_tar}" --sort=name --owner=0 --group=0 --numeric-owner -czf "${_archive_path}" -- "${_archive_stem}"
   WORKING_DIRECTORY "${_stage_parent}"
   RESULT_VARIABLE _tar_result
   ERROR_VARIABLE _tar_error

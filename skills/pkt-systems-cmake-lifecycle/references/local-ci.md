@@ -15,15 +15,13 @@ Broader local confidence:
 
 Release confidence:
 
-1. the explicit applicable pre-release gates, or `make world` when the repository defines it as the accepted umbrella gate
+1. the explicit applicable pre-release gates
 2. independent review on the feature branch
-3. final clean release package build from the tagged main commit
+3. final clean `make release` package build from the tagged main commit
 
 `make test-all` includes fast host tests, host release tests when useful, cross tests that can execute locally or through an approved runner, sanitizer tests when affordable, deterministic e2e when part of normal confidence, and benchmark gates when performance is a product property.
 
-`make world`, when present, is the expensive clean-slate umbrella gate. It runs clean, dependency setup, debug tests, host/release tests, cross tests, sanitizer tests, fuzz smoke or fuzz, deterministic e2e, benchmark gates, package verification, and release archive verification. Optional unavailable tools may be skipped only with explicit messages when absence is acceptable.
-
-Do not require `make world` merely because the lifecycle is being consolidated. Add it when the repository benefits from one top-level exhaustive local gate. Otherwise, make the release procedure call the explicit applicable gates directly.
+Do not add a separate umbrella target as a standard lifecycle target. The exhaustive clean-slate release gate is `make release`; expensive pre-release confidence belongs in `make prerelease-hardening` or another documented rehearsal target that does not replace final release.
 
 Recommended production-loop tiers:
 
@@ -47,6 +45,7 @@ Add tests that assert observable behavior:
 - C89 or project-selected C standard compatibility for installed SDK consumers.
 - Optional C++ consumer builds when headers must be C++ compatible.
 - Warning-clean builds with strict flags for project-owned code.
+- Warning-clean release builds with warnings treated as errors for all project-owned or otherwise controllable code, including facades, wrappers, generated project-owned sources, examples, tests, package smoke consumers, and release verification helpers. Exclude upstream dependency warnings only when they are outside practical project control, and document the boundary in the warning regression test.
 - Install-tree downstream consumers through CMake `find_package`.
 - Install-tree downstream consumers through pkg-config when pkg-config is shipped.
 - Examples built from the source tree and, when shipped, from installed examples.
@@ -120,7 +119,7 @@ Contract:
 
 - `fuzz/` or `tests/fuzz/` contains fuzz targets and seeds.
 - `fuzz` preset builds with libFuzzer or the selected engine.
-- `make fuzz-smoke` runs bounded short jobs suitable for `world`.
+- `make fuzz-smoke` runs bounded short jobs suitable for `prerelease`, `prerelease-hardening`, or `release` when fuzzing is part of the release gate.
 - `make fuzz` runs standard bounded local jobs.
 - `make fuzz-long` is opt-in and may run longer.
 - Regression seeds that fixed bugs should be committed.

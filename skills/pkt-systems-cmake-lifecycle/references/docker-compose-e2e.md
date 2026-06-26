@@ -72,7 +72,7 @@ Optional external tool e2e:
 - They must not be part of fast local gates unless the tool is already locally available, deterministic, and bounded.
 - If they require host networking or broad container privileges, document that as an explicit local-only debugging gate and keep it out of mandatory release gates unless the engineer accepts that operational dependency.
 
-Real cloud services and real credentials belong under `test-integration`, require explicit opt-in environment variables, and are excluded from `world` unless the engineer explicitly makes them mandatory.
+Real cloud services and real credentials belong under `test-integration`, require explicit opt-in environment variables, and are excluded from `release` unless the engineer explicitly makes them mandatory.
 
 Local e2e automation policy:
 
@@ -86,4 +86,3 @@ Local e2e automation policy:
 - Provide a keep flag such as `<P>_E2E_KEEP_DEVSERVICES=1` for debugging service failures.
 - `dev-reset` must remove generated service state under `devenv/volumes` but must not remove source-controlled config or placeholders.
 - Local CI/CD may include deterministic e2e in `test-all` or release gates when it is reliable and bounded. If e2e is slow or requires optional services, keep it as an explicit `make test-e2e` release gate rather than a default fast-test dependency.
-

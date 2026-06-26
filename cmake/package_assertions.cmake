@@ -1,12 +1,4 @@
-function(cpkt_find_darwin_otool out_var)
-  if(DEFINED CPKT_OTOOL AND NOT "${CPKT_OTOOL}" STREQUAL "")
-    if(EXISTS "${CPKT_OTOOL}")
-      set(${out_var} "${CPKT_OTOOL}" PARENT_SCOPE)
-      return()
-    endif()
-    message(FATAL_ERROR "configured CPKT_OTOOL does not exist: ${CPKT_OTOOL}")
-  endif()
-
+function(cpkt_get_osxcross_lookup out_host_var out_hints_var)
   set(_osxcross_host "${CPKT_OSXCROSS_HOST}")
   if(_osxcross_host STREQUAL "" AND DEFINED ENV{CPKT_OSXCROSS_HOST})
     set(_osxcross_host "$ENV{CPKT_OSXCROSS_HOST}")
@@ -23,17 +15,32 @@ function(cpkt_find_darwin_otool out_var)
     set(_osxcross_root "$ENV{HOME}/.local/cross/osxcross")
   endif()
 
-  set(_otool_hints "")
+  set(_osxcross_hints "")
   if(NOT _osxcross_root STREQUAL "")
-    list(APPEND _otool_hints "${_osxcross_root}/bin")
+    list(APPEND _osxcross_hints "${_osxcross_root}/bin")
   endif()
   if(DEFINED ENV{HOME})
-    list(APPEND _otool_hints "$ENV{HOME}/.local/cross/osxcross/bin")
+    list(APPEND _osxcross_hints "$ENV{HOME}/.local/cross/osxcross/bin")
   endif()
+
+  set(${out_host_var} "${_osxcross_host}" PARENT_SCOPE)
+  set(${out_hints_var} "${_osxcross_hints}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_find_darwin_otool out_var)
+  if(DEFINED CPKT_OTOOL AND NOT "${CPKT_OTOOL}" STREQUAL "")
+    if(EXISTS "${CPKT_OTOOL}")
+      set(${out_var} "${CPKT_OTOOL}" PARENT_SCOPE)
+      return()
+    endif()
+    message(FATAL_ERROR "configured CPKT_OTOOL does not exist: ${CPKT_OTOOL}")
+  endif()
+
+  cpkt_get_osxcross_lookup(_osxcross_host _osxcross_hints)
 
   find_program(_cpkt_otool_bin
     NAMES "${_osxcross_host}-otool" arm64-apple-darwin25-otool otool
-    HINTS ${_otool_hints})
+    HINTS ${_osxcross_hints})
   if(NOT _cpkt_otool_bin)
     message(FATAL_ERROR
       "otool is required to verify Darwin package artifacts; tried ${_osxcross_host}-otool, arm64-apple-darwin25-otool, and otool")
@@ -41,56 +48,6 @@ function(cpkt_find_darwin_otool out_var)
 
   set(${out_var} "${_cpkt_otool_bin}" PARENT_SCOPE)
 endfunction()
-
-if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP)
-  cpkt_find_darwin_otool(_cpkt_test_otool)
-  message(STATUS "CPKT_TEST_OTOOL=${_cpkt_test_otool}")
-  return()
-endif()
-
-foreach(_required CPKT_ARCHIVE CPKT_TARGET_ID CPKT_BUNDLE_VERSION)
-  if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
-    message(FATAL_ERROR "${_required} is required")
-  endif()
-endforeach()
-
-if(NOT EXISTS "${CPKT_ARCHIVE}")
-  message(FATAL_ERROR "missing package archive: ${CPKT_ARCHIVE}")
-endif()
-get_filename_component(CPKT_ARCHIVE "${CPKT_ARCHIVE}" ABSOLUTE)
-get_filename_component(_archive_dir "${CPKT_ARCHIVE}" DIRECTORY)
-get_filename_component(_archive_name "${CPKT_ARCHIVE}" NAME)
-set(_archive_stem "c.pkt.systems-${CPKT_BUNDLE_VERSION}-${CPKT_TARGET_ID}")
-string(REGEX REPLACE "([][+.*()^$?{}|\\])" "\\\\\\1" _archive_stem_re "${_archive_stem}")
-set(_checksums_path "${_archive_dir}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECKSUMS")
-if(NOT EXISTS "${_checksums_path}")
-  message(FATAL_ERROR "missing package checksums: ${_checksums_path}")
-endif()
-
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E tar tf "${CPKT_ARCHIVE}"
-  RESULT_VARIABLE _list_result
-  OUTPUT_VARIABLE _listing
-  ERROR_VARIABLE _list_error
-)
-if(NOT _list_result EQUAL 0)
-  message(FATAL_ERROR "failed to list ${CPKT_ARCHIVE}\n${_list_error}")
-endif()
-
-if(_listing MATCHES "(^|\n)\\./")
-  message(FATAL_ERROR "archive entries must be rooted at ${_archive_stem}, not ./")
-endif()
-foreach(_internal_root cmocka curl libssh2 libxml2 lua nghttp2 openssl zlib)
-  if(_listing MATCHES "(^|\n)${_internal_root}/")
-    message(FATAL_ERROR "archive exposes internal dependency root: ${_internal_root}/")
-  endif()
-endforeach()
-if(_listing MATCHES "(^|\n)${_archive_stem_re}/[^ \n]*/install/")
-  message(FATAL_ERROR "archive exposes internal install/ directories")
-endif()
-if(_listing MATCHES "(^|\n)${_archive_stem_re}/([^ \n]*/)*cmocka")
-  message(FATAL_ERROR "release archive must not contain cmocka")
-endif()
 
 function(cpkt_assert_archive_contains regex description)
   if(NOT _listing MATCHES "${regex}")
@@ -135,6 +92,258 @@ function(cpkt_extract_archive_for_assertions out_var)
   set(${out_var} "${_extract_root}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_find_nm out_var)
+  if(DEFINED CPKT_NM AND NOT "${CPKT_NM}" STREQUAL "")
+    if(EXISTS "${CPKT_NM}")
+      set(${out_var} "${CPKT_NM}" PARENT_SCOPE)
+      return()
+    endif()
+    message(FATAL_ERROR "configured CPKT_NM does not exist: ${CPKT_NM}")
+  endif()
+
+  set(_nm_names "${CPKT_TARGET_ID}-nm" llvm-nm nm)
+  set(_nm_hints "")
+  if(CPKT_TARGET_ID MATCHES "darwin")
+    cpkt_get_osxcross_lookup(_osxcross_host _osxcross_hints)
+    set(_nm_names "${_osxcross_host}-nm" "${CPKT_TARGET_ID}-nm" llvm-nm nm)
+    set(_nm_hints ${_osxcross_hints})
+  endif()
+
+  find_program(_cpkt_nm_bin
+    NAMES ${_nm_names}
+    HINTS ${_nm_hints})
+  if(NOT _cpkt_nm_bin)
+    message(FATAL_ERROR "nm is required to verify packaged static archive symbols")
+  endif()
+
+  set(${out_var} "${_cpkt_nm_bin}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_find_ar out_var)
+  if(DEFINED CPKT_AR AND NOT "${CPKT_AR}" STREQUAL "")
+    if(EXISTS "${CPKT_AR}")
+      set(${out_var} "${CPKT_AR}" PARENT_SCOPE)
+      return()
+    endif()
+    message(FATAL_ERROR "configured CPKT_AR does not exist: ${CPKT_AR}")
+  endif()
+
+  find_program(_cpkt_ar_bin
+    NAMES "${CPKT_TARGET_ID}-ar" llvm-ar ar)
+  if(NOT _cpkt_ar_bin)
+    message(FATAL_ERROR "ar is required to verify packaged static archive contents")
+  endif()
+
+  set(${out_var} "${_cpkt_ar_bin}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_find_readelf out_var)
+  if(DEFINED CPKT_READELF AND NOT "${CPKT_READELF}" STREQUAL "")
+    if(EXISTS "${CPKT_READELF}")
+      set(${out_var} "${CPKT_READELF}" PARENT_SCOPE)
+      return()
+    endif()
+    message(FATAL_ERROR "configured CPKT_READELF does not exist: ${CPKT_READELF}")
+  endif()
+
+  find_program(_cpkt_readelf_bin
+    NAMES "${CPKT_TARGET_ID}-readelf" llvm-readelf readelf)
+  if(NOT _cpkt_readelf_bin)
+    message(FATAL_ERROR "readelf is required to verify packaged static archive objects")
+  endif()
+
+  set(${out_var} "${_cpkt_readelf_bin}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_read_defined_symbols out_var archive_path description)
+  set(_nm_args -g --defined-only)
+
+  if(NOT EXISTS "${archive_path}")
+    message(FATAL_ERROR "missing ${description}: ${archive_path}")
+  endif()
+  cpkt_find_nm(_cpkt_nm)
+  if(CPKT_TARGET_ID MATCHES "darwin")
+    set(_nm_args -gU)
+  endif()
+  execute_process(
+    COMMAND "${_cpkt_nm}" ${_nm_args} "${archive_path}"
+    RESULT_VARIABLE _nm_result
+    OUTPUT_VARIABLE _nm_output
+    ERROR_VARIABLE _nm_error
+  )
+  if(NOT _nm_result EQUAL 0)
+    message(FATAL_ERROR "failed to read symbols from ${description}: ${archive_path}\n${_nm_error}")
+  endif()
+  set(${out_var} "${_nm_output}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_assert_static_archive_lacks_lto archive_path description)
+  if(NOT EXISTS "${archive_path}")
+    message(FATAL_ERROR "missing ${description}: ${archive_path}")
+  endif()
+
+  cpkt_find_ar(_cpkt_ar)
+  cpkt_find_readelf(_cpkt_readelf)
+  string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef _archive_extract_suffix)
+  set(_archive_extract_dir
+    "${CMAKE_CURRENT_BINARY_DIR}/package-assertions-${_archive_stem}-archive-${_archive_extract_suffix}")
+  file(REMOVE_RECURSE "${_archive_extract_dir}")
+  file(MAKE_DIRECTORY "${_archive_extract_dir}")
+  execute_process(
+    COMMAND "${_cpkt_ar}" x "${archive_path}"
+    WORKING_DIRECTORY "${_archive_extract_dir}"
+    RESULT_VARIABLE _ar_result
+    ERROR_VARIABLE _ar_error
+  )
+  if(NOT _ar_result EQUAL 0)
+    message(FATAL_ERROR "failed to extract ${description}: ${archive_path}\n${_ar_error}")
+  endif()
+
+  file(GLOB _archive_objects "${_archive_extract_dir}/*")
+  foreach(_archive_object IN LISTS _archive_objects)
+    if(IS_DIRECTORY "${_archive_object}")
+      continue()
+    endif()
+    execute_process(
+      COMMAND "${_cpkt_readelf}" -S "${_archive_object}"
+      RESULT_VARIABLE _readelf_result
+      OUTPUT_VARIABLE _readelf_output
+      ERROR_VARIABLE _readelf_error
+    )
+    if(NOT _readelf_result EQUAL 0)
+      message(FATAL_ERROR
+        "failed to inspect object from ${description}: ${_archive_object}\n${_readelf_error}")
+    endif()
+    if(_readelf_output MATCHES "\\.gnu\\.lto")
+      message(FATAL_ERROR
+        "${description} contains LTO object sections that can emit upstream diagnostics during downstream links: ${archive_path}")
+    endif()
+  endforeach()
+  file(REMOVE_RECURSE "${_archive_extract_dir}")
+endfunction()
+
+function(cpkt_assert_darwin_install_name file_path expected_install_name description)
+  cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
+  if(NOT CPKT_OTOOL_BIN)
+    message(FATAL_ERROR "otool is required to verify ${description}")
+  endif()
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
+    RESULT_VARIABLE _otool_result
+    OUTPUT_VARIABLE _otool_output
+    ERROR_VARIABLE _otool_error
+  )
+  if(NOT _otool_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_otool_error}")
+  endif()
+  string(REPLACE "\r\n" "\n" _otool_output "${_otool_output}")
+  string(REPLACE "\n" ";" _otool_lines "${_otool_output}")
+  set(_install_name_found OFF)
+  foreach(_otool_line IN LISTS _otool_lines)
+    string(STRIP "${_otool_line}" _otool_line)
+    if(_otool_line STREQUAL "${expected_install_name}")
+      set(_install_name_found ON)
+    endif()
+  endforeach()
+  if(NOT _install_name_found)
+    message(FATAL_ERROR "${description} must have Darwin install name [${expected_install_name}]")
+  endif()
+endfunction()
+
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP)
+  cpkt_find_darwin_otool(_cpkt_test_otool)
+  message(STATUS "CPKT_TEST_OTOOL=${_cpkt_test_otool}")
+endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP)
+  cpkt_find_nm(_cpkt_test_nm)
+  message(STATUS "CPKT_TEST_NM=${_cpkt_test_nm}")
+endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ)
+  cpkt_read_defined_symbols(_cpkt_test_symbols "${CPKT_PACKAGE_ASSERTIONS_TEST_ARCHIVE}" "test archive")
+  message(STATUS "CPKT_TEST_SYMBOLS=${_cpkt_test_symbols}")
+endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME)
+  cpkt_assert_darwin_install_name(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_INSTALL_NAME}"
+    "test Darwin install name")
+  message(STATUS "CPKT_TEST_DARWIN_INSTALL_NAME=ok")
+endif()
+if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME))
+  return()
+endif()
+
+foreach(_required CPKT_ARCHIVE CPKT_TARGET_ID CPKT_BUNDLE_VERSION)
+  if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
+    message(FATAL_ERROR "${_required} is required")
+  endif()
+endforeach()
+
+if(NOT EXISTS "${CPKT_ARCHIVE}")
+  message(FATAL_ERROR "missing package archive: ${CPKT_ARCHIVE}")
+endif()
+get_filename_component(CPKT_ARCHIVE "${CPKT_ARCHIVE}" ABSOLUTE)
+get_filename_component(_archive_dir "${CPKT_ARCHIVE}" DIRECTORY)
+get_filename_component(_archive_name "${CPKT_ARCHIVE}" NAME)
+set(_archive_stem "c.pkt.systems-${CPKT_BUNDLE_VERSION}-${CPKT_TARGET_ID}")
+string(REGEX REPLACE "([][+.*()^$?{}|\\])" "\\\\\\1" _archive_stem_re "${_archive_stem}")
+set(_checksums_path "${_archive_dir}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECKSUMS")
+if(NOT EXISTS "${_checksums_path}")
+  message(FATAL_ERROR "missing package checksums: ${_checksums_path}")
+endif()
+
+execute_process(
+  COMMAND "${CMAKE_COMMAND}" -E tar tf "${CPKT_ARCHIVE}"
+  RESULT_VARIABLE _list_result
+  OUTPUT_VARIABLE _listing
+  ERROR_VARIABLE _list_error
+)
+if(NOT _list_result EQUAL 0)
+  message(FATAL_ERROR "failed to list ${CPKT_ARCHIVE}\n${_list_error}")
+endif()
+
+execute_process(
+  COMMAND tar --numeric-owner -tvf "${CPKT_ARCHIVE}"
+  RESULT_VARIABLE _owner_list_result
+  OUTPUT_VARIABLE _owner_listing
+  ERROR_VARIABLE _owner_list_error
+)
+if(NOT _owner_list_result EQUAL 0)
+  message(FATAL_ERROR "failed to list package archive ownership: ${CPKT_ARCHIVE}\n${_owner_list_error}")
+endif()
+string(REPLACE "\r\n" "\n" _owner_listing "${_owner_listing}")
+string(REPLACE "\n" ";" _owner_lines "${_owner_listing}")
+foreach(_owner_line IN LISTS _owner_lines)
+  if(_owner_line STREQUAL "")
+    continue()
+  endif()
+  if(NOT _owner_line MATCHES "^[^ ]+[ ]+0/0[ ]+")
+    message(FATAL_ERROR "package archive entries must be owned by 0/0: ${_owner_line}")
+  endif()
+endforeach()
+
+if(_listing MATCHES "(^|\n)\\./")
+  message(FATAL_ERROR "archive entries must be rooted at ${_archive_stem}, not ./")
+endif()
+foreach(_internal_root cmocka curl libssh2 libxml2 lua mqtt-c nghttp2 openssl zlib)
+  if(_listing MATCHES "(^|\n)${_internal_root}/")
+    message(FATAL_ERROR "archive exposes internal dependency root: ${_internal_root}/")
+  endif()
+endforeach()
+if(_listing MATCHES "(^|\n)${_archive_stem_re}/[^ \n]*/install/")
+  message(FATAL_ERROR "archive exposes internal install/ directories")
+endif()
+if(_listing MATCHES "(^|\n)${_archive_stem_re}/([^ \n]*/)*cmocka")
+  message(FATAL_ERROR "release archive must not contain cmocka")
+endif()
+
 cpkt_extract_archive_for_assertions(_manifest_extract_root)
 set(_manifest_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/manifest.txt")
 if(NOT EXISTS "${_manifest_path}")
@@ -145,6 +354,27 @@ if(NOT _manifest_text MATCHES "(^|\n)lua_runtime_abi_version=([A-Za-z0-9_.+-]+)(
   message(FATAL_ERROR "package manifest is missing lua_runtime_abi_version")
 endif()
 set(_manifest_lua_runtime_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)opcua_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing opcua_abi_version")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)open62541_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing open62541_version")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)open62541_patchset=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing open62541_patchset")
+endif()
+set(_manifest_open62541_patchset "${CMAKE_MATCH_2}")
+if(DEFINED CPKT_OPEN62541_PATCHSET AND NOT "${CPKT_OPEN62541_PATCHSET}" STREQUAL "" AND
+    NOT "${CPKT_OPEN62541_PATCHSET}" STREQUAL "${_manifest_open62541_patchset}")
+  message(FATAL_ERROR
+    "configured open62541 patchset ${CPKT_OPEN62541_PATCHSET} does not match package manifest patchset ${_manifest_open62541_patchset}")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing mqtt_c_version")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_commit=([A-Fa-f0-9]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing mqtt_c_commit")
+endif()
 if(DEFINED CPKT_LUA_RUNTIME_ABI_VERSION AND NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "")
   if(NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "${_manifest_lua_runtime_abi_version}")
     message(FATAL_ERROR
@@ -201,29 +431,6 @@ function(cpkt_assert_elf_soname file_path expected_soname description)
   endif()
 endfunction()
 
-function(cpkt_assert_darwin_install_name file_path expected_install_name description)
-  cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
-  if(NOT CPKT_OTOOL_BIN)
-    message(FATAL_ERROR "otool is required to verify ${description}")
-  endif()
-  if(NOT EXISTS "${file_path}")
-    message(FATAL_ERROR "missing ${description}: ${file_path}")
-  endif()
-
-  execute_process(
-    COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
-    RESULT_VARIABLE _otool_result
-    OUTPUT_VARIABLE _otool_output
-    ERROR_VARIABLE _otool_error
-  )
-  if(NOT _otool_result EQUAL 0)
-    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_otool_error}")
-  endif()
-  if(NOT _otool_output MATCHES "(^|\n)${expected_install_name}(\n|$)")
-    message(FATAL_ERROR "${description} must have Darwin install name [${expected_install_name}]")
-  endif()
-endfunction()
-
 foreach(_path
     "include/openssl/ssl.h"
     "lib/libssl.a"
@@ -262,26 +469,90 @@ foreach(_path
     "include/lua.h"
     "include/lauxlib.h"
     "include/lualib.h"
+    "include/mqtt.h"
+    "include/mqtt_pal.h"
+    "include/open62541/client.h"
+    "include/open62541/server.h"
+    "include/open62541/plugin/securitypolicy.h"
     "include/cpkt/lua_runtime.h"
+    "include/cpkt/opcua.h"
     "lib/liblua.a"
+    "lib/libmqttc.a"
+    "lib/libopen62541.a"
     "lib/libcpkt_lua_runtime.a"
+    "lib/libcpkt_opcua.a"
     "lib/cmake/Lua/LuaConfig.cmake"
     "lib/cmake/Lua/LuaConfigVersion.cmake"
+    "lib/cmake/mqtt-c/mqtt-cConfig.cmake"
+    "lib/cmake/mqtt-c/mqtt-cConfigVersion.cmake"
     "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
     "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
+    "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
+    "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
+    "lib/cmake/open62541/open62541Config.cmake"
+    "lib/cmake/open62541/open62541ConfigVersion.cmake"
     "lib/pkgconfig/lua.pc"
     "lib/pkgconfig/lua5.5.pc"
+    "lib/pkgconfig/mqtt-c.pc"
     "lib/pkgconfig/cpkt-lua-runtime.pc"
+    "lib/pkgconfig/cpkt-opcua.pc"
+    "lib/pkgconfig/open62541.pc"
     "share/c.pkt.systems/manifest.txt"
+    "share/doc/c.pkt.systems/LICENSE"
+    "share/doc/c.pkt.systems/README.md"
+    "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/examples/abi_smoke.c"
+    "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/lua-runtime-c89/build-pkg-config.sh"
+    "share/doc/c.pkt.systems/examples/lua-runtime-c89/host_module.c"
+    "share/doc/c.pkt.systems/examples/lua-runtime-c89/main.c"
+    "share/doc/c.pkt.systems/examples/mqttc_smoke.c"
+    "share/doc/c.pkt.systems/examples/opcua-c89/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/opcua-c89/build-pkg-config.sh"
+    "share/doc/c.pkt.systems/examples/opcua-c89/main.c"
+    "share/doc/c.pkt.systems/examples/pkg-config-consumer/build.sh"
     "share/doc/c.pkt.systems/third_party/openssl/LICENSE"
     "share/doc/c.pkt.systems/third_party/curl/LICENSE"
     "share/doc/c.pkt.systems/third_party/libssh2/LICENSE"
     "share/doc/c.pkt.systems/third_party/zlib/LICENSE"
     "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE"
     "share/doc/c.pkt.systems/third_party/libxml2/LICENSE"
-    "share/doc/c.pkt.systems/third_party/lua/LICENSE")
+    "share/doc/c.pkt.systems/third_party/lua/LICENSE"
+    "share/doc/c.pkt.systems/third_party/mqtt-c/LICENSE"
+    "share/doc/c.pkt.systems/third_party/open62541/LICENSE"
+    "share/doc/c.pkt.systems/third_party/open62541/patches/series"
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0002-avoid-glibc-private-stdio-limit-header-on-musl.patch"
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch"
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0004-avoid-cert-store-path-strncpy-warning.patch")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
 endforeach()
+
+cpkt_extract_archive_for_assertions(_symbol_extract_root)
+set(_symbol_root "${_symbol_extract_root}/${_archive_stem}")
+if(CPKT_TARGET_ID MATCHES "linux")
+  file(GLOB _packaged_static_archives "${_symbol_root}/lib/*.a")
+  foreach(_packaged_static_archive IN LISTS _packaged_static_archives)
+    get_filename_component(_packaged_static_archive_name "${_packaged_static_archive}" NAME)
+    cpkt_assert_static_archive_lacks_lto(
+      "${_packaged_static_archive}"
+      "${_packaged_static_archive_name}")
+  endforeach()
+endif()
+set(_raw_mqtt_symbol_regex "(^|\n)[0-9A-Fa-f ]+ [A-Za-z] _?(__mqtt_|mqtt_)")
+cpkt_read_defined_symbols(_mqttc_symbols "${_symbol_root}/lib/libmqttc.a" "standalone MQTT-C static archive")
+if(NOT _mqttc_symbols MATCHES "${_raw_mqtt_symbol_regex}")
+  message(FATAL_ERROR "standalone MQTT-C archive does not expose expected MQTT-C symbols")
+endif()
+cpkt_read_defined_symbols(_open62541_symbols "${_symbol_root}/lib/libopen62541.a" "open62541 static archive")
+if(_open62541_symbols MATCHES "${_raw_mqtt_symbol_regex}")
+  message(FATAL_ERROR "open62541 archive exposes unprefixed embedded MQTT-C symbols")
+endif()
+if(NOT _open62541_symbols MATCHES "(^|\n)[0-9A-Fa-f ]+ [A-Za-z] _?cpkt_open62541_mqtt_")
+  message(FATAL_ERROR "open62541 archive does not expose prefixed embedded MQTT-C symbols")
+endif()
+file(REMOVE_RECURSE "${_symbol_extract_root}")
 
 foreach(_path
     "lib/cmake/Libssh2/"
@@ -326,11 +597,46 @@ foreach(_forbidden_header_token
 endforeach()
 file(REMOVE_RECURSE "${_facade_header_extract_root}")
 
+cpkt_extract_archive_for_assertions(_opcua_facade_header_extract_root)
+set(_opcua_facade_header "${_opcua_facade_header_extract_root}/${_archive_stem}/include/cpkt/opcua.h")
+if(NOT EXISTS "${_opcua_facade_header}")
+  message(FATAL_ERROR "missing OPC UA C89 facade header: ${_opcua_facade_header}")
+endif()
+file(READ "${_opcua_facade_header}" _opcua_facade_header_text)
+foreach(_forbidden_header_token
+    "open62541/"
+    "UA_Client"
+    "UA_Server"
+    "UA_StatusCode"
+    "UA_NodeId"
+    "UA_Variant"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint8_t"
+    "uint16_t"
+    "uint32_t"
+    "uint64_t"
+    "int8_t"
+    "int16_t"
+    "int32_t"
+    "int64_t"
+    "long long"
+    "inline")
+  if(_opcua_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "OPC UA C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_opcua_facade_header_extract_root}")
+
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime([^/]*)?\\.dylib$"
     3
     "Lua runtime facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_opcua([^/]*)?\\.dylib$"
+    3
+    "OPC UA facade Darwin shared library entries")
   foreach(_path
       "lib/libssl.dylib"
       "lib/libcrypto.dylib"
@@ -343,6 +649,12 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libxml2.16.dylib"
       "lib/liblua.dylib"
       "lib/liblua.5.5.dylib"
+      "lib/libmqttc.dylib"
+      "lib/libmqttc.1.dylib"
+      "lib/libmqttc.1.1.2.dylib"
+      "lib/libopen62541.dylib"
+      "lib/libopen62541.1.5.dylib"
+      "lib/libopen62541.1.5.4.dylib"
       "lib/libcpkt_lua_runtime.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
@@ -353,12 +665,20 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
     "@rpath/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
     "libcpkt_lua_runtime Darwin install name")
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.1.1.2.dylib"
+    "@rpath/libmqttc.1.dylib"
+    "libmqttc Darwin install name")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
   cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime\\.so([^/]*)?$"
     3
     "Lua runtime facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_opcua\\.so([^/]*)?$"
+    3
+    "OPC UA facade Linux shared library entries")
   foreach(_path
       "lib/libssl.so"
       "lib/libcrypto.so"
@@ -375,10 +695,24 @@ else()
       "lib/liblua.so"
       "lib/liblua.so.5.5"
       "lib/liblua.so.5.5.0"
+      "lib/libmqttc.so"
+      "lib/libmqttc.so.1"
+      "lib/libmqttc.so.1.1.2"
+      "lib/libopen62541.so"
+      "lib/libopen62541.so.1.5"
+      "lib/libopen62541.so.1.5.4"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
       "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
+  endforeach()
+
+  foreach(_legacy_open62541_path
+      "lib/libopen62541.so.0.4"
+      "lib/libopen62541.so.0.4.0")
+    cpkt_assert_archive_lacks(
+      "(^|\n)${_archive_stem_re}/${_legacy_open62541_path}(\n|$)"
+      "${_legacy_open62541_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
   foreach(_runpath_library
@@ -387,6 +721,7 @@ else()
       "lib/libssh2.so.1.0.1"
       "lib/libcurl.so.4.8.0"
       "lib/libxml2.so.16.1.3"
+      "lib/libmqttc.so.1.1.2"
       "lib/libcpkt_lua_runtime.so")
     cpkt_assert_elf_runpath(
       "${_assert_extract_root}/${_archive_stem}/${_runpath_library}"
@@ -397,6 +732,10 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
     "libcpkt_lua_runtime SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
+    "libmqttc.so.1"
+    "libmqttc SONAME")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 endif()
 

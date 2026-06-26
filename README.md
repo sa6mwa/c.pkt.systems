@@ -11,6 +11,8 @@ The project builds release artifacts for:
 - curl
 - libxml2
 - Lua
+- MQTT-C
+- open62541
 - cmocka, for test builds on Linux targets
 
 Release tarballs always contain the complete installable SDK surface: headers,
@@ -41,12 +43,22 @@ make release
 
 This builds each dependency tree, runs the ABI/link smoke tests where the target
 can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
-writes `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive
-contents. Package verification also extracts each tarball and builds downstream
+writes `dist/c.pkt.systems-<version>.tar.gz` for source builds, writes
+`dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
+Package verification also extracts each binary tarball and builds downstream
 CMake and pkg-config consumers for every shipped dependency package, asserting
 that static link requirements propagate through the shipped metadata. Linux
 consumers are run when executable locally or through the configured emulator;
-Darwin consumers are configure/link checked when osxcross is available.
+Darwin consumers are configure/link checked when osxcross is available. Source
+archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,
+verifies that non-git version resolution uses the injected `VERSION` file, and
+builds/runs the facade-only local tests from the extracted tree.
+
+To build only the source archive:
+
+```sh
+make source-archive
+```
 
 To verify existing archives:
 
@@ -83,6 +95,12 @@ lib/cmake/Lua/LuaConfig.cmake
 lib/cmake/Lua/LuaConfigVersion.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake
+lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake
+lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake
+lib/cmake/mqtt-c/mqtt-cConfig.cmake
+lib/cmake/mqtt-c/mqtt-cConfigVersion.cmake
+lib/cmake/open62541/open62541Config.cmake
+lib/cmake/open62541/open62541ConfigVersion.cmake
 lib/pkgconfig/libcrypto.pc
 lib/pkgconfig/libssl.pc
 lib/pkgconfig/openssl.pc
@@ -94,6 +112,9 @@ lib/pkgconfig/libxml-2.0.pc
 lib/pkgconfig/lua.pc
 lib/pkgconfig/lua5.5.pc
 lib/pkgconfig/cpkt-lua-runtime.pc
+lib/pkgconfig/cpkt-opcua.pc
+lib/pkgconfig/mqtt-c.pc
+lib/pkgconfig/open62541.pc
 share/c.pkt.systems/manifest.txt
 share/doc/c.pkt.systems/third_party/<dependency>/LICENSE
 ```
@@ -125,11 +146,25 @@ CURL::libcurl
 LibXml2::LibXml2
 Lua::Lua
 cpkt::lua_runtime
+MQTT-C::mqttc
+open62541::open62541
+cpkt::opcua
 ```
 
 Static transitive dependencies are part of the imported targets. Consumers
 should not add private workaround libraries such as `-ldl`, `-pthread`,
 `-latomic`, zlib, nghttp2, libssh2, OpenSSL, or Darwin frameworks by hand.
+The bundled `open62541::open62541` target is built with OpenSSL-backed
+security policy support, the upstream default reduced namespace zero, and static
+OpenSSL plus POSIX system-library requirements carried through the imported
+target. Full namespace-zero builds require the upstream UA-Nodeset submodule as
+an additional third-party source and are not enabled in this bundle.
+The bundled MQTT-C package is also available as `MQTT-C::mqttc` and
+`cpkt::mqttc_shared`. open62541's MQTT transport embeds MQTT-C source internally
+as upstream expects so it can provide open62541's EventLoop-backed MQTT-C PAL.
+c.pkt.systems applies an MPL-2.0 patch that prefixes the embedded MQTT-C symbols
+inside open62541, so consumers may also link the standalone MQTT-C package
+without duplicate `mqtt_*` symbols from open62541.
 
 Direct package-directory lookup is also supported for packages with bundled
 dependencies:
@@ -157,6 +192,22 @@ OpenSSL consumers:
 PKG_CONFIG_PATH= \
 PKG_CONFIG_LIBDIR=/path/to/c.pkt.systems-<version>-<target>/lib/pkgconfig \
   pkg-config --cflags --libs openssl
+```
+
+The bundled OPC UA library is available through `open62541.pc`:
+
+```sh
+PKG_CONFIG_PATH= \
+PKG_CONFIG_LIBDIR=/path/to/c.pkt.systems-<version>-<target>/lib/pkgconfig \
+  pkg-config --static --cflags --libs open62541
+```
+
+The standalone MQTT-C library is available through `mqtt-c.pc`:
+
+```sh
+PKG_CONFIG_PATH= \
+PKG_CONFIG_LIBDIR=/path/to/c.pkt.systems-<version>-<target>/lib/pkgconfig \
+  pkg-config --static --cflags --libs mqtt-c
 ```
 
 The repository includes a representative pkg-config consumer:
@@ -200,6 +251,41 @@ Consumers can:
 The facade does not expose a general stack/value API. Consumers that need stack
 operations, returned Lua values, metatables, userdata manipulation, or other
 full embedding details should use `Lua::Lua` directly from C99-or-newer source.
+
+The upstream open62541 API is shipped as its native C99/C++98-compatible header
+surface under `include/open62541/`. Strict C89 applications should use the SDK
+facade instead:
+
+```text
+#include <cpkt/opcua.h>
+```
+
+The facade header does not include open62541 headers or expose `UA_Client`,
+`UA_Server`, `UA_StatusCode`, `UA_NodeId`, `UA_Variant`, fixed-width C99 integer
+types, `long long`, or inline functions. Its implementation is compiled as C99
+inside the SDK and links the bundled open62541 library.
+
+The OPC UA facade provides opaque client and server handles, C89-safe node-id
+and scalar value wrappers, explicit server startup/iterate/shutdown control,
+client connect/disconnect/iterate operations, scalar variable add/read/write
+helpers for boolean, integer, double, and string values, object nodes, child
+browse callbacks, scalar method registration and calls, client subscriptions,
+monitored value callbacks, status-name helpers, and native callback escape hatches
+for C99 translation units that need direct access to the underlying open62541
+`UA_Client *` or `UA_Server *`.
+
+Use `find_package(CpktOpcUa CONFIG REQUIRED)` and link `cpkt::opcua`, or use
+`pkg-config --static --libs cpkt-opcua`.
+
+The repository includes `examples/opcua-c89`, which builds as strict C89
+against the facade. It creates server nodes, reads and writes a scalar value,
+registers a scalar method callback, walks object children through browse
+callbacks, and builds through both CMake and pkg-config package metadata.
+
+The standalone MQTT-C headers are shipped under `include/` with the upstream MIT
+license. They are not a C89 facade; use them from source modes compatible with
+upstream MQTT-C. The pinned MQTT-C commit matches the source embedded into the
+open62541 build.
 
 Use `find_package(CpktLuaRuntime CONFIG REQUIRED)` and link
 `cpkt::lua_runtime`, or use `pkg-config --static --libs cpkt-lua-runtime`.

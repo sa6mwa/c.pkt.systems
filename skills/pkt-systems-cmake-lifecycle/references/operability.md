@@ -316,7 +316,6 @@ Conditional standard targets, required when the surface exists:
 - `make vendor-<name>-upgrade`
 - `make build-<name>`
 - `make verify-<name>-patches`
-- `make world`
 
 Make rules:
 
@@ -330,6 +329,7 @@ Make rules:
 - `make release-matrix` builds, tests, packages, checksums, and verifies the release target set without requiring a clean tree. `make release` is the clean final pipeline.
 - `make package-verify` must include release privacy verification for checksum-listed artifacts. `make verify-release-privacy` may exist as a focused gate for the same invariant, but it is not a substitute for including the check in package verification.
 - `make package-source-smoke` extracts the source archive and proves it can configure, build, test, and resolve the same version without repository metadata.
+- `make release` is the final clean release action and gate. It must fail on warnings for project-owned and otherwise controllable code using `-Werror` or the platform equivalent, while allowing documented exclusions for upstream dependency warnings outside practical project control.
 - Core targets are the default lifecycle vocabulary. Conditional standard targets are not optional once the matching surface exists in the project.
 
 Every target listed in `make help` must work or fail with an actionable missing-prerequisite message.
@@ -349,7 +349,6 @@ Use these script names when the behavior exists:
 - `scripts/package.sh`
 - `scripts/package-verify.sh`
 - `scripts/run_linux_release_matrix.sh`
-- `scripts/world.sh`
 - `scripts/clean.sh`
 - `scripts/compose.sh`
 - `scripts/dev-up.sh`

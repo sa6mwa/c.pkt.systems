@@ -76,7 +76,7 @@ Run this on the feature or fix branch before touching the release branch. The go
 11. `make package-verify`
 12. `make prerelease-live` only when release authority includes live external-provider verification and required credentials are available.
 13. `make prerelease-hardening` when the repository defines it and the engineer expects the expensive hardening tier before release.
-14. `make world` only when the repository defines it and it is the accepted exhaustive gate.
+14. Do not run or add a separate umbrella release gate. The final clean gate is `make release`.
 
 If `make clean release` fails, stop the release process. If the failure is only that the repository refuses untagged release rehearsals, report that lifecycle gap and the closest available clean gate, but do not patch the lifecycle, squash, tag, push, or publish in the same release flow.
 
@@ -110,7 +110,7 @@ Tagged release artifact generation from the release branch:
 3. Run checksum verification when it is not already part of the release pipeline.
 4. Run release privacy and relocatability verification when it is exposed as a focused target; otherwise confirm it is included in package verification or the release pipeline.
 5. Do not rebuild artifacts after this point.
-6. Verify `dist/<project>-<version>-CHECKSUMS` lists exactly the intended upload artifacts.
+6. Verify `dist/<project>-<version>-CHECKSUMS` lists exactly the intended upload artifacts, and include that `CHECKSUMS` file itself in the GitHub release uploads.
 7. Assert every checksum-listed artifact exists under `dist/`.
 8. Assert no extra release-looking artifact under `dist/` is omitted from the checksum manifest unless deliberately excluded.
 9. Verify `git rev-parse HEAD` matches `git rev-parse vX.Y.Z`.
@@ -118,7 +118,7 @@ Tagged release artifact generation from the release branch:
 11. Verify `git rev-parse HEAD` matches `git rev-parse <release-remote>/<release-branch>`.
 12. Push the lightweight tag to `<release-remote>`.
 13. Verify the remote tag identifies the same commit as local `HEAD`.
-14. Create the GitHub release with `gh release create vX.Y.Z` using only checksum-listed artifacts.
+14. Create the GitHub release with `gh release create vX.Y.Z` using the checksum-listed artifacts plus the checksum manifest itself. Do not upload from a `dist/` glob.
 
 If tagged release artifact generation or verification fails after the local lightweight tag is created, stop the release process. Do not push the release branch, push the tag, create the GitHub release, delete or move the tag, fix code, amend the release commit, or rebuild artifacts in the same release flow. Report the failing gate and current local state so the engineer can decide whether to start a separate fix iteration and how to handle the local tag.
 

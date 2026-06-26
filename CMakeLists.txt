@@ -52,12 +52,32 @@ endfunction()
 
 cpkt_target_executables_runnable(CPKT_CAN_RUN_TARGET_EXECUTABLES)
 
+function(cpkt_add_repo_warning_errors target_name)
+  get_target_property(_cpkt_target_type ${target_name} TYPE)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    if(NOT _cpkt_target_type STREQUAL "STATIC_LIBRARY")
+      if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        target_link_options(${target_name} PRIVATE LINKER:-fatal_warnings)
+      else()
+        target_link_options(${target_name} PRIVATE LINKER:--fatal-warnings)
+      endif()
+    endif()
+  elseif(MSVC)
+    target_compile_options(${target_name} PRIVATE /W4 /WX)
+    if(NOT _cpkt_target_type STREQUAL "STATIC_LIBRARY")
+      target_link_options(${target_name} PRIVATE LINKER:/WX)
+    endif()
+  endif()
+endfunction()
+
 function(cpkt_add_lua_runtime_mock_test target_name source_name)
   add_executable(${target_name}
     src/lua_runtime.c
     tests/lua_mock/lua_mock.c
     ${source_name})
-  target_compile_options(${target_name} PRIVATE -std=c99 -Wall -Wextra -Wpedantic)
+  target_compile_options(${target_name} PRIVATE -std=c99)
+  cpkt_add_repo_warning_errors(${target_name})
   target_include_directories(${target_name} PRIVATE
     "${CMAKE_SOURCE_DIR}/tests/lua_mock/include"
     "${CMAKE_SOURCE_DIR}/include")
@@ -119,7 +139,12 @@ set(CPKT_LIBSSH2_VERSION "1.11.1" CACHE STRING "Pinned libssh2 release.")
 set(CPKT_CMOCKA_VERSION "2.0.2" CACHE STRING "Pinned cmocka release.")
 set(CPKT_LIBXML2_VERSION "2.15.3" CACHE STRING "Pinned libxml2 release.")
 set(CPKT_LUA_VERSION "5.5.0" CACHE STRING "Pinned Lua release.")
+set(CPKT_MQTTC_VERSION "1.1.2" CACHE STRING "Pinned MQTT-C project version.")
+set(CPKT_MQTTC_COMMIT "0f4c34c8cc00b16cfee094745d68b8cdbaecd8e0" CACHE STRING "Pinned MQTT-C commit used by open62541 v1.5.4.")
+set(CPKT_OPEN62541_VERSION "1.5.4" CACHE STRING "Pinned open62541 release.")
+set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-musl-warning-1" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_OPCUA_ABI_VERSION "0" CACHE STRING "OPC UA facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Shared source archive download root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
 set(CPKT_TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Artifact architecture name.")
@@ -165,7 +190,7 @@ else()
 endif()
 
 set(CPKT_DEPENDENCY_SET_ID
-  "openssl-${CPKT_OPENSSL_VERSION}_zlib-${CPKT_ZLIB_VERSION}_curl-${CPKT_CURL_VERSION}_nghttp2-${CPKT_NGHTTP2_VERSION}_libssh2-${CPKT_LIBSSH2_VERSION}_libxml2-${CPKT_LIBXML2_VERSION}_lua-${CPKT_LUA_VERSION}_cmocka-${CPKT_CMOCKA_VERSION}"
+  "openssl-${CPKT_OPENSSL_VERSION}_zlib-${CPKT_ZLIB_VERSION}_curl-${CPKT_CURL_VERSION}_nghttp2-${CPKT_NGHTTP2_VERSION}_libssh2-${CPKT_LIBSSH2_VERSION}_libxml2-${CPKT_LIBXML2_VERSION}_lua-${CPKT_LUA_VERSION}_mqtt-c-${CPKT_MQTTC_VERSION}-${CPKT_MQTTC_COMMIT}_open62541-${CPKT_OPEN62541_VERSION}-${CPKT_OPEN62541_PATCHSET}_cmocka-${CPKT_CMOCKA_VERSION}"
   CACHE INTERNAL "Version key for the pinned third-party dependency set.")
 set(_cpkt_dependency_toolchain_id
   "${CMAKE_C_COMPILER_ID}-${CMAKE_C_COMPILER_VERSION}")
@@ -206,6 +231,7 @@ cpkt_configure_dependencies()
 
 add_library(cpkt_lua_runtime_static STATIC src/lua_runtime.c)
 target_compile_features(cpkt_lua_runtime_static PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_lua_runtime_static)
 target_include_directories(cpkt_lua_runtime_static
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
@@ -218,6 +244,7 @@ set_target_properties(cpkt_lua_runtime_static PROPERTIES
 
 add_library(cpkt_lua_runtime_shared SHARED src/lua_runtime.c)
 target_compile_features(cpkt_lua_runtime_shared PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_lua_runtime_shared)
 target_include_directories(cpkt_lua_runtime_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
@@ -248,6 +275,54 @@ if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_lua_runtime_shared cpkt_deps)
 endif()
 
+add_library(cpkt_opcua_static STATIC src/opcua.c)
+target_compile_features(cpkt_opcua_static PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_opcua_static)
+target_include_directories(cpkt_opcua_static
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+)
+target_link_libraries(cpkt_opcua_static PUBLIC cpkt::open62541_static)
+target_compile_definitions(cpkt_opcua_static PRIVATE CPKT_OPCUA_FACADE_VERSION="${CPKT_OPCUA_ABI_VERSION}")
+set_target_properties(cpkt_opcua_static PROPERTIES
+  OUTPUT_NAME cpkt_opcua
+  POSITION_INDEPENDENT_CODE ON
+)
+
+add_library(cpkt_opcua_shared SHARED src/opcua.c)
+target_compile_features(cpkt_opcua_shared PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_opcua_shared)
+target_include_directories(cpkt_opcua_shared
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+)
+target_link_libraries(cpkt_opcua_shared PUBLIC cpkt::open62541_shared)
+target_compile_definitions(cpkt_opcua_shared PRIVATE CPKT_OPCUA_FACADE_VERSION="${CPKT_OPCUA_ABI_VERSION}")
+set_target_properties(cpkt_opcua_shared PROPERTIES
+  OUTPUT_NAME cpkt_opcua
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_OPCUA_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}"
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_opcua_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON
+  )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_opcua_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON
+  )
+endif()
+if(CPKT_BUILD_DEPENDENCIES)
+  add_dependencies(cpkt_opcua_static cpkt_deps)
+  add_dependencies(cpkt_opcua_shared cpkt_deps)
+endif()
+
 if(CPKT_BUILD_TESTS)
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"
@@ -268,13 +343,22 @@ if(CPKT_BUILD_TESTS)
   add_executable(cpkt_lua_runtime_c89_example
     examples/lua-runtime-c89/main.c
     examples/lua-runtime-c89/host_module.c)
+  cpkt_add_repo_warning_errors(cpkt_lua_runtime_c89_example)
   set_source_files_properties(examples/lua-runtime-c89/main.c PROPERTIES
-    COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic")
+    COMPILE_OPTIONS "-std=c89")
   set_source_files_properties(examples/lua-runtime-c89/host_module.c PROPERTIES
-    COMPILE_OPTIONS "-std=c99;-Wall;-Wextra;-Wpedantic")
+    COMPILE_OPTIONS "-std=c99")
   target_link_libraries(cpkt_lua_runtime_c89_example PRIVATE cpkt_lua_runtime_static)
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpkt_lua_runtime_c89_example cpkt_deps)
+  endif()
+
+  add_executable(cpkt_opcua_c89_example examples/opcua-c89/main.c)
+  target_compile_options(cpkt_opcua_c89_example PRIVATE -std=c89)
+  cpkt_add_repo_warning_errors(cpkt_opcua_c89_example)
+  target_link_libraries(cpkt_opcua_c89_example PRIVATE cpkt_opcua_static)
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt_opcua_c89_example cpkt_deps)
   endif()
 
   add_executable(cpkt_abi_smoke_shared examples/abi_smoke.c)
@@ -283,6 +367,7 @@ if(CPKT_BUILD_TESTS)
     cpkt::curl_shared
     cpkt::libxml2_shared
     cpkt::lua_shared
+    cpkt::open62541_shared
   )
 
   add_executable(cpkt_abi_smoke_static examples/abi_smoke.c)
@@ -291,10 +376,20 @@ if(CPKT_BUILD_TESTS)
     cpkt::curl_static
     cpkt::libxml2_static
     cpkt::lua_static
+    cpkt::open62541_static
   )
+  add_executable(cpkt_mqttc_smoke_shared examples/mqttc_smoke.c)
+  target_compile_options(cpkt_mqttc_smoke_shared PRIVATE -std=c99)
+  target_link_libraries(cpkt_mqttc_smoke_shared PRIVATE cpkt::mqttc_shared)
+
+  add_executable(cpkt_mqttc_smoke_static examples/mqttc_smoke.c)
+  target_compile_options(cpkt_mqttc_smoke_static PRIVATE -std=c99)
+  target_link_libraries(cpkt_mqttc_smoke_static PRIVATE cpkt::mqttc_static)
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpkt_abi_smoke_shared cpkt_deps)
     add_dependencies(cpkt_abi_smoke_static cpkt_deps)
+    add_dependencies(cpkt_mqttc_smoke_shared cpkt_deps)
+    add_dependencies(cpkt_mqttc_smoke_static cpkt_deps)
   endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -316,11 +411,18 @@ if(CPKT_BUILD_TESTS)
         -DCPKT_OTOOL=${CPKT_OTOOL}
         -P "${CMAKE_SOURCE_DIR}/cmake/package_darwin_smoke_libraries.cmake"
       COMMAND "${CMAKE_COMMAND}" -E tar cf "${_darwin_smoke_zip}" --format=zip darwin-smoke-test
+      COMMAND "${CMAKE_COMMAND}"
+        -DCPKT_CHECKSUMS_PATH=${CPKT_DIST_DIR}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECKSUMS
+        -DCPKT_ARTIFACT_PATH=${_darwin_smoke_zip}
+        -P "${CMAKE_SOURCE_DIR}/cmake/update_checksum_manifest.cmake"
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
       DEPENDS
         cpkt_abi_smoke_shared
         cpkt_abi_smoke_static
+        cpkt_mqttc_smoke_shared
+        cpkt_mqttc_smoke_static
         "${CMAKE_SOURCE_DIR}/cmake/package_darwin_smoke_libraries.cmake"
+        "${CMAKE_SOURCE_DIR}/cmake/update_checksum_manifest.cmake"
       VERBATIM
     )
     add_custom_target(package-darwin-smoke-test DEPENDS "${_darwin_smoke_zip}")
@@ -330,6 +432,7 @@ if(CPKT_BUILD_TESTS)
       cpkt::curl_shared
       cpkt::libxml2_shared
       cpkt::lua_shared
+      cpkt::open62541_shared
       cpkt::cmocka
     )
 
@@ -338,6 +441,7 @@ if(CPKT_BUILD_TESTS)
       cpkt::curl_static
       cpkt::libxml2_static
       cpkt::lua_static
+      cpkt::open62541_static
       cpkt::cmocka
     )
     if(CPKT_BUILD_DEPENDENCIES)
@@ -346,15 +450,32 @@ if(CPKT_BUILD_TESTS)
     endif()
 
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
-    target_compile_options(cpkt_lua_runtime_test PRIVATE -std=c99 -Wall -Wextra -Wpedantic)
+    target_compile_options(cpkt_lua_runtime_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_lua_runtime_test)
     target_link_libraries(cpkt_lua_runtime_test PRIVATE
       cpkt_lua_runtime_static
       cpkt::cmocka
     )
 
+    add_executable(cpkt_opcua_facade_test
+      tests/opcua_facade_test.c
+      tests/opcua_c89_boundary_peer.c)
+    cpkt_add_repo_warning_errors(cpkt_opcua_facade_test)
+    set_source_files_properties(tests/opcua_facade_test.c PROPERTIES
+      COMPILE_OPTIONS "-std=c99")
+    set_source_files_properties(tests/opcua_c89_boundary_peer.c PROPERTIES
+      COMPILE_OPTIONS "-std=c89")
+    target_link_libraries(cpkt_opcua_facade_test PRIVATE
+      cpkt_opcua_static
+      cpkt::open62541_static
+      cpkt::cmocka
+      Threads::Threads
+    )
+
     cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_mock_test tests/lua_runtime_mock_test.c)
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_lua_runtime_test cpkt_deps)
+      add_dependencies(cpkt_opcua_facade_test cpkt_deps)
     endif()
   endif()
 
@@ -362,12 +483,42 @@ if(CPKT_BUILD_TESTS)
     add_test(
       NAME lua_runtime_c89_example
       COMMAND cpkt_lua_runtime_c89_example "${_cpkt_lua_runtime_example_file}")
+    add_test(NAME opcua_c89_example COMMAND cpkt_opcua_c89_example)
+    add_test(
+      NAME opcua_word_portability
+      COMMAND
+        "${CMAKE_SOURCE_DIR}/tests/opcua_word_portability_test.sh"
+        "${CMAKE_SOURCE_DIR}"
+        "${CPKT_EXTERNAL_ROOT}/open62541/install/include")
     add_test(NAME abi_example_shared COMMAND cpkt_abi_smoke_shared)
     add_test(NAME abi_example_static COMMAND cpkt_abi_smoke_static)
+    add_test(NAME mqttc_example_shared COMMAND cpkt_mqttc_smoke_shared)
+    add_test(NAME mqttc_example_static COMMAND cpkt_mqttc_smoke_static)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       add_test(NAME abi_test_shared COMMAND cpkt_abi_test_shared)
       add_test(NAME abi_test_static COMMAND cpkt_abi_test_static)
       add_test(NAME lua_runtime_unit COMMAND cpkt_lua_runtime_test)
+      add_test(NAME opcua_facade_integration COMMAND cpkt_opcua_facade_test)
+      add_test(
+        NAME opcua_boundary_server_c99_client_c89
+        COMMAND cpkt_opcua_facade_test server-is-c99-and-client-is-c89)
+      add_test(
+        NAME opcua_boundary_server_c89_client_c99
+        COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c99)
+      add_test(
+        NAME opcua_boundary_server_c89_client_c89
+        COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
+      add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
+      set_tests_properties(
+        opcua_facade_integration
+        opcua_boundary_server_c99_client_c89
+        opcua_boundary_server_c89_client_c99
+        opcua_boundary_server_c89_client_c89
+        opcua_facade_failure_modes
+        opcua_word_portability
+        PROPERTIES
+          LABELS "integration;offline;opcua"
+          TIMEOUT 30)
       add_test(NAME lua_runtime_mock_unit COMMAND cpkt_lua_runtime_mock_test)
       add_test(
         NAME clangd_surface
@@ -381,11 +532,21 @@ endif()
 
 if(CPKT_ENABLE_FUZZING)
   cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_fuzz fuzz/lua_runtime_fuzz.c)
+  add_executable(cpkt_opcua_facade_fuzz fuzz/opcua_facade_fuzz.c)
+  target_compile_options(cpkt_opcua_facade_fuzz PRIVATE -std=c99)
+  cpkt_add_repo_warning_errors(cpkt_opcua_facade_fuzz)
+  target_include_directories(cpkt_opcua_facade_fuzz PRIVATE "${CMAKE_SOURCE_DIR}/include")
+  target_link_libraries(cpkt_opcua_facade_fuzz PRIVATE cpkt_opcua_static)
   if(CMAKE_C_COMPILER_ID MATCHES "Clang")
     target_compile_options(cpkt_lua_runtime_fuzz PRIVATE
       -fsanitize=fuzzer,address,undefined
       -fno-omit-frame-pointer)
     target_link_options(cpkt_lua_runtime_fuzz PRIVATE
+      -fsanitize=fuzzer,address,undefined)
+    target_compile_options(cpkt_opcua_facade_fuzz PRIVATE
+      -fsanitize=fuzzer,address,undefined
+      -fno-omit-frame-pointer)
+    target_link_options(cpkt_opcua_facade_fuzz PRIVATE
       -fsanitize=fuzzer,address,undefined)
   else()
     message(FATAL_ERROR "CPKT_ENABLE_FUZZING requires a Clang-compatible compiler with libFuzzer")
@@ -410,15 +571,25 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_CMOCKA_VERSION=${CPKT_CMOCKA_VERSION}
         -DCPKT_LIBXML2_VERSION=${CPKT_LIBXML2_VERSION}
         -DCPKT_LUA_VERSION=${CPKT_LUA_VERSION}
+        -DCPKT_MQTTC_VERSION=${CPKT_MQTTC_VERSION}
+        -DCPKT_MQTTC_COMMIT=${CPKT_MQTTC_COMMIT}
+        -DCPKT_OPEN62541_VERSION=${CPKT_OPEN62541_VERSION}
+        -DCPKT_OPEN62541_PATCHSET=${CPKT_OPEN62541_PATCHSET}
         -DCPKT_LUA_RUNTIME_ABI_VERSION=${CPKT_LUA_RUNTIME_ABI_VERSION}
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>
+        -DCPKT_OPCUA_ABI_VERSION=${CPKT_OPCUA_ABI_VERSION}
+        -DCPKT_OPCUA_STATIC_LIBRARY=$<TARGET_FILE:cpkt_opcua_static>
+        -DCPKT_OPCUA_SHARED_LIBRARY=$<TARGET_FILE:cpkt_opcua_shared>
+        -DCPKT_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/package_bundle.cmake
     DEPENDS
       cpkt_deps
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
+      cpkt_opcua_static
+      cpkt_opcua_shared
     VERBATIM
   )
 endif()

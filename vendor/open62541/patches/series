@@ -1,0 +1,4 @@
+0001-prefix-embedded-mqtt-c-symbols.patch
+0002-avoid-glibc-private-stdio-limit-header-on-musl.patch
+0003-stub-posix-ethernet-when-packet-headers-are-missing.patch
+0004-avoid-cert-store-path-strncpy-warning.patch

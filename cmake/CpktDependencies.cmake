@@ -1056,6 +1056,305 @@ function(cpkt_add_lua)
   set(CPKT_LUA_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_add_mqttc)
+  set(project_name "cpkt_mqttc_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/mqtt-c/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib" "${build_dir}")
+
+  set(mqttc_static_library "${install_dir}/lib/libmqttc${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(mqttc_shared_library_name "libmqttc.${CPKT_MQTTC_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(mqttc_shared_soname "libmqttc.1${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(mqttc_shared_link "libmqttc${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(mqttc_shared_library "${install_dir}/lib/${mqttc_shared_library_name}")
+    set(mqttc_shared_link_flags
+      -dynamiclib
+      -Wl,-install_name,@rpath/${mqttc_shared_soname}
+    )
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(mqttc_shared_library_name "libmqttc${CMAKE_SHARED_LIBRARY_SUFFIX}.${CPKT_MQTTC_VERSION}")
+    set(mqttc_shared_soname "libmqttc${CMAKE_SHARED_LIBRARY_SUFFIX}.1")
+    set(mqttc_shared_link "libmqttc${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(mqttc_shared_library "${install_dir}/lib/${mqttc_shared_library_name}")
+    set(mqttc_shared_link_flags
+      -shared
+      -Wl,--enable-new-dtags
+      -Wl,-rpath,\$ORIGIN
+      -Wl,-soname,${mqttc_shared_soname}
+    )
+  else()
+    set(mqttc_shared_library_name "libmqttc${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(mqttc_shared_soname "")
+    set(mqttc_shared_link "")
+    set(mqttc_shared_library "${install_dir}/lib/${mqttc_shared_library_name}")
+    set(mqttc_shared_link_flags -shared)
+  endif()
+
+  cpkt_get_external_c_flags(mqttc_external_cflags)
+  separate_arguments(mqttc_compile_flags NATIVE_COMMAND "${mqttc_external_cflags}")
+  list(APPEND mqttc_compile_flags -fPIC -I "${source_dir}/include")
+  set(mqttc_shared_extra_link_flags "")
+  if(CMAKE_SHARED_LINKER_FLAGS)
+    separate_arguments(mqttc_shared_extra_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
+  endif()
+  set(mqttc_link_libraries Threads::Threads)
+  set(mqttc_link_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND mqttc_link_flags -pthread)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND mqttc_link_flags -pthread)
+  endif()
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    ExternalProject_Add(${project_name}
+      URL "https://github.com/LiamBindle/MQTT-C/archive/${CPKT_MQTTC_COMMIT}.tar.gz"
+      URL_HASH "SHA256=985898405912dbddf50d8b446226763696e6390fbd6f38b66cede6f38e703086"
+      DOWNLOAD_NAME "mqtt-c-${CPKT_MQTTC_COMMIT}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E make_directory "${build_dir}" "${install_dir}/include" "${install_dir}/lib"
+      BUILD_COMMAND
+        ${CMAKE_COMMAND} -E copy_directory "${source_dir}/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${build_dir}"
+        COMMAND ${CMAKE_C_COMPILER} ${mqttc_compile_flags} -c "${source_dir}/src/mqtt.c" -o "${build_dir}/mqtt.c.o"
+        COMMAND ${CMAKE_C_COMPILER} ${mqttc_compile_flags} -c "${source_dir}/src/mqtt_pal.c" -o "${build_dir}/mqtt_pal.c.o"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${mqttc_static_library}"
+        COMMAND ${CMAKE_AR} qc "${mqttc_static_library}" "${build_dir}/mqtt.c.o" "${build_dir}/mqtt_pal.c.o"
+        COMMAND ${CMAKE_RANLIB} "${mqttc_static_library}"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${mqttc_shared_library}"
+        COMMAND ${CMAKE_C_COMPILER} ${mqttc_shared_link_flags} ${mqttc_shared_extra_link_flags} -o "${mqttc_shared_library}" "${build_dir}/mqtt.c.o" "${build_dir}/mqtt_pal.c.o" ${mqttc_link_flags}
+      INSTALL_COMMAND
+        ${CMAKE_COMMAND} -E true
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${install_dir}/lib/${mqttc_shared_soname}" "${install_dir}/lib/${mqttc_shared_link}"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink "${mqttc_shared_library_name}" "${install_dir}/lib/${mqttc_shared_soname}"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink "${mqttc_shared_soname}" "${install_dir}/lib/${mqttc_shared_link}"
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS
+        "${mqttc_static_library}"
+        "${mqttc_shared_library}"
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+  endif()
+
+  add_library(cpkt::mqttc_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::mqttc_static
+    PROPERTIES
+      IMPORTED_LOCATION "${mqttc_static_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "${mqttc_link_libraries}"
+  )
+
+  add_library(cpkt::mqttc_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::mqttc_shared
+    PROPERTIES
+      IMPORTED_LOCATION "${mqttc_shared_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "${mqttc_link_libraries}"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::mqttc_static ${project_name})
+    add_dependencies(cpkt::mqttc_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${mqttc_static_library}" "MQTT-C static library")
+    cpkt_require_dependency_file("${mqttc_shared_library}" "MQTT-C shared library")
+    cpkt_require_dependency_file("${install_dir}/include/mqtt.h" "MQTT-C header")
+    cpkt_require_dependency_file("${install_dir}/include/mqtt_pal.h" "MQTT-C PAL header")
+  endif()
+
+  set(CPKT_MQTTC_SOURCE_DIR "${source_dir}" PARENT_SCOPE)
+  set(CPKT_MQTTC_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_open62541)
+  set(project_name_shared "cpkt_open62541_shared_project")
+  set(project_name_static "cpkt_open62541_static_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541")
+  set(source_dir "${prefix_dir}/src")
+  set(shared_build_dir "${prefix_dir}/build-shared")
+  set(static_build_dir "${prefix_dir}/build-static")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/open62541/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+
+  set(open62541_static_library "${install_dir}/lib/libopen62541${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(open62541_static_system_libs "m")
+  set(open62541_static_pc_private_libs "-lm")
+  set(open62541_interface_compile_definitions "_GNU_SOURCE")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(open62541_shared_library "${install_dir}/lib/libopen62541.${CPKT_OPEN62541_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(open62541_install_rpath "@loader_path")
+    set(open62541_platform_linker_flags "")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(open62541_shared_library "${install_dir}/lib/libopen62541${CMAKE_SHARED_LIBRARY_SUFFIX}.${CPKT_OPEN62541_VERSION}")
+    set(open62541_install_rpath "$ORIGIN")
+    set(open62541_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags")
+    list(APPEND open62541_static_system_libs rt)
+    string(APPEND open62541_static_pc_private_libs " -lrt")
+  else()
+    set(open62541_shared_library "${install_dir}/lib/libopen62541${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(open62541_install_rpath "")
+    set(open62541_platform_linker_flags "")
+  endif()
+
+  set(open62541_common_cmake_args
+    -DCMAKE_INSTALL_PREFIX=${install_dir}
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
+    -DCMAKE_INSTALL_RPATH=${open62541_install_rpath}
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+    -DCMAKE_BUILD_RPATH=
+    -DCMAKE_SKIP_INSTALL_RPATH=OFF
+    ${open62541_platform_linker_flags}
+    -DOPEN62541_VERSION=v${CPKT_OPEN62541_VERSION}
+    -DGIT_EXECUTABLE=GIT_EXECUTABLE-NOTFOUND
+    -DUA_ARCHITECTURE=posix
+    -DUA_NAMESPACE_ZERO=REDUCED
+    -DUA_ENABLE_AMALGAMATION=OFF
+    -DUA_ENABLE_ENCRYPTION=OPENSSL
+    -DUA_ENABLE_MQTT=ON
+    -DUA_FILE_MQTT=${source_dir}/deps/mqtt-c/src/mqtt.c
+    -DUA_ENABLE_JSON_ENCODING=ON
+    -DUA_ENABLE_XML_ENCODING=ON
+    -DUA_ENABLE_DIAGNOSTICS=ON
+    -DUA_ENABLE_METHODCALLS=ON
+    -DUA_ENABLE_SUBSCRIPTIONS=ON
+    -DUA_ENABLE_SUBSCRIPTIONS_EVENTS=ON
+    -DUA_ENABLE_HISTORIZING=ON
+    -DUA_ENABLE_DISCOVERY=ON
+    -DUA_ENABLE_DISCOVERY_MULTICAST=OFF
+    -DUA_ENABLE_NODEMANAGEMENT=ON
+    -DUA_ENABLE_PUBSUB=ON
+    -DUA_ENABLE_PUBSUB_INFORMATIONMODEL=ON
+    -DUA_ENABLE_TYPEDESCRIPTION=ON
+    -DUA_ENABLE_STATUSCODE_DESCRIPTIONS=ON
+    -DUA_BUILD_EXAMPLES=OFF
+    -DUA_BUILD_TOOLS=OFF
+    -DUA_BUILD_UNIT_TESTS=OFF
+    -DOPENSSL_ROOT_DIR=${CPKT_OPENSSL_static_PREFIX}
+    -DOPENSSL_INCLUDE_DIR=${CPKT_OPENSSL_static_PREFIX}/include
+    ${common_cmake_args}
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    ExternalProject_Add(${project_name_shared}
+      URL "https://github.com/open62541/open62541/archive/refs/tags/v${CPKT_OPEN62541_VERSION}.tar.gz"
+      URL_HASH "SHA256=fb5aafc19c67a91368d1f71d9ee4acf0f4b47a0d65c66db4ed738691828779c7"
+      DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${shared_build_dir}"
+      STAMP_DIR "${stamp_dir}/shared"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_openssl_project cpkt_mqttc_project
+      PATCH_COMMAND
+        ${CMAKE_COMMAND} -E copy_directory
+          "${CPKT_MQTTC_SOURCE_DIR}"
+          "${source_dir}/deps/mqtt-c"
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=ON
+        -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libssl${CMAKE_SHARED_LIBRARY_SUFFIX}
+        -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libcrypto${CMAKE_SHARED_LIBRARY_SUFFIX}
+        ${open62541_common_cmake_args}
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_BYPRODUCTS "${open62541_shared_library}"
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+
+    ExternalProject_Add(${project_name_static}
+      URL "https://github.com/open62541/open62541/archive/refs/tags/v${CPKT_OPEN62541_VERSION}.tar.gz"
+      URL_HASH "SHA256=fb5aafc19c67a91368d1f71d9ee4acf0f4b47a0d65c66db4ed738691828779c7"
+      DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${static_build_dir}"
+      STAMP_DIR "${stamp_dir}/static"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS ${project_name_shared}
+      PATCH_COMMAND
+        ${CMAKE_COMMAND} -E copy_directory
+          "${CPKT_MQTTC_SOURCE_DIR}"
+          "${source_dir}/deps/mqtt-c"
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=OFF
+        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF
+        -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libssl${CMAKE_STATIC_LIBRARY_SUFFIX}
+        -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libcrypto${CMAKE_STATIC_LIBRARY_SUFFIX}
+        ${open62541_common_cmake_args}
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${open62541_static_library}"
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+  endif()
+
+  add_library(cpkt::open62541_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::open62541_static
+    PROPERTIES
+      IMPORTED_LOCATION "${open62541_static_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "cpkt::openssl_ssl_static;cpkt::openssl_crypto_static;${open62541_static_system_libs}"
+      INTERFACE_COMPILE_DEFINITIONS "${open62541_interface_compile_definitions}"
+  )
+
+  add_library(cpkt::open62541_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::open62541_shared
+    PROPERTIES
+      IMPORTED_LOCATION "${open62541_shared_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared"
+      INTERFACE_COMPILE_DEFINITIONS "${open62541_interface_compile_definitions}"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::open62541_static ${project_name_static})
+    add_dependencies(cpkt::open62541_shared ${project_name_shared})
+    cpkt_record_dependency_target(${project_name_static})
+  else()
+    cpkt_require_dependency_file("${open62541_static_library}" "open62541 static library")
+    cpkt_require_dependency_file("${open62541_shared_library}" "open62541 shared library")
+    cpkt_require_dependency_file("${install_dir}/include/open62541/server.h" "open62541 server header")
+    cpkt_require_dependency_file("${install_dir}/include/open62541/client.h" "open62541 client header")
+  endif()
+endfunction()
+
 function(cpkt_add_cmocka)
   set(project_name "cpkt_cmocka_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/cmocka")
@@ -1120,6 +1419,8 @@ function(cpkt_configure_dependencies)
   cpkt_add_curl()
   cpkt_add_libxml2()
   cpkt_add_lua()
+  cpkt_add_mqttc()
+  cpkt_add_open62541()
 
   if(CPKT_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     cpkt_add_cmocka()

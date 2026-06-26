@@ -10,6 +10,8 @@
 #include <lauxlib.h>
 #include <lualib.h>
 #include <nghttp2/nghttp2.h>
+#include <open62541/client.h>
+#include <open62541/server.h>
 #include <openssl/crypto.h>
 #include <openssl/ssl.h>
 #include <zlib.h>
@@ -21,6 +23,8 @@ static void cpkt_dependency_symbols_are_linkable(void **state) {
   SSL_CTX *ctx;
   xmlDocPtr xml_doc;
   lua_State *lua_state;
+  UA_Client *opcua_client;
+  UA_Server *opcua_server;
   unsigned long zlib_flags;
 
   (void)state;
@@ -52,6 +56,14 @@ static void cpkt_dependency_symbols_are_linkable(void **state) {
   assert_non_null(lua_state);
   luaL_openlibs(lua_state);
   lua_close(lua_state);
+
+  opcua_client = UA_Client_new();
+  assert_non_null(opcua_client);
+  UA_Client_delete(opcua_client);
+
+  opcua_server = UA_Server_new();
+  assert_non_null(opcua_server);
+  UA_Server_delete(opcua_server);
 }
 
 int main(void) {

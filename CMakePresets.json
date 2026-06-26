@@ -87,6 +87,16 @@
       }
     },
     {
+      "name": "opcua-fuzz",
+      "inherits": "debug",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CPKT_BUILD_DEPENDENCIES": "ON",
+        "CPKT_FACADE_ONLY": "OFF",
+        "CPKT_ENABLE_FUZZING": "ON"
+      }
+    },
+    {
       "name": "x86_64-linux-musl-release",
       "inherits": "x86_64-linux-gnu-release",
       "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-musl.cmake",
@@ -175,6 +185,10 @@
     {
       "name": "fuzz",
       "configurePreset": "fuzz"
+    },
+    {
+      "name": "opcua-fuzz",
+      "configurePreset": "opcua-fuzz"
     },
     {
       "name": "x86_64-linux-musl-release",

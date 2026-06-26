@@ -14,7 +14,7 @@ source_file="$script_dir/../abi_smoke.c"
 pkg_config_words=$(
   PKG_CONFIG_PATH= \
   PKG_CONFIG_LIBDIR="$CPKT_SDK_PREFIX/lib/pkgconfig" \
-    "${pkg_config}" --static --cflags --libs libcurl libxml-2.0 lua
+    "${pkg_config}" --static --cflags --libs libcurl libxml-2.0 lua open62541
 )
 
 "$cc" ${CPKT_EXAMPLE_CFLAGS:-} "$source_file" -o "$output" \

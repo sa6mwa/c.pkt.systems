@@ -7,7 +7,7 @@ CMAKE := cmake
 CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 
-.PHONY: help build test debug clangd-surface asan tsan msan fuzz-smoke release verify-release-archives clean
+.PHONY: help build test debug clangd-surface asan tsan msan fuzz-smoke fuzz release source-archive verify-source-archive verify-release-archives clean
 
 help:
 	@printf '%s\n' \
@@ -18,8 +18,10 @@ help:
 		'make asan      Build and test the facade-only AddressSanitizer/UBSan preset.' \
 		'make tsan      Build and test the facade-only ThreadSanitizer preset.' \
 		'make msan      Build and test the facade-only MemorySanitizer preset with clang.' \
-		'make fuzz-smoke Build and run a bounded facade-only fuzz smoke.' \
+		'make fuzz-smoke Build and run bounded facade fuzz smoke tests.' \
+		'make fuzz      Build and run bounded facade fuzz tests.' \
 		'make release   Build, package, and verify release bundles; adds Darwin when osxcross is available.' \
+		'make source-archive  Build and verify the source release archive.' \
 		'make verify-release-archives  Assert package contents and checksums for produced bundles.' \
 		'make clean     Remove generated build, cache, and dist output.'
 
@@ -63,6 +65,17 @@ fuzz-smoke:
 	$(CMAKE) --preset fuzz
 	$(CMAKE) --build --preset fuzz
 	build/fuzz/cpkt_lua_runtime_fuzz -runs=256
+	$(CMAKE) --preset opcua-fuzz
+	$(CMAKE) --build --preset opcua-fuzz
+	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=256
+
+fuzz:
+	$(CMAKE) --preset fuzz
+	$(CMAKE) --build --preset fuzz
+	build/fuzz/cpkt_lua_runtime_fuzz -runs=100000
+	$(CMAKE) --preset opcua-fuzz
+	$(CMAKE) --build --preset opcua-fuzz
+	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=100000
 
 release:
 	@for preset in $(RELEASE_PRESETS); do \
@@ -78,7 +91,13 @@ release:
 	else \
 		printf '[package] skipping arm64-apple-darwin-release: osxcross toolchain not available\n'; \
 	fi
+	bash ./scripts/package-source.sh
 	bash ./scripts/package-verify.sh
+source-archive:
+	bash ./scripts/package-source.sh
+	bash ./scripts/source-archive-verify.sh "dist/c.pkt.systems-$$(bash ./scripts/release-version.sh "$$(pwd)").tar.gz"
+verify-source-archive:
+	bash ./scripts/source-archive-verify.sh "dist/c.pkt.systems-$$(bash ./scripts/release-version.sh "$$(pwd)").tar.gz"
 verify-release-archives:
 	bash ./scripts/package-verify.sh
 
