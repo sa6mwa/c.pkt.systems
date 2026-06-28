@@ -4,14 +4,17 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 
-if [ ! -f "$repo_root/VERSION" ]; then
-  printf 'repository source tree is missing VERSION\n' >&2
-  exit 1
+if git -C "$repo_root" ls-files --error-unmatch VERSION >/dev/null 2>&1; then
+  if [ -e "$repo_root/VERSION" ]; then
+    printf 'git worktree must not contain tracked repository-local VERSION\n' >&2
+    exit 1
+  fi
 fi
-repo_version=$(sed -n '1{s/[[:space:]]*$//;p;q;}' "$repo_root/VERSION")
-if [ -z "$repo_version" ]; then
-  printf 'repository VERSION is empty\n' >&2
-  exit 1
+if ! git -C "$repo_root" check-ignore -q VERSION; then
+  if ! grep -qxF '/VERSION' "$repo_root/.gitignore"; then
+    printf 'git worktree must ignore repository-local VERSION\n' >&2
+    exit 1
+  fi
 fi
 
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-version-test.XXXXXXXXXX")
@@ -59,7 +62,8 @@ git -C "$git_repo" init -q
 git -C "$git_repo" config user.email test@example.invalid
 git -C "$git_repo" config user.name "c.pkt.systems test"
 printf 'content\n' > "$git_repo/file.txt"
-git -C "$git_repo" add file.txt
+printf '/VERSION\n' > "$git_repo/.gitignore"
+git -C "$git_repo" add .gitignore file.txt
 git -C "$git_repo" commit -q -m init
 printf '9.9.9\n' > "$git_repo/VERSION"
 resolved=$(bash "$repo_root/scripts/release-version.sh" "$git_repo")

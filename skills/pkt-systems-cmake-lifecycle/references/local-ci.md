@@ -56,11 +56,11 @@ Add tests that assert observable behavior:
 - Dependency mode behavior, including host mode, bundled SDK mode, auto mode fallback, unsupported targets, and wrong-ABI dependency rejection.
 - Package archive layout and forbidden payload checks.
 - Release artifact privacy and relocatability checks that expand checksum-listed artifacts and nested payloads before scanning and inspecting runtime loader metadata.
-- Negative release privacy fixtures that create release-shaped throwaway artifacts containing representative leaks and prove the gate fails with the exact artifact/file path. Cover at least repository paths, `$HOME`, absolute local `file://` URLs, absolute local or non-system ELF RPATH/RUNPATH, and local Darwin install names when the platform/tooling surface exists.
+- Negative release privacy fixtures that create release-shaped throwaway artifacts containing representative leaks and prove the gate fails with the exact artifact/file path. Cover at least repository paths, `$HOME`, absolute local `file://` URLs, absolute local or non-system ELF RPATH/RUNPATH, local Darwin install names, Darwin non-system absolute dependency paths such as `/lib/libfoo.dylib`, and Darwin local rpaths when the platform/tooling surface exists.
 - Lua release artifact checks, when Lua artifacts exist, that build `dist/<project>-lua-<version>.tar.gz`, render the release rockspec, build the `.src.rock`, verify the standalone Lua source package layout and manifest, unpack the `.src.rock`, expand the embedded Lua source package, and fail on absolute local `file://` URLs or live-worktree source paths.
 - Source archive extraction, configure, build, version agreement, and test smoke.
 - Source archive manifest exactness: tracked non-ignored files plus deliberate generated release files, no more and no less.
-- Release privacy and relocatability scans for `$HOME`, repository paths, build roots, dependency caches, package-manager temporary paths, parent-relative paths, absolute local `file://` URLs, credentials, VCS metadata, generated service state, sanitizer artifacts, ELF RPATH/RUNPATH, Darwin install names/dependency paths, and unstripped binary metadata that exposes local toolchain or home paths.
+- Release privacy and relocatability scans for `$HOME`, repository paths, build roots, dependency caches, package-manager temporary paths, parent-relative paths, absolute local `file://` URLs, credentials, VCS metadata, generated service state, sanitizer artifacts, ELF RPATH/RUNPATH, Darwin install names/dependency paths/rpaths, Darwin invalid post-mutation signature risk when `LC_CODE_SIGNATURE` is present, and unstripped binary metadata that exposes local toolchain or home paths.
 
 Test registration:
 

@@ -89,26 +89,6 @@ foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua mqtt-c open625
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
 
-if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
-  if(NOT DEFINED CPKT_INSTALL_NAME_TOOL OR "${CPKT_INSTALL_NAME_TOOL}" STREQUAL "")
-    message(FATAL_ERROR "CPKT_INSTALL_NAME_TOOL is required for Darwin package install-name fixups")
-  endif()
-  if(NOT EXISTS "${CPKT_INSTALL_NAME_TOOL}")
-    message(FATAL_ERROR "Darwin install_name_tool does not exist: ${CPKT_INSTALL_NAME_TOOL}")
-  endif()
-  execute_process(
-    COMMAND "${CPKT_INSTALL_NAME_TOOL}"
-      -id "@rpath/libmqttc.1.dylib"
-      "${_stage_root}/lib/libmqttc.${CPKT_MQTTC_VERSION}.dylib"
-    RESULT_VARIABLE _cpkt_mqttc_install_name_result
-    ERROR_VARIABLE _cpkt_mqttc_install_name_error
-  )
-  if(NOT _cpkt_mqttc_install_name_result EQUAL 0)
-    message(FATAL_ERROR
-      "failed to rewrite MQTT-C Darwin install name\n${_cpkt_mqttc_install_name_error}")
-  endif()
-endif()
-
 file(REMOVE_RECURSE
   "${_stage_root}/lib/engines-3"
   "${_stage_root}/lib/cmake"

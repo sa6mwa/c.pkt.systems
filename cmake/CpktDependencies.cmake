@@ -95,20 +95,10 @@ function(cpkt_get_strip_dependency_install_command out_var install_dir)
   endif()
 
   set(_strip_static_archives ON)
-  set(_darwin_fixup_args "")
+  set(_strip_shared_libraries ON)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(_strip_static_archives OFF)
-    if(NOT CMAKE_INSTALL_NAME_TOOL)
-      message(FATAL_ERROR "CMAKE_INSTALL_NAME_TOOL is required when building Darwin dependencies")
-    endif()
-    if(NOT CPKT_OTOOL)
-      message(FATAL_ERROR "CPKT_OTOOL is required when building Darwin dependencies")
-    endif()
-    set(_darwin_fixup_args
-      -DCPKT_DARWIN_DEPENDENCY_ROOT=${CPKT_EXTERNAL_ROOT}
-      -DCPKT_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
-      -DCPKT_OTOOL=${CPKT_OTOOL}
-    )
+    set(_strip_shared_libraries OFF)
   endif()
 
   set(_command
@@ -116,7 +106,7 @@ function(cpkt_get_strip_dependency_install_command out_var install_dir)
       -DCPKT_STRIP_BIN=${CMAKE_STRIP}
       -DCPKT_STRIP_ROOT=${install_dir}
       -DCPKT_STRIP_STATIC_ARCHIVES=${_strip_static_archives}
-      ${_darwin_fixup_args}
+      -DCPKT_STRIP_SHARED_LIBRARIES=${_strip_shared_libraries}
       -P ${CMAKE_SOURCE_DIR}/cmake/strip_dependency_install_tree.cmake
   )
   set(${out_var} "${_command}" PARENT_SCOPE)
@@ -132,6 +122,13 @@ function(cpkt_append_common_external_cmake_args out_var)
 
   if(CMAKE_TOOLCHAIN_FILE)
     list(APPEND _args -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
+  endif()
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND _args
+      -DCMAKE_INSTALL_NAME_DIR=@rpath
+      -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
+      -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
   endif()
 
   cpkt_get_external_c_flags(_cpkt_external_c_flags)
@@ -166,6 +163,13 @@ function(cpkt_add_openssl)
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
   set(build_command make -j${CPKT_DEPENDENCY_BUILD_JOBS})
   set(install_command make -j${CPKT_DEPENDENCY_BUILD_JOBS} install_sw DESTDIR=${env_prefix})
+  set(openssl_post_configure_command "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(openssl_post_configure_command
+      COMMAND ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_INSTALL_NAME_FILE=${source_dir}/Makefile
+        -P ${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake)
+  endif()
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   set(openssl_env_args
     CC=${CMAKE_C_COMPILER}
@@ -202,6 +206,7 @@ function(cpkt_add_openssl)
           --prefix=/
           --openssldir=${openssl_dir}
           --libdir=lib
+        ${openssl_post_configure_command}
       BUILD_COMMAND ${build_command}
       INSTALL_COMMAND ${install_command}
         COMMAND ${strip_install_command}
@@ -294,6 +299,7 @@ function(cpkt_add_nghttp2)
     AR=${CMAKE_AR}
     RANLIB=${CMAKE_RANLIB}
   )
+  set(nghttp2_post_configure_command "")
   cpkt_get_external_c_flags(nghttp2_cflags)
   list(APPEND nghttp2_env_args CFLAGS=${nghttp2_cflags})
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_LINKER)
@@ -301,6 +307,10 @@ function(cpkt_add_nghttp2)
       PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
       LDFLAGS=-fuse-ld=${CMAKE_LINKER}
     )
+    set(nghttp2_post_configure_command
+      COMMAND ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_INSTALL_NAME_FILE=${build_dir}/libtool
+        -P ${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake)
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
@@ -325,6 +335,7 @@ function(cpkt_add_nghttp2)
         --enable-shared
         --enable-static
         --enable-lib-only
+        ${nghttp2_post_configure_command}
       BUILD_COMMAND make -C lib -j${CPKT_DEPENDENCY_BUILD_JOBS}
       INSTALL_COMMAND make -C lib install
         COMMAND ${strip_install_command}
@@ -503,13 +514,14 @@ function(cpkt_add_libssh2)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(libssh2_install_rpath "@loader_path")
-    set(libssh2_platform_linker_flags "")
+    set(libssh2_platform_cmake_args "")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(libssh2_install_rpath "$ORIGIN")
-    set(libssh2_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags")
+    set(libssh2_platform_cmake_args
+      -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags)
   else()
     set(libssh2_install_rpath "")
-    set(libssh2_platform_linker_flags "")
+    set(libssh2_platform_cmake_args "")
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
@@ -538,7 +550,7 @@ function(cpkt_add_libssh2)
         -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
         -DCMAKE_BUILD_RPATH=
         -DCMAKE_SKIP_INSTALL_RPATH=OFF
-        ${libssh2_platform_linker_flags}
+        ${libssh2_platform_cmake_args}
         -DBUILD_STATIC_LIBS=ON
         -DBUILD_SHARED_LIBS=ON
         -DBUILD_EXAMPLES=OFF
@@ -622,13 +634,14 @@ function(cpkt_add_curl)
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(curl_install_rpath "@loader_path")
-    set(curl_platform_linker_flags "")
+    set(curl_platform_cmake_args "")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(curl_install_rpath "$ORIGIN")
-    set(curl_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags")
+    set(curl_platform_cmake_args
+      -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags)
   else()
     set(curl_install_rpath "")
-    set(curl_platform_linker_flags "")
+    set(curl_platform_cmake_args "")
   endif()
   set(curl_static_platform_libs "")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -663,7 +676,7 @@ function(cpkt_add_curl)
         -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
         -DCMAKE_BUILD_RPATH=
         -DCMAKE_SKIP_INSTALL_RPATH=OFF
-        ${curl_platform_linker_flags}
+        ${curl_platform_cmake_args}
         -DBUILD_SHARED_LIBS=ON
         -DBUILD_STATIC_LIBS=ON
         -DSHARE_LIB_OBJECT=ON
@@ -764,17 +777,19 @@ function(cpkt_add_libxml2)
     set(libxml2_shared_library "${install_dir}/lib/libxml2.16${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(libxml2_shared_link "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(libxml2_install_rpath "@loader_path")
-    set(libxml2_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-liconv")
+    set(libxml2_platform_cmake_args
+      -DCMAKE_SHARED_LINKER_FLAGS=-liconv)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(libxml2_shared_library "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}.16.1.3")
     set(libxml2_shared_link "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(libxml2_install_rpath "$ORIGIN")
-    set(libxml2_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags")
+    set(libxml2_platform_cmake_args
+      -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags)
   else()
     set(libxml2_shared_library "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(libxml2_shared_link "${libxml2_shared_library}")
     set(libxml2_install_rpath "")
-    set(libxml2_platform_linker_flags "")
+    set(libxml2_platform_cmake_args "")
   endif()
 
   set(libxml2_common_cmake_args
@@ -788,7 +803,7 @@ function(cpkt_add_libxml2)
     -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
     -DCMAKE_BUILD_RPATH=
     -DCMAKE_SKIP_INSTALL_RPATH=OFF
-    ${libxml2_platform_linker_flags}
+    ${libxml2_platform_cmake_args}
     -DLIBXML2_WITH_CATALOG=ON
     -DLIBXML2_WITH_C14N=ON
     -DLIBXML2_WITH_DEBUG=ON
@@ -1201,17 +1216,18 @@ function(cpkt_add_open62541)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(open62541_shared_library "${install_dir}/lib/libopen62541.${CPKT_OPEN62541_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(open62541_install_rpath "@loader_path")
-    set(open62541_platform_linker_flags "")
+    set(open62541_platform_cmake_args "")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(open62541_shared_library "${install_dir}/lib/libopen62541${CMAKE_SHARED_LIBRARY_SUFFIX}.${CPKT_OPEN62541_VERSION}")
     set(open62541_install_rpath "$ORIGIN")
-    set(open62541_platform_linker_flags "-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags")
+    set(open62541_platform_cmake_args
+      -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags)
     list(APPEND open62541_static_system_libs rt)
     string(APPEND open62541_static_pc_private_libs " -lrt")
   else()
     set(open62541_shared_library "${install_dir}/lib/libopen62541${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(open62541_install_rpath "")
-    set(open62541_platform_linker_flags "")
+    set(open62541_platform_cmake_args "")
   endif()
 
   set(open62541_common_cmake_args
@@ -1224,7 +1240,7 @@ function(cpkt_add_open62541)
     -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
     -DCMAKE_BUILD_RPATH=
     -DCMAKE_SKIP_INSTALL_RPATH=OFF
-    ${open62541_platform_linker_flags}
+    ${open62541_platform_cmake_args}
     -DOPEN62541_VERSION=v${CPKT_OPEN62541_VERSION}
     -DGIT_EXECUTABLE=GIT_EXECUTABLE-NOTFOUND
     -DUA_ARCHITECTURE=posix

@@ -55,8 +55,22 @@ esac
 
 cat > "$osxcross_root/bin/$osxcross_host-otool" <<'SH'
 #!/usr/bin/env sh
-printf '%s:\n' "$2"
-printf '@rpath/libmqttc.1.dylib\n'
+case "$1" in
+  -D)
+    printf '%s:\n' "$2"
+    printf '@rpath/libmqttc.1.dylib\n'
+    ;;
+  -L)
+    printf '%s:\n' "$2"
+    printf '@rpath/libmqttc.1.dylib (compatibility version 1.0.0, current version 1.1.2)\n'
+    printf '/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)\n'
+    ;;
+  -l)
+    printf 'Load command 0\n'
+    printf '          cmd LC_RPATH\n'
+    printf '         path @loader_path (offset 12)\n'
+    ;;
+esac
 SH
 chmod +x "$osxcross_root/bin/$osxcross_host-otool"
 touch "$work_dir/libmqttc.1.1.2.dylib"
@@ -75,6 +89,67 @@ case "$output" in
   *"CPKT_TEST_DARWIN_INSTALL_NAME=ok"*) ;;
   *)
     printf 'package assertion install-name check did not accept exact Darwin install name\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+
+output=$(
+  OSXCROSS_ROOT="$osxcross_root" \
+  CPKT_OSXCROSS_HOST="$osxcross_host" \
+  cmake \
+    -DCPKT_TARGET_ID=arm64-apple-darwin \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE=ON \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libmqttc.1.1.2.dylib" \
+    -P "$repo_root/cmake/package_assertions.cmake"
+)
+
+case "$output" in
+  *"CPKT_TEST_DARWIN_RELOCATABLE=ok"*) ;;
+  *)
+    printf 'package assertion relocatable Mach-O check rejected valid Darwin dylib metadata\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+
+cat > "$osxcross_root/bin/$osxcross_host-otool" <<'SH'
+#!/usr/bin/env sh
+case "$1" in
+  -D)
+    printf '%s:\n' "$2"
+    printf '@rpath/libssl.3.dylib\n'
+    ;;
+  -L)
+    printf '%s:\n' "$2"
+    printf '@rpath/libssl.3.dylib (compatibility version 3.0.0, current version 3.0.0)\n'
+    printf '/lib/libcrypto.3.dylib (compatibility version 3.0.0, current version 3.0.0)\n'
+    ;;
+  -l)
+    printf 'Load command 0\n'
+    printf '          cmd LC_RPATH\n'
+    printf '         path @loader_path (offset 12)\n'
+    ;;
+esac
+SH
+chmod +x "$osxcross_root/bin/$osxcross_host-otool"
+touch "$work_dir/libssl.3.dylib"
+
+if output=$(
+    OSXCROSS_ROOT="$osxcross_root" \
+    CPKT_OSXCROSS_HOST="$osxcross_host" \
+    cmake \
+      -DCPKT_TARGET_ID=arm64-apple-darwin \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE=ON \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libssl.3.dylib" \
+      -P "$repo_root/cmake/package_assertions.cmake" 2>&1
+  ); then
+  printf 'package assertion relocatable Mach-O check accepted /lib dependency\n%s\n' "$output" >&2
+  exit 1
+fi
+
+case "$output" in
+  *"non-relocatable Darwin dependency"*"/lib/libcrypto.3.dylib"*) ;;
+  *)
+    printf 'package assertion relocatable Mach-O check failed with unexpected output\n%s\n' "$output" >&2
     exit 1
     ;;
 esac

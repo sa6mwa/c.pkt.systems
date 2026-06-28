@@ -254,6 +254,100 @@ function(cpkt_assert_darwin_install_name file_path expected_install_name descrip
   endif()
 endfunction()
 
+function(cpkt_assert_darwin_dylib_relocatable file_path description)
+  cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
+    RESULT_VARIABLE _id_result
+    OUTPUT_VARIABLE _id_output
+    ERROR_VARIABLE _id_error
+  )
+  if(NOT _id_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect Darwin install name for ${description}: ${file_path}\n${_id_error}")
+  endif()
+  string(REPLACE "\r\n" "\n" _id_output "${_id_output}")
+  string(REPLACE "\n" ";" _id_lines "${_id_output}")
+  set(_id_found OFF)
+  foreach(_id_line IN LISTS _id_lines)
+    string(STRIP "${_id_line}" _id_line)
+    if(_id_line MATCHES "^@rpath/[^/]+\\.dylib$")
+      set(_id_found ON)
+    elseif(_id_line MATCHES "^(|.*:)$")
+      continue()
+    elseif(NOT _id_line STREQUAL "")
+      message(FATAL_ERROR "${description} has non-rpath Darwin install name: ${_id_line}")
+    endif()
+  endforeach()
+  if(NOT _id_found)
+    message(FATAL_ERROR "${description} must have an @rpath Darwin install name")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_OTOOL_BIN}" -L "${file_path}"
+    RESULT_VARIABLE _load_result
+    OUTPUT_VARIABLE _load_output
+    ERROR_VARIABLE _load_error
+  )
+  if(NOT _load_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect Darwin load commands for ${description}: ${file_path}\n${_load_error}")
+  endif()
+  string(REPLACE "\r\n" "\n" _load_output "${_load_output}")
+  string(REPLACE "\n" ";" _load_lines "${_load_output}")
+  set(_metadata_lines "")
+  foreach(_load_line IN LISTS _load_lines)
+    string(STRIP "${_load_line}" _load_line)
+    if(_load_line STREQUAL "" OR _load_line MATCHES ":$")
+      continue()
+    endif()
+    list(APPEND _metadata_lines "${_load_line}")
+    string(REGEX MATCH "^[^ \t(]+" _load_path "${_load_line}")
+    if(_load_path MATCHES "^@rpath/[^/]+\\.dylib$")
+      continue()
+    endif()
+    if(_load_path MATCHES "^/usr/lib/" OR _load_path MATCHES "^/System/Library/")
+      continue()
+    endif()
+    message(FATAL_ERROR "${description} has non-relocatable Darwin dependency: ${_load_path}")
+  endforeach()
+
+  execute_process(
+    COMMAND "${CPKT_OTOOL_BIN}" -l "${file_path}"
+    RESULT_VARIABLE _commands_result
+    OUTPUT_VARIABLE _commands_output
+    ERROR_VARIABLE _commands_error
+  )
+  if(NOT _commands_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect Darwin load-command details for ${description}: ${file_path}\n${_commands_error}")
+  endif()
+  string(REPLACE "\r\n" "\n" _commands_output "${_commands_output}")
+  string(REPLACE "\n" ";" _command_lines "${_commands_output}")
+  foreach(_command_line IN LISTS _command_lines)
+    string(STRIP "${_command_line}" _command_line)
+    if(_command_line MATCHES "^path[ \t]+([^ \t]+)")
+      set(_rpath "${CMAKE_MATCH_1}")
+      list(APPEND _metadata_lines "${_command_line}")
+      if(NOT _rpath MATCHES "^@(loader_path|executable_path)(/.*)?$")
+        message(FATAL_ERROR "${description} has non-relocatable Darwin rpath: ${_rpath}")
+      endif()
+    endif()
+  endforeach()
+
+  set(_private_path_pattern "(/home/|/Users/|/tmp/|/var/tmp/|/usr/local/|\\.cache|deps-build|package-stage|CMakeFiles)")
+  foreach(_metadata_line IN LISTS _id_lines _metadata_lines)
+    string(STRIP "${_metadata_line}" _metadata_line)
+    if(_metadata_line STREQUAL "" OR _metadata_line MATCHES ":$")
+      continue()
+    endif()
+    if(_metadata_line MATCHES "${_private_path_pattern}")
+      message(FATAL_ERROR "${description} contains local/private Darwin path material: ${_metadata_line}")
+    endif()
+  endforeach()
+endfunction()
+
 if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP)
   cpkt_find_darwin_otool(_cpkt_test_otool)
   message(STATUS "CPKT_TEST_OTOOL=${_cpkt_test_otool}")
@@ -273,10 +367,17 @@ if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASS
     "test Darwin install name")
   message(STATUS "CPKT_TEST_DARWIN_INSTALL_NAME=ok")
 endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE)
+  cpkt_assert_darwin_dylib_relocatable(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
+    "test Darwin relocatable dylib")
+  message(STATUS "CPKT_TEST_DARWIN_RELOCATABLE=ok")
+endif()
 if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ) OR
-    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME))
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE))
   return()
 endif()
 
@@ -669,6 +770,17 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.1.1.2.dylib"
     "@rpath/libmqttc.1.dylib"
     "libmqttc Darwin install name")
+  file(GLOB _packaged_darwin_dylibs
+    "${_assert_extract_root}/${_archive_stem}/lib/*.dylib")
+  foreach(_packaged_darwin_dylib IN LISTS _packaged_darwin_dylibs)
+    if(IS_SYMLINK "${_packaged_darwin_dylib}")
+      continue()
+    endif()
+    get_filename_component(_packaged_darwin_dylib_name "${_packaged_darwin_dylib}" NAME)
+    cpkt_assert_darwin_dylib_relocatable(
+      "${_packaged_darwin_dylib}"
+      "${_packaged_darwin_dylib_name}")
+  endforeach()
   file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
   cpkt_assert_archive_exact_matches(
