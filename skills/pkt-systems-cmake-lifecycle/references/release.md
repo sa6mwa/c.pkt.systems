@@ -57,6 +57,7 @@ Release plan preview:
 
 - Before touching the release branch, prepare and report a concise release plan.
 - The plan must include selected version, tag, candidate branch, release remote, release branch name, target release branch commit or merge base, intended Conventional Commit summary, expected artifacts, candidate-branch clean release rehearsal, final tagged clean release gate, optional gates skipped, and engineer decisions required.
+- The intended Conventional Commit summary must describe the durable repository change being squashed, such as what was added, fixed, changed, removed, or refactored. Do not use generic release-process wording such as "release version X.Y.Z", "prepare release", "preparing for release", "prep release", or similar; the commit is not the release action and must not be named as if it only performs release administration.
 - If the release plan has unresolved engineer decisions, stop before touching the release branch.
 
 Candidate-branch gate before squash:
@@ -96,7 +97,7 @@ Squash and tag:
 1. If on a feature or fix branch, remember the branch name and commit range.
 2. Switch to the release branch.
 3. Update the release branch from `<release-remote>` with a fast-forward-only pull.
-4. If releasing from a feature or fix branch, squash that branch onto the release branch as one Conventional Commit with a factual body covering behavior, tests, packaging, and release impacts.
+4. If releasing from a feature or fix branch, squash that branch onto the release branch as one Conventional Commit whose subject answers "this commit will..." and whose body describes only durable repository changes: behavior, APIs, build/test surfaces, packaging, artifacts, and release impacts. Do not include non-change process actions such as Codex review runs, verification commands, gates passed, local rehearsal status, sign-off discussion, or other work performed to gain confidence; those belong in the final report, not the commit message.
 5. If releasing from the release branch directly, do not squash; use the current `HEAD`.
 6. Stop before tagging and ask the engineer whether to sign or otherwise amend the squashed commit, or continue with the current commit unchanged. Do not create the tag until the engineer explicitly chooses. If the engineer signs or amends the commit, re-read `HEAD`, verify the commit message and contents still match the release plan, and continue from the new commit.
 7. Ensure no checked-in version file is being used for the git-worktree version. The selected version becomes active only through the lightweight `vX.Y.Z` tag on `HEAD`; generated source-archive `VERSION` files are created later as non-git release artifacts.
