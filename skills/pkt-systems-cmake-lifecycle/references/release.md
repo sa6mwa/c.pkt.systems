@@ -5,12 +5,22 @@
 Prerequisites:
 
 - All intended source, version, lifecycle, and documentation changes are committed before release flow proceeds. The worktree must be clean except ignored generated files.
+- Documentation has been reviewed for the release candidate, updated when needed, and committed on the feature or fix branch before the release flow begins. Documentation updates found at release decision time are preparation work, not release-gate repair work.
 - If releasing from a feature or fix branch, that branch contains the committed work intended for release.
 - If releasing directly from the release branch, that branch's current `HEAD` contains the committed work intended for release.
 - All review issues are already addressed before release proceeds.
 - Required local gates already pass before release proceeds.
 - Release authority is clear.
 - Release gates are stop-only. Reviews, tests, package verification, artifact checks, checksum checks, privacy checks, and publish preconditions must fail the release process when they find an issue. Do not fix code, amend commits, move tags, regenerate artifacts after a failed gate, or otherwise continue the release as part of the same flow unless the engineer explicitly starts a separate fix iteration.
+
+Documentation preparation:
+
+- When the engineer decides to release, first review the repository documentation against the candidate changes before starting the release flow.
+- Review at least the public README, API documentation, examples, changelog or release notes when present, build/install/package instructions, and any user-facing CLI, CMake, Lua, or artifact documentation affected by the candidate changes.
+- Update documentation when it is stale, incomplete, misleading, missing new behavior, or inconsistent with the release artifacts, supported platforms, command surfaces, examples, packaging surfaces, or compatibility promises.
+- Commit required documentation updates on the feature or fix branch with a Conventional Commit before proceeding to branch decision, review gate, release plan preview, candidate-branch gates, squash, tag, artifact generation, push, or publish.
+- If currently on the release branch and documentation updates are needed, stop before release flow begins and ask the engineer whether to create or switch to a feature or fix branch for the documentation preparation commit. Do not make documentation updates directly on the release branch unless the engineer explicitly instructs that release-branch documentation preparation is acceptable.
+- If the documentation review finds no required changes, record that result in the release plan preview and continue only with a clean worktree.
 
 Branch decision:
 
