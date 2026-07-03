@@ -1064,18 +1064,22 @@ static int cpkt_lua_runtime_lua_module_loader(lua_State *state) {
   return 1;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 const char *cpkt_lua_runtime_lua_version(void) {
   return LUA_VERSION;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 const char *cpkt_lua_runtime_facade_version(void) {
   return "1";
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_new(cpkt_lua_runtime **out) {
   return cpkt_lua_runtime_new_with_limit(out, 0);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_new_with_limit(
     cpkt_lua_runtime **out,
     size_t max_bytes) {
@@ -1086,6 +1090,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_new_with_limit(
   return cpkt_lua_runtime_new_with_allocator(out, &config);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_new_with_allocator(
     cpkt_lua_runtime **out,
     const cpkt_lua_runtime_allocator_config *allocator_config) {
@@ -1141,6 +1146,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_new_with_allocator(
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 void cpkt_lua_runtime_free(cpkt_lua_runtime *runtime) {
   struct cpkt_lua_runtime_allocator allocator;
 
@@ -1160,12 +1166,14 @@ void cpkt_lua_runtime_free(cpkt_lua_runtime *runtime) {
   cpkt_lua_runtime_allocator_free(&allocator, runtime, sizeof(*runtime));
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 void cpkt_lua_runtime_set_context(cpkt_lua_runtime *runtime, void *context) {
   if (runtime != NULL) {
     runtime->context = context;
   }
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 void *cpkt_lua_runtime_context(const cpkt_lua_runtime *runtime) {
   if (runtime == NULL) {
     return NULL;
@@ -1173,6 +1181,7 @@ void *cpkt_lua_runtime_context(const cpkt_lua_runtime *runtime) {
   return runtime->context;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 void *cpkt_lua_runtime_context_from_state(void *lua_state) {
   cpkt_lua_runtime *runtime;
 
@@ -1187,6 +1196,7 @@ void *cpkt_lua_runtime_context_from_state(void *lua_state) {
   return runtime->context;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_openlibs(cpkt_lua_runtime *runtime) {
   if (runtime == NULL || runtime->state == NULL) {
     return CPKT_LUA_RUNTIME_ERR_ARG;
@@ -1195,6 +1205,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_openlibs(cpkt_lua_runtime *runtime) {
   return cpkt_lua_runtime_open_libs(runtime, CPKT_LUA_RUNTIME_LIB_ALL);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_open_libs(
     cpkt_lua_runtime *runtime,
     int libs) {
@@ -1248,6 +1259,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_open_libs(
   return status;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_traceback(
     cpkt_lua_runtime *runtime,
     int enabled) {
@@ -1259,6 +1271,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_traceback(
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_instruction_limit(
     cpkt_lua_runtime *runtime,
     int instruction_count) {
@@ -1271,6 +1284,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_instruction_limit(
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_clear_instruction_limit(cpkt_lua_runtime *runtime) {
   if (runtime == NULL || runtime->state == NULL) {
     return CPKT_LUA_RUNTIME_ERR_ARG;
@@ -1282,6 +1296,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_clear_instruction_limit(cpkt_lua_runtim
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_package_path(
     cpkt_lua_runtime *runtime,
     const char *path) {
@@ -1291,6 +1306,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_package_path(
   return cpkt_lua_runtime_set_package_field(runtime, "path", path);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_path(
     cpkt_lua_runtime *runtime,
     const char *path) {
@@ -1300,6 +1316,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_path(
   return cpkt_lua_runtime_prepend_package_field(runtime, "path", path);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_package_cpath(
     cpkt_lua_runtime *runtime,
     const char *path) {
@@ -1309,6 +1326,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_package_cpath(
   return cpkt_lua_runtime_set_package_field(runtime, "cpath", path);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_cpath(
     cpkt_lua_runtime *runtime,
     const char *path) {
@@ -1318,6 +1336,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_cpath(
   return cpkt_lua_runtime_prepend_package_field(runtime, "cpath", path);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_global_string(
     cpkt_lua_runtime *runtime,
     const char *name,
@@ -1337,6 +1356,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_global_string(
       CPKT_LUA_RUNTIME_ERR_RUNTIME);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_global_boolean(
     cpkt_lua_runtime *runtime,
     const char *name,
@@ -1356,6 +1376,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_global_boolean(
       CPKT_LUA_RUNTIME_ERR_RUNTIME);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_global_number(
     cpkt_lua_runtime *runtime,
     const char *name,
@@ -1375,6 +1396,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_global_number(
       CPKT_LUA_RUNTIME_ERR_RUNTIME);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_set_global_integer(
     cpkt_lua_runtime *runtime,
     const char *name,
@@ -1394,6 +1416,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_global_integer(
       CPKT_LUA_RUNTIME_ERR_RUNTIME);
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_register_c_module(
     cpkt_lua_runtime *runtime,
     const char *module_name,
@@ -1416,6 +1439,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_register_c_module(
   return status;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_register_lua_module(
     cpkt_lua_runtime *runtime,
     const char *module_name,
@@ -1487,6 +1511,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_register_lua_module(
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_require(
     cpkt_lua_runtime *runtime,
     const char *module_name) {
@@ -1512,6 +1537,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_require(
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_run_file(
     cpkt_lua_runtime *runtime,
     const char *path,
@@ -1557,6 +1583,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_run_file(
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 cpkt_lua_runtime_status cpkt_lua_runtime_run_buffer(
     cpkt_lua_runtime *runtime,
     const unsigned char *source,
@@ -1606,6 +1633,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_run_buffer(
   return CPKT_LUA_RUNTIME_OK;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 const char *cpkt_lua_runtime_error(const cpkt_lua_runtime *runtime) {
   if (runtime == NULL || runtime->last_error == NULL) {
     return "";
@@ -1613,6 +1641,7 @@ const char *cpkt_lua_runtime_error(const cpkt_lua_runtime *runtime) {
   return runtime->last_error;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 void cpkt_lua_runtime_clear_error(cpkt_lua_runtime *runtime) {
   if (runtime == NULL) {
     return;
@@ -1624,6 +1653,7 @@ void cpkt_lua_runtime_clear_error(cpkt_lua_runtime *runtime) {
   runtime->last_error = NULL;
 }
 
+/** Implements the public Lua runtime facade function declared in <cpkt/lua_runtime.h>. */
 const char *cpkt_lua_runtime_status_string(cpkt_lua_runtime_status status) {
   switch (status) {
     case CPKT_LUA_RUNTIME_OK:
