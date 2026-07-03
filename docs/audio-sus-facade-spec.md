@@ -31,8 +31,9 @@ decisions so implementation can begin against a concrete target.
   16000 Hz.
 - Support audio encoding where miniaudio provides a practical built-in encoder,
   while keeping exact supported formats queryable and test-covered.
-- Support whisper.cpp CPU-only inference for the first release so all cpkt
-  target architectures can build the facade.
+- Always support whisper.cpp CPU inference, and include Vulkan and/or CUDA
+  backends in `libcpktsus` when those backend development files are available
+  for the target being built.
 - Provide streaming-first transcription output through callbacks, with explicit
   materialized-text helpers as convenience APIs only.
 - Provide model loading from an explicit path and an explicit cache-backed model
@@ -54,8 +55,10 @@ decisions so implementation can begin against a concrete target.
 - Do not call APIs "streaming" when they materialize an entire audio stream,
   model, or transcript internally. Use "materialized", "buffered", or
   "cached" for those behaviors.
-- Do not provide GPU, Metal, BLAS, OpenCL, Vulkan, CUDA, SYCL, OpenVINO, CoreML,
-  or similar acceleration in the first release.
+- Do not provide Metal, BLAS, OpenCL, SYCL, OpenVINO, CoreML, or similar
+  acceleration in the first release. Vulkan and CUDA are allowed when they are
+  detected for the target toolchain and packaged with correct dependency
+  metadata.
 - Do not implement JSON output in this repository. Future JSON sinks should use
   a JSON dependency such as lonejson in the consuming integration, without
   adding a parent-relative dependency to this repository.
@@ -113,7 +116,15 @@ Initial miniaudio build intent:
 
 ### cpkt_sus
 
-Build whisper.cpp CPU-only for the first release.
+Build whisper.cpp with CPU support always enabled. Include Vulkan and/or CUDA
+support when the required development files are available for the target
+toolchain.
+
+Availability is target-specific. A host `x86_64-linux-gnu` `libvulkan-dev`
+install is usable only for native `x86_64-linux-gnu` builds unless matching
+headers, libraries, and metadata are present in the dependency root for another
+target. In particular, musl and cross targets should be expected to build
+CPU-only on a host that only has GNU host Vulkan development files.
 
 Initial whisper.cpp/ggml build intent:
 
@@ -124,22 +135,28 @@ Initial whisper.cpp/ggml build intent:
 - `WHISPER_SDL2=OFF`
 - `WHISPER_COREML=OFF`
 - `WHISPER_OPENVINO=OFF`
-- `GGML_NATIVE=OFF`
-- `GGML_OPENMP=OFF`
+- `GGML_NATIVE=OFF`, unless a future per-target optimized variant is explicitly
+  introduced.
+- `GGML_OPENMP=OFF`, unless OpenMP becomes a deliberate packaged dependency.
 - `GGML_METAL=OFF`
 - `GGML_BLAS=OFF`
 - `GGML_ACCELERATE=OFF`
-- `GGML_CUDA=OFF`
 - `GGML_HIP=OFF`
-- `GGML_VULKAN=OFF`
 - `GGML_OPENCL=OFF`
 - `GGML_SYCL=OFF`
 - `GGML_RPC=OFF`
 - `GGML_BACKEND_DL=OFF`
+- `GGML_VULKAN=ON` only when target Vulkan development files are available.
+- `GGML_CUDA=ON` only when target CUDA development files are available.
+
+Expose a project build option such as `CPKT_SUS_CPU_ONLY=ON` to force
+`GGML_VULKAN=OFF` and `GGML_CUDA=OFF` even when those backends are detectable.
+The default is off, so release builds use target-aware backend autodetection.
 
 The exact option set should be kept in the dependency build logic and covered by
 a build metadata/provenance test so host-native acceleration does not
-accidentally enter release artifacts.
+accidentally enter the wrong target artifact. Package metadata must record the
+compiled backend set, at least `cpu`, `vulkan`, and/or `cuda`.
 
 ## Public API Style
 
@@ -318,6 +335,10 @@ Initial transcription options should expose only stable, high-value knobs:
 
 - model handle;
 - thread count;
+- `cpu_only`, default `0`, which forces `whisper_context_params.use_gpu = false`
+  at runtime even when Vulkan or CUDA is compiled in;
+- GPU device selection only if the first implementation can expose it without
+  committing to unstable backend-specific semantics;
 - language (`NULL`, empty string, or `"auto"` means auto-detect);
 - translate vs transcribe;
 - timestamps on/off;
@@ -452,6 +473,8 @@ Required checks:
 - progress and abort callbacks are observable;
 - materialized transcript helper uses project-owned allocation/free;
 - package artifacts include correct licenses and provenance manifests;
+- package metadata records which whisper.cpp/ggml backends were compiled into
+  each target artifact;
 - package verification rejects local paths and verifies runtime loader metadata.
 
 Model-download tests that require network access must be opt-in. Local tests
@@ -468,3 +491,5 @@ files.
 - Whether the first release exposes any whisper.cpp VAD/tinydiarize features.
 - Whether quantized model aliases should use `name:q5_0`, separate constants,
   or both.
+- Whether runtime GPU device selection is exposed in v0 or deferred until a
+  concrete multi-device workflow requires it.
