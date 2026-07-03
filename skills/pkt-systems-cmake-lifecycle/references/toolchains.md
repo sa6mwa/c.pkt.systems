@@ -1,5 +1,7 @@
 # CPKT Toolchain Reference
 
+This lifecycle owns C and C++ compiler resolution for pkt.systems C/CMake projects. Projects must prefer a complete local compiler collection when available, install only public downloadable Linux fallback collections, and share the same cache root across all downstream repositories.
+
 ## Targets
 
 | Target | Local-first rule | Download fallback |
@@ -11,6 +13,20 @@
 | `armhf-linux-gnu` | `CPKT_ARMHF_GNU_PREFIX`, then `/usr` cross package | Bootlin `armv7-eabihf--glibc--stable-2025.08-1` |
 | `armhf-linux-musl` | `CPKT_ARMHF_MUSL_PREFIX`, then `$HOME/.local/cross/arm-linux-musleabihf` | Bootlin `armv7-eabihf--musl--stable-2025.08-1` |
 | `arm64-apple-darwin` | `OSXCROSS_ROOT` and `CPKT_OSXCROSS_HOST` | none |
+
+## Readiness Contract
+
+Linux target readiness requires:
+
+- C compiler.
+- C++ compiler.
+- `ar`.
+- `ranlib`.
+- libc headers.
+- `libstdc++.a`.
+- `libgcc.a`.
+
+Darwin target readiness is discovery-only. The lifecycle may discover osxcross/Xcode SDK based tools, but it must not download Apple SDKs or Darwin compiler collections.
 
 ## Cache Layout
 
@@ -25,21 +41,21 @@ Subdirectories:
 - `archives/`: verified tarballs.
 - `roots/`: extracted compiler collection roots.
 
-The cache is intended to survive project `make clean`, CMake clean, and package rebuilds.
+The cache is intended to survive project `make clean`, CMake clean, and package rebuilds. Do not use repository-local or project-specific toolchain cache directories.
 
 ## Downstream Setup
 
 Use discovery first:
 
 ```sh
-path/to/skills/cpkt-toolchains/scripts/cpkt-toolchains.sh discover
+path/to/skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 ```
 
 Install a target and export its environment:
 
 ```sh
-path/to/skills/cpkt-toolchains/scripts/cpkt-toolchains.sh ensure aarch64-linux-gnu
-eval "$(path/to/skills/cpkt-toolchains/scripts/cpkt-toolchains.sh env aarch64-linux-gnu)"
+path/to/skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure aarch64-linux-gnu
+eval "$(path/to/skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env aarch64-linux-gnu)"
 ```
 
 For CMake projects, pass these values into the downstream toolchain file or configure command:
@@ -89,7 +105,7 @@ Darwin is different:
 
 - the Linux `libstdc++.a` and `libgcc.a` readiness checks do not apply to `arm64-apple-darwin`;
 - osxcross/Apple clang normally uses `libc++`, not GNU `libstdc++`;
-- the skill discovers Darwin compiler tools but does not download Apple SDKs or bundle a Darwin C++ runtime;
+- the lifecycle discovers Darwin compiler tools but does not download Apple SDKs or bundle a Darwin C++ runtime;
 - downstream package metadata for Darwin should emit target-correct C++ runtime/system flags such as `-lc++` when required, while still allowing C consumers to use the C compiler driver.
 
 ## Update Rule
@@ -105,7 +121,7 @@ When Bootlin publishes a newer stable toolchain set, update the script manifest 
 Then run:
 
 ```sh
-bash -n skills/cpkt-toolchains/scripts/cpkt-toolchains.sh
-skills/cpkt-toolchains/scripts/cpkt-toolchains.sh discover
-skills/cpkt-toolchains/scripts/cpkt-toolchains.sh ensure <one changed target>
+bash -n skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <one changed target>
 ```

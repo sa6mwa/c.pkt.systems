@@ -4,8 +4,9 @@ description: >-
   Self-contained lifecycle authority for pkt.systems-style C/CMake repositories
   that consume c.pkt.systems SDK bundles: bootstrap new components, migrate
   existing projects, standardize Make/CMake/dependency/test/e2e/Lua/package/release
-  workflows, preserve bespoke behavior behind lifecycle extension points, verify
-  thoroughly, squash/tag, build dist artifacts, and publish GitHub releases.
+  workflows, resolve and cache cpkt C/C++ toolchains, preserve bespoke behavior
+  behind lifecycle extension points, verify thoroughly, squash/tag, build dist
+  artifacts, and publish GitHub releases.
 metadata:
   short-description: pkt.systems C/CMake lifecycle
 ---
@@ -32,6 +33,7 @@ This skill is the process authority. It must not require external example reposi
 - `dist/` is generated output, not the release manifest. Release uploads must come from a verified checksum or manifest file.
 - Git commits created by this workflow use Conventional Commits.
 - Local CI/CD is the default operating model. Do not scaffold or require remote CI/CD or GitHub Actions unless the engineer explicitly asks.
+- Toolchain resolution is lifecycle-owned. C/C++ compiler discovery, automatic download, cache layout, static C++ runtime metadata, and downstream setup must follow [references/toolchains.md](references/toolchains.md) and use the shared cache root `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`. Do not create project-specific toolchain cache directories.
 
 ## Operating Posture
 
@@ -60,6 +62,7 @@ Read references only after the request and repository state indicate they are re
 
 - Read [references/api-design.md](references/api-design.md) when creating or changing public C APIs, handle/object boundaries, receiver-style functions, examples, streaming APIs, error/ownership rules, or implementation layering.
 - Read [references/operability.md](references/operability.md) for repository layout, CMake presets, Make targets, script surfaces, cache discipline, diagnostics, and lifecycle command shape.
+- Read [references/toolchains.md](references/toolchains.md) when touching C/C++ compiler discovery, cross-target setup, autodownloaded compiler collections, CMake toolchain files or presets, static C++ runtime closure, downstream setup instructions, release target matrices, or package metadata that exposes compiler/runtime requirements.
 - Read [references/dependencies.md](references/dependencies.md) when touching SDK dependencies, cache invalidation, dependency provenance, bundled/external dependency rules, license provenance, or any JSON behavior owned by `lonejson`.
 - Read [references/local-ci.md](references/local-ci.md) when touching build/test gates, API or ABI behavior, sanitizer coverage, fuzzing, benchmarks, install-tree consumers, or quality contracts.
 - Read [references/docker-compose-e2e.md](references/docker-compose-e2e.md) when the repository has or needs deterministic local service e2e.
@@ -71,10 +74,23 @@ Read references only after the request and repository state indicate they are re
 
 Suggested starting sets:
 
-- Blank repository from a spec: `bootstrap`, `api-design`, `operability`, `dependencies`, `local-ci`, `packaging`; add `lua` or `docker-compose-e2e` only when the spec calls for them.
+- Blank repository from a spec: `bootstrap`, `api-design`, `operability`, `toolchains`, `dependencies`, `local-ci`, `packaging`; add `lua` or `docker-compose-e2e` only when the spec calls for them.
 - Existing repository consolidation: `migration`, `operability`, `api-design`, then inspect and load the affected surface references.
 - Ordinary feature or fix: inspect first, then load only the affected surface references. Do not run the migration procedure unless the feature requires lifecycle restructuring.
-- Release: `release`, `packaging`, `local-ci`, and any optional surface references whose artifacts or gates are part of the release.
+- Cross-target, compiler, or C++ facade work: `toolchains`, `operability`, `packaging`, and any API/dependency references affected by the product change.
+- Release: `release`, `packaging`, `local-ci`, `toolchains`, and any optional surface references whose artifacts or gates are part of the release.
+
+## Toolchain Command Surface
+
+Use `scripts/cpkt-toolchains.sh` from this skill to inspect or provision cpkt compiler collections:
+
+```sh
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <target|all>
+eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env <target>)"
+```
+
+Downstream projects may vendor or call this lifecycle script, but the policy and cache root stay identical across pkt.systems C projects.
 
 ## Completion Report
 

@@ -217,6 +217,7 @@ static ma_decoder_config cpkt_audio_ma_decoder_config(
   return ma_config;
 }
 
+/** Opens a receiver-shell decoder for a filesystem input path. */
 cpkt_audio_result cpkt_audio_decoder_open_file(
     cpkt_audio_decoder **out,
     const char *path,
@@ -253,6 +254,7 @@ cpkt_audio_result cpkt_audio_decoder_open_file(
   return CPKT_AUDIO_OK;
 }
 
+/** Opens a receiver-shell decoder for callback-based input. */
 cpkt_audio_result cpkt_audio_decoder_open_reader(
     cpkt_audio_decoder **out,
     const cpkt_audio_reader *reader,
@@ -295,6 +297,7 @@ cpkt_audio_result cpkt_audio_decoder_open_reader(
   return CPKT_AUDIO_OK;
 }
 
+/** Converts an audio result code into a stable diagnostic string. */
 const char *cpkt_audio_result_string(cpkt_audio_result result) {
   switch (result) {
   case CPKT_AUDIO_OK:

@@ -51,6 +51,7 @@ static void cpkt_sus_destroy_impl(cpkt_sus *self) {
   free(self);
 }
 
+/** Opens a receiver-shell speech facade instance for a model path. */
 cpkt_sus_result cpkt_sus_open_model(
     cpkt_sus **out,
     const cpkt_sus_config *config) {
@@ -96,18 +97,22 @@ cpkt_sus_result cpkt_sus_open_model(
   return CPKT_SUS_OK;
 }
 
+/** Returns the linked backend version string. */
 const char *cpkt_sus_backend_version(void) {
   return whisper_version();
 }
 
+/** Returns the linked backend system information string. */
 const char *cpkt_sus_backend_system_info(void) {
   return whisper_print_system_info();
 }
 
+/** Returns the public facade ABI version string. */
 const char *cpkt_sus_facade_version(void) {
   return CPKT_SUS_FACADE_VERSION;
 }
 
+/** Converts a speech result code into a stable diagnostic string. */
 const char *cpkt_sus_result_string(cpkt_sus_result result) {
   switch (result) {
   case CPKT_SUS_OK:

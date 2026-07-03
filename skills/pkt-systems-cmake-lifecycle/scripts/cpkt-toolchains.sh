@@ -11,7 +11,7 @@ usage() {
 usage: cpkt-toolchains.sh <command> [target-id]
 
 Commands:
-  targets              List cpkt target ids known to this skill.
+  targets              List cpkt target ids known to this lifecycle.
   discover [target]    Print compiler, sysroot, runtime, source, and cache paths.
   ensure <target|all>  Install missing downloadable toolchains, then report.
   env <target>         Print shell exports for compilers, tools, sysroot, and runtime archives.
@@ -123,19 +123,6 @@ bootlin_meta() {
   esac
 }
 
-complete_gnu_collection() {
-  root=$1
-  prefix=$2
-  sysroot=$3
-  [ -x "$root/bin/$prefix-gcc" ] &&
-    [ -x "$root/bin/$prefix-g++" ] &&
-    [ -x "$root/bin/$prefix-ar" ] &&
-    [ -x "$root/bin/$prefix-ranlib" ] &&
-    { [ -f "$sysroot/include/stdio.h" ] || [ -f "$sysroot/usr/include/stdio.h" ]; } &&
-    existing_compiler_file "$root/bin/$prefix-g++" libstdc++.a >/dev/null &&
-    existing_compiler_file "$root/bin/$prefix-g++" libgcc.a >/dev/null
-}
-
 compiler_file() {
   compiler=$1
   file_name=$2
@@ -149,6 +136,19 @@ existing_compiler_file() {
   [ "$path" != "$file_name" ] && [ -f "$path" ] || return 1
   dir=$(CDPATH= cd -- "$(dirname -- "$path")" && pwd -P)
   printf '%s/%s\n' "$dir" "$(basename -- "$path")"
+}
+
+complete_gnu_collection() {
+  root=$1
+  prefix=$2
+  sysroot=$3
+  [ -x "$root/bin/$prefix-gcc" ] &&
+    [ -x "$root/bin/$prefix-g++" ] &&
+    [ -x "$root/bin/$prefix-ar" ] &&
+    [ -x "$root/bin/$prefix-ranlib" ] &&
+    { [ -f "$sysroot/include/stdio.h" ] || [ -f "$sysroot/usr/include/stdio.h" ]; } &&
+    existing_compiler_file "$root/bin/$prefix-g++" libstdc++.a >/dev/null &&
+    existing_compiler_file "$root/bin/$prefix-g++" libgcc.a >/dev/null
 }
 
 complete_native_collection() {
@@ -249,7 +249,7 @@ local_candidate() {
 
 install_bootlin() {
   target=$1
-  meta=$(bootlin_meta "$target") || die "$target is not downloadable by this skill"
+  meta=$(bootlin_meta "$target") || die "$target is not downloadable by this lifecycle"
   IFS='|' read -r bootlin_arch toolchain_name sha256 boot_prefix boot_sysroot <<EOF
 $meta
 EOF
