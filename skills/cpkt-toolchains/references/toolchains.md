@@ -55,6 +55,36 @@ cmake -S . -B build-aarch64 \
 
 The emitted `env` command is deliberately shell-only and does not mutate global login shell files.
 
+## Static C++ Runtime Contract
+
+Linux target readiness includes static C++ runtime archives:
+
+- `libstdc++.a`
+- `libgcc.a`
+
+`discover` prints them as:
+
+```text
+libstdcxx_a=...
+libgcc_a=...
+```
+
+`env` exports them as:
+
+```sh
+CPKT_LIBSTDCXX_A=...
+CPKT_LIBGCC_A=...
+```
+
+Use these paths when building cpkt static SDK metadata for C++-implemented C facades such as `libcpktsus.a`.
+
+The intended static link contract is:
+
+- do not merge `libstdc++.a` into facade archives;
+- ship the selected runtime archives in the cpkt SDK;
+- make `pkg-config --static` or equivalent metadata place facade archives first and the cpkt-provided runtime archives after them;
+- require downstream projects that also use C++ to use the same cpkt-provided C++ runtime closure for the final static link.
+
 ## Update Rule
 
 When Bootlin publishes a newer stable toolchain set, update the script manifest in one commit:

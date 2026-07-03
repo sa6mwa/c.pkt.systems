@@ -12,9 +12,9 @@ usage: cpkt-toolchains.sh <command> [target-id]
 
 Commands:
   targets              List cpkt target ids known to this skill.
-  discover [target]    Print compiler, sysroot, source, and cache paths.
+  discover [target]    Print compiler, sysroot, runtime, source, and cache paths.
   ensure <target|all>  Install missing downloadable toolchains, then report.
-  env <target>         Print shell exports for CC/CXX/AR/RANLIB/STRIP/READELF/SYSROOT.
+  env <target>         Print shell exports for compilers, tools, sysroot, and runtime archives.
 
 Cache:
   ${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}
@@ -131,7 +131,24 @@ complete_gnu_collection() {
     [ -x "$root/bin/$prefix-g++" ] &&
     [ -x "$root/bin/$prefix-ar" ] &&
     [ -x "$root/bin/$prefix-ranlib" ] &&
-    { [ -f "$sysroot/include/stdio.h" ] || [ -f "$sysroot/usr/include/stdio.h" ]; }
+    { [ -f "$sysroot/include/stdio.h" ] || [ -f "$sysroot/usr/include/stdio.h" ]; } &&
+    existing_compiler_file "$root/bin/$prefix-g++" libstdc++.a >/dev/null &&
+    existing_compiler_file "$root/bin/$prefix-g++" libgcc.a >/dev/null
+}
+
+compiler_file() {
+  compiler=$1
+  file_name=$2
+  "$compiler" -print-file-name="$file_name"
+}
+
+existing_compiler_file() {
+  compiler=$1
+  file_name=$2
+  path=$(compiler_file "$compiler" "$file_name")
+  [ "$path" != "$file_name" ] && [ -f "$path" ] || return 1
+  dir=$(CDPATH= cd -- "$(dirname -- "$path")" && pwd -P)
+  printf '%s/%s\n' "$dir" "$(basename -- "$path")"
 }
 
 complete_native_collection() {
@@ -139,7 +156,9 @@ complete_native_collection() {
     [ -x /usr/bin/c++ ] &&
     [ -x /usr/bin/ar ] &&
     [ -x /usr/bin/ranlib ] &&
-    [ -f /usr/include/stdio.h ]
+    [ -f /usr/include/stdio.h ] &&
+    existing_compiler_file /usr/bin/c++ libstdc++.a >/dev/null &&
+    existing_compiler_file /usr/bin/c++ libgcc.a >/dev/null
 }
 
 complete_apple_collection() {
@@ -322,6 +341,10 @@ EOF
     printf 'ranlib=%s\n' "$ranlib"
     printf 'strip=%s\n' "$strip"
     printf 'readelf=%s\n' "$readelf"
+    if [ "$target" != arm64-apple-darwin ]; then
+      printf 'libstdcxx_a=%s\n' "$(existing_compiler_file "$cxx" libstdc++.a)"
+      printf 'libgcc_a=%s\n' "$(existing_compiler_file "$cxx" libgcc.a)"
+    fi
   else
     printf 'status=missing\n'
     if bootlin_meta "$target" >/dev/null 2>&1; then
@@ -367,6 +390,10 @@ EOF
   printf 'export RANLIB=%s\n' "$ranlib"
   printf 'export STRIP=%s\n' "$strip"
   printf 'export READELF=%s\n' "$readelf"
+  if [ "$target" != arm64-apple-darwin ]; then
+    printf 'export CPKT_LIBSTDCXX_A=%s\n' "$(existing_compiler_file "$cxx" libstdc++.a)"
+    printf 'export CPKT_LIBGCC_A=%s\n' "$(existing_compiler_file "$cxx" libgcc.a)"
+  fi
 }
 
 cmd=${1:-}

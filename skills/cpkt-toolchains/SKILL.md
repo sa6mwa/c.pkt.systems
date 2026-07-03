@@ -22,12 +22,12 @@ Commands:
 - `targets`: list supported target ids.
 - `discover [target]`: print status, source, root, compiler, sysroot, and cache paths.
 - `ensure <target|all>`: prefer complete local compilers, otherwise install missing downloadable Linux toolchains into the persistent cache.
-- `env <target>`: print shell exports for `CC`, `CXX`, `AR`, `RANLIB`, `STRIP`, `READELF`, `CPKT_TOOLCHAIN_ROOT`, `CPKT_TOOLCHAIN_PREFIX`, and `CPKT_SYSROOT`.
+- `env <target>`: print shell exports for `CC`, `CXX`, `AR`, `RANLIB`, `STRIP`, `READELF`, `CPKT_TOOLCHAIN_ROOT`, `CPKT_TOOLCHAIN_PREFIX`, `CPKT_SYSROOT`, and Linux static runtime archive paths.
 
 ## Policy
 
 - Prefer a complete local C/C++ compiler collection when present.
-- Treat a collection as complete only when C compiler, C++ compiler, `ar`, `ranlib`, and libc headers are available.
+- Treat a Linux collection as complete only when C compiler, C++ compiler, `ar`, `ranlib`, libc headers, `libstdc++.a`, and `libgcc.a` are available.
 - Download only public Linux toolchains. Apple/Darwin is discovery-only because SDK access is not public.
 - Cache downloads outside project trees under `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`.
 - Use pinned Bootlin stable tarballs and SHA-256 checksums from the skill script. Update the manifest deliberately when Bootlin publishes a newer stable release.

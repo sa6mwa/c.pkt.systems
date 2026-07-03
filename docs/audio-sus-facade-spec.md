@@ -164,6 +164,41 @@ backend strategy that keeps optional GPU backends out of the mandatory consumer
 link path. CPU fallback at runtime does not remove link-time requirements from a
 GPU-enabled artifact.
 
+### C++ Runtime Packaging
+
+`libcpktsus` is a C89 facade over C++ implementation code. Downstream consumers
+must not need a C++ compiler driver, host `libstdc++`, or host C++ runtime
+package in order to consume cpkt SDK artifacts. The build and package contract
+for Linux targets is:
+
+- every target toolchain used for `cpkt_sus` must provide both `libstdc++.a`
+  and `libgcc.a`;
+- binary SDKs must ship the cpkt-selected static C++ runtime archives needed by
+  the target under a project-owned runtime directory;
+- `libcpktsus.a` must not merge or absorb `libstdc++.a` objects internally;
+- `libcpktsus.a` static consumers must link through cpkt-provided metadata,
+  such as `pkg-config --static`, which places `libcpktsus.a` first and the
+  cpkt-provided C++ runtime archives after it;
+- C and C++ downstream objects in the same final static link must resolve
+  against that one cpkt-provided C++ runtime closure, not a second host or
+  vendor `libstdc++`;
+- package metadata must not require downstreams to add raw workaround flags or
+  system paths by hand.
+
+`libcpktsus.so` should keep the C++ implementation private:
+
+- export only intended `cpkt_sus_*` ABI symbols;
+- hide whisper.cpp, ggml, and C++ standard library symbols where the platform
+  supports it;
+- avoid a runtime dependency on a downstream-provided `libstdc++.so`;
+- verify loader metadata so no `NEEDED libstdc++.so` or `NEEDED libgcc_s.so`
+  appears in shipped Linux `libcpktsus.so` artifacts unless a later explicit
+  runtime-package policy replaces this contract.
+
+Do not ship a bundled dynamic `libstdc++.so` as the default solution. It would
+make C++ runtime ABI, loader path behavior, and CVE updates part of the cpkt
+runtime support surface.
+
 ## Public API Style
 
 These facades use public receiver-shell handles. A public handle contains stable
@@ -483,6 +518,17 @@ Required checks:
   each target artifact;
 - backend capability reporting returns at least `cpu` for the first
   implementation;
+- toolchain/package verification proves each Linux `cpkt_sus` target has
+  cpkt-provided `libstdc++.a` and `libgcc.a` runtime archives;
+- static package smoke tests link a C consumer with `cc` through
+  `pkg-config --static cpktsus`, without `g++` and without host/system
+  `libstdc++` paths;
+- static package smoke tests link a mixed C/C++ consumer where the final link is
+  still performed by `cc` and all C++ runtime resolution comes from the
+  cpkt-provided runtime archives emitted by package metadata;
+- shared package verification confirms `libcpktsus.so` exports only intended
+  public facade symbols and does not require downstream `libstdc++.so` or
+  `libgcc_s.so`;
 - package verification rejects local paths and verifies runtime loader metadata.
 
 Model-download tests that require network access must be opt-in. Local tests
