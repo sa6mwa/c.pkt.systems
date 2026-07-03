@@ -89,6 +89,21 @@ function(cpkt_get_external_c_flags out_var)
   set(${out_var} "${_flags}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_get_external_cxx_flags out_var)
+  set(_flags "-O2 -DNDEBUG -g0")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+    string(APPEND _flags
+      " -fmacro-prefix-map=${CPKT_DEPENDENCY_BUILD_ROOT}=deps-build"
+      " -fmacro-prefix-map=${CPKT_EXTERNAL_ROOT}=deps"
+    )
+  endif()
+  if(NOT "${CMAKE_CXX_FLAGS}" STREQUAL "")
+    set(_flags "${CMAKE_CXX_FLAGS} ${_flags}")
+  endif()
+  string(STRIP "${_flags}" _flags)
+  set(${out_var} "${_flags}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_get_strip_dependency_install_command out_var install_dir)
   if(NOT CMAKE_STRIP)
     message(FATAL_ERROR "CMAKE_STRIP is required when building release dependencies")
@@ -133,6 +148,18 @@ function(cpkt_append_common_external_cmake_args out_var)
 
   cpkt_get_external_c_flags(_cpkt_external_c_flags)
   list(APPEND _args -DCMAKE_C_FLAGS=${_cpkt_external_c_flags})
+
+  set(${out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_append_common_external_cxx_cmake_args out_var)
+  cpkt_append_common_external_cmake_args(_args)
+  list(APPEND _args
+    -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  )
+
+  cpkt_get_external_cxx_flags(_cpkt_external_cxx_flags)
+  list(APPEND _args -DCMAKE_CXX_FLAGS=${_cpkt_external_cxx_flags})
 
   set(${out_var} "${_args}" PARENT_SCOPE)
 endfunction()
@@ -1312,6 +1339,151 @@ function(cpkt_add_miniaudio)
   endif()
 endfunction()
 
+function(cpkt_add_whisper)
+  set(project_name_shared "cpkt_whisper_shared_project")
+  set(project_name_static "cpkt_whisper_static_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper")
+  set(source_dir "${prefix_dir}/src")
+  set(shared_build_dir "${prefix_dir}/build-shared")
+  set(static_build_dir "${prefix_dir}/build-static")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/whisper/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  cpkt_append_common_external_cxx_cmake_args(common_cmake_args)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+
+  set(whisper_static_library "${install_dir}/lib/libwhisper${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(whisper_shared_library "${install_dir}/lib/libwhisper${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(ggml_static_libraries
+    "${install_dir}/lib/libggml${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-base${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-cpu${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(ggml_shared_libraries
+    "${install_dir}/lib/libggml${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-base${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-cpu${CMAKE_SHARED_LIBRARY_SUFFIX}")
+
+  set(whisper_common_cmake_args
+    -DCMAKE_INSTALL_PREFIX=${install_dir}
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DWHISPER_BUILD_TESTS=OFF
+    -DWHISPER_BUILD_EXAMPLES=OFF
+    -DWHISPER_BUILD_SERVER=OFF
+    -DWHISPER_CURL=OFF
+    -DWHISPER_SDL2=OFF
+    -DWHISPER_COREML=OFF
+    -DWHISPER_COREML_ALLOW_FALLBACK=OFF
+    -DWHISPER_OPENVINO=OFF
+    -DWHISPER_ALL_WARNINGS=OFF
+    -DWHISPER_ALL_WARNINGS_3RD_PARTY=OFF
+    -DWHISPER_FATAL_WARNINGS=OFF
+    -DGGML_NATIVE=OFF
+    -DGGML_OPENMP=OFF
+    -DGGML_METAL=OFF
+    -DGGML_BLAS=OFF
+    -DGGML_ACCELERATE=OFF
+    -DGGML_CUDA=OFF
+    -DGGML_HIP=OFF
+    -DGGML_VULKAN=OFF
+    -DGGML_OPENCL=OFF
+    -DGGML_SYCL=OFF
+    -DGGML_RPC=OFF
+    -DGGML_BACKEND_DL=OFF
+    -DGGML_CPU_ALL_VARIANTS=OFF
+    -DGGML_CCACHE=OFF
+    ${common_cmake_args}
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    ExternalProject_Add(${project_name_shared}
+      URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
+      URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
+      DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${shared_build_dir}"
+      STAMP_DIR "${stamp_dir}/shared"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      PATCH_COMMAND
+        ${CMAKE_COMMAND}
+          -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
+          -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=ON
+        ${whisper_common_cmake_args}
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_BYPRODUCTS
+        "${whisper_shared_library}"
+        ${ggml_shared_libraries}
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+
+    ExternalProject_Add(${project_name_static}
+      URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
+      URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
+      DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${static_build_dir}"
+      STAMP_DIR "${stamp_dir}/static"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS ${project_name_shared}
+      PATCH_COMMAND
+        ${CMAKE_COMMAND}
+          -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
+          -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=OFF
+        ${whisper_common_cmake_args}
+      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS
+        "${whisper_static_library}"
+        ${ggml_static_libraries}
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+  endif()
+
+  add_library(cpkt::whisper_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::whisper_static
+    PROPERTIES
+      IMPORTED_LOCATION "${whisper_static_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "${ggml_static_libraries};Threads::Threads;m"
+  )
+
+  add_library(cpkt::whisper_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::whisper_shared
+    PROPERTIES
+      IMPORTED_LOCATION "${whisper_shared_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "${ggml_shared_libraries};Threads::Threads"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::whisper_static ${project_name_static})
+    add_dependencies(cpkt::whisper_shared ${project_name_shared})
+    cpkt_record_dependency_target(${project_name_static})
+  else()
+    cpkt_require_dependency_file("${whisper_static_library}" "whisper.cpp static library")
+    cpkt_require_dependency_file("${whisper_shared_library}" "whisper.cpp shared library")
+    cpkt_require_dependency_file("${install_dir}/include/whisper.h" "whisper.cpp header")
+  endif()
+endfunction()
+
 function(cpkt_add_open62541)
   set(project_name_shared "cpkt_open62541_shared_project")
   set(project_name_static "cpkt_open62541_static_project")
@@ -1553,6 +1725,7 @@ function(cpkt_configure_dependencies)
   cpkt_add_libxml2()
   cpkt_add_lua()
   cpkt_add_miniaudio()
+  cpkt_add_whisper()
   cpkt_add_mqttc()
   cpkt_add_open62541()
 
