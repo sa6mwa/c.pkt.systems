@@ -139,11 +139,13 @@ set(CPKT_LIBSSH2_VERSION "1.11.1" CACHE STRING "Pinned libssh2 release.")
 set(CPKT_CMOCKA_VERSION "2.0.2" CACHE STRING "Pinned cmocka release.")
 set(CPKT_LIBXML2_VERSION "2.15.3" CACHE STRING "Pinned libxml2 release.")
 set(CPKT_LUA_VERSION "5.5.0" CACHE STRING "Pinned Lua release.")
+set(CPKT_MINIAUDIO_VERSION "0.11.25" CACHE STRING "Pinned miniaudio release.")
 set(CPKT_MQTTC_VERSION "1.1.2" CACHE STRING "Pinned MQTT-C project version.")
 set(CPKT_MQTTC_COMMIT "0f4c34c8cc00b16cfee094745d68b8cdbaecd8e0" CACHE STRING "Pinned MQTT-C commit used by open62541 v1.5.4.")
 set(CPKT_OPEN62541_VERSION "1.5.4" CACHE STRING "Pinned open62541 release.")
 set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-musl-warning-1" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPCUA_ABI_VERSION "0" CACHE STRING "OPC UA facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Shared source archive download root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
@@ -190,7 +192,7 @@ else()
 endif()
 
 set(CPKT_DEPENDENCY_SET_ID
-  "openssl-${CPKT_OPENSSL_VERSION}_zlib-${CPKT_ZLIB_VERSION}_curl-${CPKT_CURL_VERSION}_nghttp2-${CPKT_NGHTTP2_VERSION}_libssh2-${CPKT_LIBSSH2_VERSION}_libxml2-${CPKT_LIBXML2_VERSION}_lua-${CPKT_LUA_VERSION}_mqtt-c-${CPKT_MQTTC_VERSION}-${CPKT_MQTTC_COMMIT}_open62541-${CPKT_OPEN62541_VERSION}-${CPKT_OPEN62541_PATCHSET}_cmocka-${CPKT_CMOCKA_VERSION}"
+  "openssl-${CPKT_OPENSSL_VERSION}_zlib-${CPKT_ZLIB_VERSION}_curl-${CPKT_CURL_VERSION}_nghttp2-${CPKT_NGHTTP2_VERSION}_libssh2-${CPKT_LIBSSH2_VERSION}_libxml2-${CPKT_LIBXML2_VERSION}_lua-${CPKT_LUA_VERSION}_miniaudio-${CPKT_MINIAUDIO_VERSION}_mqtt-c-${CPKT_MQTTC_VERSION}-${CPKT_MQTTC_COMMIT}_open62541-${CPKT_OPEN62541_VERSION}-${CPKT_OPEN62541_PATCHSET}_cmocka-${CPKT_CMOCKA_VERSION}"
   CACHE INTERNAL "Version key for the pinned third-party dependency set.")
 set(_cpkt_dependency_toolchain_id
   "${CMAKE_C_COMPILER_ID}-${CMAKE_C_COMPILER_VERSION}")
@@ -273,6 +275,52 @@ endif()
 if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_lua_runtime_static cpkt_deps)
   add_dependencies(cpkt_lua_runtime_shared cpkt_deps)
+endif()
+
+add_library(cpkt_audio_static STATIC src/audio.c)
+target_compile_features(cpkt_audio_static PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_audio_static)
+target_include_directories(cpkt_audio_static
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+)
+target_link_libraries(cpkt_audio_static PUBLIC cpkt::miniaudio_static)
+set_target_properties(cpkt_audio_static PROPERTIES
+  OUTPUT_NAME cpkt_audio
+  POSITION_INDEPENDENT_CODE ON
+)
+
+add_library(cpkt_audio_shared SHARED src/audio.c)
+target_compile_features(cpkt_audio_shared PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_audio_shared)
+target_include_directories(cpkt_audio_shared
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+)
+target_link_libraries(cpkt_audio_shared PUBLIC cpkt::miniaudio_shared)
+set_target_properties(cpkt_audio_shared PROPERTIES
+  OUTPUT_NAME cpkt_audio
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_AUDIO_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}"
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_audio_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON
+  )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_audio_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON
+  )
+endif()
+if(CPKT_BUILD_DEPENDENCIES)
+  add_dependencies(cpkt_audio_static cpkt_deps)
+  add_dependencies(cpkt_audio_shared cpkt_deps)
 endif()
 
 add_library(cpkt_opcua_static STATIC src/opcua.c)
@@ -367,6 +415,7 @@ if(CPKT_BUILD_TESTS)
     cpkt::curl_shared
     cpkt::libxml2_shared
     cpkt::lua_shared
+    cpkt::miniaudio_shared
     cpkt::open62541_shared
   )
 
@@ -376,6 +425,7 @@ if(CPKT_BUILD_TESTS)
     cpkt::curl_static
     cpkt::libxml2_static
     cpkt::lua_static
+    cpkt::miniaudio_static
     cpkt::open62541_static
   )
   add_executable(cpkt_mqttc_smoke_shared examples/mqttc_smoke.c)
@@ -432,6 +482,7 @@ if(CPKT_BUILD_TESTS)
       cpkt::curl_shared
       cpkt::libxml2_shared
       cpkt::lua_shared
+      cpkt::miniaudio_shared
       cpkt::open62541_shared
       cpkt::cmocka
     )
@@ -441,12 +492,24 @@ if(CPKT_BUILD_TESTS)
       cpkt::curl_static
       cpkt::libxml2_static
       cpkt::lua_static
+      cpkt::miniaudio_static
       cpkt::open62541_static
       cpkt::cmocka
     )
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_abi_test_shared cpkt_deps)
       add_dependencies(cpkt_abi_test_static cpkt_deps)
+    endif()
+
+    add_executable(cpkt_audio_facade_test tests/audio_facade_test.c)
+    target_compile_options(cpkt_audio_facade_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_audio_facade_test)
+    target_link_libraries(cpkt_audio_facade_test PRIVATE
+      cpkt_audio_static
+      cpkt::cmocka
+    )
+    if(CPKT_BUILD_DEPENDENCIES)
+      add_dependencies(cpkt_audio_facade_test cpkt_deps)
     endif()
 
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
@@ -495,6 +558,7 @@ if(CPKT_BUILD_TESTS)
     add_test(NAME mqttc_example_shared COMMAND cpkt_mqttc_smoke_shared)
     add_test(NAME mqttc_example_static COMMAND cpkt_mqttc_smoke_static)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      add_test(NAME audio_facade_unit COMMAND cpkt_audio_facade_test)
       add_test(NAME abi_test_shared COMMAND cpkt_abi_test_shared)
       add_test(NAME abi_test_static COMMAND cpkt_abi_test_static)
       add_test(NAME lua_runtime_unit COMMAND cpkt_lua_runtime_test)
