@@ -168,8 +168,8 @@ GPU-enabled artifact.
 
 `libcpktsus` is a C89 facade over C++ implementation code. Downstream consumers
 must not need a C++ compiler driver, host `libstdc++`, or host C++ runtime
-package in order to consume cpkt SDK artifacts. The build and package contract
-for Linux targets is:
+package in order to consume cpkt Linux SDK artifacts. The build and package
+contract for Linux targets is:
 
 - every target toolchain used for `cpkt_sus` must provide both `libstdc++.a`
   and `libgcc.a`;
@@ -198,6 +198,25 @@ for Linux targets is:
 Do not ship a bundled dynamic `libstdc++.so` as the default solution. It would
 make C++ runtime ABI, loader path behavior, and CVE updates part of the cpkt
 runtime support surface.
+
+Darwin is a separate runtime model. The Linux `libstdc++.a`/`libgcc.a` closure
+rule does not apply to `arm64-apple-darwin` artifacts. Darwin builds use the
+Apple/clang C++ runtime model, normally `libc++`, and package metadata must
+emit the target-correct Darwin static link requirements rather than inventing a
+cpkt-shipped `libstdc++.a`.
+
+Darwin contract:
+
+- keep the public ABI C-only and export only intended facade symbols;
+- use the configured osxcross/Apple target compiler and linker metadata;
+- for `libcpktsus.dylib`, verify Mach-O loader metadata with target-correct
+  `otool` and allow only normal system C++ runtime dependencies;
+- for `libcpktsus.a`, make pkg-config/CMake static metadata provide the
+  required Darwin C++ runtime and system-library flags, expected to include
+  `-lc++` when C++ runtime symbols are needed;
+- do not bundle `libstdc++` for Darwin;
+- do not require downstream C consumers to invoke `clang++` as the final linker
+  driver.
 
 ## Public API Style
 

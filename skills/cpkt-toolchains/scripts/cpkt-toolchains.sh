@@ -344,6 +344,9 @@ EOF
     if [ "$target" != arm64-apple-darwin ]; then
       printf 'libstdcxx_a=%s\n' "$(existing_compiler_file "$cxx" libstdc++.a)"
       printf 'libgcc_a=%s\n' "$(existing_compiler_file "$cxx" libgcc.a)"
+    else
+      printf 'cxx_runtime=libc++\n'
+      printf 'static_cxx_runtime_archives=not-applicable\n'
     fi
   else
     printf 'status=missing\n'
@@ -393,6 +396,9 @@ EOF
   if [ "$target" != arm64-apple-darwin ]; then
     printf 'export CPKT_LIBSTDCXX_A=%s\n' "$(existing_compiler_file "$cxx" libstdc++.a)"
     printf 'export CPKT_LIBGCC_A=%s\n' "$(existing_compiler_file "$cxx" libgcc.a)"
+  else
+    printf 'export CPKT_CXX_RUNTIME=libc++\n'
+    printf 'export CPKT_STATIC_CXX_RUNTIME_ARCHIVES=not-applicable\n'
   fi
 }
 

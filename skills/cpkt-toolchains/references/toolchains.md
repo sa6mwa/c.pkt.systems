@@ -85,6 +85,13 @@ The intended static link contract is:
 - make `pkg-config --static` or equivalent metadata place facade archives first and the cpkt-provided runtime archives after them;
 - require downstream projects that also use C++ to use the same cpkt-provided C++ runtime closure for the final static link.
 
+Darwin is different:
+
+- the Linux `libstdc++.a` and `libgcc.a` readiness checks do not apply to `arm64-apple-darwin`;
+- osxcross/Apple clang normally uses `libc++`, not GNU `libstdc++`;
+- the skill discovers Darwin compiler tools but does not download Apple SDKs or bundle a Darwin C++ runtime;
+- downstream package metadata for Darwin should emit target-correct C++ runtime/system flags such as `-lc++` when required, while still allowing C consumers to use the C compiler driver.
+
 ## Update Rule
 
 When Bootlin publishes a newer stable toolchain set, update the script manifest in one commit:

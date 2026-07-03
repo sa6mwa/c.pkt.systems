@@ -28,7 +28,7 @@ Commands:
 
 - Prefer a complete local C/C++ compiler collection when present.
 - Treat a Linux collection as complete only when C compiler, C++ compiler, `ar`, `ranlib`, libc headers, `libstdc++.a`, and `libgcc.a` are available.
-- Download only public Linux toolchains. Apple/Darwin is discovery-only because SDK access is not public.
+- Download only public Linux toolchains. Apple/Darwin is discovery-only because SDK access is not public, and reports `libc++` runtime intent rather than GNU static runtime archives.
 - Cache downloads outside project trees under `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`.
 - Use pinned Bootlin stable tarballs and SHA-256 checksums from the skill script. Update the manifest deliberately when Bootlin publishes a newer stable release.
 
