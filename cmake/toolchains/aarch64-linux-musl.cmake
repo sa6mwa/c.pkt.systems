@@ -2,19 +2,32 @@ set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-set(CPKT_MUSL_PREFIX $ENV{HOME}/.local/cross/aarch64-linux-musl)
-set(CMAKE_C_COMPILER ${CPKT_MUSL_PREFIX}/bin/aarch64-linux-musl-gcc CACHE FILEPATH "")
-set(CMAKE_AR ${CPKT_MUSL_PREFIX}/bin/aarch64-linux-musl-ar CACHE FILEPATH "")
-set(CMAKE_RANLIB ${CPKT_MUSL_PREFIX}/bin/aarch64-linux-musl-ranlib CACHE FILEPATH "")
-set(CMAKE_SYSROOT ${CPKT_MUSL_PREFIX}/aarch64-linux-musl CACHE PATH "")
+include("${CMAKE_CURRENT_LIST_DIR}/cpkt_linux_toolchain_common.cmake")
 
-set(CMAKE_FIND_ROOT_PATH ${CMAKE_SYSROOT})
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+if(DEFINED ENV{CPKT_AARCH64_MUSL_PREFIX})
+  set(_cpkt_local_root "$ENV{CPKT_AARCH64_MUSL_PREFIX}")
+elseif(DEFINED ENV{HOME})
+  set(_cpkt_local_root "$ENV{HOME}/.local/cross/aarch64-linux-musl")
+else()
+  set(_cpkt_local_root "")
+endif()
 
-set(CMAKE_CROSSCOMPILING_EMULATOR /usr/bin/qemu-aarch64;-L;${CMAKE_SYSROOT} CACHE STRING "")
+cpkt_select_linux_toolchain(
+  aarch64-linux-musl
+  "${_cpkt_local_root}"
+  aarch64-linux-musl
+  "${_cpkt_local_root}/aarch64-linux-musl"
+  aarch64-linux
+  aarch64-buildroot-linux-musl/sysroot
+  CPKT_SELECTED_TOOLCHAIN_ROOT
+  CPKT_SELECTED_TOOLCHAIN_PREFIX
+  CPKT_SELECTED_SYSROOT)
+cpkt_configure_linux_toolchain(
+  "${CPKT_SELECTED_TOOLCHAIN_ROOT}"
+  "${CPKT_SELECTED_TOOLCHAIN_PREFIX}"
+  "${CPKT_SELECTED_SYSROOT}")
+
+set(CMAKE_CROSSCOMPILING_EMULATOR /usr/bin/qemu-aarch64;-L;${CPKT_SELECTED_SYSROOT} CACHE STRING "" FORCE)
 
 set(CPKT_TARGET_ARCH aarch64 CACHE STRING "" FORCE)
 set(CPKT_TARGET_OS linux CACHE STRING "" FORCE)

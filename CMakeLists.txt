@@ -10,7 +10,7 @@ if(NOT CPKT_PROJECT_VERSION_RESULT EQUAL 0)
   message(FATAL_ERROR "failed to resolve c.pkt.systems release version")
 endif()
 
-project(c_pkt_systems VERSION "${CPKT_PROJECT_VERSION}" LANGUAGES C)
+project(c_pkt_systems VERSION "${CPKT_PROJECT_VERSION}" LANGUAGES C CXX)
 
 include(CTest)
 include(ProcessorCount)
