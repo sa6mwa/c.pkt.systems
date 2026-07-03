@@ -120,11 +120,11 @@ Build whisper.cpp with CPU support always enabled. Include Vulkan and/or CUDA
 support when the required development files are available for the target
 toolchain.
 
-Availability is target-specific. A host `x86_64-linux-gnu` `libvulkan-dev`
-install is usable only for native `x86_64-linux-gnu` builds unless matching
-headers, libraries, and metadata are present in the dependency root for another
-target. In particular, musl and cross targets should be expected to build
-CPU-only on a host that only has GNU host Vulkan development files.
+Availability is target-specific. Backend autodetection must inspect the
+configured target toolchain and dependency root, not incidental host packages.
+If a target lacks the required headers, libraries, tools, or package metadata
+for a backend, that target must build without that backend and still ship a
+working CPU path.
 
 Initial whisper.cpp/ggml build intent:
 
@@ -157,6 +157,15 @@ The exact option set should be kept in the dependency build logic and covered by
 a build metadata/provenance test so host-native acceleration does not
 accidentally enter the wrong target artifact. Package metadata must record the
 compiled backend set, at least `cpu`, `vulkan`, and/or `cuda`.
+
+Compiled-in GPU backends are link-time product surface. With whisper.cpp v1.9.1
+and `GGML_BACKEND_DL=OFF`, ggml links backend libraries into the `ggml` target;
+the Vulkan backend links `Vulkan::Vulkan`. Therefore a `libcpktsus` artifact
+compiled with Vulkan or CUDA must either bundle the required runtime/link
+closure, declare it in CMake/pkg-config metadata, or use a deliberate dynamic
+backend strategy that keeps optional GPU backends out of the mandatory consumer
+link path. CPU fallback at runtime does not remove link-time requirements from a
+GPU-enabled artifact.
 
 ## Public API Style
 
