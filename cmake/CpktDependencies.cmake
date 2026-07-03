@@ -1363,12 +1363,28 @@ function(cpkt_add_whisper)
     "${install_dir}/lib/libggml${CMAKE_SHARED_LIBRARY_SUFFIX}"
     "${install_dir}/lib/libggml-base${CMAKE_SHARED_LIBRARY_SUFFIX}"
     "${install_dir}/lib/libggml-cpu${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(whisper_install_rpath "")
+  set(whisper_shared_linker_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(whisper_install_rpath "$ORIGIN")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+      set(whisper_shared_linker_flags "-static-libstdc++ -static-libgcc")
+    endif()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(whisper_install_rpath "@loader_path")
+  endif()
 
   set(whisper_common_cmake_args
     -DCMAKE_INSTALL_PREFIX=${install_dir}
     -DCMAKE_INSTALL_LIBDIR=lib
     -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DCMAKE_INSTALL_RPATH=${whisper_install_rpath}
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+    -DCMAKE_BUILD_RPATH=
+    -DCMAKE_SKIP_INSTALL_RPATH=OFF
+    -DCMAKE_SHARED_LINKER_FLAGS=${whisper_shared_linker_flags}
+    -DCMAKE_MODULE_LINKER_FLAGS=${whisper_shared_linker_flags}
     -DWHISPER_BUILD_TESTS=OFF
     -DWHISPER_BUILD_EXAMPLES=OFF
     -DWHISPER_BUILD_SERVER=OFF

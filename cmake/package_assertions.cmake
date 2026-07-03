@@ -458,6 +458,20 @@ set(_manifest_lua_runtime_abi_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)opcua_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing opcua_abi_version")
 endif()
+if(NOT _manifest_text MATCHES "(^|\n)audio_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing audio_abi_version")
+endif()
+set(_manifest_audio_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)sus_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing sus_abi_version")
+endif()
+set(_manifest_sus_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)miniaudio_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing miniaudio_version")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)whisper_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing whisper_version")
+endif()
 if(NOT _manifest_text MATCHES "(^|\n)open62541_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing open62541_version")
 endif()
@@ -483,6 +497,22 @@ if(DEFINED CPKT_LUA_RUNTIME_ABI_VERSION AND NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}
   endif()
 else()
   set(CPKT_LUA_RUNTIME_ABI_VERSION "${_manifest_lua_runtime_abi_version}")
+endif()
+if(DEFINED CPKT_AUDIO_ABI_VERSION AND NOT "${CPKT_AUDIO_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_AUDIO_ABI_VERSION}" STREQUAL "${_manifest_audio_abi_version}")
+    message(FATAL_ERROR
+      "configured audio ABI ${CPKT_AUDIO_ABI_VERSION} does not match package manifest ABI ${_manifest_audio_abi_version}")
+  endif()
+else()
+  set(CPKT_AUDIO_ABI_VERSION "${_manifest_audio_abi_version}")
+endif()
+if(DEFINED CPKT_SUS_ABI_VERSION AND NOT "${CPKT_SUS_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_SUS_ABI_VERSION}" STREQUAL "${_manifest_sus_abi_version}")
+    message(FATAL_ERROR
+      "configured sus ABI ${CPKT_SUS_ABI_VERSION} does not match package manifest ABI ${_manifest_sus_abi_version}")
+  endif()
+else()
+  set(CPKT_SUS_ABI_VERSION "${_manifest_sus_abi_version}")
 endif()
 file(REMOVE_RECURSE "${_manifest_extract_root}")
 
@@ -570,32 +600,55 @@ foreach(_path
     "include/lua.h"
     "include/lauxlib.h"
     "include/lualib.h"
+    "include/miniaudio/miniaudio.h"
+    "include/whisper.h"
     "include/mqtt.h"
     "include/mqtt_pal.h"
     "include/open62541/client.h"
     "include/open62541/server.h"
     "include/open62541/plugin/securitypolicy.h"
+    "include/cpkt/audio.h"
     "include/cpkt/lua_runtime.h"
+    "include/cpkt/sus.h"
     "include/cpkt/opcua.h"
+    "lib/libminiaudio.a"
+    "lib/libwhisper.a"
+    "lib/libggml.a"
+    "lib/libggml-base.a"
+    "lib/libggml-cpu.a"
     "lib/liblua.a"
     "lib/libmqttc.a"
     "lib/libopen62541.a"
+    "lib/libcpkt_audio.a"
     "lib/libcpkt_lua_runtime.a"
+    "lib/libcpktsus.a"
     "lib/libcpkt_opcua.a"
     "lib/cmake/Lua/LuaConfig.cmake"
     "lib/cmake/Lua/LuaConfigVersion.cmake"
+    "lib/cmake/miniaudio/miniaudioConfig.cmake"
+    "lib/cmake/miniaudio/miniaudioConfigVersion.cmake"
+    "lib/cmake/whisper/whisperConfig.cmake"
+    "lib/cmake/whisper/whisperConfigVersion.cmake"
     "lib/cmake/mqtt-c/mqtt-cConfig.cmake"
     "lib/cmake/mqtt-c/mqtt-cConfigVersion.cmake"
+    "lib/cmake/CpktAudio/CpktAudioConfig.cmake"
+    "lib/cmake/CpktAudio/CpktAudioConfigVersion.cmake"
     "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
     "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
+    "lib/cmake/CpktSus/CpktSusConfig.cmake"
+    "lib/cmake/CpktSus/CpktSusConfigVersion.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
     "lib/cmake/open62541/open62541Config.cmake"
     "lib/cmake/open62541/open62541ConfigVersion.cmake"
     "lib/pkgconfig/lua.pc"
     "lib/pkgconfig/lua5.5.pc"
+    "lib/pkgconfig/miniaudio.pc"
+    "lib/pkgconfig/whisper.pc"
     "lib/pkgconfig/mqtt-c.pc"
+    "lib/pkgconfig/cpkt-audio.pc"
     "lib/pkgconfig/cpkt-lua-runtime.pc"
+    "lib/pkgconfig/cpkt-sus.pc"
     "lib/pkgconfig/cpkt-opcua.pc"
     "lib/pkgconfig/open62541.pc"
     "share/c.pkt.systems/manifest.txt"
@@ -620,6 +673,8 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE"
     "share/doc/c.pkt.systems/third_party/libxml2/LICENSE"
     "share/doc/c.pkt.systems/third_party/lua/LICENSE"
+    "share/doc/c.pkt.systems/third_party/miniaudio/LICENSE"
+    "share/doc/c.pkt.systems/third_party/whisper.cpp/LICENSE"
     "share/doc/c.pkt.systems/third_party/mqtt-c/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/patches/series"
@@ -698,6 +753,60 @@ foreach(_forbidden_header_token
 endforeach()
 file(REMOVE_RECURSE "${_facade_header_extract_root}")
 
+cpkt_extract_archive_for_assertions(_audio_facade_header_extract_root)
+set(_audio_facade_header "${_audio_facade_header_extract_root}/${_archive_stem}/include/cpkt/audio.h")
+if(NOT EXISTS "${_audio_facade_header}")
+  message(FATAL_ERROR "missing audio C89 facade header: ${_audio_facade_header}")
+endif()
+file(READ "${_audio_facade_header}" _audio_facade_header_text)
+foreach(_forbidden_header_token
+    "miniaudio"
+    "ma_"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint8_t"
+    "uint16_t"
+    "uint32_t"
+    "uint64_t"
+    "int8_t"
+    "int16_t"
+    "int32_t"
+    "int64_t"
+    "long long"
+    "inline")
+  if(_audio_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "audio C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_audio_facade_header_extract_root}")
+
+cpkt_extract_archive_for_assertions(_sus_facade_header_extract_root)
+set(_sus_facade_header "${_sus_facade_header_extract_root}/${_archive_stem}/include/cpkt/sus.h")
+if(NOT EXISTS "${_sus_facade_header}")
+  message(FATAL_ERROR "sus C89 facade header: ${_sus_facade_header}")
+endif()
+file(READ "${_sus_facade_header}" _sus_facade_header_text)
+foreach(_forbidden_header_token
+    "whisper"
+    "ggml"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint8_t"
+    "uint16_t"
+    "uint32_t"
+    "uint64_t"
+    "int8_t"
+    "int16_t"
+    "int32_t"
+    "int64_t"
+    "long long"
+    "inline")
+  if(_sus_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "sus C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_sus_facade_header_extract_root}")
+
 cpkt_extract_archive_for_assertions(_opcua_facade_header_extract_root)
 set(_opcua_facade_header "${_opcua_facade_header_extract_root}/${_archive_stem}/include/cpkt/opcua.h")
 if(NOT EXISTS "${_opcua_facade_header}")
@@ -735,6 +844,14 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     3
     "Lua runtime facade Darwin shared library entries")
   cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_audio([^/]*)?\\.dylib$"
+    3
+    "audio facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpktsus([^/]*)?\\.dylib$"
+    3
+    "sus facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_opcua([^/]*)?\\.dylib$"
     3
     "OPC UA facade Darwin shared library entries")
@@ -750,6 +867,8 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libxml2.16.dylib"
       "lib/liblua.dylib"
       "lib/liblua.5.5.dylib"
+      "lib/libminiaudio.dylib"
+      "lib/libwhisper.dylib"
       "lib/libmqttc.dylib"
       "lib/libmqttc.1.dylib"
       "lib/libmqttc.1.1.2.dylib"
@@ -758,7 +877,13 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libopen62541.1.5.4.dylib"
       "lib/libcpkt_lua_runtime.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
-      "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
+      "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_audio.dylib"
+      "lib/libcpkt_audio.${CPKT_AUDIO_ABI_VERSION}.dylib"
+      "lib/libcpkt_audio.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpktsus.dylib"
+      "lib/libcpktsus.${CPKT_SUS_ABI_VERSION}.dylib"
+      "lib/libcpktsus.${CPKT_BUNDLE_VERSION}.dylib")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
@@ -788,6 +913,14 @@ else()
     3
     "Lua runtime facade Linux shared library entries")
   cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_audio\\.so([^/]*)?$"
+    3
+    "audio facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpktsus\\.so([^/]*)?$"
+    3
+    "sus facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_opcua\\.so([^/]*)?$"
     3
     "OPC UA facade Linux shared library entries")
@@ -807,6 +940,19 @@ else()
       "lib/liblua.so"
       "lib/liblua.so.5.5"
       "lib/liblua.so.5.5.0"
+      "lib/libminiaudio.so"
+      "lib/libwhisper.so"
+      "lib/libwhisper.so.1"
+      "lib/libwhisper.so.1.9.1"
+      "lib/libggml.so"
+      "lib/libggml.so.0"
+      "lib/libggml.so.0.15.1"
+      "lib/libggml-base.so"
+      "lib/libggml-base.so.0"
+      "lib/libggml-base.so.0.15.1"
+      "lib/libggml-cpu.so"
+      "lib/libggml-cpu.so.0"
+      "lib/libggml-cpu.so.0.15.1"
       "lib/libmqttc.so"
       "lib/libmqttc.so.1"
       "lib/libmqttc.so.1.1.2"
@@ -815,7 +961,13 @@ else()
       "lib/libopen62541.so.1.5.4"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
-      "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
+      "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_audio.so"
+      "lib/libcpkt_audio.so.${CPKT_AUDIO_ABI_VERSION}"
+      "lib/libcpkt_audio.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpktsus.so"
+      "lib/libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
+      "lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
 
@@ -834,7 +986,13 @@ else()
       "lib/libcurl.so.4.8.0"
       "lib/libxml2.so.16.1.3"
       "lib/libmqttc.so.1.1.2"
-      "lib/libcpkt_lua_runtime.so")
+      "lib/libcpkt_lua_runtime.so"
+      "lib/libcpkt_audio.so"
+      "lib/libcpktsus.so"
+      "lib/libwhisper.so.1.9.1"
+      "lib/libggml.so.0.15.1"
+      "lib/libggml-base.so.0.15.1"
+      "lib/libggml-cpu.so.0.15.1")
     cpkt_assert_elf_runpath(
       "${_assert_extract_root}/${_archive_stem}/${_runpath_library}"
       "\\$ORIGIN"
@@ -844,6 +1002,14 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
     "libcpkt_lua_runtime SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_audio.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_audio.so.${CPKT_AUDIO_ABI_VERSION}"
+    "libcpkt_audio SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
+    "libcpktsus SONAME")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

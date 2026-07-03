@@ -149,6 +149,22 @@ set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major.
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SUS_ABI_VERSION "0" CACHE STRING "Susurro/whisper facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPCUA_ABI_VERSION "0" CACHE STRING "OPC UA facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_CXX_STDLIB_STATIC_LIBRARY "" CACHE FILEPATH "Static C++ standard library archive used by C-facing static SDK metadata.")
+if(CPKT_CXX_STDLIB_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+  execute_process(
+    COMMAND "${CMAKE_CXX_COMPILER}" -print-file-name=libstdc++.a
+    RESULT_VARIABLE _cpkt_cxx_stdlib_result
+    OUTPUT_VARIABLE _cpkt_cxx_stdlib_output
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(_cpkt_cxx_stdlib_result EQUAL 0 AND
+      NOT _cpkt_cxx_stdlib_output STREQUAL "" AND
+      NOT _cpkt_cxx_stdlib_output STREQUAL "libstdc++.a" AND
+      EXISTS "${_cpkt_cxx_stdlib_output}")
+    set(CPKT_CXX_STDLIB_STATIC_LIBRARY "${_cpkt_cxx_stdlib_output}" CACHE FILEPATH
+      "Static C++ standard library archive used by C-facing static SDK metadata." FORCE)
+  endif()
+endif()
 set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Shared source archive download root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
 set(CPKT_TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Artifact architecture name.")
@@ -323,6 +339,54 @@ endif()
 if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_audio_static cpkt_deps)
   add_dependencies(cpkt_audio_shared cpkt_deps)
+endif()
+
+add_library(cpkt_sus_static STATIC src/sus.c)
+target_compile_features(cpkt_sus_static PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_sus_static)
+target_include_directories(cpkt_sus_static
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+)
+target_link_libraries(cpkt_sus_static PUBLIC cpkt::whisper_static)
+target_compile_definitions(cpkt_sus_static PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
+set_target_properties(cpkt_sus_static PROPERTIES
+  OUTPUT_NAME cpktsus
+  POSITION_INDEPENDENT_CODE ON
+)
+
+add_library(cpkt_sus_shared SHARED src/sus.c)
+target_compile_features(cpkt_sus_shared PRIVATE c_std_99)
+cpkt_add_repo_warning_errors(cpkt_sus_shared)
+target_include_directories(cpkt_sus_shared
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+)
+target_link_libraries(cpkt_sus_shared PUBLIC cpkt::whisper_shared)
+target_compile_definitions(cpkt_sus_shared PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
+set_target_properties(cpkt_sus_shared PROPERTIES
+  OUTPUT_NAME cpktsus
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_SUS_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}"
+)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_sus_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON
+  )
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_sus_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON
+  )
+endif()
+if(CPKT_BUILD_DEPENDENCIES)
+  add_dependencies(cpkt_sus_static cpkt_deps)
+  add_dependencies(cpkt_sus_shared cpkt_deps)
 endif()
 
 add_library(cpkt_opcua_static STATIC src/opcua.c)
@@ -514,8 +578,16 @@ if(CPKT_BUILD_TESTS)
       cpkt_audio_static
       cpkt::cmocka
     )
+    add_executable(cpkt_sus_facade_test tests/sus_facade_test.c)
+    target_compile_options(cpkt_sus_facade_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_sus_facade_test)
+    target_link_libraries(cpkt_sus_facade_test PRIVATE
+      cpkt_sus_shared
+      cpkt::cmocka
+    )
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_audio_facade_test cpkt_deps)
+      add_dependencies(cpkt_sus_facade_test cpkt_deps)
     endif()
 
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
@@ -573,6 +645,9 @@ if(CPKT_BUILD_TESTS)
     endif()
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       add_test(NAME audio_facade_unit COMMAND cpkt_audio_facade_test)
+      add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
+      set_tests_properties(sus_facade_unit PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib")
       add_test(NAME abi_test_shared COMMAND cpkt_abi_test_shared)
       add_test(NAME abi_test_static COMMAND cpkt_abi_test_static)
       add_test(NAME lua_runtime_unit COMMAND cpkt_lua_runtime_test)
@@ -657,17 +732,30 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>
+        -DCPKT_MINIAUDIO_VERSION=${CPKT_MINIAUDIO_VERSION}
+        -DCPKT_AUDIO_ABI_VERSION=${CPKT_AUDIO_ABI_VERSION}
+        -DCPKT_AUDIO_STATIC_LIBRARY=$<TARGET_FILE:cpkt_audio_static>
+        -DCPKT_AUDIO_SHARED_LIBRARY=$<TARGET_FILE:cpkt_audio_shared>
         -DCPKT_OPCUA_ABI_VERSION=${CPKT_OPCUA_ABI_VERSION}
         -DCPKT_OPCUA_STATIC_LIBRARY=$<TARGET_FILE:cpkt_opcua_static>
         -DCPKT_OPCUA_SHARED_LIBRARY=$<TARGET_FILE:cpkt_opcua_shared>
+        -DCPKT_WHISPER_VERSION=${CPKT_WHISPER_VERSION}
+        -DCPKT_SUS_ABI_VERSION=${CPKT_SUS_ABI_VERSION}
+        -DCPKT_SUS_STATIC_LIBRARY=$<TARGET_FILE:cpkt_sus_static>
+        -DCPKT_SUS_SHARED_LIBRARY=$<TARGET_FILE:cpkt_sus_shared>
+        -DCPKT_CXX_STDLIB_STATIC_LIBRARY=${CPKT_CXX_STDLIB_STATIC_LIBRARY}
         -DCPKT_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/package_bundle.cmake
     DEPENDS
       cpkt_deps
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
+      cpkt_audio_static
+      cpkt_audio_shared
       cpkt_opcua_static
       cpkt_opcua_shared
+      cpkt_sus_static
+      cpkt_sus_shared
     VERBATIM
   )
 endif()
