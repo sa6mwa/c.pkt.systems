@@ -31,9 +31,9 @@ decisions so implementation can begin against a concrete target.
   16000 Hz.
 - Support audio encoding where miniaudio provides a practical built-in encoder,
   while keeping exact supported formats queryable and test-covered.
-- Always support whisper.cpp CPU inference, and include Vulkan and/or CUDA
-  backends in `libcpktsus` when those backend development files are available
-  for the target being built.
+- Ship the first `libcpktsus` implementation CPU-only so the same facade can
+  build across all cpkt target architectures before GPU packaging policy is
+  introduced.
 - Provide streaming-first transcription output through callbacks, with explicit
   materialized-text helpers as convenience APIs only.
 - Provide model loading from an explicit path and an explicit cache-backed model
@@ -55,10 +55,10 @@ decisions so implementation can begin against a concrete target.
 - Do not call APIs "streaming" when they materialize an entire audio stream,
   model, or transcript internally. Use "materialized", "buffered", or
   "cached" for those behaviors.
-- Do not provide Metal, BLAS, OpenCL, SYCL, OpenVINO, CoreML, or similar
-  acceleration in the first release. Vulkan and CUDA are allowed when they are
-  detected for the target toolchain and packaged with correct dependency
-  metadata.
+- Do not provide Vulkan, CUDA, Metal, BLAS, OpenCL, SYCL, OpenVINO, CoreML, or
+  similar acceleration in the first implementation. GPU-enabled artifacts are a
+  deliberate follow-up phase after dependency metadata, package verification,
+  and downstream link behavior are defined.
 - Do not implement JSON output in this repository. Future JSON sinks should use
   a JSON dependency such as lonejson in the consuming integration, without
   adding a parent-relative dependency to this repository.
@@ -116,15 +116,10 @@ Initial miniaudio build intent:
 
 ### cpkt_sus
 
-Build whisper.cpp with CPU support always enabled. Include Vulkan and/or CUDA
-support when the required development files are available for the target
-toolchain.
-
-Availability is target-specific. Backend autodetection must inspect the
-configured target toolchain and dependency root, not incidental host packages.
-If a target lacks the required headers, libraries, tools, or package metadata
-for a backend, that target must build without that backend and still ship a
-working CPU path.
+Build the first whisper.cpp integration CPU-only. This keeps the initial
+`libcpktsus` artifact portable across all cpkt targets and avoids making
+Vulkan/CUDA runtime libraries, CMake/pkg-config transitive link metadata, loader
+paths, and optional backend packaging part of the first cut.
 
 Initial whisper.cpp/ggml build intent:
 
@@ -141,26 +136,28 @@ Initial whisper.cpp/ggml build intent:
 - `GGML_METAL=OFF`
 - `GGML_BLAS=OFF`
 - `GGML_ACCELERATE=OFF`
+- `GGML_CUDA=OFF`
 - `GGML_HIP=OFF`
+- `GGML_VULKAN=OFF`
 - `GGML_OPENCL=OFF`
 - `GGML_SYCL=OFF`
 - `GGML_RPC=OFF`
 - `GGML_BACKEND_DL=OFF`
-- `GGML_VULKAN=ON` only when target Vulkan development files are available.
-- `GGML_CUDA=ON` only when target CUDA development files are available.
 
-Expose a project build option such as `CPKT_SUS_CPU_ONLY=ON` to force
-`GGML_VULKAN=OFF` and `GGML_CUDA=OFF` even when those backends are detectable.
-The default is off, so release builds use target-aware backend autodetection.
+Expose a project build option such as `CPKT_SUS_CPU_ONLY=ON`, default `ON` for
+the first implementation. When GPU-enabled artifacts are introduced later, this
+option remains the force-CPU build switch.
 
 The exact option set should be kept in the dependency build logic and covered by
 a build metadata/provenance test so host-native acceleration does not
-accidentally enter the wrong target artifact. Package metadata must record the
-compiled backend set, at least `cpu`, `vulkan`, and/or `cuda`.
+accidentally enter release artifacts. Package metadata must record the compiled
+backend set, initially `cpu`.
 
-Compiled-in GPU backends are link-time product surface. With whisper.cpp v1.9.1
-and `GGML_BACKEND_DL=OFF`, ggml links backend libraries into the `ggml` target;
-the Vulkan backend links `Vulkan::Vulkan`. Therefore a `libcpktsus` artifact
+Future GPU-enabled artifacts must follow target-specific dependency detection.
+Backend autodetection must inspect the configured target toolchain and
+dependency root, not incidental host packages. With whisper.cpp v1.9.1 and
+`GGML_BACKEND_DL=OFF`, ggml links backend libraries into the `ggml` target; the
+Vulkan backend links `Vulkan::Vulkan`. Therefore a future `libcpktsus` artifact
 compiled with Vulkan or CUDA must either bundle the required runtime/link
 closure, declare it in CMake/pkg-config metadata, or use a deliberate dynamic
 backend strategy that keeps optional GPU backends out of the mandatory consumer
@@ -345,9 +342,9 @@ Initial transcription options should expose only stable, high-value knobs:
 - model handle;
 - thread count;
 - `cpu_only`, default `0`, which forces `whisper_context_params.use_gpu = false`
-  at runtime even when Vulkan or CUDA is compiled in;
-- GPU device selection only if the first implementation can expose it without
-  committing to unstable backend-specific semantics;
+  at runtime even when Vulkan or CUDA is compiled in later. In the first
+  CPU-only implementation it is accepted for API stability and has no practical
+  backend effect;
 - language (`NULL`, empty string, or `"auto"` means auto-detect);
 - translate vs transcribe;
 - timestamps on/off;
@@ -484,6 +481,8 @@ Required checks:
 - package artifacts include correct licenses and provenance manifests;
 - package metadata records which whisper.cpp/ggml backends were compiled into
   each target artifact;
+- backend capability reporting returns at least `cpu` for the first
+  implementation;
 - package verification rejects local paths and verifies runtime loader metadata.
 
 Model-download tests that require network access must be opt-in. Local tests
@@ -500,5 +499,7 @@ files.
 - Whether the first release exposes any whisper.cpp VAD/tinydiarize features.
 - Whether quantized model aliases should use `name:q5_0`, separate constants,
   or both.
-- Whether runtime GPU device selection is exposed in v0 or deferred until a
-  concrete multi-device workflow requires it.
+- When to introduce Vulkan/CUDA artifacts and whether they use direct linked
+  backends or `GGML_BACKEND_DL`.
+- Whether runtime GPU device selection is exposed with GPU-enabled artifacts or
+  deferred until a concrete multi-device workflow requires it.
