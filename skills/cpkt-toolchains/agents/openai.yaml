@@ -1,0 +1,4 @@
+interface:
+  display_name: "CPKT Toolchains"
+  short_description: "Install cpkt C/C++ cross compilers"
+  default_prompt: "Use $cpkt-toolchains to inspect and install missing cpkt C/C++ compiler collections."
