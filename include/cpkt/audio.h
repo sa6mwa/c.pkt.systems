@@ -284,10 +284,12 @@ cpkt_audio_decoder_open_file(cpkt_audio_decoder **out, const char *path,
  * Opens an audio decoder from an HTTP or HTTPS URL.
  *
  * The URL is streamed through libcurl as the backend decoder pulls bytes; the
- * facade does not download the full response before decoding. URL sources are
- * not seekable, so formats that require seeking can fail to open with
- * CPKT_AUDIO_ERR_IO or CPKT_AUDIO_ERR_FORMAT. On failure, *out is set to NULL
- * when out is non-NULL.
+ * facade does not download the full response before decoding. Explicit config
+ * encoding takes precedence. Otherwise HTTP Content-Type is used when it maps
+ * to a supported audio format, then early stream signatures/backend detection
+ * are used. URL sources are not seekable, so formats that require seeking can
+ * fail to open with CPKT_AUDIO_ERR_IO or CPKT_AUDIO_ERR_FORMAT. On failure,
+ * *out is set to NULL when out is non-NULL.
  */
 cpkt_audio_result
 cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,

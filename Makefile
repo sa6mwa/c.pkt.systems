@@ -8,7 +8,7 @@ CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 E2E_SUS_PRESET ?= release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus example-audio-vox-intro example-sus-vox-intro cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-sus-vox-intro cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
@@ -27,6 +27,7 @@ help:
 	@printf '  %-30s %s\n' 'examples' 'Build and smoke-test source-tree examples.'
 	@printf '  %-30s %s\n' 'clangd-surface' 'Verify compile_commands and public hover comments for examples.'
 	@printf '  %-30s %s\n' 'e2e-sus' 'Run opt-in sus audio e2e with cached remote MP3 and tiny model.'
+	@printf '  %-30s %s\n' 'e2e-cpktxscribe' 'Run opt-in cpktxscribe URL e2e with remote MP3 and tiny model.'
 	@printf '  %-30s %s\n' 'example-audio-vox-intro' 'Run cached intro.mp3 VOX calibration and dump WAV segments.'
 	@printf '  %-30s %s\n' 'example-sus-vox-intro' 'Run cached intro.mp3 VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'asan' 'Build and test the facade-only AddressSanitizer/UBSan preset.'
@@ -35,7 +36,7 @@ help:
 	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded facade fuzz smoke tests.'
 	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded facade fuzz tests.'
 	@printf '\nTools:\n'
-	@printf '  %-30s %s\n' 'cpktxscribe' 'Build static host WAV transcription CLI under build/debug/tools/.'
+	@printf '  %-30s %s\n' 'cpktxscribe' 'Build static host audio transcription CLI under build/debug/tools/.'
 	@printf '\nPackaging:\n'
 	@printf '  %-30s %s\n' 'package' 'Build package artifacts for all supported release targets.'
 	@printf '  %-30s %s\n' 'package-source' 'Build the source release archive.'
@@ -112,6 +113,11 @@ e2e-sus:
 	$(CMAKE) --preset $(E2E_SUS_PRESET)
 	$(CMAKE) --build --preset $(E2E_SUS_PRESET) --target cpkt_sus_audio_integration_test
 	bash ./scripts/e2e-sus.sh "$$(pwd)/build/$(E2E_SUS_PRESET)/cpkt_sus_audio_integration_test" "$$(pwd)/build/$(E2E_SUS_PRESET)"
+
+e2e-cpktxscribe:
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug --target cpktxscribe
+	bash ./scripts/e2e-cpktxscribe.sh "$$(pwd)/build/debug/tools/cpktxscribe" "$$(pwd)/build/debug"
 
 example-audio-vox-intro:
 	$(CMAKE) --preset debug

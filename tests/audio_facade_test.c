@@ -533,19 +533,15 @@ static void test_decoder_reads_flac_file_when_supported(void **state) {
 
 static void test_decoder_reads_mp3_file_when_supported(void **state) {
   unsigned char mp3_data[1536];
-  cpkt_audio_decoder_config config;
   size_t mp3_size;
 
   (void)state;
-  memset(&config, 0, sizeof(config));
-  config.encoding = CPKT_AUDIO_ENCODING_MP3;
   mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_data,
                                    sizeof(mp3_data));
   assert_true(mp3_size > 0);
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3));
   assert_decoder_reads_fixture_file("cpkt_audio_facade_test.mp3", mp3_data,
-                                    mp3_size, &config,
-                                    CPKT_AUDIO_FORMAT_MP3);
+                                    mp3_size, NULL, CPKT_AUDIO_FORMAT_MP3);
 }
 
 static void test_decoder_reads_mp3_file_url_when_supported(void **state) {
@@ -553,7 +549,6 @@ static void test_decoder_reads_mp3_file_url_when_supported(void **state) {
   char cwd[1024];
   char url[1200];
   const char *path;
-  cpkt_audio_decoder_config config;
   cpkt_audio_decoder *decoder;
   FILE *file;
   size_t mp3_size;
@@ -561,8 +556,6 @@ static void test_decoder_reads_mp3_file_url_when_supported(void **state) {
   (void)state;
   path = "cpkt_audio_facade_test_url.mp3";
   (void)remove(path);
-  memset(&config, 0, sizeof(config));
-  config.encoding = CPKT_AUDIO_ENCODING_MP3;
   mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_data,
                                    sizeof(mp3_data));
   assert_true(mp3_size > 0);
@@ -575,7 +568,7 @@ static void test_decoder_reads_mp3_file_url_when_supported(void **state) {
   (void)sprintf(url, "file://%s/%s", cwd, path);
 
   decoder = NULL;
-  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, &config),
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, NULL),
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
   assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_MP3);
@@ -587,7 +580,6 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
   unsigned char mp3_fixture[1536];
   unsigned char mp3_data[1536 * 16];
   char url[128];
-  cpkt_audio_decoder_config config;
   cpkt_audio_decoder *decoder;
   float frames[512];
   size_t frames_read;
@@ -598,8 +590,6 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
   size_t mp3_size;
 
   (void)state;
-  memset(&config, 0, sizeof(config));
-  config.encoding = CPKT_AUDIO_ENCODING_MP3;
   mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_fixture,
                                    sizeof(mp3_fixture));
   assert_true(mp3_size > 0);
@@ -616,7 +606,7 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
 
   decoder = NULL;
   assert_int_equal(clock_gettime(CLOCK_MONOTONIC, &start_time), 0);
-  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, &config),
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, NULL),
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
   frames_read = 0;
@@ -634,7 +624,6 @@ static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
   unsigned char mp3_fixture[1536];
   unsigned char mp3_data[11000];
   char url[128];
-  cpkt_audio_decoder_config config;
   cpkt_audio_decoder *decoder;
   unsigned short port;
   pid_t server_pid;
@@ -643,8 +632,6 @@ static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
   size_t total_size;
 
   (void)state;
-  memset(&config, 0, sizeof(config));
-  config.encoding = CPKT_AUDIO_ENCODING_MP3;
   mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_fixture,
                                    sizeof(mp3_fixture));
   tag_payload_size = 8192U;
@@ -668,7 +655,7 @@ static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
                 (unsigned int)port);
 
   decoder = NULL;
-  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, &config),
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, NULL),
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
   assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_MP3);

@@ -55,7 +55,7 @@ static void cpktxscribe_defaults(struct cpktxscribe_options *options) {
   memset(options, 0, sizeof(*options));
   options->model = "small";
   options->language = "auto";
-  options->encoding = CPKT_AUDIO_ENCODING_WAV;
+  options->encoding = CPKT_AUDIO_ENCODING_UNKNOWN;
   options->cpu_only = 1;
   options->keep_context = 1;
   options->final_newline = 1;
@@ -128,13 +128,23 @@ static int cpktxscribe_parse_encoding(const char *text, int *out) {
   return 1;
 }
 
+static int cpktxscribe_is_url(const char *text) {
+  const char *cursor;
+
+  if (text == NULL) {
+    return 0;
+  }
+  cursor = strstr(text, "://");
+  return cursor != NULL && cursor != text;
+}
+
 static void cpktxscribe_usage(FILE *out) {
-  fprintf(out, "usage: cpktxscribe [options] input.wav\n\n");
+  fprintf(out, "usage: cpktxscribe [options] input-audio\n\n");
   fprintf(out, "Streams committed transcript text to stdout as VOX segments ");
   fprintf(out, "arrive.\n\n");
   fprintf(out, "Input:\n");
-  fprintf(out, "  --url URL                    Stream HTTP(S) audio instead of a file.\n");
-  fprintf(out, "  --encoding auto|wav|flac|mp3 Input hint; default wav.\n");
+  fprintf(out, "  --url URL                    Stream a libcurl-supported URL.\n");
+  fprintf(out, "  --encoding auto|wav|flac|mp3 Input hint; default auto.\n");
   fprintf(out, "\nModel:\n");
   fprintf(out, "  --model NAME                 Cached model name; default small.\n");
   fprintf(out, "  --model-path PATH            Load an explicit model file.\n");
@@ -369,6 +379,8 @@ static int cpktxscribe_open_audio(cpkt_audio_decoder **out,
   config.encoding = options->encoding;
   if (options->url != NULL) {
     result = cpkt_audio_decoder_open_url(out, options->url, &config);
+  } else if (cpktxscribe_is_url(options->input_path)) {
+    result = cpkt_audio_decoder_open_url(out, options->input_path, &config);
   } else {
     result = cpkt_audio_decoder_open_file(out, options->input_path, &config);
   }

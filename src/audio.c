@@ -41,6 +41,7 @@ struct cpkt_audio_url_source {
   int done;
   int failed;
   char error[CURL_ERROR_SIZE];
+  char content_type[128];
 };
 
 struct cpkt_audio_decoder_impl {
@@ -132,6 +133,19 @@ static int cpkt_audio_format_from_encoding(int encoding) {
   }
 }
 
+static int cpkt_audio_encoding_from_format(int format) {
+  switch (format) {
+  case CPKT_AUDIO_FORMAT_WAV:
+    return CPKT_AUDIO_ENCODING_WAV;
+  case CPKT_AUDIO_FORMAT_FLAC:
+    return CPKT_AUDIO_ENCODING_FLAC;
+  case CPKT_AUDIO_FORMAT_MP3:
+    return CPKT_AUDIO_ENCODING_MP3;
+  default:
+    return CPKT_AUDIO_ENCODING_UNKNOWN;
+  }
+}
+
 static int cpkt_audio_format_from_signature(const unsigned char *data,
                                             size_t size) {
   if (data == NULL || size < 4U) {
@@ -149,6 +163,77 @@ static int cpkt_audio_format_from_signature(const unsigned char *data,
   }
   if (size >= 2U && data[0] == 0xffU && (data[1] & 0xe0U) == 0xe0U) {
     return CPKT_AUDIO_FORMAT_MP3;
+  }
+  return CPKT_AUDIO_FORMAT_UNKNOWN;
+}
+
+static int cpkt_audio_ascii_tolower(int ch) {
+  if (ch >= 'A' && ch <= 'Z') {
+    return ch + ('a' - 'A');
+  }
+  return ch;
+}
+
+static int cpkt_audio_ascii_ieq_char(char left, char right) {
+  return cpkt_audio_ascii_tolower((unsigned char)left) ==
+         cpkt_audio_ascii_tolower((unsigned char)right);
+}
+
+static int cpkt_audio_ascii_istarts_with(const char *text,
+                                         const char *prefix) {
+  if (text == NULL || prefix == NULL) {
+    return 0;
+  }
+  while (*prefix != '\0') {
+    if (*text == '\0' || !cpkt_audio_ascii_ieq_char(*text, *prefix)) {
+      return 0;
+    }
+    ++text;
+    ++prefix;
+  }
+  return 1;
+}
+
+static int cpkt_audio_content_type_matches(const char *content_type,
+                                           const char *mime) {
+  const char *cursor;
+
+  if (content_type == NULL || mime == NULL) {
+    return 0;
+  }
+  cursor = content_type;
+  while (*cursor == ' ' || *cursor == '\t') {
+    ++cursor;
+  }
+  while (*mime != '\0') {
+    if (*cursor == '\0' || *cursor == ';' || *cursor == '\r' ||
+        *cursor == '\n' || !cpkt_audio_ascii_ieq_char(*cursor, *mime)) {
+      return 0;
+    }
+    ++cursor;
+    ++mime;
+  }
+  return *cursor == '\0' || *cursor == ';' || *cursor == '\r' ||
+         *cursor == '\n' || *cursor == ' ' || *cursor == '\t';
+}
+
+static int cpkt_audio_format_from_content_type(const char *content_type) {
+  if (cpkt_audio_content_type_matches(content_type, "audio/mpeg") ||
+      cpkt_audio_content_type_matches(content_type, "audio/mp3") ||
+      cpkt_audio_content_type_matches(content_type, "audio/x-mpeg") ||
+      cpkt_audio_content_type_matches(content_type, "audio/x-mp3") ||
+      cpkt_audio_content_type_matches(content_type, "audio/mpeg3")) {
+    return CPKT_AUDIO_FORMAT_MP3;
+  }
+  if (cpkt_audio_content_type_matches(content_type, "audio/flac") ||
+      cpkt_audio_content_type_matches(content_type, "audio/x-flac")) {
+    return CPKT_AUDIO_FORMAT_FLAC;
+  }
+  if (cpkt_audio_content_type_matches(content_type, "audio/wav") ||
+      cpkt_audio_content_type_matches(content_type, "audio/wave") ||
+      cpkt_audio_content_type_matches(content_type, "audio/x-wav") ||
+      cpkt_audio_content_type_matches(content_type, "audio/vnd.wave")) {
+    return CPKT_AUDIO_FORMAT_WAV;
   }
   return CPKT_AUDIO_FORMAT_UNKNOWN;
 }
@@ -295,6 +380,49 @@ static size_t cpkt_audio_url_write(void *buffer, size_t size, size_t nmemb,
   return byte_count;
 }
 
+static size_t cpkt_audio_url_header(char *buffer, size_t size, size_t nmemb,
+                                    void *user) {
+  struct cpkt_audio_url_source *source;
+  size_t byte_count;
+  const char *cursor;
+  size_t copied;
+
+  source = (struct cpkt_audio_url_source *)user;
+  if (source == NULL || buffer == NULL || size == 0U) {
+    return 0U;
+  }
+  if (nmemb > ((size_t)-1) / size) {
+    source->failed = 1;
+    return 0U;
+  }
+  byte_count = size * nmemb;
+  if (byte_count == 0U) {
+    return 0U;
+  }
+  if (byte_count < 13U ||
+      !cpkt_audio_ascii_istarts_with(buffer, "Content-Type:")) {
+    return byte_count;
+  }
+
+  cursor = buffer + 13;
+  while ((size_t)(cursor - buffer) < byte_count &&
+         (*cursor == ' ' || *cursor == '\t')) {
+    ++cursor;
+  }
+  copied = 0U;
+  while ((size_t)(cursor - buffer) < byte_count &&
+         *cursor != '\r' && *cursor != '\n' &&
+         copied + 1U < sizeof(source->content_type)) {
+    source->content_type[copied++] = *cursor++;
+  }
+  while (copied > 0U && (source->content_type[copied - 1U] == ' ' ||
+                         source->content_type[copied - 1U] == '\t')) {
+    --copied;
+  }
+  source->content_type[copied] = '\0';
+  return byte_count;
+}
+
 static void
 cpkt_audio_url_source_collect_done(struct cpkt_audio_url_source *source) {
   CURLMsg *message;
@@ -337,6 +465,62 @@ static int cpkt_audio_url_source_progress(struct cpkt_audio_url_source *source) 
   }
   cpkt_audio_url_source_collect_done(source);
   return source->failed ? 1 : 0;
+}
+
+static cpkt_audio_result
+cpkt_audio_url_source_detect_format(struct cpkt_audio_url_source *source,
+                                    int *format_out) {
+  int format;
+  int queued;
+  size_t buffer_end;
+  size_t inspect_size;
+
+  if (format_out != NULL) {
+    *format_out = CPKT_AUDIO_FORMAT_UNKNOWN;
+  }
+  if (source == NULL || format_out == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+
+  format = cpkt_audio_format_from_content_type(source->content_type);
+  while (format == CPKT_AUDIO_FORMAT_UNKNOWN && !source->done &&
+         !source->failed) {
+    buffer_end = cpkt_audio_url_buffer_end(source);
+    if (buffer_end >= 16U) {
+      break;
+    }
+    if (cpkt_audio_url_source_progress(source) != 0) {
+      break;
+    }
+    format = cpkt_audio_format_from_content_type(source->content_type);
+    buffer_end = cpkt_audio_url_buffer_end(source);
+    if (format != CPKT_AUDIO_FORMAT_UNKNOWN || buffer_end >= 16U ||
+        source->done || source->failed) {
+      break;
+    }
+    queued = 0;
+    if (curl_multi_poll(source->multi, NULL, 0U, 1000, &queued) != CURLM_OK) {
+      source->failed = 1;
+      break;
+    }
+  }
+  if (source->failed) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+
+  if (format == CPKT_AUDIO_FORMAT_UNKNOWN) {
+    buffer_end = cpkt_audio_url_buffer_end(source);
+    if (source->buffer_base == 0U && buffer_end != (size_t)-1) {
+      inspect_size = buffer_end < source->buffer_size ? buffer_end
+                                                      : source->buffer_size;
+      if (inspect_size > 16U) {
+        inspect_size = 16U;
+      }
+      format = cpkt_audio_format_from_signature(source->buffer, inspect_size);
+    }
+  }
+  *format_out = format;
+  return CPKT_AUDIO_OK;
 }
 
 static int cpkt_audio_url_source_download_until(
@@ -671,6 +855,9 @@ cpkt_audio_url_source_create(struct cpkt_audio_url_source **out,
   (void)curl_easy_setopt(source->easy, CURLOPT_WRITEFUNCTION,
                          cpkt_audio_url_write);
   (void)curl_easy_setopt(source->easy, CURLOPT_WRITEDATA, source);
+  (void)curl_easy_setopt(source->easy, CURLOPT_HEADERFUNCTION,
+                         cpkt_audio_url_header);
+  (void)curl_easy_setopt(source->easy, CURLOPT_HEADERDATA, source);
   (void)curl_easy_setopt(source->easy, CURLOPT_ERRORBUFFER, source->error);
   (void)curl_easy_setopt(source->easy, CURLOPT_CONNECTTIMEOUT, 30L);
   (void)curl_easy_setopt(source->easy, CURLOPT_LOW_SPEED_LIMIT, 1L);
@@ -1509,6 +1696,7 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
   struct cpkt_audio_decoder_impl *impl;
   struct cpkt_audio_url_source *source;
   cpkt_audio_reader reader;
+  cpkt_audio_decoder_config resolved_config;
   ma_data_converter_config converter_config;
   ma_decoder_config ma_config;
   ma_result ma_status;
@@ -1541,6 +1729,16 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
   impl->reader = reader;
   impl->url_source = source;
   impl->source_format = cpkt_audio_source_format_from_config(config);
+  if (impl->source_format == CPKT_AUDIO_FORMAT_UNKNOWN) {
+    result = cpkt_audio_url_source_detect_format(source, &impl->source_format);
+    if (result != CPKT_AUDIO_OK) {
+      decoder->impl = NULL;
+      cpkt_audio_url_source_destroy(source);
+      free(impl);
+      free(decoder);
+      return result;
+    }
+  }
 
   if (impl->source_format == CPKT_AUDIO_FORMAT_MP3) {
     impl->mode = CPKT_AUDIO_DECODER_MODE_DRMP3;
@@ -1584,7 +1782,16 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
     return CPKT_AUDIO_OK;
   }
 
-  ma_config = cpkt_audio_ma_decoder_config(config);
+  if (config != NULL) {
+    resolved_config = *config;
+  } else {
+    memset(&resolved_config, 0, sizeof(resolved_config));
+  }
+  if (resolved_config.encoding == CPKT_AUDIO_ENCODING_UNKNOWN) {
+    resolved_config.encoding =
+        cpkt_audio_encoding_from_format(impl->source_format);
+  }
+  ma_config = cpkt_audio_ma_decoder_config(&resolved_config);
   ma_status = ma_decoder_init(cpkt_audio_reader_read, cpkt_audio_reader_seek,
                               impl, &ma_config, &impl->decoder);
   if (ma_status != MA_SUCCESS) {
