@@ -16,7 +16,6 @@ mkdir -p "$out_dir"
   --vox-threshold 0.03 \
   --hang-ms 500 \
   --segment-ms 5000 \
-  --metrics \
   "$url" >"$stdout_path" 2>"$stderr_path"
 
 if ! grep -qi 'organizations' "$stdout_path"; then
@@ -27,6 +26,19 @@ fi
 
 if ! grep -qi 'accelerating' "$stdout_path"; then
   printf 'cpktxscribe e2e missing expected transcript token: accelerating\n' >&2
+  printf 'stdout: %s\nstderr: %s\n' "$stdout_path" "$stderr_path" >&2
+  exit 1
+fi
+
+stderr_lines=$(wc -l <"$stderr_path")
+if [ "$stderr_lines" -ne 1 ]; then
+  printf 'cpktxscribe e2e expected one default stderr status line, got %s\n' "$stderr_lines" >&2
+  printf 'stdout: %s\nstderr: %s\n' "$stdout_path" "$stderr_path" >&2
+  exit 1
+fi
+
+if grep -q 'whisper_' "$stderr_path"; then
+  printf 'cpktxscribe e2e leaked whisper backend logs to default stderr\n' >&2
   printf 'stdout: %s\nstderr: %s\n' "$stdout_path" "$stderr_path" >&2
   exit 1
 fi

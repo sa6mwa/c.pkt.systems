@@ -4,11 +4,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #define CPKTXSCRIBE_DEFAULT_READ_FRAMES 4096UL
 #define CPKTXSCRIBE_DEFAULT_MEMORY_SPOOL_BYTES 65536UL
 #define CPKTXSCRIBE_DEFAULT_MAX_SPOOL_BYTES (1024UL * 1024UL * 1024UL)
+
+typedef void (*cpktxscribe_whisper_log_fn)(int level, const char *text,
+                                           void *user);
+extern void whisper_log_set(cpktxscribe_whisper_log_fn log_callback,
+                            void *user_data);
 
 struct cpktxscribe_options {
   const char *input_path;
@@ -31,6 +37,7 @@ struct cpktxscribe_options {
   int progress;
   int final_newline;
   int list_models;
+  int verbose;
   unsigned long threads;
   unsigned long read_frames;
   unsigned long length_ms;
@@ -138,6 +145,138 @@ static int cpktxscribe_is_url(const char *text) {
   return cursor != NULL && cursor != text;
 }
 
+static void cpktxscribe_whisper_silent(int level, const char *text,
+                                       void *user) {
+  (void)level;
+  (void)text;
+  (void)user;
+}
+
+static void cpktxscribe_whisper_verbose(int level, const char *text,
+                                        void *user) {
+  (void)level;
+  (void)user;
+  if (text != NULL) {
+    fputs(text, stderr);
+  }
+}
+
+static char *cpktxscribe_join2(const char *left, const char *right) {
+  char *joined;
+  size_t left_len;
+  size_t right_len;
+  size_t needs_slash;
+
+  if (left == NULL || left[0] == '\0' || right == NULL || right[0] == '\0') {
+    return NULL;
+  }
+  left_len = strlen(left);
+  right_len = strlen(right);
+  needs_slash = left[left_len - 1U] == '/' ? 0U : 1U;
+  if (left_len > ((size_t)-1) - needs_slash - right_len - 1U) {
+    return NULL;
+  }
+  joined = (char *)malloc(left_len + needs_slash + right_len + 1U);
+  if (joined == NULL) {
+    return NULL;
+  }
+  memcpy(joined, left, left_len);
+  if (needs_slash) {
+    joined[left_len] = '/';
+  }
+  memcpy(joined + left_len + needs_slash, right, right_len);
+  joined[left_len + needs_slash + right_len] = '\0';
+  return joined;
+}
+
+static char *cpktxscribe_default_cache_dir(void) {
+  const char *xdg_cache_home;
+  const char *home;
+  char *base;
+  char *path;
+
+  xdg_cache_home = getenv("XDG_CACHE_HOME");
+  if (xdg_cache_home != NULL && xdg_cache_home[0] != '\0') {
+    return cpktxscribe_join2(xdg_cache_home, "cpkt/susurro/models");
+  }
+  home = getenv("HOME");
+  if (home == NULL || home[0] == '\0') {
+    return NULL;
+  }
+  base = cpktxscribe_join2(home, ".cache");
+  if (base == NULL) {
+    return NULL;
+  }
+  path = cpktxscribe_join2(base, "cpkt/susurro/models");
+  free(base);
+  return path;
+}
+
+static int cpktxscribe_file_exists(const char *path) {
+  struct stat st;
+
+  if (path == NULL || path[0] == '\0') {
+    return 0;
+  }
+  if (stat(path, &st) != 0) {
+    return 0;
+  }
+  return S_ISREG(st.st_mode) ? 1 : 0;
+}
+
+static const char *
+cpktxscribe_source_label(const struct cpktxscribe_options *options) {
+  if (options->url != NULL) {
+    return options->url;
+  }
+  return options->input_path != NULL ? options->input_path : "(none)";
+}
+
+static void
+cpktxscribe_print_status(const struct cpktxscribe_options *options) {
+  cpkt_sus_model_entry entry;
+  const char *cache_state;
+  const char *cache_dir_value;
+  char *cache_dir;
+  char *cache_path;
+
+  if (options->model_path != NULL) {
+    fprintf(stderr, "status source=%s model_path=%s\n",
+            cpktxscribe_source_label(options), options->model_path);
+    return;
+  }
+
+  cache_dir = NULL;
+  cache_path = NULL;
+  if (cpkt_sus_model_catalog_find(options->model, &entry) == CPKT_SUS_OK &&
+      entry.filename != NULL) {
+    cache_dir_value = options->cache_dir;
+    if (cache_dir_value == NULL || cache_dir_value[0] == '\0') {
+      cache_dir = cpktxscribe_default_cache_dir();
+      cache_dir_value = cache_dir;
+    }
+    if (cache_dir_value != NULL) {
+      cache_path = cpktxscribe_join2(cache_dir_value, entry.filename);
+    }
+  }
+
+  if (cache_path != NULL) {
+    cache_state = cpktxscribe_file_exists(cache_path)
+                      ? "cached"
+                      : (options->offline ? "missing-offline" : "download");
+    fprintf(stderr, "status source=%s model=%s cache=%s cache_state=%s\n",
+            cpktxscribe_source_label(options),
+            options->model != NULL ? options->model : "small", cache_path,
+            cache_state);
+  } else {
+    fprintf(stderr, "status source=%s model=%s cache=(unresolved)\n",
+            cpktxscribe_source_label(options),
+            options->model != NULL ? options->model : "small");
+  }
+  free(cache_path);
+  free(cache_dir);
+}
+
 static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "usage: cpktxscribe [options] input-audio\n\n");
   fprintf(out, "Streams committed transcript text to stdout as VOX segments ");
@@ -172,6 +311,7 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "  --max-spool-bytes N          Max open VOX segment; default 1 GiB.\n");
   fprintf(out, "  --keep-context 0|1           Carry prior text prompt; default 1.\n");
   fprintf(out, "\nOutput:\n");
+  fprintf(out, "  -v, --verbose                Print backend logs to stderr.\n");
   fprintf(out, "  --metrics                    Print stream metrics to stderr.\n");
   fprintf(out, "  --progress                   Print backend progress to stderr.\n");
   fprintf(out, "  --no-final-newline           Do not append a final newline.\n");
@@ -292,6 +432,9 @@ static int cpktxscribe_parse_options(int argc, char **argv,
       options->keep_context = value != 0UL ? 1 : -1;
     } else if (strcmp(argv[i], "--metrics") == 0) {
       options->metrics = 1;
+    } else if (strcmp(argv[i], "--verbose") == 0 ||
+               strcmp(argv[i], "-v") == 0) {
+      options->verbose = 1;
     } else if (strcmp(argv[i], "--progress") == 0) {
       options->progress = 1;
     } else if (strcmp(argv[i], "--no-final-newline") == 0) {
@@ -439,6 +582,7 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
   stream.started = clock();
   stream.metrics = options->metrics;
 
+  cpktxscribe_print_status(options);
   if (options->metrics) {
     fprintf(stderr,
             "source=%s model=%s cache_dir=%s language=%s threshold=%g "
@@ -532,5 +676,8 @@ int main(int argc, char **argv) {
   if (options.list_models) {
     return cpktxscribe_print_models();
   }
+  whisper_log_set(options.verbose ? cpktxscribe_whisper_verbose
+                                  : cpktxscribe_whisper_silent,
+                  NULL);
   return cpktxscribe_run(&options);
 }
