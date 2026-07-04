@@ -367,6 +367,8 @@ Expected public types:
 - `cpkt_sus_result`
 - `cpkt_sus_model_config`
 - `cpkt_sus_cache_config`
+- `cpkt_sus_cache_status_event`
+- `cpkt_sus_cache_status_sink`
 - `cpkt_sus_transcriber_config`
 - `cpkt_sus_segment`
 - `cpkt_sus_segment_sink`
@@ -385,6 +387,8 @@ Model loading must support:
 - pinned checksum validation by default;
 - user-supplied checksum override;
 - explicit insecure/no-checksum mode, off by default;
+- optional cache resolver status callbacks for startup UX and structured
+  logging adapters;
 - atomic download/write/verify/rename behavior.
 
 Current implementation status:
@@ -398,6 +402,8 @@ Current implementation status:
   non-zero;
 - `source_url` may override a curated entry's URL for controlled mirrors or
   deterministic tests, while checksum rules still apply;
+- cache-backed loading can report lookup, cache hit/miss, download, verify, and
+  load phases through `cpkt_sus_cache_config.status_sink`;
 - downloaded files are written to a unique temporary path, flushed, checksum
   verified, model-load verified, and then atomically renamed into place;
 - cache loading returns distinct lookup, I/O, checksum, model-load, and future

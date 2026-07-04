@@ -50,6 +50,15 @@ struct cpkt_test_log_capture {
   const char *last_message;
 };
 
+struct cpkt_test_cache_status_capture {
+  unsigned long count;
+  int phases[16];
+  char last_model[128];
+  char last_cache_path[512];
+  char last_source_url[512];
+  int fail_on_phase;
+};
+
 static void cpkt_test_log_sink(const cpkt_sus_log_event *event, void *user) {
   struct cpkt_test_log_capture *capture;
 
@@ -62,6 +71,38 @@ static void cpkt_test_log_sink(const cpkt_sus_log_event *event, void *user) {
   capture->last_level = event->level;
   capture->last_component = event->component;
   capture->last_message = event->message;
+}
+
+static int cpkt_test_cache_status_sink(
+    const cpkt_sus_cache_status_event *event, void *user) {
+  struct cpkt_test_cache_status_capture *capture;
+
+  capture = (struct cpkt_test_cache_status_capture *)user;
+  assert_non_null(capture);
+  assert_non_null(event);
+  assert_non_null(event->model);
+  if (capture->count < 16UL) {
+    capture->phases[capture->count] = event->phase;
+  }
+  ++capture->count;
+  if (event->model != NULL) {
+    assert_true(snprintf(capture->last_model, sizeof(capture->last_model),
+                         "%s", event->model) <
+                (int)sizeof(capture->last_model));
+  }
+  if (event->cache_path != NULL) {
+    assert_true(snprintf(capture->last_cache_path,
+                         sizeof(capture->last_cache_path), "%s",
+                         event->cache_path) <
+                (int)sizeof(capture->last_cache_path));
+  }
+  if (event->source_url != NULL) {
+    assert_true(snprintf(capture->last_source_url,
+                         sizeof(capture->last_source_url), "%s",
+                         event->source_url) <
+                (int)sizeof(capture->last_source_url));
+  }
+  return event->phase == capture->fail_on_phase ? 1 : 0;
 }
 
 static void test_backend_metadata(void **state) {
@@ -321,6 +362,7 @@ static void test_cached_open_contract(void **state) {
 static void test_cached_open_downloads_to_temp_before_rename(void **state) {
   cpkt_sus_cache_config config;
   cpkt_sus_model *model;
+  struct cpkt_test_cache_status_capture status;
   char cwd[4096];
   char source_url[4608];
   FILE *file;
@@ -342,17 +384,29 @@ static void test_cached_open_downloads_to_temp_before_rename(void **state) {
   assert_int_equal(fclose(file), 0);
 
   memset(&config, 0, sizeof(config));
+  memset(&status, 0, sizeof(status));
   config.model = "small";
   config.cache_dir = "cpkt-sus-fetch-cache/nested";
   config.source_url = source_url;
   config.sha256 =
       "88e9294cb41d862d3e2670fb9894c3e46f74fefdd18eadd8f47ee4611406487a";
   config.cpu_only = 1;
+  config.status_sink = cpkt_test_cache_status_sink;
+  config.status_user = &status;
 
   model = (cpkt_sus_model *)1;
   assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
                    CPKT_SUS_ERR_MODEL);
   assert_null(model);
+  assert_int_equal(status.count, 5);
+  assert_int_equal(status.phases[0], CPKT_SUS_CACHE_STATUS_LOOKUP);
+  assert_int_equal(status.phases[1], CPKT_SUS_CACHE_STATUS_MISS);
+  assert_int_equal(status.phases[2], CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN);
+  assert_int_equal(status.phases[3], CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE);
+  assert_int_equal(status.phases[4], CPKT_SUS_CACHE_STATUS_VERIFY_BEGIN);
+  assert_string_equal(status.last_model, "small");
+  assert_string_equal(status.last_cache_path,
+                      "cpkt-sus-fetch-cache/nested/ggml-small.bin");
   assert_false(
       cpkt_test_file_exists("cpkt-sus-fetch-cache/nested/ggml-small.bin"));
 
@@ -360,6 +414,37 @@ static void test_cached_open_downloads_to_temp_before_rename(void **state) {
   (void)remove("cpkt-sus-fetch-cache/nested/ggml-small.bin");
   (void)rmdir("cpkt-sus-fetch-cache/nested");
   (void)rmdir("cpkt-sus-fetch-cache");
+}
+
+static void test_cached_open_status_callback_can_abort(void **state) {
+  cpkt_sus_cache_config config;
+  cpkt_sus_model *model;
+  struct cpkt_test_cache_status_capture status;
+
+  (void)state;
+  (void)remove("cpkt-sus-abort-cache/ggml-small.bin");
+  (void)rmdir("cpkt-sus-abort-cache");
+
+  memset(&config, 0, sizeof(config));
+  memset(&status, 0, sizeof(status));
+  config.model = "small";
+  config.cache_dir = "cpkt-sus-abort-cache";
+  config.cpu_only = 1;
+  config.status_sink = cpkt_test_cache_status_sink;
+  config.status_user = &status;
+  status.fail_on_phase = CPKT_SUS_CACHE_STATUS_MISS;
+
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_CALLBACK);
+  assert_null(model);
+  assert_int_equal(status.count, 2);
+  assert_int_equal(status.phases[0], CPKT_SUS_CACHE_STATUS_LOOKUP);
+  assert_int_equal(status.phases[1], CPKT_SUS_CACHE_STATUS_MISS);
+  assert_false(cpkt_test_file_exists("cpkt-sus-abort-cache/ggml-small.bin"));
+
+  (void)remove("cpkt-sus-abort-cache/ggml-small.bin");
+  (void)rmdir("cpkt-sus-abort-cache");
 }
 
 static void test_cached_open_retries_invalid_existing_cache(void **state) {
@@ -432,6 +517,7 @@ int main(void) {
       cmocka_unit_test(test_model_catalog_queries),
       cmocka_unit_test(test_cached_open_contract),
       cmocka_unit_test(test_cached_open_downloads_to_temp_before_rename),
+      cmocka_unit_test(test_cached_open_status_callback_can_abort),
       cmocka_unit_test(test_cached_open_retries_invalid_existing_cache),
       cmocka_unit_test(test_result_strings),
   };

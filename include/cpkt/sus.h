@@ -59,6 +59,45 @@ typedef struct cpkt_sus_model_config {
 /** Compatibility alias for the initial model-open configuration name. */
 typedef cpkt_sus_model_config cpkt_sus_config;
 
+/** Cache resolver status phases emitted while opening cached models. */
+typedef enum cpkt_sus_cache_status_phase {
+  /** The resolver selected a cached-model catalog entry. */
+  CPKT_SUS_CACHE_STATUS_LOOKUP = 1,
+  /** The expected cache file already exists and will be validated. */
+  CPKT_SUS_CACHE_STATUS_HIT = 2,
+  /** The expected cache file is absent and will be fetched. */
+  CPKT_SUS_CACHE_STATUS_MISS = 3,
+  /** The resolver is downloading the selected model to a temporary file. */
+  CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN = 4,
+  /** The temporary downloaded model file is complete. */
+  CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE = 5,
+  /** The resolver is validating checksum and model loadability. */
+  CPKT_SUS_CACHE_STATUS_VERIFY_BEGIN = 6,
+  /** The resolver finished validation and will atomically publish the file. */
+  CPKT_SUS_CACHE_STATUS_VERIFY_COMPLETE = 7,
+  /** The resolver is loading the validated cached model. */
+  CPKT_SUS_CACHE_STATUS_LOAD_BEGIN = 8
+} cpkt_sus_cache_status_phase;
+
+/** Cache resolver status event delivered during cached model opens. */
+typedef struct cpkt_sus_cache_status_event {
+  /** One of cpkt_sus_cache_status_phase. Kept int-sized for ABI stability. */
+  int phase;
+  /** Public model name selected by the resolver. */
+  const char *model;
+  /** Cache path being checked, downloaded, verified, or loaded. */
+  const char *cache_path;
+  /** Source URL used for download phases, otherwise NULL. */
+  const char *source_url;
+} cpkt_sus_cache_status_event;
+
+/**
+ * Receives cache resolver status. Return zero to continue; non-zero aborts the
+ * cached open with CPKT_SUS_ERR_CALLBACK.
+ */
+typedef int (*cpkt_sus_cache_status_sink)(
+    const cpkt_sus_cache_status_event *event, void *user);
+
 /** Cache-backed model resolver options. Network access is explicit to this
  * path. */
 typedef struct cpkt_sus_cache_config {
@@ -77,6 +116,10 @@ typedef struct cpkt_sus_cache_config {
   int offline;
   /** Non-zero requests CPU-only execution when the backend supports it. */
   int cpu_only;
+  /** Optional cache resolver status sink. */
+  cpkt_sus_cache_status_sink status_sink;
+  /** User value passed to status_sink. */
+  void *status_user;
 } cpkt_sus_cache_config;
 
 /** Runtime information for an opened speech facade instance. */

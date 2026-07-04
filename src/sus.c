@@ -472,6 +472,26 @@ cpkt_sus_cache_dir_from_config(char **out,
   return cpkt_sus_default_cache_dir(out);
 }
 
+static cpkt_sus_result
+cpkt_sus_emit_cache_status(const cpkt_sus_cache_config *config, int phase,
+                           const struct cpkt_sus_catalog_entry *entry,
+                           const char *cache_path, const char *source_url) {
+  cpkt_sus_cache_status_event event;
+
+  if (config == NULL || config->status_sink == NULL) {
+    return CPKT_SUS_OK;
+  }
+  memset(&event, 0, sizeof(event));
+  event.phase = phase;
+  event.model = entry != NULL ? entry->name : NULL;
+  event.cache_path = cache_path;
+  event.source_url = source_url;
+  if (config->status_sink(&event, config->status_user) != 0) {
+    return CPKT_SUS_ERR_CALLBACK;
+  }
+  return CPKT_SUS_OK;
+}
+
 static int cpkt_sus_file_exists(const char *path) {
   struct stat st;
 
@@ -781,6 +801,12 @@ cpkt_sus_open_validated_cached_file(cpkt_sus_model **out, const char *path,
     return result;
   }
 
+  result = cpkt_sus_emit_cache_status(
+      config, CPKT_SUS_CACHE_STATUS_LOAD_BEGIN, entry, path, NULL);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+
   memset(&model_config, 0, sizeof(model_config));
   model_config.model_path = path;
   model_config.cpu_only = config->cpu_only;
@@ -819,12 +845,32 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
     url = config->source_url;
   }
 
+  result = cpkt_sus_emit_cache_status(
+      config, CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN, entry, model_path, url);
+  if (result != CPKT_SUS_OK) {
+    free(temp_path);
+    return result;
+  }
   result = cpkt_sus_download_to_file(url, temp_path);
+  if (result == CPKT_SUS_OK) {
+    result = cpkt_sus_emit_cache_status(
+        config, CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE, entry, model_path,
+        url);
+  }
+  if (result == CPKT_SUS_OK) {
+    result = cpkt_sus_emit_cache_status(
+        config, CPKT_SUS_CACHE_STATUS_VERIFY_BEGIN, entry, model_path, NULL);
+  }
   if (result == CPKT_SUS_OK) {
     result = cpkt_sus_validate_cached_file(temp_path, entry, config);
   }
   if (result == CPKT_SUS_OK) {
     result = cpkt_sus_verify_model_file(temp_path, config);
+  }
+  if (result == CPKT_SUS_OK) {
+    result = cpkt_sus_emit_cache_status(
+        config, CPKT_SUS_CACHE_STATUS_VERIFY_COMPLETE, entry, model_path,
+        NULL);
   }
   if (result == CPKT_SUS_OK && rename(temp_path, model_path) != 0) {
     result = CPKT_SUS_ERR_IO;
@@ -2075,8 +2121,22 @@ cpkt_sus_model_open_cached(cpkt_sus_model **out,
     free(cache_dir);
     return result;
   }
+  result = cpkt_sus_emit_cache_status(
+      config, CPKT_SUS_CACHE_STATUS_LOOKUP, entry, model_path, NULL);
+  if (result != CPKT_SUS_OK) {
+    free(cache_dir);
+    free(model_path);
+    return result;
+  }
 
   if (!cpkt_sus_file_exists(model_path)) {
+    result = cpkt_sus_emit_cache_status(
+        config, CPKT_SUS_CACHE_STATUS_MISS, entry, model_path, NULL);
+    if (result != CPKT_SUS_OK) {
+      free(cache_dir);
+      free(model_path);
+      return result;
+    }
     result = cpkt_sus_fetch_cached_file(model_path, cache_dir, entry, config);
     if (result != CPKT_SUS_OK) {
       free(cache_dir);
@@ -2084,6 +2144,13 @@ cpkt_sus_model_open_cached(cpkt_sus_model **out,
       return result;
     }
   } else {
+    result = cpkt_sus_emit_cache_status(
+        config, CPKT_SUS_CACHE_STATUS_HIT, entry, model_path, NULL);
+    if (result != CPKT_SUS_OK) {
+      free(cache_dir);
+      free(model_path);
+      return result;
+    }
     result =
         cpkt_sus_open_validated_cached_file(out, model_path, entry, config);
     if ((result == CPKT_SUS_ERR_CHECKSUM || result == CPKT_SUS_ERR_MODEL) &&

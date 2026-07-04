@@ -199,6 +199,51 @@ static int cpkt_sus_live_file_exists(const char *path) {
   return S_ISREG(st.st_mode) ? 1 : 0;
 }
 
+static const char *cpkt_sus_live_cache_phase_name(int phase) {
+  switch (phase) {
+  case CPKT_SUS_CACHE_STATUS_LOOKUP:
+    return "lookup";
+  case CPKT_SUS_CACHE_STATUS_HIT:
+    return "cached";
+  case CPKT_SUS_CACHE_STATUS_MISS:
+    return "missing";
+  case CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN:
+    return "download";
+  case CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE:
+    return "downloaded";
+  case CPKT_SUS_CACHE_STATUS_VERIFY_BEGIN:
+    return "verify";
+  case CPKT_SUS_CACHE_STATUS_VERIFY_COMPLETE:
+    return "verified";
+  case CPKT_SUS_CACHE_STATUS_LOAD_BEGIN:
+    return "load";
+  default:
+    return "unknown";
+  }
+}
+
+static int
+cpkt_sus_live_cache_status_sink(const cpkt_sus_cache_status_event *event,
+                                void *user) {
+  (void)user;
+  if (event == NULL) {
+    return 0;
+  }
+  if (event->source_url != NULL) {
+    fprintf(stderr, "status model_cache=%s model=%s cache=%s source=%s\n",
+            cpkt_sus_live_cache_phase_name(event->phase),
+            event->model != NULL ? event->model : "(unknown)",
+            event->cache_path != NULL ? event->cache_path : "(unresolved)",
+            event->source_url);
+  } else {
+    fprintf(stderr, "status model_cache=%s model=%s cache=%s\n",
+            cpkt_sus_live_cache_phase_name(event->phase),
+            event->model != NULL ? event->model : "(unknown)",
+            event->cache_path != NULL ? event->cache_path : "(unresolved)");
+  }
+  return 0;
+}
+
 static void
 cpkt_sus_live_print_startup(const struct cpkt_sus_live_options *opts) {
   cpkt_sus_model_entry entry;
@@ -441,6 +486,7 @@ static int cpkt_sus_live_open_model(cpkt_sus_model **out,
     cache_config.model = opts->model;
     cache_config.cache_dir = opts->cache_dir;
     cache_config.cpu_only = opts->cpu_only;
+    cache_config.status_sink = cpkt_sus_live_cache_status_sink;
     result = cpkt_sus_model_open_cached(out, &cache_config);
   }
   if (result != CPKT_SUS_OK) {
