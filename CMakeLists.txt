@@ -608,15 +608,19 @@ if(CPKT_BUILD_TESTS)
     add_dependencies(cpkt_audio_live_vox_c89_example cpkt_deps)
   endif()
 
-  add_executable(cpkt_audio_live_vox_static_c89_example
-    examples/audio-live-vox-c89/main.c)
-  target_compile_options(cpkt_audio_live_vox_static_c89_example PRIVATE
-    -std=c89)
-  cpkt_add_repo_warning_errors(cpkt_audio_live_vox_static_c89_example)
-  target_link_libraries(cpkt_audio_live_vox_static_c89_example PRIVATE
-    cpkt_audio_static)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_audio_live_vox_static_c89_example cpkt_deps)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_TARGET_LIBC STREQUAL "musl")
+    add_executable(cpkt_audio_live_vox_static_c89_example
+      examples/audio-live-vox-c89/main.c)
+    target_compile_options(cpkt_audio_live_vox_static_c89_example PRIVATE
+      -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_audio_live_vox_static_c89_example)
+    target_link_libraries(cpkt_audio_live_vox_static_c89_example PRIVATE
+      cpkt_audio_static)
+    target_link_options(cpkt_audio_live_vox_static_c89_example PRIVATE
+      -static -Wl,--gc-sections)
+    if(CPKT_BUILD_DEPENDENCIES)
+      add_dependencies(cpkt_audio_live_vox_static_c89_example cpkt_deps)
+    endif()
   endif()
 
   add_executable(cpkt_sus_vox_intro_c89_example
@@ -643,18 +647,22 @@ if(CPKT_BUILD_TESTS)
     add_dependencies(cpkt_sus_live_vox_c89_example cpkt_deps)
   endif()
 
-  add_executable(cpkt_sus_live_vox_static_c89_example
-    examples/sus-live-vox-c89/main.c)
-  target_compile_options(cpkt_sus_live_vox_static_c89_example PRIVATE
-    -std=c89)
-  cpkt_add_repo_warning_errors(cpkt_sus_live_vox_static_c89_example)
-  set_target_properties(cpkt_sus_live_vox_static_c89_example PROPERTIES
-    LINKER_LANGUAGE CXX)
-  target_link_libraries(cpkt_sus_live_vox_static_c89_example PRIVATE
-    cpkt_audio_static
-    cpkt_sus_static)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_sus_live_vox_static_c89_example cpkt_deps)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_TARGET_LIBC STREQUAL "musl")
+    add_executable(cpkt_sus_live_vox_static_c89_example
+      examples/sus-live-vox-c89/main.c)
+    target_compile_options(cpkt_sus_live_vox_static_c89_example PRIVATE
+      -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sus_live_vox_static_c89_example)
+    set_target_properties(cpkt_sus_live_vox_static_c89_example PROPERTIES
+      LINKER_LANGUAGE CXX)
+    target_link_libraries(cpkt_sus_live_vox_static_c89_example PRIVATE
+      cpkt_audio_static
+      cpkt_sus_static)
+    target_link_options(cpkt_sus_live_vox_static_c89_example PRIVATE
+      -static -Wl,--gc-sections)
+    if(CPKT_BUILD_DEPENDENCIES)
+      add_dependencies(cpkt_sus_live_vox_static_c89_example cpkt_deps)
+    endif()
   endif()
 
   add_executable(cpkt_abi_smoke_shared examples/abi_smoke.c)
@@ -760,6 +768,12 @@ if(CPKT_BUILD_TESTS)
       cpkt_audio_static
       cpkt::cmocka
     )
+    add_executable(cpkt_audio_process_capture_probe
+      tests/audio_process_capture_probe.c)
+    target_compile_options(cpkt_audio_process_capture_probe PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_audio_process_capture_probe)
+    target_link_libraries(cpkt_audio_process_capture_probe PRIVATE
+      cpkt_audio_static)
     add_executable(cpkt_sus_facade_test tests/sus_facade_test.c)
     target_compile_options(cpkt_sus_facade_test PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_sus_facade_test)
@@ -777,6 +791,7 @@ if(CPKT_BUILD_TESTS)
     )
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_audio_facade_test cpkt_deps)
+      add_dependencies(cpkt_audio_process_capture_probe cpkt_deps)
       add_dependencies(cpkt_sus_facade_test cpkt_deps)
       add_dependencies(cpkt_sus_audio_integration_test cpkt_deps)
     endif()
@@ -821,14 +836,24 @@ if(CPKT_BUILD_TESTS)
       COMMAND cpkt_audio_vox_intro_c89_example)
     add_test(NAME audio_live_vox_c89_example
       COMMAND cpkt_audio_live_vox_c89_example --smoke)
-    add_test(NAME audio_live_vox_static_c89_example
-      COMMAND cpkt_audio_live_vox_static_c89_example --smoke)
     add_test(NAME sus_vox_intro_c89_example
       COMMAND cpkt_sus_vox_intro_c89_example)
     add_test(NAME sus_live_vox_c89_example
       COMMAND cpkt_sus_live_vox_c89_example --smoke)
-    add_test(NAME sus_live_vox_static_c89_example
-      COMMAND cpkt_sus_live_vox_static_c89_example --smoke)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_TARGET_LIBC STREQUAL "musl")
+      add_test(NAME audio_live_vox_static_c89_example
+        COMMAND cpkt_audio_live_vox_static_c89_example --smoke)
+      add_test(NAME sus_live_vox_static_c89_example
+        COMMAND cpkt_sus_live_vox_static_c89_example --smoke)
+      add_test(
+        NAME audio_sus_static_live_examples_are_static
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/static_executable_policy_test.sh"
+          "$<TARGET_FILE:cpkt_audio_live_vox_static_c89_example>"
+          "$<TARGET_FILE:cpkt_sus_live_vox_static_c89_example>")
+      set_tests_properties(sus_live_vox_static_c89_example PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+    endif()
     add_test(
       NAME sus_live_startup_status
       COMMAND
@@ -841,8 +866,6 @@ if(CPKT_BUILD_TESTS)
     set_tests_properties(sus_live_vox_c89_example PROPERTIES
       ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     set_tests_properties(sus_live_startup_status PROPERTIES
-      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
-    set_tests_properties(sus_live_vox_static_c89_example PROPERTIES
       ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     add_test(
       NAME opcua_word_portability
@@ -864,6 +887,11 @@ if(CPKT_BUILD_TESTS)
     endif()
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       add_test(NAME audio_facade_unit COMMAND cpkt_audio_facade_test)
+      add_test(
+        NAME audio_process_capture_realtime
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/audio_process_capture_realtime_test.sh"
+          "$<TARGET_FILE:cpkt_audio_process_capture_probe>")
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
       set_tests_properties(sus_facade_unit PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")

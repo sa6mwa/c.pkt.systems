@@ -4,8 +4,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 #define CPKTXSCRIBE_DEFAULT_READ_FRAMES 4096UL
 #define CPKTXSCRIBE_DEFAULT_MEMORY_SPOOL_BYTES 65536UL
@@ -32,12 +34,18 @@ struct cpktxscribe_options {
   int progress;
   int final_newline;
   int list_models;
+  int capture;
+  int backend;
   cpkt_sus_segment_mode segment_mode;
   int verbose;
   unsigned long threads;
   unsigned long read_frames;
+  unsigned long seconds;
   unsigned long length_ms;
   unsigned long hang_ms;
+  unsigned long prebuffer_ms;
+  unsigned long buffer_ms;
+  unsigned long period_ms;
   unsigned long memory_spool_bytes;
   unsigned long max_spool_bytes;
   unsigned long audio_ctx;
@@ -54,6 +62,12 @@ struct cpktxscribe_stream {
   int metrics;
 };
 
+struct cpktxscribe_capture_run {
+  const struct cpktxscribe_options *options;
+  cpkt_sus_model *model;
+  struct cpktxscribe_stream *stream;
+};
+
 static void cpktxscribe_defaults(struct cpktxscribe_options *options) {
   memset(options, 0, sizeof(*options));
   options->model = "tiny";
@@ -64,8 +78,12 @@ static void cpktxscribe_defaults(struct cpktxscribe_options *options) {
   options->final_newline = 1;
   options->segment_mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
   options->read_frames = CPKTXSCRIBE_DEFAULT_READ_FRAMES;
+  options->seconds = 0UL;
   options->length_ms = 0UL;
   options->hang_ms = 1500UL;
+  options->prebuffer_ms = 50UL;
+  options->buffer_ms = 2000UL;
+  options->period_ms = 20UL;
   options->memory_spool_bytes = CPKTXSCRIBE_DEFAULT_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKTXSCRIBE_DEFAULT_MAX_SPOOL_BYTES;
   options->vox_threshold = 0.03f;
@@ -126,6 +144,22 @@ static int cpktxscribe_parse_encoding(const char *text, int *out) {
     *out = CPKT_AUDIO_ENCODING_FLAC;
   } else if (strcmp(text, "mp3") == 0) {
     *out = CPKT_AUDIO_ENCODING_MP3;
+  } else {
+    return 0;
+  }
+  return 1;
+}
+
+static int cpktxscribe_parse_backend(const char *text, int *out) {
+  if (text == NULL || out == NULL) {
+    return 0;
+  }
+  if (strcmp(text, "auto") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_AUTO;
+  } else if (strcmp(text, "process") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
+  } else if (strcmp(text, "coreaudio") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO;
   } else {
     return 0;
   }
@@ -259,6 +293,9 @@ static int cpktxscribe_file_exists(const char *path) {
 
 static const char *
 cpktxscribe_source_label(const struct cpktxscribe_options *options) {
+  if (options->capture) {
+    return "default-capture";
+  }
   if (options->url != NULL) {
     return options->url;
   }
@@ -315,8 +352,13 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "Streams committed transcript text to stdout as VOX segments ");
   fprintf(out, "arrive.\n\n");
   fprintf(out, "Input:\n");
+  fprintf(out, "  --capture                   Open the default capture device.\n");
   fprintf(out, "  --url URL                    Stream a libcurl-supported URL.\n");
   fprintf(out, "  --encoding auto|wav|flac|mp3 Input hint; default auto.\n");
+  fprintf(out, "  --backend NAME               Capture backend: auto, process, coreaudio.\n");
+  fprintf(out, "  --seconds N                  Capture duration; default 0, until killed.\n");
+  fprintf(out, "  --buffer-ms N                Device ring buffer; default 2000.\n");
+  fprintf(out, "  --period-ms N                Device callback period; default 20.\n");
   fprintf(out, "\nModel:\n");
   fprintf(out, "  --model NAME                 Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH            Load an explicit model file.\n");
@@ -338,6 +380,7 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "\nVOX:\n");
   fprintf(out, "  --vox-threshold VALUE        RMS threshold; default 0.03.\n");
   fprintf(out, "  --hang-ms N                  Silence release time; default 1500.\n");
+  fprintf(out, "  --prebuffer-ms N             VOX prebuffer; default 50.\n");
   fprintf(out, "  --segment-ms N               Segment budget; default 0, mode default.\n");
   fprintf(out, "  --simplex                    Use simplex turn mode instead of continuous.\n");
   fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
@@ -351,6 +394,7 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "  --no-final-newline           Do not append a final newline.\n");
   fprintf(out, "\nExamples:\n");
   fprintf(out, "  cpktxscribe intro.mp3\n");
+  fprintf(out, "  cpktxscribe --capture --simplex\n");
   fprintf(out, "  cpktxscribe https://pkt.systems/trajectory/assets/narration/intro/intro.mp3\n");
   fprintf(out, "  cpktxscribe --model small intro.wav\n");
   fprintf(out, "  cpktxscribe --model tiny.sv intro.mp3\n");
@@ -393,6 +437,8 @@ static int cpktxscribe_parse_options(int argc, char **argv,
       exit(0);
     } else if (strcmp(argv[i], "--list-models") == 0) {
       options->list_models = 1;
+    } else if (strcmp(argv[i], "--capture") == 0) {
+      options->capture = 1;
     } else if (strcmp(argv[i], "--url") == 0 && i + 1 < argc) {
       options->url = argv[++i];
     } else if (strcmp(argv[i], "--encoding") == 0 && i + 1 < argc) {
@@ -438,12 +484,24 @@ static int cpktxscribe_parse_options(int argc, char **argv,
       if (!cpktxscribe_parse_ulong(argv[++i], &options->max_tokens)) {
         return 0;
       }
+    } else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+      if (!cpktxscribe_parse_backend(argv[++i], &options->backend)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) {
+      if (!cpktxscribe_parse_ulong(argv[++i], &options->seconds)) {
+        return 0;
+      }
     } else if (strcmp(argv[i], "--vox-threshold") == 0 && i + 1 < argc) {
       if (!cpktxscribe_parse_float(argv[++i], &options->vox_threshold)) {
         return 0;
       }
     } else if (strcmp(argv[i], "--hang-ms") == 0 && i + 1 < argc) {
       if (!cpktxscribe_parse_ulong(argv[++i], &options->hang_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--prebuffer-ms") == 0 && i + 1 < argc) {
+      if (!cpktxscribe_parse_ulong(argv[++i], &options->prebuffer_ms)) {
         return 0;
       }
     } else if (strcmp(argv[i], "--segment-ms") == 0 && i + 1 < argc) {
@@ -454,6 +512,14 @@ static int cpktxscribe_parse_options(int argc, char **argv,
       options->segment_mode = CPKT_SUS_SEGMENT_MODE_SIMPLEX;
     } else if (strcmp(argv[i], "--read-frames") == 0 && i + 1 < argc) {
       if (!cpktxscribe_parse_ulong(argv[++i], &options->read_frames)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--buffer-ms") == 0 && i + 1 < argc) {
+      if (!cpktxscribe_parse_ulong(argv[++i], &options->buffer_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--period-ms") == 0 && i + 1 < argc) {
+      if (!cpktxscribe_parse_ulong(argv[++i], &options->period_ms)) {
         return 0;
       }
     } else if (strcmp(argv[i], "--memory-spool-bytes") == 0 &&
@@ -493,7 +559,11 @@ static int cpktxscribe_parse_options(int argc, char **argv,
   if (options->list_models) {
     return 1;
   }
-  if (options->url == NULL && options->input_path == NULL) {
+  if (!options->capture && options->url == NULL && options->input_path == NULL) {
+    return 0;
+  }
+  if (options->capture &&
+      (options->url != NULL || options->input_path != NULL)) {
     return 0;
   }
   if (options->url != NULL && options->input_path != NULL) {
@@ -555,6 +625,14 @@ static int cpktxscribe_progress_sink(int progress, void *user) {
   return 0;
 }
 
+static void cpktxscribe_sleep_ms(unsigned long ms) {
+  struct timeval tv;
+
+  tv.tv_sec = (long)(ms / 1000UL);
+  tv.tv_usec = (long)((ms % 1000UL) * 1000UL);
+  (void)select(0, NULL, NULL, NULL, &tv);
+}
+
 static int cpktxscribe_open_audio(cpkt_audio_decoder **out,
                                   const struct cpktxscribe_options *options) {
   cpkt_audio_decoder_config config;
@@ -575,6 +653,21 @@ static int cpktxscribe_open_audio(cpkt_audio_decoder **out,
     return 0;
   }
   return 1;
+}
+
+static void cpktxscribe_fill_transcriber_config(
+    cpkt_sus_transcriber_config *config,
+    const struct cpktxscribe_options *options) {
+  memset(config, 0, sizeof(*config));
+  config->threads = (int)options->threads;
+  config->cpu_only = options->cpu_only;
+  config->language = options->language;
+  config->translate = options->translate;
+  config->timestamps = options->timestamps;
+  config->initial_prompt = options->initial_prompt;
+  if (options->progress) {
+    config->progress_sink = cpktxscribe_progress_sink;
+  }
 }
 
 static int cpktxscribe_open_model(cpkt_sus_model **out,
@@ -607,6 +700,152 @@ static int cpktxscribe_open_model(cpkt_sus_model **out,
   return 1;
 }
 
+static int cpktxscribe_capture_segment_sink(cpkt_audio_vox_segment *segment,
+                                            void *user) {
+  struct cpktxscribe_capture_run *run;
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config transcriber_config;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_result result;
+
+  run = (struct cpktxscribe_capture_run *)user;
+  if (run == NULL || run->model == NULL || run->stream == NULL ||
+      segment == NULL) {
+    return 1;
+  }
+  if (run->stream->metrics) {
+    fprintf(stderr,
+            "metric capture_segment=%lu frames=%lu seconds=%.3f hard=%d "
+            "final=%d\n",
+            segment->segment_index, (unsigned long)segment->frame_count,
+            (double)segment->frame_count / 16000.0, segment->hard_cut,
+            segment->is_final);
+  }
+
+  transcriber = NULL;
+  cpktxscribe_fill_transcriber_config(&transcriber_config, run->options);
+  result = run->model->create_transcriber(run->model, &transcriber,
+                                          &transcriber_config);
+  if (result != CPKT_SUS_OK) {
+    return 1;
+  }
+
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  segmented_config.keep_context = -1;
+  segmented_config.audio_ctx = run->options->audio_ctx;
+  segmented_config.max_tokens = run->options->max_tokens;
+  segmented_config.segmented_sink = cpktxscribe_segmented_sink;
+  segmented_config.segmented_user = run->stream;
+  run->stream->last_text_length = 0UL;
+  result = transcriber->transcribe_audio_vox_segment(transcriber, segment,
+                                                     &segmented_config);
+  transcriber->destroy(transcriber);
+  return result == CPKT_SUS_OK ? 0 : 1;
+}
+
+static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
+                                   cpkt_sus_model *model,
+                                   struct cpktxscribe_stream *stream) {
+  cpkt_audio_capture *capture;
+  cpkt_audio_vox *vox;
+  cpkt_audio_capture_config capture_config;
+  cpkt_audio_vox_config vox_config;
+  struct cpktxscribe_capture_run run;
+  float frames[1024];
+  size_t frames_read;
+  time_t end_time;
+  cpkt_audio_result audio_result;
+  int rc;
+
+  capture = NULL;
+  vox = NULL;
+  rc = 1;
+  memset(&run, 0, sizeof(run));
+  run.options = options;
+  run.model = model;
+  run.stream = stream;
+
+  memset(&capture_config, 0, sizeof(capture_config));
+  capture_config.backend = options->backend;
+  capture_config.buffer_ms = options->buffer_ms;
+  capture_config.period_ms = options->period_ms;
+  audio_result = cpkt_audio_capture_open_default(&capture, &capture_config);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "capture open failed: %s\n",
+            cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+
+  memset(&vox_config, 0, sizeof(vox_config));
+  vox_config.threshold = options->vox_threshold;
+  vox_config.release_silence_ms = options->hang_ms;
+  vox_config.prebuffer_ms = options->prebuffer_ms;
+  vox_config.max_segment_ms = options->length_ms;
+  vox_config.min_segment_ms = 100UL;
+  vox_config.memory_spool_bytes = options->memory_spool_bytes;
+  vox_config.max_spool_bytes = options->max_spool_bytes;
+  vox_config.segment_sink = cpktxscribe_capture_segment_sink;
+  vox_config.segment_user = &run;
+  audio_result = cpkt_audio_vox_open(&vox, &vox_config);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "vox open failed: %s\n", cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+
+  audio_result = capture->start(capture);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "capture start failed: %s\n",
+            cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+
+  end_time = options->seconds != 0UL ? time(NULL) + (time_t)options->seconds : 0;
+  while (options->seconds == 0UL || time(NULL) < end_time) {
+    frames_read = 0U;
+    audio_result = capture->read_f32_mono_16k(capture, frames,
+                                              sizeof(frames) / sizeof(frames[0]),
+                                              &frames_read);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "capture read failed: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
+    if (frames_read == 0U) {
+      cpktxscribe_sleep_ms(5UL);
+      continue;
+    }
+    audio_result = vox->push_f32_mono_16k(vox, frames, frames_read);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "vox push failed: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
+  }
+
+  audio_result = capture->stop(capture);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "capture stop failed: %s\n",
+            cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+  audio_result = vox->flush(vox);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "vox flush failed: %s\n", cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+  rc = 0;
+
+cleanup:
+  if (vox != NULL) {
+    vox->destroy(vox);
+  }
+  if (capture != NULL) {
+    (void)capture->stop(capture);
+    capture->destroy(capture);
+  }
+  return rc;
+}
+
 static int cpktxscribe_run(const struct cpktxscribe_options *options) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_model *model;
@@ -630,7 +869,7 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
     fprintf(stderr,
             "source=%s model=%s cache_dir=%s language=%s threshold=%g "
             "hang_ms=%lu segment_ms=%lu read_frames=%lu cpu_only=%d\n",
-            options->url != NULL ? options->url : options->input_path,
+            cpktxscribe_source_label(options),
             options->model_path != NULL ? options->model_path : options->model,
             options->cache_dir != NULL ? options->cache_dir : "(default)",
             options->language != NULL ? options->language : "auto",
@@ -638,23 +877,18 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
             options->length_ms, options->read_frames, options->cpu_only);
   }
 
-  if (!cpktxscribe_open_audio(&decoder, options)) {
-    goto cleanup;
-  }
   if (!cpktxscribe_open_model(&model, options)) {
     goto cleanup;
   }
-
-  memset(&transcriber_config, 0, sizeof(transcriber_config));
-  transcriber_config.threads = (int)options->threads;
-  transcriber_config.cpu_only = options->cpu_only;
-  transcriber_config.language = options->language;
-  transcriber_config.translate = options->translate;
-  transcriber_config.timestamps = options->timestamps;
-  transcriber_config.initial_prompt = options->initial_prompt;
-  if (options->progress) {
-    transcriber_config.progress_sink = cpktxscribe_progress_sink;
+  if (options->capture) {
+    rc = cpktxscribe_run_capture(options, model, &stream);
+    goto finish_output;
   }
+  if (!cpktxscribe_open_audio(&decoder, options)) {
+    goto cleanup;
+  }
+
+  cpktxscribe_fill_transcriber_config(&transcriber_config, options);
   result = model->create_transcriber(model, &transcriber, &transcriber_config);
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "transcriber create failed: %s\n",
@@ -683,6 +917,9 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
             cpkt_sus_result_string(result));
     goto cleanup;
   }
+  rc = 0;
+
+finish_output:
   if (options->final_newline && stream.saw_output) {
     fputc('\n', stdout);
     fflush(stdout);
@@ -694,7 +931,6 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
             stream.events, stream.finals,
             cpktxscribe_elapsed_ms(stream.started), stream.last_text_length);
   }
-  rc = 0;
 
 cleanup:
   if (transcriber != NULL) {
