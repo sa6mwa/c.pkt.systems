@@ -632,9 +632,18 @@ if(CPKT_BUILD_TESTS)
       cpkt_sus_shared
       cpkt::cmocka
     )
+    add_executable(cpkt_sus_audio_integration_test
+      tests/sus_audio_integration_test.c)
+    target_compile_options(cpkt_sus_audio_integration_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_sus_audio_integration_test)
+    target_link_libraries(cpkt_sus_audio_integration_test PRIVATE
+      cpkt_audio_static
+      cpkt_sus_shared
+    )
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_audio_facade_test cpkt_deps)
       add_dependencies(cpkt_sus_facade_test cpkt_deps)
+      add_dependencies(cpkt_sus_audio_integration_test cpkt_deps)
     endif()
 
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
@@ -697,6 +706,10 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME audio_facade_unit COMMAND cpkt_audio_facade_test)
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
       set_tests_properties(sus_facade_unit PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      add_test(NAME sus_audio_integration COMMAND cpkt_sus_audio_integration_test)
+      set_tests_properties(sus_audio_integration PROPERTIES
+        LABELS "integration;opt-in;sus"
         ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
       add_test(NAME abi_test_shared COMMAND cpkt_abi_test_shared)
       add_test(NAME abi_test_static COMMAND cpkt_abi_test_static)
