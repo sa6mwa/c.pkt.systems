@@ -84,7 +84,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
   memset(opts, 0, sizeof(*opts));
   opts->cpu_only = 1;
   opts->seconds = 0UL;
-  opts->threshold_milli = 30UL;
+  opts->threshold_milli = 60UL;
   opts->hang_ms = 1500UL;
   opts->max_segment_ms = 7000UL;
   opts->buffer_ms = 2000UL;
@@ -96,7 +96,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
 
 static float cpkt_sus_live_threshold(const struct cpkt_sus_live_options *opts) {
   return opts->threshold_milli != 0UL ? (float)opts->threshold_milli / 1000.0f
-                                      : 0.03f;
+                                      : 0.06f;
 }
 
 static void cpkt_sus_live_sleep_ms(unsigned long ms) {
@@ -183,11 +183,10 @@ static int cpkt_sus_live_state_sink(const cpkt_audio_vox_state_event *event,
     return 1;
   }
   if (event->state == CPKT_AUDIO_VOX_TX_ON) {
-    sprintf(line, "TX on segment=%lu threshold=%.3f\n", event->segment_index,
+    sprintf(line, "TX segment=%lu threshold=%.3f\n", event->segment_index,
             (double)event->threshold);
   } else if (event->state == CPKT_AUDIO_VOX_TX_OFF) {
-    sprintf(line, "RX segment=%lu hang_ms=%lu\n", event->segment_index,
-            run->options->hang_ms);
+    return 0;
   } else if (event->state == CPKT_AUDIO_VOX_HARD_CUT) {
     sprintf(line, "TX hard-cut segment=%lu max_segment_ms=%lu\n",
             event->segment_index, run->options->max_segment_ms);
@@ -208,8 +207,7 @@ static int cpkt_sus_live_realtime_sink(const cpkt_sus_realtime_event *event,
   if (run == NULL || event == NULL || event->text == NULL) {
     return 1;
   }
-  sprintf(line,
-          "stream segment=%lu final=%d chars=%lu text=", event->step_index,
+  sprintf(line, "TXT segment=%lu final=%d chars=%lu: ", event->step_index,
           event->is_final, event->text_length);
   cpkt_sus_live_emit(run, line);
   cpkt_sus_live_emit(run, event->text);
@@ -236,6 +234,10 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
       run->transcriber, segment, run->realtime_config);
   if (result != CPKT_SUS_OK) {
     return 1;
+  }
+  if (!segment->hard_cut) {
+    sprintf(line, "RX segment=%lu\n", segment->segment_index);
+    cpkt_sus_live_emit(run, line);
   }
   ++run->segment_count;
   if (segment->hard_cut) {
@@ -487,7 +489,7 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
               cpkt_sus_result_string(sus_result));
       goto cleanup;
     }
-    cpkt_sus_live_emit(&run, "final_text=");
+    cpkt_sus_live_emit(&run, "TXT final: ");
     cpkt_sus_live_emit(&run, final_text != NULL ? final_text : "");
     cpkt_sus_string_free(final_text);
   }
@@ -537,7 +539,7 @@ static void cpkt_sus_live_usage(FILE *out) {
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
-          "  --threshold-milli N         VOX threshold * 1000; default 30.\n");
+          "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
           "  --max-segment-ms N          Hard cut budget; default 7000.\n");

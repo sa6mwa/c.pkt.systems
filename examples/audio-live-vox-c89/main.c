@@ -76,14 +76,14 @@ static int cpkt_live_vox_enable_raw_tty(void) {
 
 static float cpkt_live_vox_threshold(const struct cpkt_live_vox_options *opts) {
   return opts->threshold_milli != 0UL ? (float)opts->threshold_milli / 1000.0f
-                                      : 0.03f;
+                                      : 0.06f;
 }
 
 static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
   memset(opts, 0, sizeof(*opts));
   opts->playback = 1;
   opts->seconds = 0UL;
-  opts->threshold_milli = 30UL;
+  opts->threshold_milli = 60UL;
   opts->hang_ms = 1500UL;
   opts->max_segment_ms = 180000UL;
   opts->buffer_ms = 2000UL;
@@ -175,9 +175,12 @@ static int cpkt_live_vox_state_sink(const cpkt_audio_vox_state_event *event,
     return 1;
   }
   if (event->state == CPKT_AUDIO_VOX_TX_ON) {
-    sprintf(line, "TX on segment=%lu threshold=%.3f\n", event->segment_index,
+    sprintf(line, "TX segment=%lu threshold=%.3f\n", event->segment_index,
             (double)event->threshold);
   } else if (event->state == CPKT_AUDIO_VOX_TX_OFF) {
+    if (run->playback != NULL) {
+      return 0;
+    }
     sprintf(line, "RX segment=%lu hang_ms=%lu\n", event->segment_index,
             run->options->hang_ms);
   } else if (event->state == CPKT_AUDIO_VOX_HARD_CUT) {
@@ -198,11 +201,13 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   cpkt_audio_encoder_config encoder_config;
   char name[64];
   char path[CPKT_LIVE_VOX_PATH_MAX];
+  char status[160];
   float frames[CPKT_LIVE_VOX_READ_FRAMES];
   size_t frames_read;
   size_t frames_written;
   size_t total_frames;
   cpkt_audio_result result;
+  int emit_rx;
 
   run = (struct cpkt_live_vox_run *)user;
   if (run == NULL || segment == NULL) {
@@ -211,6 +216,7 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
 
   sprintf(name, "segment-%04lu.wav", segment->segment_index);
   encoder = NULL;
+  emit_rx = 0;
   path[0] = '\0';
   if (run->options->dump_dir != NULL) {
     if (!cpkt_live_vox_join_path(path, sizeof(path), run->options->dump_dir,
@@ -227,13 +233,20 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
     }
   }
 
+  if (run->playback != NULL) {
+    sprintf(status, "PLAYBACK segment=%lu\n", segment->segment_index);
+    cpkt_live_vox_emit(run, status);
+  }
+
   total_frames = 0U;
   do {
     frames_read = 0U;
     result = segment->read_f32_mono_16k(
         segment, frames, CPKT_LIVE_VOX_READ_FRAMES, &frames_read);
     if (result != CPKT_AUDIO_OK && result != CPKT_AUDIO_AT_END) {
-      encoder->destroy(encoder);
+      if (encoder != NULL) {
+        encoder->destroy(encoder);
+      }
       return 1;
     }
     if (frames_read > 0U) {
@@ -269,6 +282,14 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   if (encoder != NULL) {
     encoder->destroy(encoder);
   }
+  if (run->playback != NULL) {
+    if (run->playback->drain(run->playback) != CPKT_AUDIO_OK) {
+      return 1;
+    }
+    if (!segment->hard_cut) {
+      emit_rx = 1;
+    }
+  }
 
   ++run->segment_count;
   if (segment->hard_cut) {
@@ -301,6 +322,10 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
             (double)total_frames / 16000.0, segment->hard_cut,
             segment->is_final, path);
     fflush(run->summary);
+  }
+  if (emit_rx) {
+    sprintf(status, "RX segment=%lu\n", segment->segment_index);
+    cpkt_live_vox_emit(run, status);
   }
   return 0;
 }
@@ -353,7 +378,7 @@ static void cpkt_live_vox_usage(FILE *out) {
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
-          "  --threshold-milli N         VOX threshold * 1000; default 30.\n");
+          "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
           "  --max-segment-ms N          Hard cut budget; default 180000.\n");
@@ -480,15 +505,17 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
     playback_config.period_ms = opts->period_ms;
     result = cpkt_audio_playback_open_default(&playback, &playback_config);
     if (result != CPKT_AUDIO_OK) {
-      fprintf(stderr, "playback open failed: %s\n",
+      fprintf(stderr, "PLAYBACK unavailable: %s\n",
               cpkt_audio_result_string(result));
-      goto cleanup;
-    }
-    result = playback->start(playback);
-    if (result != CPKT_AUDIO_OK) {
-      fprintf(stderr, "playback start failed: %s\n",
-              cpkt_audio_result_string(result));
-      goto cleanup;
+      playback = NULL;
+    } else {
+      result = playback->start(playback);
+      if (result != CPKT_AUDIO_OK) {
+        fprintf(stderr, "PLAYBACK unavailable: %s\n",
+                cpkt_audio_result_string(result));
+        playback->destroy(playback);
+        playback = NULL;
+      }
     }
     run.playback = playback;
   }
