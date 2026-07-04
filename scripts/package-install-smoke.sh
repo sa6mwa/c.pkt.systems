@@ -303,6 +303,7 @@ esac
 mkdir -p "$work_root/bin"
 
 common_flags="-std=c99 -Wall -Wextra -Wpedantic -isystem $prefix/include"
+common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"
 assert_package_file() {
   package_path=$1
   if [ ! -f "$prefix/$package_path" ]; then
@@ -1548,6 +1549,12 @@ cpkt_pkg_config_static_smoke() {
   pc_name=$1
   source_name=$2
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
+  source_flags=$common_flags
+  case "$source_name" in
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+      source_flags=$common_c89_flags
+      ;;
+  esac
   pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs "$pc_name")
   case "$target_id" in
     *-linux-gnu)
@@ -1586,7 +1593,7 @@ cpkt_pkg_config_static_smoke() {
       ;;
   esac
   cpkt_run_shell_checked "pkg-config static ${pc_name} build" \
-    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/$source_name\" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $source_flags \"$cmake_source_dir/$source_name\" \
     -o "$output_path" \
     $pkg_config_link_toolchain_flags \
     $pkg_config_link_words \
@@ -1598,6 +1605,12 @@ cpkt_pkg_config_static_multi_smoke() {
   source_name=$2
   shift 2
   output_path="$work_root/bin/$output_name"
+  source_flags=$common_flags
+  case "$source_name" in
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+      source_flags=$common_c89_flags
+      ;;
+  esac
   pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs "$@")
   case "$target_id" in
     *-linux-gnu)
@@ -1632,7 +1645,7 @@ cpkt_pkg_config_static_multi_smoke() {
       ;;
   esac
   cpkt_run_shell_checked "pkg-config static $output_name C-only build" \
-    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/$source_name\" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $source_flags \"$cmake_source_dir/$source_name\" \
     -o \"$output_path\" \
     $pkg_config_link_toolchain_flags \
     $pkg_config_link_words \

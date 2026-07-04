@@ -56,6 +56,8 @@ if grep -F -- 'CPKT_EXAMPLE_CFLAGS="$pkg_config_toolchain_flags' "$repo_root/scr
 fi
 
 for expected_compile_options in \
+  'common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"' \
+  'source_flags=$common_c89_flags' \
   'target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
   'target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
   'target_compile_options($executable_name PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
