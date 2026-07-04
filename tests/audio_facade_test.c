@@ -1364,14 +1364,14 @@ static void test_invalid_arguments(void **state) {
   (void)playback;
 
   memset(&capture_config, 0, sizeof(capture_config));
-  capture_config.backend = CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO;
+  capture_config.backend = 999;
   capture = (cpkt_audio_capture *)1;
   assert_int_equal(cpkt_audio_capture_open_default(&capture, &capture_config),
                    CPKT_AUDIO_ERR_ARG);
   assert_null(capture);
 
   memset(&playback_config, 0, sizeof(playback_config));
-  playback_config.backend = CPKT_AUDIO_DEVICE_BACKEND_JACK;
+  playback_config.backend = 999;
   playback = (cpkt_audio_playback *)1;
   assert_int_equal(
       cpkt_audio_playback_open_default(&playback, &playback_config),

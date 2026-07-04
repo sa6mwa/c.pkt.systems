@@ -110,17 +110,13 @@ Initial miniaudio build intent:
 - Keep WAV, FLAC, and MP3 decoding enabled when available from miniaudio's
   built-in codecs.
 - Keep encoding enabled where miniaudio supports it.
-- Enable miniaudio device I/O for the `cpkt_audio` capture/playback facade.
-  Device backends must use miniaudio runtime loading so ALSA, PulseAudio,
-  PipeWire-Pulse, JACK, and similar host audio libraries remain runtime
-  optional instead of downstream link requirements. Linux dynamic builds support
-  auto and ALSA backend selection only while the first device path is proven.
-  Darwin builds support auto and Core Audio backend selection. PulseAudio and
-  JACK are intentionally rejected for now so cpktaudio does not imply bundling
-  the wider desktop-audio stack before ALSA is proven sufficient.
-  Fully static glibc consumers may see the standard linker warning for `dlopen`
-  in static binaries; this is preferable to making every audio consumer link
-  host device backend libraries.
+- Enable miniaudio device I/O for the `cpkt_audio` capture/playback facade only
+  where the backend distribution contract is acceptable for cpkt. Darwin builds
+  support auto and Core Audio backend selection. Linux host audio backends are
+  intentionally not exposed in the first facade because ALSA/libasound is LGPL
+  and fully static binaries cannot reliably use miniaudio runtime loading as an
+  adaptive backend path. Linux capture/playback support remains deferred until a
+  license-compatible, static-friendly backend strategy is selected and proven.
   A future Darwin notarized-app mode may deliberately disable runtime loading
   and link CoreFoundation/CoreAudio/AudioToolbox frameworks, but the default SDK
   should keep runtime backend loading enabled.

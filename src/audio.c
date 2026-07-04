@@ -11,6 +11,9 @@
 #define MA_NO_NODE_GRAPH
 #define MA_NO_ENGINE
 #define MA_NO_GENERATION
+#define MA_NO_ALSA
+#define MA_NO_PULSEAUDIO
+#define MA_NO_JACK
 #ifdef CPKT_AUDIO_NO_DEVICE_IO
 #define MA_NO_DEVICE_IO
 #define MA_NO_RUNTIME_LINKING
@@ -1893,10 +1896,12 @@ static void cpkt_audio_encoder_destroy_impl(cpkt_audio_encoder *self) {
 #ifndef CPKT_AUDIO_NO_DEVICE_IO
 static ma_backend cpkt_audio_to_ma_backend(int backend) {
   switch (backend) {
-  case CPKT_AUDIO_DEVICE_BACKEND_ALSA:
-    return ma_backend_alsa;
   case CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO:
+#if defined(__APPLE__)
     return ma_backend_coreaudio;
+#else
+    return ma_backend_null;
+#endif
   default:
     return ma_backend_null;
   }
@@ -1907,16 +1912,9 @@ static cpkt_audio_result cpkt_audio_resolve_device_backend(int requested,
   if (out == NULL) {
     return CPKT_AUDIO_ERR_ARG;
   }
-  if (requested == CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO ||
-      requested == CPKT_AUDIO_DEVICE_BACKEND_JACK) {
-    *out = ma_backend_null;
-    return CPKT_AUDIO_ERR_ARG;
-  }
   if (requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO) {
 #if defined(__APPLE__)
     *out = ma_backend_coreaudio;
-#elif defined(__linux__)
-    *out = ma_backend_alsa;
 #else
     *out = ma_backend_null;
 #endif

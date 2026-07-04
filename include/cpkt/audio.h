@@ -79,14 +79,8 @@ typedef enum cpkt_audio_format {
 typedef enum cpkt_audio_device_backend {
   /** Let the facade select the best available backend for the platform. */
   CPKT_AUDIO_DEVICE_BACKEND_AUTO = 0,
-  /** Linux ALSA backend. Requires libasound at runtime. */
-  CPKT_AUDIO_DEVICE_BACKEND_ALSA = 1,
-  /** Reserved for a future PulseAudio backend. Currently rejected. */
-  CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO = 2,
-  /** Reserved for a future JACK backend. Currently rejected. */
-  CPKT_AUDIO_DEVICE_BACKEND_JACK = 3,
   /** Darwin Core Audio backend. */
-  CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO = 4
+  CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO = 1
 } cpkt_audio_device_backend;
 
 /** VOX state transition identifiers delivered to cpkt_audio_vox_state_sink. */
