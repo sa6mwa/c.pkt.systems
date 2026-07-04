@@ -962,6 +962,13 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging"
         TIMEOUT 30)
       add_test(
+        NAME package_assertions_elf_runpath
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/package_assertions_elf_runpath_test.sh")
+      set_tests_properties(package_assertions_elf_runpath PROPERTIES
+        LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
         NAME receiver_style_examples
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/receiver_style_examples_test.sh"

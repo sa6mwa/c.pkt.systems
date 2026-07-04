@@ -348,6 +348,51 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
   endforeach()
 endfunction()
 
+function(cpkt_assert_elf_runpath_output_relocatable readelf_output expected_runpath description)
+  set(_expected_found OFF)
+  string(REPLACE "\r\n" "\n" _readelf_output "${readelf_output}")
+  string(REPLACE "\n" ";" _readelf_lines "${_readelf_output}")
+  foreach(_readelf_line IN LISTS _readelf_lines)
+    if(_readelf_line MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[([^]]+)\\]")
+      set(_runpath_list "${CMAKE_MATCH_2}")
+      string(REPLACE ":" ";" _runpath_entries "${_runpath_list}")
+      foreach(_runpath_entry IN LISTS _runpath_entries)
+        if(_runpath_entry MATCHES "^${expected_runpath}$")
+          set(_expected_found ON)
+        endif()
+        if(NOT _runpath_entry MATCHES "^\\$ORIGIN(/.*)?$")
+          message(FATAL_ERROR
+            "${description} has non-relocatable RUNPATH/RPATH entry: ${_runpath_entry}")
+        endif()
+      endforeach()
+    endif()
+  endforeach()
+  if(NOT _expected_found)
+    message(FATAL_ERROR "${description} must have RUNPATH/RPATH [${expected_runpath}]")
+  endif()
+endfunction()
+
+function(cpkt_assert_elf_runpath_file_relocatable file_path expected_runpath description)
+  cpkt_find_readelf(CPKT_READELF_BIN)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_READELF_BIN}" -d "${file_path}"
+    RESULT_VARIABLE _readelf_result
+    OUTPUT_VARIABLE _readelf_output
+    ERROR_VARIABLE _readelf_error
+  )
+  if(NOT _readelf_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
+  endif()
+  cpkt_assert_elf_runpath_output_relocatable(
+    "${_readelf_output}"
+    "${expected_runpath}"
+    "${description}")
+endfunction()
+
 if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP)
   cpkt_find_darwin_otool(_cpkt_test_otool)
   message(STATUS "CPKT_TEST_OTOOL=${_cpkt_test_otool}")
@@ -373,11 +418,19 @@ if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSE
     "test Darwin relocatable dylib")
   message(STATUS "CPKT_TEST_DARWIN_RELOCATABLE=ok")
 endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH)
+  cpkt_assert_elf_runpath_file_relocatable(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_ELF}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_RUNPATH}"
+    "test ELF runpath")
+  message(STATUS "CPKT_TEST_ELF_RUNPATH=ok")
+endif()
 if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME) OR
-    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE))
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH))
   return()
 endif()
 
@@ -542,26 +595,10 @@ endif()
 file(REMOVE_RECURSE "${_manifest_extract_root}")
 
 function(cpkt_assert_elf_runpath file_path expected_runpath description)
-  find_program(CPKT_READELF_BIN NAMES readelf)
-  if(NOT CPKT_READELF_BIN)
-    message(FATAL_ERROR "readelf is required to verify ${description}")
-  endif()
-  if(NOT EXISTS "${file_path}")
-    message(FATAL_ERROR "missing ${description}: ${file_path}")
-  endif()
-
-  execute_process(
-    COMMAND "${CPKT_READELF_BIN}" -d "${file_path}"
-    RESULT_VARIABLE _readelf_result
-    OUTPUT_VARIABLE _readelf_output
-    ERROR_VARIABLE _readelf_error
-  )
-  if(NOT _readelf_result EQUAL 0)
-    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
-  endif()
-  if(NOT _readelf_output MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[${expected_runpath}\\]")
-    message(FATAL_ERROR "${description} must have RUNPATH/RPATH [${expected_runpath}]")
-  endif()
+  cpkt_assert_elf_runpath_file_relocatable(
+    "${file_path}"
+    "${expected_runpath}"
+    "${description}")
 endfunction()
 
 function(cpkt_assert_elf_soname file_path expected_soname description)
