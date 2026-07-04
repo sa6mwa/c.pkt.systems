@@ -726,7 +726,8 @@ files.
 The first implementation has resolved the initial library split, encoder
 format, model catalog, and quantized-alias policy:
 
-- `cpktsus` remains independent from `cpktaudio` at link time;
+- `cpktsus` has a public dependency on `cpktaudio` for decoder and VOX
+  integration, and package metadata must express that dependency exactly once;
 - WAV is the only advertised encoder format until another miniaudio encoder
   path is deliberately enabled and tested;
 - curated OpenAI-derived and KBLab GGML model entries carry pinned SHA-256 and

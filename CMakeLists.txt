@@ -933,6 +933,11 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_header_facade_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME audio_sus_spec_consistency
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/audio_sus_spec_consistency_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
         NAME clangd_surface
         COMMAND
           "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh"
