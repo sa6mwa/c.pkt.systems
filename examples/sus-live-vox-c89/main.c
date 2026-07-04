@@ -258,7 +258,7 @@ cpkt_sus_live_print_startup(const struct cpkt_sus_live_options *opts) {
   }
   if (opts->model_path != NULL) {
     fprintf(stderr,
-            "status mode=%s model_path=%s language=%s threshold=%.3f "
+            "startup mode=%s model_path=%s model_cache=path language=%s threshold=%.3f "
             "hang_ms=%lu prebuffer_ms=%lu\n",
             opts->ptt ? "ptt" : "vox", opts->model_path,
             opts->language != NULL ? opts->language : "auto",
@@ -288,16 +288,16 @@ cpkt_sus_live_print_startup(const struct cpkt_sus_live_options *opts) {
       cache_state = opts->offline ? "missing-offline" : "download";
     }
     fprintf(stderr,
-            "status mode=%s model=%s cache=%s cache_state=%s language=%s "
+            "startup mode=%s model=%s model_cache=%s cache=%s language=%s "
             "threshold=%.3f hang_ms=%lu prebuffer_ms=%lu\n",
             opts->ptt ? "ptt" : "vox", opts->model != NULL ? opts->model : "tiny",
-            cache_path, cache_state,
+            cache_state, cache_path,
             opts->language != NULL ? opts->language : "auto",
             (double)cpkt_sus_live_threshold(opts), opts->hang_ms,
             opts->prebuffer_ms);
   } else {
     fprintf(stderr,
-            "status mode=%s model=%s cache=(unresolved) language=%s "
+            "startup mode=%s model=%s model_cache=unresolved cache=(unresolved) language=%s "
             "threshold=%.3f hang_ms=%lu prebuffer_ms=%lu\n",
             opts->ptt ? "ptt" : "vox", opts->model != NULL ? opts->model : "tiny",
             opts->language != NULL ? opts->language : "auto",
