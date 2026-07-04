@@ -331,10 +331,16 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
   cpkt_sus_test_realtime_config(&realtime_config);
   realtime_config.realtime_sink = cpkt_sus_test_realtime_sink;
   realtime_config.realtime_user = events;
-  sus_result = transcriber->transcribe_audio_decoder_realtime_text(
-      transcriber, decoder, &realtime_config, text_out);
-  if (sus_result != CPKT_SUS_OK || *text_out == NULL) {
+  sus_result = transcriber->transcribe_audio_decoder_realtime(
+      transcriber, decoder, &realtime_config);
+  if (sus_result != CPKT_SUS_OK) {
     fprintf(stderr, "failed to transcribe realtime audio: %s\n",
+            cpkt_sus_result_string(sus_result));
+    goto cleanup;
+  }
+  sus_result = transcriber->revised_text(transcriber, text_out);
+  if (sus_result != CPKT_SUS_OK || *text_out == NULL) {
+    fprintf(stderr, "failed to retrieve realtime revised text: %s\n",
             cpkt_sus_result_string(sus_result));
     goto cleanup;
   }

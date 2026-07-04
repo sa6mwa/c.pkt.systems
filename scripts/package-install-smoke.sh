@@ -559,7 +559,8 @@ int main(void) {
   if (realtime_config.step_ms != 1000UL || event.is_final == 0) {
     return 12;
   }
-  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0) {
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
     return 13;
   }
   config.model_path = "";
@@ -633,7 +634,8 @@ int main(void) {
   realtime_config.length_ms = 5000UL;
   event.step_index = 1UL;
   if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime) == 0 ||
-      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0) {
+      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
     return 8;
   }
   if (event.step_index != 1UL) {

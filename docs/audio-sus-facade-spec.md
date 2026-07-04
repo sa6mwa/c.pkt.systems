@@ -413,7 +413,8 @@ The first transcription tier must support:
 - abort callback, where a non-zero callback return stops inference and reports
   `CPKT_SUS_ABORTED` instead of collapsing cancellation into a generic upstream
   or callback error;
-- explicit materialized-text helper that allocates a final transcript string;
+- explicit materialized-text helpers that allocate final or revised transcript
+  strings;
 - project-owned free function for materialized strings.
 
 Whisper.cpp realtime transcription is not a separate incremental decoder API.
@@ -431,8 +432,10 @@ output is a rolling hypothesis surface: later audio can revise earlier text whil
 that audio remains inside the retained `length_ms` context. The facade must not
 append every rolling hypothesis as final transcript text. It should support both
 streaming hypothesis callbacks and an after-the-fact revised text result for the
-session. The revised text path may materialize text, but it must not materialize
-decoded audio.
+session. A caller must be able to run the streaming realtime method with a live
+hypothesis sink and then retrieve the latest revised transcript from the same
+transcriber after completion. The revised text path may materialize text, but it
+must not materialize decoded audio.
 
 Initial transcription options should expose only stable, high-value knobs:
 
@@ -448,8 +451,9 @@ Initial transcription options should expose only stable, high-value knobs:
 - realtime decoder options named after upstream `whisper-stream`: `step_ms`,
   `length_ms`, `keep_ms`, optional prompt-token context carryover, audio context,
   and max tokens;
-- realtime hypothesis callbacks and a materialized revised-text helper that
-  assembles session text from hypotheses without buffering decoded audio;
+- realtime hypothesis callbacks, a materialized revised-text helper, and a
+  transcriber receiver method for copying the latest revised transcript after a
+  streaming realtime call, all without buffering decoded audio;
 - initial prompt;
 - progress and abort callbacks.
 
@@ -618,7 +622,8 @@ Required checks:
 - segment callbacks receive text and timestamps;
 - progress callbacks are observable;
 - abort callbacks are observable and return `CPKT_SUS_ABORTED`;
-- materialized transcript helper uses project-owned allocation/free;
+- materialized transcript helpers and after-the-fact revised text retrieval use
+  project-owned allocation/free;
 - package artifacts include correct licenses and provenance manifests;
 - package metadata records which whisper.cpp/ggml backends were compiled into
   each target artifact;

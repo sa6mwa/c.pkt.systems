@@ -108,6 +108,10 @@ int main(void) {
   entry.quantization = "f16";
   entry.is_default = 0;
 
+  if (sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
+    return 1;
+  }
+
   return transcriber_config.threads + realtime_config.keep_context +
          event.is_final + entry.is_default;
 }

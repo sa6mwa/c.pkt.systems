@@ -31,6 +31,9 @@ struct cpkt_sus_model_impl {
 struct cpkt_sus_transcriber_impl {
   cpkt_sus_model *model;
   cpkt_sus_transcriber_config config;
+  char *revised_text;
+  size_t revised_length;
+  size_t revised_capacity;
   int aborted;
   int callback_error;
 };
@@ -1049,6 +1052,10 @@ static cpkt_sus_result cpkt_sus_build_realtime_text(char **out,
   return CPKT_SUS_OK;
 }
 
+static cpkt_sus_result cpkt_sus_transcriber_apply_revised_text(
+    struct cpkt_sus_transcriber_impl *impl, const char *hypothesis,
+    size_t hypothesis_len);
+
 static cpkt_sus_result cpkt_sus_emit_realtime_event(
     struct cpkt_sus_transcriber_impl *impl,
     const cpkt_sus_realtime_config *config,
@@ -1058,8 +1065,7 @@ static cpkt_sus_result cpkt_sus_emit_realtime_event(
   char *text;
   int callback_result;
 
-  if (impl == NULL || config == NULL || config->realtime_sink == NULL ||
-      context == NULL) {
+  if (impl == NULL || context == NULL) {
     return CPKT_SUS_OK;
   }
 
@@ -1067,6 +1073,16 @@ static cpkt_sus_result cpkt_sus_emit_realtime_event(
   result = cpkt_sus_build_realtime_text(&text, context);
   if (result != CPKT_SUS_OK) {
     return result;
+  }
+
+  result = cpkt_sus_transcriber_apply_revised_text(impl, text, strlen(text));
+  if (result != CPKT_SUS_OK) {
+    free(text);
+    return result;
+  }
+  if (config == NULL || config->realtime_sink == NULL) {
+    free(text);
+    return CPKT_SUS_OK;
   }
 
   memset(&event, 0, sizeof(event));
@@ -1144,8 +1160,10 @@ static cpkt_sus_result cpkt_sus_text_reserve(char **text, size_t *capacity,
 }
 
 static cpkt_sus_result
-cpkt_sus_realtime_text_apply(struct cpkt_sus_realtime_text_state *state,
-                             const char *hypothesis, size_t hypothesis_len) {
+cpkt_sus_realtime_text_apply_storage(char **text, size_t *length,
+                                     size_t *capacity,
+                                     const char *hypothesis,
+                                     size_t hypothesis_len) {
   size_t best_start;
   size_t best_common;
   size_t start;
@@ -1154,34 +1172,34 @@ cpkt_sus_realtime_text_apply(struct cpkt_sus_realtime_text_state *state,
   size_t needed;
   cpkt_sus_result result;
 
-  if (state == NULL || hypothesis == NULL) {
+  if (text == NULL || length == NULL || capacity == NULL ||
+      hypothesis == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
   if (hypothesis_len == 0U) {
     return CPKT_SUS_OK;
   }
-  if (state->length == 0U) {
+  if (*length == 0U) {
     needed = hypothesis_len + 1U;
-    result = cpkt_sus_text_reserve(&state->text, &state->capacity, needed);
+    result = cpkt_sus_text_reserve(text, capacity, needed);
     if (result != CPKT_SUS_OK) {
       return result;
     }
-    memcpy(state->text, hypothesis, hypothesis_len);
-    state->text[hypothesis_len] = '\0';
-    state->length = hypothesis_len;
+    memcpy(*text, hypothesis, hypothesis_len);
+    (*text)[hypothesis_len] = '\0';
+    *length = hypothesis_len;
     return CPKT_SUS_OK;
   }
 
-  best_start = state->length;
+  best_start = *length;
   best_common = 0U;
   min_common = hypothesis_len < 16U ? hypothesis_len : 16U;
-  search_start = state->length > 4096U ? state->length - 4096U : 0U;
-  for (start = search_start; start < state->length; ++start) {
+  search_start = *length > 4096U ? *length - 4096U : 0U;
+  for (start = search_start; start < *length; ++start) {
     size_t common;
 
-    common = cpkt_sus_common_prefix_ci(state->text + start,
-                                       state->length - start, hypothesis,
-                                       hypothesis_len);
+    common = cpkt_sus_common_prefix_ci(*text + start, *length - start,
+                                       hypothesis, hypothesis_len);
     if (common > best_common) {
       best_common = common;
       best_start = start;
@@ -1190,25 +1208,58 @@ cpkt_sus_realtime_text_apply(struct cpkt_sus_realtime_text_state *state,
 
   if (best_common >= min_common) {
     needed = best_start + hypothesis_len + 1U;
-    result = cpkt_sus_text_reserve(&state->text, &state->capacity, needed);
+    result = cpkt_sus_text_reserve(text, capacity, needed);
     if (result != CPKT_SUS_OK) {
       return result;
     }
-    memcpy(state->text + best_start, hypothesis, hypothesis_len);
-    state->length = best_start + hypothesis_len;
-    state->text[state->length] = '\0';
+    memcpy(*text + best_start, hypothesis, hypothesis_len);
+    *length = best_start + hypothesis_len;
+    (*text)[*length] = '\0';
     return CPKT_SUS_OK;
   }
 
-  needed = state->length + hypothesis_len + 1U;
-  result = cpkt_sus_text_reserve(&state->text, &state->capacity, needed);
+  needed = *length + hypothesis_len + 1U;
+  result = cpkt_sus_text_reserve(text, capacity, needed);
   if (result != CPKT_SUS_OK) {
     return result;
   }
-  memcpy(state->text + state->length, hypothesis, hypothesis_len);
-  state->length += hypothesis_len;
-  state->text[state->length] = '\0';
+  memcpy(*text + *length, hypothesis, hypothesis_len);
+  *length += hypothesis_len;
+  (*text)[*length] = '\0';
   return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result
+cpkt_sus_realtime_text_apply(struct cpkt_sus_realtime_text_state *state,
+                             const char *hypothesis, size_t hypothesis_len) {
+  if (state == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  return cpkt_sus_realtime_text_apply_storage(
+      &state->text, &state->length, &state->capacity, hypothesis,
+      hypothesis_len);
+}
+
+static void cpkt_sus_transcriber_reset_revised_text(
+    struct cpkt_sus_transcriber_impl *impl) {
+  if (impl == NULL) {
+    return;
+  }
+  impl->revised_length = 0U;
+  if (impl->revised_text != NULL) {
+    impl->revised_text[0] = '\0';
+  }
+}
+
+static cpkt_sus_result cpkt_sus_transcriber_apply_revised_text(
+    struct cpkt_sus_transcriber_impl *impl, const char *hypothesis,
+    size_t hypothesis_len) {
+  if (impl == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  return cpkt_sus_realtime_text_apply_storage(
+      &impl->revised_text, &impl->revised_length, &impl->revised_capacity,
+      hypothesis, hypothesis_len);
 }
 
 static int cpkt_sus_realtime_text_sink(const cpkt_sus_realtime_event *event,
@@ -1413,6 +1464,7 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
   old_count = 0UL;
   at_end = 0;
   iter = 0;
+  cpkt_sus_transcriber_reset_revised_text(impl);
   n_new_line = (int)(length_ms / step_ms);
   if (n_new_line > 0) {
     --n_new_line;
@@ -1617,9 +1669,35 @@ cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl(
   return CPKT_SUS_OK;
 }
 
+static cpkt_sus_result
+cpkt_sus_transcriber_revised_text_impl(cpkt_sus_transcriber *self,
+                                       char **text_out) {
+  struct cpkt_sus_transcriber_impl *impl;
+  const char *text;
+  size_t length;
+
+  if (text_out != NULL) {
+    *text_out = NULL;
+  }
+  if (text_out == NULL || self == NULL || self->impl == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  impl = (struct cpkt_sus_transcriber_impl *)self->impl;
+  text = impl->revised_text != NULL ? impl->revised_text : "";
+  length = impl->revised_text != NULL ? impl->revised_length : 0U;
+  *text_out = cpkt_sus_strdup_range(text, length);
+  return *text_out != NULL ? CPKT_SUS_OK : CPKT_SUS_ERR_ALLOC;
+}
+
 static void cpkt_sus_transcriber_destroy_impl(cpkt_sus_transcriber *self) {
+  struct cpkt_sus_transcriber_impl *impl;
+
   if (self == NULL) {
     return;
+  }
+  impl = (struct cpkt_sus_transcriber_impl *)self->impl;
+  if (impl != NULL) {
+    free(impl->revised_text);
   }
   free(self->impl);
   free(self);
@@ -1662,6 +1740,7 @@ static cpkt_sus_result cpkt_sus_model_create_transcriber_impl(
       cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl;
   transcriber->transcribe_audio_decoder_realtime_text =
       cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl;
+  transcriber->revised_text = cpkt_sus_transcriber_revised_text_impl;
   transcriber->destroy = cpkt_sus_transcriber_destroy_impl;
   *out = transcriber;
   return CPKT_SUS_OK;

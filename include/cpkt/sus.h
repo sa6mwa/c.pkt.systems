@@ -279,6 +279,15 @@ struct cpkt_sus_transcriber {
   cpkt_sus_result (*transcribe_audio_decoder_realtime_text)(
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
       const cpkt_sus_realtime_config *config, char **text_out);
+  /**
+   * Copies the latest revised realtime transcript from this transcriber.
+   *
+   * The text is produced by the most recent realtime decoder transcription
+   * call. It is empty before any realtime call that produced text. The caller
+   * must release *text_out with cpkt_sus_string_free.
+   */
+  cpkt_sus_result (*revised_text)(cpkt_sus_transcriber *self,
+                                  char **text_out);
   /** Releases the transcriber. The loaded model remains owned by its model
    * handle. */
   void (*destroy)(cpkt_sus_transcriber *self);

@@ -63,8 +63,11 @@ static int cpkt_example_transcribe_file(const char *model_path,
       CPKT_SUS_OK) {
     goto cleanup;
   }
-  if (transcriber->transcribe_audio_decoder_realtime_text(
-          transcriber, decoder, &realtime_config, &text) != CPKT_SUS_OK) {
+  if (transcriber->transcribe_audio_decoder_realtime(
+          transcriber, decoder, &realtime_config) != CPKT_SUS_OK) {
+    goto cleanup;
+  }
+  if (transcriber->revised_text(transcriber, &text) != CPKT_SUS_OK) {
     goto cleanup;
   }
   if (fputs(text, stdout) == EOF) {
