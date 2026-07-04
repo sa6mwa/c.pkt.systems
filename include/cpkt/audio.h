@@ -109,7 +109,10 @@ typedef struct cpkt_audio_reader {
   void *user;
   /** Required byte reader callback. */
   cpkt_audio_read_fn read;
-  /** Optional seek callback; seekless sources may leave this NULL. */
+  /**
+   * Optional seek callback. Sources may leave this NULL, but formats whose
+   * backend decoder requires seeking can fail to open with CPKT_AUDIO_ERR_IO.
+   */
   cpkt_audio_seek_fn seek;
 } cpkt_audio_reader;
 

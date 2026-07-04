@@ -289,6 +289,13 @@ Reader and writer callbacks must define:
 - close/destroy responsibilities;
 - callback failure propagation.
 
+Seekless audio readers are permitted at the API boundary, but backend format
+support is capability-dependent. For the initial miniaudio-backed WAV path, a
+reader without seek support is rejected safely with `CPKT_AUDIO_ERR_IO` rather
+than hidden materialization or an unsafe backend call. Chunked callback readers
+that can seek must support partial reads without requiring each callback to fill
+the backend's requested byte count.
+
 ### Decoder
 
 The first decoder tier must support:
@@ -563,6 +570,8 @@ Required checks:
 - `cpkt_audio` decoder opens WAV/MP3/FLAC fixtures when supported;
 - decoder callback reader handles fragmented reads, EOF, seek failures, and
   callback errors;
+- seekless callback readers are rejected safely when the backend format needs
+  seeking;
 - decoder output is `float32` mono 16000 Hz for whisper input;
 - encoder support is capability-tested and does not overclaim formats;
 - `cpkt_sus` model open from path reports load failures cleanly;

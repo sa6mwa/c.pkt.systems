@@ -150,7 +150,7 @@ static cpkt_audio_result cpkt_audio_from_ma_result(ma_result result) {
     return CPKT_AUDIO_ERR_FORMAT;
   }
   if (result == MA_IO_ERROR || result == MA_DOES_NOT_EXIST ||
-      result == MA_ACCESS_DENIED) {
+      result == MA_ACCESS_DENIED || result == MA_NOT_IMPLEMENTED) {
     return CPKT_AUDIO_ERR_IO;
   }
   return CPKT_AUDIO_ERR_UPSTREAM;
@@ -162,6 +162,8 @@ static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
   cpkt_audio_reader *reader;
   struct cpkt_audio_decoder_impl *impl;
   size_t nread;
+  size_t total_read;
+  size_t remaining;
 
   impl = (struct cpkt_audio_decoder_impl *)decoder->pUserData;
   reader = impl != NULL ? &impl->reader : NULL;
@@ -172,12 +174,21 @@ static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
     return MA_INVALID_ARGS;
   }
 
-  nread = reader->read(reader->user, buffer, bytes_to_read);
-  if (nread > bytes_to_read) {
-    impl->callback_error = 1;
-    return MA_IO_ERROR;
+  total_read = 0;
+  while (total_read < bytes_to_read) {
+    remaining = bytes_to_read - total_read;
+    nread = reader->read(reader->user, (unsigned char *)buffer + total_read,
+                         remaining);
+    if (nread > remaining) {
+      impl->callback_error = 1;
+      return MA_IO_ERROR;
+    }
+    if (nread == 0) {
+      break;
+    }
+    total_read += nread;
   }
-  *bytes_read = nread;
+  *bytes_read = total_read;
   return MA_SUCCESS;
 }
 
@@ -190,6 +201,9 @@ static ma_result cpkt_audio_reader_seek(ma_decoder *decoder, ma_int64 offset,
   impl = (struct cpkt_audio_decoder_impl *)decoder->pUserData;
   reader = impl != NULL ? &impl->reader : NULL;
   if (reader == NULL || reader->seek == NULL) {
+    if (impl != NULL) {
+      impl->callback_error = 1;
+    }
     return MA_NOT_IMPLEMENTED;
   }
   if (offset > LONG_MAX || offset < LONG_MIN) {

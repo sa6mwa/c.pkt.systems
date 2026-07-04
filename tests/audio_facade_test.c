@@ -326,6 +326,30 @@ static void test_decoder_reads_fragmented_callback_reader(void **state) {
   decoder->destroy(decoder);
 }
 
+static void test_decoder_rejects_seekless_callback_reader_safely(void **state) {
+  struct memory_reader memory;
+  cpkt_audio_reader reader;
+  cpkt_audio_decoder_config config;
+  cpkt_audio_decoder *decoder;
+
+  (void)state;
+  memset(&memory, 0, sizeof(memory));
+  memory.data = test_wav_mono_8000;
+  memory.size = sizeof(test_wav_mono_8000);
+  memory.max_chunk = 11;
+  memset(&reader, 0, sizeof(reader));
+  reader.user = &memory;
+  reader.read = memory_read;
+  reader.seek = NULL;
+  memset(&config, 0, sizeof(config));
+  config.encoding = CPKT_AUDIO_ENCODING_WAV;
+
+  decoder = (cpkt_audio_decoder *)1;
+  assert_int_equal(cpkt_audio_decoder_open_reader(&decoder, &reader, &config),
+                   CPKT_AUDIO_ERR_IO);
+  assert_null(decoder);
+}
+
 static void test_decoder_callback_failures(void **state) {
   struct memory_reader memory;
   cpkt_audio_reader reader;
@@ -553,6 +577,7 @@ int main(void) {
   const struct CMUnitTest tests[] = {
       cmocka_unit_test(test_decoder_reads_from_callback_reader),
       cmocka_unit_test(test_decoder_reads_fragmented_callback_reader),
+      cmocka_unit_test(test_decoder_rejects_seekless_callback_reader_safely),
       cmocka_unit_test(test_decoder_callback_failures),
       cmocka_unit_test(test_decoder_reads_from_file),
       cmocka_unit_test(test_decoder_reads_flac_file_when_supported),
