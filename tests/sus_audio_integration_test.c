@@ -81,6 +81,18 @@ static int cpkt_sus_test_segment_sink(const cpkt_sus_segment *segment,
   return 0;
 }
 
+static int cpkt_sus_test_failing_segment_sink(const cpkt_sus_segment *segment,
+                                              void *user) {
+  unsigned long *count;
+
+  (void)segment;
+  count = (unsigned long *)user;
+  if (count != NULL) {
+    ++*count;
+  }
+  return 1;
+}
+
 static int cpkt_sus_test_progress_sink(int progress, void *user) {
   struct cpkt_sus_test_progress *state;
 
@@ -101,6 +113,48 @@ static int cpkt_sus_test_abort_now(void *user) {
     ++*count;
   }
   return 1;
+}
+
+static int cpkt_sus_test_open_audio_decoder(cpkt_audio_decoder **out,
+                                            const char *audio_path,
+                                            const char *audio_url) {
+  cpkt_audio_decoder_config audio_config;
+  cpkt_audio_result audio_result;
+
+  if (out == NULL) {
+    return 1;
+  }
+  *out = NULL;
+  if (audio_url != NULL) {
+    memset(&audio_config, 0, sizeof(audio_config));
+    audio_config.encoding = CPKT_AUDIO_ENCODING_MP3;
+    audio_result = cpkt_audio_decoder_open_url(out, audio_url, &audio_config);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "failed to open audio URL decoder: %s\n",
+              cpkt_audio_result_string(audio_result));
+      return 1;
+    }
+  } else {
+    audio_result = cpkt_audio_decoder_open_file(out, audio_path, NULL);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "failed to open audio file decoder: %s\n",
+              cpkt_audio_result_string(audio_result));
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static void cpkt_sus_test_realtime_config(cpkt_sus_realtime_config *config) {
+  memset(config, 0, sizeof(*config));
+  config->read_frames = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_REALTIME_READ_FRAMES", CPKT_SUS_TEST_READ_FRAMES);
+  config->step_ms =
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_STEP_MS", 1000UL);
+  config->length_ms = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 1000UL);
+  config->keep_ms =
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 200UL);
 }
 
 static void cpkt_sus_test_normalize_text(char *out, size_t out_size,
@@ -209,8 +263,6 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
   cpkt_sus_realtime_config realtime_config;
-  cpkt_audio_decoder_config audio_config;
-  cpkt_audio_result audio_result;
   cpkt_sus_result sus_result;
   int rc;
 
@@ -218,23 +270,8 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
   transcriber = NULL;
   rc = 1;
 
-  if (audio_url != NULL) {
-    memset(&audio_config, 0, sizeof(audio_config));
-    audio_config.encoding = CPKT_AUDIO_ENCODING_MP3;
-    audio_result = cpkt_audio_decoder_open_url(&decoder, audio_url,
-                                               &audio_config);
-    if (audio_result != CPKT_AUDIO_OK) {
-      fprintf(stderr, "failed to open audio URL decoder: %s\n",
-              cpkt_audio_result_string(audio_result));
-      goto cleanup;
-    }
-  } else {
-    audio_result = cpkt_audio_decoder_open_file(&decoder, audio_path, NULL);
-    if (audio_result != CPKT_AUDIO_OK) {
-      fprintf(stderr, "failed to open audio file decoder: %s\n",
-              cpkt_audio_result_string(audio_result));
-      goto cleanup;
-    }
+  if (cpkt_sus_test_open_audio_decoder(&decoder, audio_path, audio_url) != 0) {
+    goto cleanup;
   }
 
   memset(&config, 0, sizeof(config));
@@ -248,15 +285,7 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
     goto cleanup;
   }
 
-  memset(&realtime_config, 0, sizeof(realtime_config));
-  realtime_config.read_frames = cpkt_sus_test_env_ulong(
-      "CPKT_SUS_INTEGRATION_REALTIME_READ_FRAMES", CPKT_SUS_TEST_READ_FRAMES);
-  realtime_config.step_ms =
-      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_STEP_MS", 1000UL);
-  realtime_config.length_ms = cpkt_sus_test_env_ulong(
-      "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 1000UL);
-  realtime_config.keep_ms =
-      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 200UL);
+  cpkt_sus_test_realtime_config(&realtime_config);
   sus_result = transcriber->transcribe_audio_decoder_realtime(
       transcriber, decoder, &realtime_config);
   if (sus_result != CPKT_SUS_OK) {
@@ -265,6 +294,99 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
     goto cleanup;
   }
 
+  rc = 0;
+
+cleanup:
+  if (transcriber != NULL) {
+    transcriber->destroy(transcriber);
+  }
+  if (decoder != NULL) {
+    decoder->destroy(decoder);
+  }
+  return rc;
+}
+
+static int cpkt_sus_test_run_realtime_callback_failure(
+    cpkt_sus_model *model, const char *audio_path, const char *audio_url) {
+  cpkt_audio_decoder *decoder;
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config config;
+  cpkt_sus_realtime_config realtime_config;
+  unsigned long callback_count;
+  cpkt_sus_result result;
+  int rc;
+
+  decoder = NULL;
+  transcriber = NULL;
+  callback_count = 0UL;
+  rc = 1;
+
+  if (cpkt_sus_test_open_audio_decoder(&decoder, audio_path, audio_url) != 0) {
+    goto cleanup;
+  }
+
+  memset(&config, 0, sizeof(config));
+  config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
+  config.segment_sink = cpkt_sus_test_failing_segment_sink;
+  config.segment_user = &callback_count;
+  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+    goto cleanup;
+  }
+
+  cpkt_sus_test_realtime_config(&realtime_config);
+  result = transcriber->transcribe_audio_decoder_realtime(
+      transcriber, decoder, &realtime_config);
+  if (result != CPKT_SUS_ERR_CALLBACK || callback_count == 0UL) {
+    fprintf(stderr, "realtime callback failure was not reported\n");
+    goto cleanup;
+  }
+  rc = 0;
+
+cleanup:
+  if (transcriber != NULL) {
+    transcriber->destroy(transcriber);
+  }
+  if (decoder != NULL) {
+    decoder->destroy(decoder);
+  }
+  return rc;
+}
+
+static int cpkt_sus_test_run_realtime_abort(cpkt_sus_model *model,
+                                            const char *audio_path,
+                                            const char *audio_url) {
+  cpkt_audio_decoder *decoder;
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config config;
+  cpkt_sus_realtime_config realtime_config;
+  unsigned long abort_count;
+  cpkt_sus_result result;
+  int rc;
+
+  decoder = NULL;
+  transcriber = NULL;
+  abort_count = 0UL;
+  rc = 1;
+
+  if (cpkt_sus_test_open_audio_decoder(&decoder, audio_path, audio_url) != 0) {
+    goto cleanup;
+  }
+
+  memset(&config, 0, sizeof(config));
+  config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
+  config.abort = cpkt_sus_test_abort_now;
+  config.abort_user = &abort_count;
+  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+    goto cleanup;
+  }
+
+  cpkt_sus_test_realtime_config(&realtime_config);
+  result = transcriber->transcribe_audio_decoder_realtime(
+      transcriber, decoder, &realtime_config);
+  if (result != CPKT_SUS_ABORTED || abort_count == 0UL) {
+    fprintf(stderr, "realtime abort was not reported\n");
+    goto cleanup;
+  }
   rc = 0;
 
 cleanup:
@@ -486,6 +608,17 @@ int main(void) {
   }
   if (progress.count == 0UL) {
     fprintf(stderr, "progress callback was not invoked\n");
+    goto cleanup;
+  }
+
+  if (cpkt_sus_test_run_realtime_callback_failure(model, audio_path,
+                                                  audio_url) != 0) {
+    fprintf(stderr, "realtime callback failure transcription failed\n");
+    goto cleanup;
+  }
+
+  if (cpkt_sus_test_run_realtime_abort(model, audio_path, audio_url) != 0) {
+    fprintf(stderr, "realtime abort transcription failed\n");
     goto cleanup;
   }
 
