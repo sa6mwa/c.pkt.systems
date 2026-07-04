@@ -150,6 +150,50 @@ static void cpktxscribe_sus_log_verbose(const cpkt_sus_log_event *event,
   }
 }
 
+static const char *cpktxscribe_cache_phase_name(int phase) {
+  switch (phase) {
+  case CPKT_SUS_CACHE_STATUS_LOOKUP:
+    return "lookup";
+  case CPKT_SUS_CACHE_STATUS_HIT:
+    return "cached";
+  case CPKT_SUS_CACHE_STATUS_MISS:
+    return "missing";
+  case CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN:
+    return "download";
+  case CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE:
+    return "downloaded";
+  case CPKT_SUS_CACHE_STATUS_VERIFY_BEGIN:
+    return "verify";
+  case CPKT_SUS_CACHE_STATUS_VERIFY_COMPLETE:
+    return "verified";
+  case CPKT_SUS_CACHE_STATUS_LOAD_BEGIN:
+    return "load";
+  default:
+    return "unknown";
+  }
+}
+
+static int cpktxscribe_cache_status_sink(
+    const cpkt_sus_cache_status_event *event, void *user) {
+  (void)user;
+  if (event == NULL) {
+    return 0;
+  }
+  if (event->source_url != NULL) {
+    fprintf(stderr, "status model_cache=%s model=%s cache=%s source=%s\n",
+            cpktxscribe_cache_phase_name(event->phase),
+            event->model != NULL ? event->model : "(unknown)",
+            event->cache_path != NULL ? event->cache_path : "(unresolved)",
+            event->source_url);
+  } else {
+    fprintf(stderr, "status model_cache=%s model=%s cache=%s\n",
+            cpktxscribe_cache_phase_name(event->phase),
+            event->model != NULL ? event->model : "(unknown)",
+            event->cache_path != NULL ? event->cache_path : "(unresolved)");
+  }
+  return 0;
+}
+
 static char *cpktxscribe_join2(const char *left, const char *right) {
   char *joined;
   size_t left_len;
@@ -553,6 +597,7 @@ static int cpktxscribe_open_model(cpkt_sus_model **out,
     cache_config.insecure_no_checksum = options->insecure_no_checksum;
     cache_config.offline = options->offline;
     cache_config.cpu_only = options->cpu_only;
+    cache_config.status_sink = cpktxscribe_cache_status_sink;
     result = cpkt_sus_model_open_cached(out, &cache_config);
   }
   if (result != CPKT_SUS_OK) {

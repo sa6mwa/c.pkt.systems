@@ -30,9 +30,13 @@ if ! grep -qi 'accelerating' "$stdout_path"; then
   exit 1
 fi
 
-stderr_lines=$(wc -l <"$stderr_path")
-if [ "$stderr_lines" -ne 1 ]; then
-  printf 'cpktxscribe e2e expected one default stderr status line, got %s\n' "$stderr_lines" >&2
+if ! grep -F 'status source=' "$stderr_path" >/dev/null 2>&1; then
+  printf 'cpktxscribe e2e missing default startup status line\n' >&2
+  printf 'stdout: %s\nstderr: %s\n' "$stdout_path" "$stderr_path" >&2
+  exit 1
+fi
+if ! grep -F 'status model_cache=' "$stderr_path" >/dev/null 2>&1; then
+  printf 'cpktxscribe e2e missing model-cache resolver status lines\n' >&2
   printf 'stdout: %s\nstderr: %s\n' "$stdout_path" "$stderr_path" >&2
   exit 1
 fi
