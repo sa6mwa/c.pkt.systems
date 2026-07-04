@@ -31,6 +31,7 @@ struct cpkt_sus_live_options {
   const char *model;
   const char *model_path;
   const char *cache_dir;
+  const char *source_url;
   const char *language;
 };
 
@@ -296,6 +297,14 @@ cpkt_sus_live_print_startup(const struct cpkt_sus_live_options *opts) {
             opts->language != NULL ? opts->language : "auto",
             (double)cpkt_sus_live_threshold(opts), opts->hang_ms,
             opts->prebuffer_ms);
+    if (strcmp(cache_state, "download") == 0) {
+      fprintf(stderr, "status model_cache=download model=%s cache=%s source=%s\n",
+              opts->model != NULL ? opts->model : "tiny", cache_path,
+              opts->source_url != NULL ? opts->source_url
+                                       : (entry.source_url != NULL
+                                              ? entry.source_url
+                                              : "(unknown)"));
+    }
   } else {
     fprintf(stderr,
             "status source=default-capture mode=%s model=%s "
@@ -496,6 +505,7 @@ static int cpkt_sus_live_open_model(cpkt_sus_model **out,
     memset(&cache_config, 0, sizeof(cache_config));
     cache_config.model = opts->model;
     cache_config.cache_dir = opts->cache_dir;
+    cache_config.source_url = opts->source_url;
     cache_config.cpu_only = opts->cpu_only;
     cache_config.offline = opts->offline;
     cache_config.status_sink = cpkt_sus_live_cache_status_sink;
@@ -717,6 +727,7 @@ static void cpkt_sus_live_usage(FILE *out) {
           "  --model NAME                Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH           Load an explicit model file.\n");
   fprintf(out, "  --cache-dir DIR             Model cache directory.\n");
+  fprintf(out, "  --source-url URL            Override cached model source URL.\n");
   fprintf(out, "  --offline                   Do not download missing cached models.\n");
   fprintf(out, "  --language CODE             Language code; default en.\n");
   fprintf(
@@ -778,6 +789,8 @@ static int cpkt_sus_live_parse_options(int argc, char **argv,
       opts->model_path = argv[++i];
     } else if (strcmp(argv[i], "--cache-dir") == 0 && i + 1 < argc) {
       opts->cache_dir = argv[++i];
+    } else if (strcmp(argv[i], "--source-url") == 0 && i + 1 < argc) {
+      opts->source_url = argv[++i];
     } else if (strcmp(argv[i], "--offline") == 0) {
       opts->offline = 1;
     } else if (strcmp(argv[i], "--language") == 0 && i + 1 < argc) {
