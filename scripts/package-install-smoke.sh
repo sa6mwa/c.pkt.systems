@@ -155,6 +155,27 @@ case "$target_id" in
     ;;
 esac
 
+if [ -z "${cxx:-}" ]; then
+  if [ -n "${CXX:-}" ]; then
+    cxx=$CXX
+  else
+    case "$cc" in
+      *gcc)
+        cxx=${cc%gcc}g++
+        ;;
+      *clang)
+        cxx=${cc%clang}clang++
+        ;;
+      */cc)
+        cxx=${cc%cc}c++
+        ;;
+      *)
+        cxx=c++
+        ;;
+    esac
+  fi
+fi
+
 if [ ! -x "$cc" ]; then
   printf 'compiler for %s is not executable: %s\n' "$target_id" "$cc" >&2
   exit 1
@@ -517,6 +538,36 @@ int main(void) {
   }
   cpkt_sus_string_free(0);
   return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_sus_mixed_main.c" <<'EOF'
+#include <cpkt/sus.h>
+
+#include <string.h>
+
+int cpkt_sus_cpp_probe(void);
+
+int main(void) {
+  cpkt_sus_model_entry entry;
+
+  if (cpkt_sus_cpp_probe() != 0) {
+    return 1;
+  }
+  if (cpkt_sus_model_catalog_find("kb-whisper-small", &entry) != CPKT_SUS_OK) {
+    return 2;
+  }
+  if (entry.provider == 0 || strcmp(entry.provider, "KBLab/kb-whisper-small") != 0) {
+    return 3;
+  }
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_sus_mixed_cpp.cpp" <<'EOF'
+#include <string>
+
+extern "C" int cpkt_sus_cpp_probe(void) {
+  std::string model("kb-whisper-small");
+  return model.find("whisper") == std::string::npos ? 1 : 0;
 }
 EOF
 cat > "$cmake_source_dir/cpkt_opcua_facade_strict.c" <<'EOF'
@@ -1420,6 +1471,55 @@ cpkt_pkg_config_static_smoke() {
     $static_extra_libs"
 }
 
+cpkt_pkg_config_sus_mixed_cpp_smoke() {
+  output_path="$work_root/bin/cpkt_pkg_cpkt-sus_mixed_cpp"
+  cpp_object="$work_root/bin/cpkt_sus_mixed_cpp.o"
+  pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs cpkt-sus)
+  case "$target_id" in
+    *-linux-gnu)
+      pkg_config_link_words=$(printf '%s\n' "$pkg_config_link_words" | awk '
+        BEGIN {
+          bundled["-lcrypto"] = 1
+          bundled["-lssl"] = 1
+          bundled["-lz"] = 1
+          bundled["-lnghttp2"] = 1
+          bundled["-lssh2"] = 1
+          bundled["-lcurl"] = 1
+          bundled["-lwhisper"] = 1
+          bundled["-lggml"] = 1
+          bundled["-lggml-base"] = 1
+          bundled["-lggml-cpu"] = 1
+          bundled["-lcpktsus"] = 1
+        }
+        {
+          for (i = 1; i <= NF; ++i) {
+            if ($i in bundled) {
+              printf " -Wl,-Bstatic %s", $i
+            } else if ($i ~ /^-l/ || $i == "-pthread") {
+              printf " -Wl,-Bdynamic %s", $i
+            } else {
+              printf " %s", $i
+            }
+          }
+          printf " -Wl,-Bdynamic"
+        }')
+      ;;
+  esac
+  if [ ! -x "$cxx" ]; then
+    printf 'C++ compiler for %s is not executable: %s\n' "$target_id" "$cxx" >&2
+    exit 1
+  fi
+  cpkt_run_shell_checked "pkg-config cpkt-sus mixed C++ object compile" \
+    "\"$cxx\" -std=c++11 -Wall -Wextra -Wpedantic -Werror -c \"$cmake_source_dir/cpkt_sus_mixed_cpp.cpp\" -o \"$cpp_object\""
+  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C/C++ final cc link" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/cpkt_sus_mixed_main.c\" \
+    \"$cpp_object\" \
+    -o \"$output_path\" \
+    $pkg_config_link_toolchain_flags \
+    $pkg_config_link_words \
+    $static_extra_libs"
+}
+
 cpkt_pkg_config_static_smoke zlib cpkt_zlib.c
 cpkt_pkg_config_static_smoke libnghttp2 cpkt_nghttp2.c
 cpkt_pkg_config_static_smoke libcrypto cpkt_crypto.c
@@ -1435,6 +1535,7 @@ cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
 case "$target_id" in
   *-linux-*)
     cpkt_pkg_config_static_smoke cpkt-sus cpkt_sus_facade_strict.c
+    cpkt_pkg_config_sus_mixed_cpp_smoke
     ;;
 esac
 
