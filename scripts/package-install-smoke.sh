@@ -519,6 +519,9 @@ int main(void) {
   if (cpkt_sus_result_string(CPKT_SUS_ERR_MODEL) == 0) {
     return 3;
   }
+  if (cpkt_sus_result_string(CPKT_SUS_ABORTED) == 0) {
+    return 11;
+  }
   if (cpkt_sus_model_catalog_count() == 0) {
     return 4;
   }

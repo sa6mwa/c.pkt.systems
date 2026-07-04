@@ -33,7 +33,9 @@ typedef enum cpkt_sus_result {
   /** A model file checksum did not match the pinned or caller checksum. */
   CPKT_SUS_ERR_CHECKSUM = 8,
   /** A cache download failed. */
-  CPKT_SUS_ERR_NETWORK = 9
+  CPKT_SUS_ERR_NETWORK = 9,
+  /** The caller abort callback requested stopping transcription. */
+  CPKT_SUS_ABORTED = 10
 } cpkt_sus_result;
 
 /** Speech model construction options. */

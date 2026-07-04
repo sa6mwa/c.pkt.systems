@@ -272,6 +272,7 @@ static void test_result_strings(void **state) {
   assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_IO)[0], 'I');
   assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_CHECKSUM)[0], 'c');
   assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_NETWORK)[0], 'n');
+  assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ABORTED)[0], 't');
   assert_int_equal(cpkt_sus_result_string((cpkt_sus_result)999)[0], 'u');
 }
 

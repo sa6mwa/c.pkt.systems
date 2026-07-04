@@ -375,11 +375,11 @@ typedef struct cpkt_opcua_browse_path_element {
 
 /** Native callbacks receive borrowed upstream client/server pointers. */
 typedef cpkt_opcua_status (*cpkt_opcua_client_native_fn)(void *native_client, void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Callback receives a borrowed native server pointer for advanced configuration or operations. */
 typedef cpkt_opcua_status (*cpkt_opcua_server_native_fn)(void *native_server, void *user);
 /** Native config callbacks receive borrowed upstream config pointers. */
 typedef cpkt_opcua_status (*cpkt_opcua_client_native_config_fn)(void *native_client_config, void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Callback receives a borrowed native server config pointer before startup. */
 typedef cpkt_opcua_status (*cpkt_opcua_server_native_config_fn)(void *native_server_config, void *user);
 /** Return zero/GOOD to accept a username/password session, or an upstream status to reject it. */
 typedef cpkt_opcua_status (*cpkt_opcua_login_fn)(
@@ -390,7 +390,7 @@ typedef cpkt_opcua_status (*cpkt_opcua_login_fn)(
     void *user);
 /** Native value callbacks receive borrowed upstream value pointers. */
 typedef int (*cpkt_opcua_native_variant_fn)(const void *native_variant, void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Callback receives a borrowed native data value pointer for unsupported fields. */
 typedef int (*cpkt_opcua_native_data_value_fn)(const void *native_data_value, void *user);
 /** Return zero to continue history iteration; nonzero stops with callback error. */
 typedef int (*cpkt_opcua_history_data_value_fn)(
@@ -399,22 +399,22 @@ typedef int (*cpkt_opcua_history_data_value_fn)(
     void *user);
 /** Return zero to continue browsing; nonzero stops with callback error. */
 typedef int (*cpkt_opcua_browse_fn)(const cpkt_opcua_browse_entry *entry, void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives one borrowed string array element; return non-zero to stop iteration. */
 typedef int (*cpkt_opcua_string_array_fn)(size_t index, const char *data, size_t length, void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives one borrowed byte-string array element; return non-zero to stop iteration. */
 typedef int (*cpkt_opcua_byte_string_array_fn)(
     size_t index,
     const unsigned char *data,
     size_t length,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives one borrowed qualified-name array element; return non-zero to stop iteration. */
 typedef int (*cpkt_opcua_qualified_name_array_fn)(
     size_t index,
     unsigned short namespace_index,
     const char *name,
     size_t name_length,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives one borrowed localized-text array element; return non-zero to stop iteration. */
 typedef int (*cpkt_opcua_localized_text_array_fn)(
     size_t index,
     const char *locale,
@@ -429,14 +429,14 @@ typedef void (*cpkt_opcua_data_change_fn)(
     const cpkt_opcua_value *value,
     cpkt_opcua_status status,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives a monitored event payload borrowed for the duration of the callback. */
 typedef void (*cpkt_opcua_event_fn)(
     cpkt_opcua_subscription_id subscription_id,
     cpkt_opcua_monitored_item_id monitored_item_id,
     const cpkt_opcua_event *event,
     cpkt_opcua_status status,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives selected monitored event fields borrowed for the duration of the callback. */
 typedef void (*cpkt_opcua_event_fields_fn)(
     cpkt_opcua_subscription_id subscription_id,
     cpkt_opcua_monitored_item_id monitored_item_id,
@@ -451,19 +451,19 @@ typedef void (*cpkt_opcua_async_value_fn)(
     const cpkt_opcua_value *value,
     cpkt_opcua_status status,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives completion status for asynchronous write-style client operations. */
 typedef void (*cpkt_opcua_async_status_fn)(
     cpkt_opcua_request_id request_id,
     cpkt_opcua_result result,
     cpkt_opcua_status status,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives completion status for asynchronous browse operations. */
 typedef void (*cpkt_opcua_async_browse_fn)(
     cpkt_opcua_request_id request_id,
     cpkt_opcua_result result,
     cpkt_opcua_status status,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives borrowed method outputs for an asynchronous method call. */
 typedef void (*cpkt_opcua_async_call_fn)(
     cpkt_opcua_request_id request_id,
     cpkt_opcua_result result,
@@ -471,7 +471,7 @@ typedef void (*cpkt_opcua_async_call_fn)(
     size_t output_count,
     cpkt_opcua_status status,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Receives a borrowed node id result for asynchronous node creation. */
 typedef void (*cpkt_opcua_async_node_fn)(
     cpkt_opcua_request_id request_id,
     cpkt_opcua_result result,
@@ -487,7 +487,7 @@ typedef cpkt_opcua_result (*cpkt_opcua_method_fn)(
     size_t input_count,
     cpkt_opcua_value *output,
     void *user);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Method callback fills caller-provided scalar output slots before returning zero. */
 typedef cpkt_opcua_result (*cpkt_opcua_method_many_fn)(
     const cpkt_opcua_value *inputs,
     size_t input_count,
@@ -504,66 +504,66 @@ const char *cpkt_opcua_result_string(cpkt_opcua_result result);
 
 /** Construct C89-safe node id values. */
 cpkt_opcua_node_id cpkt_opcua_node_id_null(void);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct a numeric node id value without allocating. */
 cpkt_opcua_node_id cpkt_opcua_node_id_numeric(
     unsigned short namespace_index,
     unsigned long identifier);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct a string node id borrowing identifier for the call or assignment. */
 cpkt_opcua_node_id cpkt_opcua_node_id_string(
     unsigned short namespace_index,
     const char *identifier);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct a GUID node id by copying the 16-byte GUID value. */
 cpkt_opcua_node_id cpkt_opcua_node_id_guid(
     unsigned short namespace_index,
     const unsigned char guid[16]);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct a byte-string node id borrowing identifier bytes. */
 cpkt_opcua_node_id cpkt_opcua_node_id_byte_string(
     unsigned short namespace_index,
     const unsigned char *identifier,
     size_t identifier_length);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Compare two node ids using facade value semantics. */
 int cpkt_opcua_node_id_equal(cpkt_opcua_node_id a, cpkt_opcua_node_id b);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Print a node id into caller storage and report the required size. */
 cpkt_opcua_result cpkt_opcua_node_id_print(
     cpkt_opcua_node_id node_id,
     char *buffer,
     size_t buffer_size,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Parse a node id, storing any borrowed identifier bytes in caller storage. */
 cpkt_opcua_result cpkt_opcua_node_id_parse(
     const char *text,
     cpkt_opcua_node_id *node_id_out,
     char *buffer,
     size_t buffer_size,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct a local expanded node id from a plain node id. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_local(cpkt_opcua_node_id node_id);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct an expanded node id with a borrowed namespace URI. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_uri(
     const char *namespace_uri,
     size_t namespace_uri_length,
     cpkt_opcua_node_id node_id);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct an expanded node id for a remote server index. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_server(
     unsigned long server_index,
     cpkt_opcua_node_id node_id);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Construct an expanded node id with server index and borrowed namespace URI. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_server_uri(
     unsigned long server_index,
     const char *namespace_uri,
     size_t namespace_uri_length,
     cpkt_opcua_node_id node_id);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Compare two expanded node ids using facade value semantics. */
 int cpkt_opcua_expanded_node_id_equal(
     cpkt_opcua_expanded_node_id a,
     cpkt_opcua_expanded_node_id b);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Print an expanded node id into caller storage and report required size. */
 cpkt_opcua_result cpkt_opcua_expanded_node_id_print(
     cpkt_opcua_expanded_node_id node_id,
     char *buffer,
     size_t buffer_size,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Parse an expanded node id using caller storage for borrowed string bytes. */
 cpkt_opcua_result cpkt_opcua_expanded_node_id_parse(
     const char *text,
     cpkt_opcua_expanded_node_id *node_id_out,
@@ -576,11 +576,11 @@ cpkt_opcua_result cpkt_opcua_guid_print(
     char *buffer,
     size_t buffer_size,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Parse canonical GUID text into caller-provided 16-byte storage. */
 cpkt_opcua_result cpkt_opcua_guid_parse(
     const char *text,
     unsigned char guid_out[16]);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Print a qualified name into caller storage and report required size. */
 cpkt_opcua_result cpkt_opcua_qualified_name_print(
     unsigned short namespace_index,
     const char *name,
@@ -588,7 +588,7 @@ cpkt_opcua_result cpkt_opcua_qualified_name_print(
     char *buffer,
     size_t buffer_size,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Parse a qualified name, copying the name bytes into caller storage. */
 cpkt_opcua_result cpkt_opcua_qualified_name_parse(
     const char *text,
     unsigned short *namespace_index_out,
@@ -596,7 +596,7 @@ cpkt_opcua_result cpkt_opcua_qualified_name_parse(
     size_t name_buffer_size,
     size_t *name_length_out,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Print localized text into caller storage and report required size. */
 cpkt_opcua_result cpkt_opcua_localized_text_print(
     const char *locale,
     size_t locale_length,
@@ -605,7 +605,7 @@ cpkt_opcua_result cpkt_opcua_localized_text_print(
     char *buffer,
     size_t buffer_size,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Parse localized text, returning pointers into caller-provided storage. */
 cpkt_opcua_result cpkt_opcua_localized_text_parse(
     const char *input,
     char *buffer,
@@ -618,109 +618,109 @@ cpkt_opcua_result cpkt_opcua_localized_text_parse(
 
 /** Initialize scalar values. These functions do not allocate. */
 void cpkt_opcua_value_clear(cpkt_opcua_value *value);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as boolean without allocating. */
 void cpkt_opcua_value_boolean(cpkt_opcua_value *value, int boolean_value);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as integer without allocating. */
 void cpkt_opcua_value_integer(cpkt_opcua_value *value, long integer_value);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as double without allocating. */
 void cpkt_opcua_value_double(cpkt_opcua_value *value, double double_value);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as string without allocating. */
 void cpkt_opcua_value_string(
     cpkt_opcua_value *value,
     const char *string_value,
     size_t string_length);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as byte string without allocating. */
 void cpkt_opcua_value_byte_string(
     cpkt_opcua_value *value,
     const unsigned char *bytes_value,
     size_t bytes_length);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as guid without allocating. */
 void cpkt_opcua_value_guid(
     cpkt_opcua_value *value,
     const unsigned char guid[16]);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as status without allocating. */
 void cpkt_opcua_value_status(
     cpkt_opcua_value *value,
     cpkt_opcua_status status_value);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as qualified name without allocating. */
 void cpkt_opcua_value_qualified_name(
     cpkt_opcua_value *value,
     unsigned short namespace_index,
     const char *name,
     size_t name_length);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as localized text without allocating. */
 void cpkt_opcua_value_localized_text(
     cpkt_opcua_value *value,
     const char *locale,
     size_t locale_length,
     const char *text,
     size_t text_length);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as uint64 without allocating. */
 void cpkt_opcua_value_uint64(
     cpkt_opcua_value *value,
     unsigned long high32,
     unsigned long low32);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as datetime without allocating. */
 void cpkt_opcua_value_datetime(
     cpkt_opcua_value *value,
     long high32,
     unsigned long low32);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as boolean array without allocating. */
 void cpkt_opcua_value_boolean_array(
     cpkt_opcua_value *value,
     const int *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as integer array without allocating. */
 void cpkt_opcua_value_integer_array(
     cpkt_opcua_value *value,
     const long *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as double array without allocating. */
 void cpkt_opcua_value_double_array(
     cpkt_opcua_value *value,
     const double *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as string array without allocating. */
 void cpkt_opcua_value_string_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_string_view *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as byte string array without allocating. */
 void cpkt_opcua_value_byte_string_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_byte_string_view *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as uint64 array without allocating. */
 void cpkt_opcua_value_uint64_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_uint64 *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as datetime array without allocating. */
 void cpkt_opcua_value_datetime_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_datetime *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as status array without allocating. */
 void cpkt_opcua_value_status_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_status *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as guid array without allocating. */
 void cpkt_opcua_value_guid_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_guid *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as qualified name array without allocating. */
 void cpkt_opcua_value_qualified_name_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_qualified_name_view *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initializes a facade value as localized text array without allocating. */
 void cpkt_opcua_value_localized_text_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_localized_text_view *values,
     size_t value_count);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Initialize a data value to empty without allocating. */
 void cpkt_opcua_data_value_clear(cpkt_opcua_data_value *data_value);
 /** Initialize browse options to the same behavior as browse_children. */
 void cpkt_opcua_browse_options_default(cpkt_opcua_browse_options *options);
@@ -772,12 +772,12 @@ void cpkt_opcua_server_free(cpkt_opcua_server *server);
 cpkt_opcua_result cpkt_opcua_server_startup(
     cpkt_opcua_server *server,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Run one server event-loop iteration and return the next wait hint. */
 cpkt_opcua_result cpkt_opcua_server_iterate(
     cpkt_opcua_server *server,
     int wait_internal,
     unsigned short *wait_ms_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Shut down a started server and report upstream status. */
 cpkt_opcua_result cpkt_opcua_server_shutdown(
     cpkt_opcua_server *server,
     cpkt_opcua_status *status_out);
@@ -787,7 +787,7 @@ cpkt_opcua_result cpkt_opcua_server_endpoint_url(
     char *buffer,
     size_t buffer_size,
     size_t *required_size_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Configures server-side endpoint behavior before use. */
 cpkt_opcua_result cpkt_opcua_server_set_endpoint(
     cpkt_opcua_server *server,
     const char *hostname,
@@ -816,7 +816,7 @@ cpkt_opcua_result cpkt_opcua_server_security_plugin_native_config(
     cpkt_opcua_server_native_config_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Configures server-side default security behavior before use. */
 cpkt_opcua_result cpkt_opcua_server_set_default_security(
     cpkt_opcua_server *server,
     int secure_only,
@@ -879,7 +879,7 @@ cpkt_opcua_result cpkt_opcua_server_add_object_type(
     const char *display_name,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side variable type state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_variable_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -889,7 +889,7 @@ cpkt_opcua_result cpkt_opcua_server_add_variable_type(
     const cpkt_opcua_value *value,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side reference type state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_reference_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -900,7 +900,7 @@ cpkt_opcua_result cpkt_opcua_server_add_reference_type(
     int is_abstract,
     int symmetric,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side data type state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_data_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -909,7 +909,7 @@ cpkt_opcua_result cpkt_opcua_server_add_data_type(
     const char *display_name,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side view state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_view(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -966,7 +966,7 @@ cpkt_opcua_result cpkt_opcua_server_add_reference(
     cpkt_opcua_node_id target_node_id,
     unsigned long target_node_class,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side reference ex state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_reference_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -975,7 +975,7 @@ cpkt_opcua_result cpkt_opcua_server_add_reference_ex(
     cpkt_opcua_expanded_node_id target_node_id,
     unsigned long target_node_class,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Deletes server-side reference state or references. */
 cpkt_opcua_result cpkt_opcua_server_delete_reference(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -984,7 +984,7 @@ cpkt_opcua_result cpkt_opcua_server_delete_reference(
     cpkt_opcua_node_id target_node_id,
     int delete_bidirectional,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Deletes server-side reference ex state or references. */
 cpkt_opcua_result cpkt_opcua_server_delete_reference_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -1000,7 +1000,7 @@ cpkt_opcua_result cpkt_opcua_server_browse_children(
     cpkt_opcua_browse_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Browses server-side children ex results through caller callbacks. */
 cpkt_opcua_result cpkt_opcua_server_browse_children_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id parent_node_id,
@@ -1008,7 +1008,7 @@ cpkt_opcua_result cpkt_opcua_server_browse_children_ex(
     cpkt_opcua_browse_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Browses server-side children page results through caller callbacks. */
 cpkt_opcua_result cpkt_opcua_server_browse_children_page(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id parent_node_id,
@@ -1019,7 +1019,7 @@ cpkt_opcua_result cpkt_opcua_server_browse_children_page(
     size_t continuation_point_buffer_size,
     size_t *required_continuation_point_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Browses server-side next results through caller callbacks. */
 cpkt_opcua_result cpkt_opcua_server_browse_next(
     cpkt_opcua_server *server,
     const unsigned char *continuation_point,
@@ -1065,7 +1065,7 @@ cpkt_opcua_result cpkt_opcua_server_read_native_data_value(
     cpkt_opcua_native_data_value_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side data value attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_data_value(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1074,7 +1074,7 @@ cpkt_opcua_result cpkt_opcua_server_read_data_value(
     size_t string_buffer_size,
     size_t *required_string_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side boolean array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_boolean_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1082,7 +1082,7 @@ cpkt_opcua_result cpkt_opcua_server_read_boolean_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side integer array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_integer_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1090,7 +1090,7 @@ cpkt_opcua_result cpkt_opcua_server_read_integer_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side double array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_double_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1098,7 +1098,7 @@ cpkt_opcua_result cpkt_opcua_server_read_double_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side string array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_string_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1106,7 +1106,7 @@ cpkt_opcua_result cpkt_opcua_server_read_string_array(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side byte string array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_byte_string_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1114,7 +1114,7 @@ cpkt_opcua_result cpkt_opcua_server_read_byte_string_array(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side uint64 array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_uint64_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1122,7 +1122,7 @@ cpkt_opcua_result cpkt_opcua_server_read_uint64_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side datetime array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_datetime_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1130,7 +1130,7 @@ cpkt_opcua_result cpkt_opcua_server_read_datetime_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side status array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_status_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1138,7 +1138,7 @@ cpkt_opcua_result cpkt_opcua_server_read_status_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side guid array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_guid_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1146,7 +1146,7 @@ cpkt_opcua_result cpkt_opcua_server_read_guid_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side qualified name array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1154,7 +1154,7 @@ cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side localized text array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_localized_text_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1171,7 +1171,7 @@ cpkt_opcua_result cpkt_opcua_server_read_boolean_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side integer array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_integer_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1180,7 +1180,7 @@ cpkt_opcua_result cpkt_opcua_server_read_integer_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side double array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_double_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1189,7 +1189,7 @@ cpkt_opcua_result cpkt_opcua_server_read_double_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side string array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_string_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1198,7 +1198,7 @@ cpkt_opcua_result cpkt_opcua_server_read_string_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side byte string array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_byte_string_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1207,7 +1207,7 @@ cpkt_opcua_result cpkt_opcua_server_read_byte_string_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side uint64 array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_uint64_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1216,7 +1216,7 @@ cpkt_opcua_result cpkt_opcua_server_read_uint64_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side datetime array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_datetime_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1225,7 +1225,7 @@ cpkt_opcua_result cpkt_opcua_server_read_datetime_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side status array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_status_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1234,7 +1234,7 @@ cpkt_opcua_result cpkt_opcua_server_read_status_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side guid array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_guid_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1243,7 +1243,7 @@ cpkt_opcua_result cpkt_opcua_server_read_guid_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side qualified name array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1252,7 +1252,7 @@ cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side localized text array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_localized_text_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1261,7 +1261,7 @@ cpkt_opcua_result cpkt_opcua_server_read_localized_text_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side index range attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_index_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1277,13 +1277,13 @@ cpkt_opcua_result cpkt_opcua_server_read_node_id(
     size_t identifier_buffer_size,
     size_t *required_identifier_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side node class attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_node_class(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long *node_class_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side browse name attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_browse_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1292,7 +1292,7 @@ cpkt_opcua_result cpkt_opcua_server_read_browse_name(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side display name attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_display_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1300,7 +1300,7 @@ cpkt_opcua_result cpkt_opcua_server_read_display_name(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side description attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_description(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1308,61 +1308,61 @@ cpkt_opcua_result cpkt_opcua_server_read_description(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side display name attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_display_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     const char *display_name,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side description attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_description(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     const char *description,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side write mask attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_write_mask(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long *write_mask_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side user write mask attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_user_write_mask(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long *write_mask_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side write mask attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_write_mask(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long write_mask,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side is abstract attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_is_abstract(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int *is_abstract_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side is abstract attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_is_abstract(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side symmetric attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_symmetric(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int *symmetric_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side symmetric attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_symmetric(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int symmetric,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side inverse name attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_inverse_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1370,61 +1370,61 @@ cpkt_opcua_result cpkt_opcua_server_read_inverse_name(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side inverse name attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_inverse_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     const char *inverse_name,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side contains no loops attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_contains_no_loops(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int *contains_no_loops_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side contains no loops attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_contains_no_loops(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int contains_no_loops,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side event notifier attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_event_notifier(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long *event_notifier_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side event notifier attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_event_notifier(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long event_notifier,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side data type attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_data_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     cpkt_opcua_node_id *data_type_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side data type attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_data_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     cpkt_opcua_node_id data_type,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side value rank attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_value_rank(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     long *value_rank_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side value rank attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_value_rank(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     long value_rank,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side array dimensions attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_array_dimensions(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1432,93 +1432,93 @@ cpkt_opcua_result cpkt_opcua_server_read_array_dimensions(
     size_t dimension_count,
     size_t *required_dimension_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side array dimensions attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_array_dimensions(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     const unsigned long *dimensions,
     size_t dimension_count,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side access level attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_access_level(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long *access_level_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side user access level attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_user_access_level(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long *access_level_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side access level attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_access_level(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long access_level,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side access level ex attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_access_level_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long *access_level_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side access level ex attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_access_level_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     unsigned long access_level,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side minimum sampling interval attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_minimum_sampling_interval(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     double *minimum_sampling_interval_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side minimum sampling interval attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_minimum_sampling_interval(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     double minimum_sampling_interval,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side historizing attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_historizing(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int *historizing_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side historizing attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_historizing(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int historizing,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side executable attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_executable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int *executable_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side user executable attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_user_executable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int *executable_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side executable attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_executable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
     int executable,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side method argument count attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_method_argument_count(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id method_node_id,
     int direction,
     size_t *argument_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the server-side method argument attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_server_read_method_argument(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id method_node_id,
@@ -1530,7 +1530,7 @@ cpkt_opcua_result cpkt_opcua_server_read_method_argument(
     size_t name_buffer_size,
     size_t *required_name_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Write a scalar Value attribute on a server-owned node. */
 cpkt_opcua_result cpkt_opcua_server_write(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -1565,7 +1565,7 @@ cpkt_opcua_result cpkt_opcua_server_event_trigger(
     size_t event_id_buffer_size,
     size_t *required_event_id_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Triggers a server-side event and copies the emitted EventId when requested. */
 cpkt_opcua_result cpkt_opcua_server_trigger_event(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -1615,7 +1615,7 @@ cpkt_opcua_result cpkt_opcua_server_add_published_variable(
     size_t node_id_buffer_size,
     size_t *required_node_id_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side pubsub writer group state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_writer_group(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id connection_id,
@@ -1625,7 +1625,7 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_writer_group(
     size_t node_id_buffer_size,
     size_t *required_node_id_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side pubsub data set writer state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_writer(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id writer_group_id,
@@ -1636,7 +1636,7 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_writer(
     size_t node_id_buffer_size,
     size_t *required_node_id_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side pubsub reader group state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_reader_group(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id connection_id,
@@ -1646,7 +1646,7 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_reader_group(
     size_t node_id_buffer_size,
     size_t *required_node_id_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds server-side pubsub data set reader state using caller-provided options. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_reader(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id reader_group_id,
@@ -1656,14 +1656,14 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_reader(
     size_t node_id_buffer_size,
     size_t *required_node_id_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the server-side pubsub configuration attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_server_write_pubsub_configuration(
     cpkt_opcua_server *server,
     unsigned char *buffer,
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Load a serialized PubSub configuration into the server. */
 cpkt_opcua_result cpkt_opcua_server_load_pubsub_configuration(
     cpkt_opcua_server *server,
     const unsigned char *buffer,
@@ -1677,14 +1677,14 @@ cpkt_opcua_result cpkt_opcua_server_history_native(
 
 /** Create and free a client. Free accepts NULL. */
 cpkt_opcua_result cpkt_opcua_client_new(cpkt_opcua_client **out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Disconnect when needed and free a client handle. Accepts NULL. */
 void cpkt_opcua_client_free(cpkt_opcua_client *client);
 /** Connect anonymously or with username/password credentials. */
 cpkt_opcua_result cpkt_opcua_client_connect(
     cpkt_opcua_client *client,
     const char *endpoint_url,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Connects the client with explicit credentials and reports upstream status. */
 cpkt_opcua_result cpkt_opcua_client_connect_username(
     cpkt_opcua_client *client,
     const char *endpoint_url,
@@ -1703,7 +1703,7 @@ cpkt_opcua_result cpkt_opcua_client_security_plugin_native_config(
     cpkt_opcua_client_native_config_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Configures client-side default encryption behavior before use. */
 cpkt_opcua_result cpkt_opcua_client_set_default_encryption(
     cpkt_opcua_client *client,
     const unsigned char *certificate,
@@ -1719,7 +1719,7 @@ cpkt_opcua_result cpkt_opcua_client_set_default_encryption(
 cpkt_opcua_result cpkt_opcua_client_disconnect(
     cpkt_opcua_client *client,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Drive one client event-loop iteration for up to timeout_ms milliseconds. */
 cpkt_opcua_result cpkt_opcua_client_run_iterate(
     cpkt_opcua_client *client,
     unsigned long timeout_ms,
@@ -1730,7 +1730,7 @@ cpkt_opcua_result cpkt_opcua_client_get_namespace_index(
     const char *namespace_uri,
     unsigned short *namespace_index_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Gets client-side namespace uri data into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_get_namespace_uri(
     cpkt_opcua_client *client,
     unsigned short namespace_index,
@@ -1744,7 +1744,7 @@ cpkt_opcua_result cpkt_opcua_client_get_endpoint_count(
     const char *server_url,
     size_t *endpoint_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Gets client-side endpoint url data into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_get_endpoint_url(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -1759,7 +1759,7 @@ cpkt_opcua_result cpkt_opcua_client_find_server_count(
     const char *server_url,
     size_t *server_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Discovers client-side server application uri data into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_find_server_application_uri(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -1768,7 +1768,7 @@ cpkt_opcua_result cpkt_opcua_client_find_server_application_uri(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Discovers client-side server application name data into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_find_server_application_name(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -1800,7 +1800,7 @@ cpkt_opcua_result cpkt_opcua_client_read_native_data_value(
     cpkt_opcua_native_data_value_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side data value attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_data_value(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1824,7 +1824,7 @@ cpkt_opcua_result cpkt_opcua_client_history_read_raw(
     size_t string_buffer_size,
     size_t *required_string_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side boolean array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_boolean_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1832,7 +1832,7 @@ cpkt_opcua_result cpkt_opcua_client_read_boolean_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side integer array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_integer_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1840,7 +1840,7 @@ cpkt_opcua_result cpkt_opcua_client_read_integer_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side double array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_double_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1848,7 +1848,7 @@ cpkt_opcua_result cpkt_opcua_client_read_double_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side string array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_string_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1856,7 +1856,7 @@ cpkt_opcua_result cpkt_opcua_client_read_string_array(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side byte string array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_byte_string_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1864,7 +1864,7 @@ cpkt_opcua_result cpkt_opcua_client_read_byte_string_array(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side uint64 array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_uint64_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1872,7 +1872,7 @@ cpkt_opcua_result cpkt_opcua_client_read_uint64_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side datetime array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_datetime_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1880,7 +1880,7 @@ cpkt_opcua_result cpkt_opcua_client_read_datetime_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side status array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_status_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1888,7 +1888,7 @@ cpkt_opcua_result cpkt_opcua_client_read_status_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side guid array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_guid_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1896,7 +1896,7 @@ cpkt_opcua_result cpkt_opcua_client_read_guid_array(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side qualified name array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1904,7 +1904,7 @@ cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side localized text array attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_localized_text_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1921,7 +1921,7 @@ cpkt_opcua_result cpkt_opcua_client_read_boolean_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side integer array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_integer_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1930,7 +1930,7 @@ cpkt_opcua_result cpkt_opcua_client_read_integer_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side double array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_double_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1939,7 +1939,7 @@ cpkt_opcua_result cpkt_opcua_client_read_double_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side string array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_string_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1948,7 +1948,7 @@ cpkt_opcua_result cpkt_opcua_client_read_string_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side byte string array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_byte_string_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1957,7 +1957,7 @@ cpkt_opcua_result cpkt_opcua_client_read_byte_string_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side uint64 array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_uint64_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1966,7 +1966,7 @@ cpkt_opcua_result cpkt_opcua_client_read_uint64_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side datetime array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_datetime_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1975,7 +1975,7 @@ cpkt_opcua_result cpkt_opcua_client_read_datetime_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side status array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_status_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1984,7 +1984,7 @@ cpkt_opcua_result cpkt_opcua_client_read_status_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side guid array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_guid_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -1993,7 +1993,7 @@ cpkt_opcua_result cpkt_opcua_client_read_guid_array_range(
     size_t value_count,
     size_t *required_value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side qualified name array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2002,7 +2002,7 @@ cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side localized text array range attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_localized_text_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2011,7 +2011,7 @@ cpkt_opcua_result cpkt_opcua_client_read_localized_text_array_range(
     void *user,
     size_t *value_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side index range attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_index_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2027,13 +2027,13 @@ cpkt_opcua_result cpkt_opcua_client_read_node_id(
     size_t identifier_buffer_size,
     size_t *required_identifier_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side node class attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_node_class(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long *node_class_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side browse name attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_browse_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2042,7 +2042,7 @@ cpkt_opcua_result cpkt_opcua_client_read_browse_name(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side display name attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_display_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2050,7 +2050,7 @@ cpkt_opcua_result cpkt_opcua_client_read_display_name(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side description attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_description(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2058,61 +2058,61 @@ cpkt_opcua_result cpkt_opcua_client_read_description(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side display name attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_display_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     const char *display_name,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side description attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_description(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     const char *description,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side write mask attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_write_mask(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long *write_mask_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side user write mask attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_user_write_mask(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long *write_mask_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side write mask attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_write_mask(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long write_mask,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side is abstract attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_is_abstract(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int *is_abstract_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side is abstract attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_is_abstract(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side symmetric attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_symmetric(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int *symmetric_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side symmetric attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_symmetric(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int symmetric,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side inverse name attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_inverse_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2120,61 +2120,61 @@ cpkt_opcua_result cpkt_opcua_client_read_inverse_name(
     size_t buffer_size,
     size_t *required_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side inverse name attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_inverse_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     const char *inverse_name,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side contains no loops attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_contains_no_loops(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int *contains_no_loops_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side contains no loops attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_contains_no_loops(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int contains_no_loops,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side event notifier attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_event_notifier(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long *event_notifier_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side event notifier attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_event_notifier(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long event_notifier,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side data type attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_data_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     cpkt_opcua_node_id *data_type_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side data type attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_data_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     cpkt_opcua_node_id data_type,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side value rank attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_value_rank(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     long *value_rank_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side value rank attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_value_rank(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     long value_rank,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side array dimensions attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_array_dimensions(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2182,93 +2182,93 @@ cpkt_opcua_result cpkt_opcua_client_read_array_dimensions(
     size_t dimension_count,
     size_t *required_dimension_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side array dimensions attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_array_dimensions(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     const unsigned long *dimensions,
     size_t dimension_count,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side access level attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_access_level(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long *access_level_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side user access level attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_user_access_level(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long *access_level_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side access level attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_access_level(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long access_level,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side access level ex attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_access_level_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long *access_level_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side access level ex attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_access_level_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     unsigned long access_level,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side minimum sampling interval attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_minimum_sampling_interval(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     double *minimum_sampling_interval_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side minimum sampling interval attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_minimum_sampling_interval(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     double minimum_sampling_interval,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side historizing attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_historizing(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int *historizing_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side historizing attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_historizing(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int historizing,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side executable attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_executable(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int *executable_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side user executable attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_user_executable(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int *executable_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side executable attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_executable(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
     int executable,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side method argument count attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_method_argument_count(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id method_node_id,
     int direction,
     size_t *argument_count_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Reads the client-side method argument attribute into caller storage. */
 cpkt_opcua_result cpkt_opcua_client_read_method_argument(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id method_node_id,
@@ -2280,7 +2280,7 @@ cpkt_opcua_result cpkt_opcua_client_read_method_argument(
     size_t name_buffer_size,
     size_t *required_name_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Write a scalar Value attribute through the connected client. */
 cpkt_opcua_result cpkt_opcua_client_write(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2320,7 +2320,7 @@ cpkt_opcua_result cpkt_opcua_client_add_object_type(
     const char *display_name,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds client-side variable type state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_add_variable_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2330,7 +2330,7 @@ cpkt_opcua_result cpkt_opcua_client_add_variable_type(
     const cpkt_opcua_value *value,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds client-side reference type state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_add_reference_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2341,7 +2341,7 @@ cpkt_opcua_result cpkt_opcua_client_add_reference_type(
     int is_abstract,
     int symmetric,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds client-side data type state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_add_data_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2350,7 +2350,7 @@ cpkt_opcua_result cpkt_opcua_client_add_data_type(
     const char *display_name,
     int is_abstract,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds client-side view state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_add_view(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2375,7 +2375,7 @@ cpkt_opcua_result cpkt_opcua_client_add_reference(
     cpkt_opcua_node_id target_node_id,
     unsigned long target_node_class,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds client-side reference ex state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_add_reference_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id source_node_id,
@@ -2384,7 +2384,7 @@ cpkt_opcua_result cpkt_opcua_client_add_reference_ex(
     cpkt_opcua_expanded_node_id target_node_id,
     unsigned long target_node_class,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Deletes client-side reference state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_delete_reference(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id source_node_id,
@@ -2393,7 +2393,7 @@ cpkt_opcua_result cpkt_opcua_client_delete_reference(
     cpkt_opcua_node_id target_node_id,
     int delete_bidirectional,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Deletes client-side reference ex state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_delete_reference_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id source_node_id,
@@ -2409,7 +2409,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children(
     cpkt_opcua_browse_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Browses client-side children ex results through caller callbacks. */
 cpkt_opcua_result cpkt_opcua_client_browse_children_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id parent_node_id,
@@ -2417,7 +2417,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children_ex(
     cpkt_opcua_browse_fn fn,
     void *user,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Browses client-side children page results through caller callbacks. */
 cpkt_opcua_result cpkt_opcua_client_browse_children_page(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id parent_node_id,
@@ -2428,7 +2428,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children_page(
     size_t continuation_point_buffer_size,
     size_t *required_continuation_point_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Browses client-side next results through caller callbacks. */
 cpkt_opcua_result cpkt_opcua_client_browse_next(
     cpkt_opcua_client *client,
     const unsigned char *continuation_point,
@@ -2463,7 +2463,7 @@ cpkt_opcua_result cpkt_opcua_client_call_method(
     size_t string_buffer_size,
     size_t *required_string_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Call a method with multiple scalar outputs through the connected client. */
 cpkt_opcua_result cpkt_opcua_client_call_method_many(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id object_node_id,
@@ -2490,7 +2490,7 @@ cpkt_opcua_result cpkt_opcua_client_read_async(
     size_t string_buffer_size,
     size_t *required_string_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Writes the client-side async attribute from caller-provided input. */
 cpkt_opcua_result cpkt_opcua_client_write_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2499,7 +2499,7 @@ cpkt_opcua_result cpkt_opcua_client_write_async(
     void *user,
     cpkt_opcua_request_id *request_id_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Browses client-side children async results through caller callbacks. */
 cpkt_opcua_result cpkt_opcua_client_browse_children_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id parent_node_id,
@@ -2509,7 +2509,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children_async(
     void *user,
     cpkt_opcua_request_id *request_id_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Submit an asynchronous method call and report completion through a callback. */
 cpkt_opcua_result cpkt_opcua_client_call_method_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id object_node_id,
@@ -2525,7 +2525,7 @@ cpkt_opcua_result cpkt_opcua_client_call_method_async(
     const size_t *string_buffer_sizes,
     size_t *required_string_sizes_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds client-side object async state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_add_object_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2540,7 +2540,7 @@ cpkt_opcua_result cpkt_opcua_client_add_object_async(
     size_t node_id_buffer_size,
     size_t *required_node_id_size_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Adds client-side variable async state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_add_variable_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -2562,13 +2562,13 @@ cpkt_opcua_result cpkt_opcua_client_create_subscription(
     double publishing_interval_ms,
     cpkt_opcua_subscription_id *subscription_id_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Update the publishing interval of an existing client subscription. */
 cpkt_opcua_result cpkt_opcua_client_modify_subscription(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
     double publishing_interval_ms,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Deletes client-side subscription state through the connected server. */
 cpkt_opcua_result cpkt_opcua_client_delete_subscription(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -2583,7 +2583,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_value(
     void *user,
     cpkt_opcua_monitored_item_id *monitored_item_id_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Monitor scalar value changes with explicit queue and deadband options. */
 cpkt_opcua_result cpkt_opcua_client_monitor_value_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -2593,7 +2593,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_value_ex(
     void *user,
     cpkt_opcua_monitored_item_id *monitored_item_id_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Monitor event notifications and deliver compact event payloads. */
 cpkt_opcua_result cpkt_opcua_client_monitor_events(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -2603,7 +2603,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_events(
     void *user,
     cpkt_opcua_monitored_item_id *monitored_item_id_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Monitor selected event fields and deliver borrowed field arrays. */
 cpkt_opcua_result cpkt_opcua_client_monitor_event_fields(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -2615,7 +2615,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_event_fields(
     void *user,
     cpkt_opcua_monitored_item_id *monitored_item_id_out,
     cpkt_opcua_status *status_out);
-/** Public OPC UA facade declaration. See the type and parameter names for ownership and result flow. */
+/** Configures client-side monitoring mode behavior before use. */
 cpkt_opcua_result cpkt_opcua_client_set_monitoring_mode(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,

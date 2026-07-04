@@ -399,7 +399,9 @@ The first transcription tier must support:
 - segment callback output using whisper.cpp's new-segment callback and segment
   accessors;
 - progress callback;
-- abort callback;
+- abort callback, where a non-zero callback return stops inference and reports
+  `CPKT_SUS_ABORTED` instead of collapsing cancellation into a generic upstream
+  or callback error;
 - explicit materialized-text helper that allocates a final transcript string;
 - project-owned free function for materialized strings.
 
@@ -572,7 +574,8 @@ Required checks:
 - atomic cache replacement does not leave corrupt final files after simulated
   failures;
 - segment callbacks receive text and timestamps;
-- progress and abort callbacks are observable;
+- progress callbacks are observable;
+- abort callbacks are observable and return `CPKT_SUS_ABORTED`;
 - materialized transcript helper uses project-owned allocation/free;
 - package artifacts include correct licenses and provenance manifests;
 - package metadata records which whisper.cpp/ggml backends were compiled into

@@ -29,6 +29,7 @@ struct cpkt_sus_model_impl {
 struct cpkt_sus_transcriber_impl {
   cpkt_sus_model *model;
   cpkt_sus_transcriber_config config;
+  int aborted;
   int callback_error;
 };
 
@@ -818,10 +819,14 @@ static bool cpkt_sus_whisper_abort_callback(void *user_data) {
   if (impl == NULL || impl->config.abort == NULL) {
     return impl != NULL && impl->callback_error ? true : false;
   }
-  return impl->callback_error ||
-                 impl->config.abort(impl->config.abort_user) != 0
-             ? true
-             : false;
+  if (impl->callback_error) {
+    return true;
+  }
+  if (impl->config.abort(impl->config.abort_user) != 0) {
+    impl->aborted = 1;
+    return true;
+  }
+  return false;
 }
 
 static cpkt_sus_result cpkt_sus_transcriber_run(cpkt_sus_transcriber *self,
@@ -848,6 +853,7 @@ static cpkt_sus_result cpkt_sus_transcriber_run(cpkt_sus_transcriber *self,
     return CPKT_SUS_ERR_ARG;
   }
 
+  impl->aborted = 0;
   impl->callback_error = 0;
   params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
   if (impl->config.threads > 0) {
@@ -886,6 +892,9 @@ static cpkt_sus_result cpkt_sus_transcriber_run(cpkt_sus_transcriber *self,
       whisper_full(model_impl->context, params, samples, (int)sample_count);
   if (impl->callback_error) {
     return CPKT_SUS_ERR_CALLBACK;
+  }
+  if (impl->aborted) {
+    return CPKT_SUS_ABORTED;
   }
   if (full_result != 0) {
     return CPKT_SUS_ERR_UPSTREAM;
@@ -1218,6 +1227,8 @@ const char *cpkt_sus_result_string(cpkt_sus_result result) {
     return "checksum mismatch";
   case CPKT_SUS_ERR_NETWORK:
     return "network error";
+  case CPKT_SUS_ABORTED:
+    return "transcription aborted";
   default:
     return "unknown result";
   }

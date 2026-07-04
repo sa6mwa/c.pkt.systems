@@ -76,6 +76,16 @@ static int cpkt_sus_test_progress_sink(int progress, void *user) {
   return 0;
 }
 
+static int cpkt_sus_test_abort_now(void *user) {
+  unsigned long *count;
+
+  count = (unsigned long *)user;
+  if (count != NULL) {
+    ++*count;
+  }
+  return 1;
+}
+
 static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
   const char *model_path;
   cpkt_sus_model_config path_config;
@@ -330,6 +340,52 @@ cleanup:
   return rc;
 }
 
+static int cpkt_sus_test_run_abort(cpkt_sus_model *model,
+                                   const char *audio_path) {
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config config;
+  float *samples;
+  unsigned long sample_count;
+  unsigned long abort_count;
+  cpkt_sus_result result;
+  int rc;
+
+  transcriber = NULL;
+  samples = NULL;
+  abort_count = 0UL;
+  rc = 1;
+
+  if (cpkt_sus_test_materialize_samples(&samples, &sample_count, audio_path) !=
+      0) {
+    goto cleanup;
+  }
+  if (sample_count == 0UL) {
+    goto cleanup;
+  }
+
+  memset(&config, 0, sizeof(config));
+  config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
+  config.abort = cpkt_sus_test_abort_now;
+  config.abort_user = &abort_count;
+  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+    goto cleanup;
+  }
+
+  result =
+      transcriber->transcribe_f32_mono_16k(transcriber, samples, sample_count);
+  if (result != CPKT_SUS_ABORTED || abort_count == 0UL) {
+    goto cleanup;
+  }
+  rc = 0;
+
+cleanup:
+  if (transcriber != NULL) {
+    transcriber->destroy(transcriber);
+  }
+  free(samples);
+  return rc;
+}
+
 int main(void) {
   cpkt_sus_model *model;
   struct cpkt_sus_test_segments segments;
@@ -379,6 +435,11 @@ int main(void) {
 
   if (cpkt_sus_test_run_materialized(model, audio_path, &text) != 0) {
     fprintf(stderr, "materialized audio transcription failed\n");
+    goto cleanup;
+  }
+
+  if (cpkt_sus_test_run_abort(model, audio_path) != 0) {
+    fprintf(stderr, "abort callback transcription failed\n");
     goto cleanup;
   }
 
