@@ -15,6 +15,7 @@ paths = [
     source_dir / "examples" / "audio-vox-intro-c89" / "main.c",
     source_dir / "examples" / "audio-live-vox-c89" / "main.c",
     source_dir / "examples" / "sus-vox-intro-c89" / "main.c",
+    source_dir / "examples" / "sus-live-vox-c89" / "main.c",
 ]
 
 patterns = [

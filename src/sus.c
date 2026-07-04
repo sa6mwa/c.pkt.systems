@@ -31,6 +31,10 @@ struct cpkt_sus_model_impl {
 struct cpkt_sus_transcriber_impl {
   cpkt_sus_model *model;
   cpkt_sus_transcriber_config config;
+  whisper_token *prompt_tokens;
+  size_t prompt_count;
+  size_t prompt_capacity;
+  unsigned long realtime_segment_count;
   char *revised_text;
   size_t revised_length;
   size_t revised_capacity;
@@ -254,8 +258,7 @@ static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
      "ggml-model.bin",
      "054187c95948ee0455d428db0c0d6c84d6c6157dab72e86857ced13233118b03",
      77691730UL, "Apache-2.0", "f16", 0},
-    {"kb-whisper-tiny:q5_0", "KBLab/kb-whisper-tiny",
-     "ggml-tiny.sv-q5_0.bin",
+    {"kb-whisper-tiny:q5_0", "KBLab/kb-whisper-tiny", "ggml-tiny.sv-q5_0.bin",
      "https://huggingface.co/KBLab/kb-whisper-tiny/resolve/main/"
      "ggml-model-q5_0.bin",
      "98d46b7d23e5528d006e8a42e29eb0cb39b44bed94e1329f10f57d1fd15c658b",
@@ -265,8 +268,7 @@ static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
      "ggml-model.bin",
      "f5e3cdb33e537eedfa2a749b5cae28c4c511873a1b13362f87dffbe07891d3fe",
      147951482UL, "Apache-2.0", "f16", 0},
-    {"kb-whisper-base:q5_0", "KBLab/kb-whisper-base",
-     "ggml-base.sv-q5_0.bin",
+    {"kb-whisper-base:q5_0", "KBLab/kb-whisper-base", "ggml-base.sv-q5_0.bin",
      "https://huggingface.co/KBLab/kb-whisper-base/resolve/main/"
      "ggml-model-q5_0.bin",
      "aead29b356bca8840e72a8dc2286e2d69e6702639751a1e60cb3c8eacefec546",
@@ -1094,8 +1096,8 @@ static int cpkt_sus_ul_to_int(unsigned long value, int *out) {
   return 1;
 }
 
-static cpkt_sus_result cpkt_sus_build_realtime_text(char **out,
-                                                    struct whisper_context *context) {
+static cpkt_sus_result
+cpkt_sus_build_realtime_text(char **out, struct whisper_context *context) {
   const char *segment_text;
   char *text;
   size_t length;
@@ -1141,14 +1143,15 @@ static cpkt_sus_result cpkt_sus_build_realtime_text(char **out,
   return CPKT_SUS_OK;
 }
 
-static cpkt_sus_result cpkt_sus_transcriber_append_revised_text(
-    struct cpkt_sus_transcriber_impl *impl, const char *text,
-    size_t text_len);
+static cpkt_sus_result
+cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
+                                         const char *text, size_t text_len);
 
-static cpkt_sus_result cpkt_sus_emit_realtime_event(
-    struct cpkt_sus_transcriber_impl *impl,
-    const cpkt_sus_realtime_config *config, const char *text, size_t text_len,
-    unsigned long step_index, int final) {
+static cpkt_sus_result
+cpkt_sus_emit_realtime_event(struct cpkt_sus_transcriber_impl *impl,
+                             const cpkt_sus_realtime_config *config,
+                             const char *text, size_t text_len,
+                             unsigned long step_index, int final) {
   cpkt_sus_realtime_event event;
   cpkt_sus_result result;
   int callback_result;
@@ -1242,8 +1245,7 @@ static cpkt_sus_result cpkt_sus_text_reserve(char **text, size_t *capacity,
 
 static cpkt_sus_result
 cpkt_sus_realtime_text_apply_storage(char **text, size_t *length,
-                                     size_t *capacity,
-                                     const char *hypothesis,
+                                     size_t *capacity, const char *hypothesis,
                                      size_t hypothesis_len) {
   size_t best_start;
   size_t best_common;
@@ -1316,9 +1318,9 @@ cpkt_sus_realtime_text_apply(struct cpkt_sus_realtime_text_state *state,
   if (state == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
-  return cpkt_sus_realtime_text_apply_storage(
-      &state->text, &state->length, &state->capacity, hypothesis,
-      hypothesis_len);
+  return cpkt_sus_realtime_text_apply_storage(&state->text, &state->length,
+                                              &state->capacity, hypothesis,
+                                              hypothesis_len);
 }
 
 static void cpkt_sus_transcriber_reset_revised_text(
@@ -1332,9 +1334,9 @@ static void cpkt_sus_transcriber_reset_revised_text(
   }
 }
 
-static cpkt_sus_result cpkt_sus_transcriber_append_revised_text(
-    struct cpkt_sus_transcriber_impl *impl, const char *text,
-    size_t text_len) {
+static cpkt_sus_result
+cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
+                                         const char *text, size_t text_len) {
   cpkt_sus_result result;
   size_t needed;
 
@@ -1348,8 +1350,8 @@ static cpkt_sus_result cpkt_sus_transcriber_append_revised_text(
     return CPKT_SUS_ERR_ALLOC;
   }
   needed = impl->revised_length + text_len + 1U;
-  result = cpkt_sus_text_reserve(&impl->revised_text,
-                                 &impl->revised_capacity, needed);
+  result = cpkt_sus_text_reserve(&impl->revised_text, &impl->revised_capacity,
+                                 needed);
   if (result != CPKT_SUS_OK) {
     return result;
   }
@@ -1380,17 +1382,17 @@ static int cpkt_sus_realtime_text_sink(const cpkt_sus_realtime_event *event,
   return 0;
 }
 
-static cpkt_sus_result cpkt_sus_capture_prompt_tokens(
-    struct whisper_context *context, whisper_token **tokens, size_t *count,
-    size_t *capacity) {
+static cpkt_sus_result
+cpkt_sus_capture_prompt_tokens(struct whisper_context *context,
+                               whisper_token **tokens, size_t *count,
+                               size_t *capacity) {
   whisper_token *grown;
   int segment_count;
   int token_count;
   int i;
   int j;
 
-  if (context == NULL || tokens == NULL || count == NULL ||
-      capacity == NULL) {
+  if (context == NULL || tokens == NULL || count == NULL || capacity == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
 
@@ -1414,8 +1416,8 @@ static cpkt_sus_result cpkt_sus_capture_prompt_tokens(
         }
         next_capacity *= 2U;
       }
-      grown = (whisper_token *)realloc(
-          *tokens, sizeof(**tokens) * next_capacity);
+      grown =
+          (whisper_token *)realloc(*tokens, sizeof(**tokens) * next_capacity);
       if (grown == NULL) {
         return CPKT_SUS_ERR_ALLOC;
       }
@@ -1443,9 +1445,10 @@ struct cpkt_sus_vox_transcribe_state {
   cpkt_sus_result result;
 };
 
-static cpkt_sus_result cpkt_sus_read_vox_segment_pcm(
-    cpkt_audio_vox_segment *segment, float **samples_out,
-    unsigned long *sample_count_out) {
+static cpkt_sus_result
+cpkt_sus_read_vox_segment_pcm(cpkt_audio_vox_segment *segment,
+                              float **samples_out,
+                              unsigned long *sample_count_out) {
   float *samples;
   size_t offset;
 
@@ -1474,8 +1477,7 @@ static cpkt_sus_result cpkt_sus_read_vox_segment_pcm(
 
     frames_read = 0U;
     audio_result = segment->read_f32_mono_16k(
-        segment, samples + offset, segment->frame_count - offset,
-        &frames_read);
+        segment, samples + offset, segment->frame_count - offset, &frames_read);
     if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
       free(samples);
       return CPKT_SUS_ERR_IO;
@@ -1602,9 +1604,9 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
   if (state->result != CPKT_SUS_OK) {
     return 1;
   }
-  state->result = cpkt_sus_emit_realtime_event(
-      impl, state->config, text, strlen(text), state->segment_count,
-      segment->is_final);
+  state->result =
+      cpkt_sus_emit_realtime_event(impl, state->config, text, strlen(text),
+                                   state->segment_count, segment->is_final);
   free(text);
   if (state->result != CPKT_SUS_OK) {
     return 1;
@@ -1616,8 +1618,8 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
 
   if (state->use_prompt) {
     state->result = cpkt_sus_capture_prompt_tokens(
-        state->model_impl->context, &state->prompt_tokens,
-        &state->prompt_count, &state->prompt_capacity);
+        state->model_impl->context, &state->prompt_tokens, &state->prompt_count,
+        &state->prompt_capacity);
     if (state->result != CPKT_SUS_OK) {
       return 1;
     }
@@ -1630,7 +1632,8 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
   return 0;
 }
 
-static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
+static cpkt_sus_result
+cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
     cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
     const cpkt_sus_realtime_config *config) {
   struct cpkt_sus_transcriber_impl *impl;
@@ -1665,8 +1668,7 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
                     : 4096UL;
   length_ms =
       config != NULL && config->length_ms != 0UL ? config->length_ms : 7000UL;
-  keep_ms =
-      config != NULL && config->keep_ms != 0UL ? config->keep_ms : 1500UL;
+  keep_ms = config != NULL && config->keep_ms != 0UL ? config->keep_ms : 1500UL;
   if (read_frames == 0UL || read_frames > ((unsigned long)-1) / sizeof(float)) {
     return CPKT_SUS_ERR_ARG;
   }
@@ -1685,9 +1687,9 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
   state.result = CPKT_SUS_OK;
 
   memset(&vox_config, 0, sizeof(vox_config));
-  vox_config.threshold =
-      config != NULL && config->vox_threshold != 0.0f ? config->vox_threshold
-                                                      : 0.001f;
+  vox_config.threshold = config != NULL && config->vox_threshold != 0.0f
+                             ? config->vox_threshold
+                             : 0.001f;
   vox_config.release_silence_ms = keep_ms;
   vox_config.max_segment_ms = length_ms;
   vox_config.min_segment_ms = 100UL;
@@ -1732,8 +1734,7 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
   }
 
   if (vox->flush(vox) != CPKT_AUDIO_OK) {
-    sus_result =
-        state.result != CPKT_SUS_OK ? state.result : CPKT_SUS_ERR_IO;
+    sus_result = state.result != CPKT_SUS_OK ? state.result : CPKT_SUS_ERR_IO;
     goto cleanup;
   }
   if (!state.final_emitted) {
@@ -1752,6 +1753,58 @@ cleanup:
   }
   free(read_buffer);
   return sus_result;
+}
+
+static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_vox_segment_impl(
+    cpkt_sus_transcriber *self, cpkt_audio_vox_segment *segment,
+    const cpkt_sus_realtime_config *config) {
+  struct cpkt_sus_transcriber_impl *impl;
+  struct cpkt_sus_model_impl *model_impl;
+  struct cpkt_sus_vox_transcribe_state state;
+  cpkt_sus_result result;
+
+  if (self == NULL || self->impl == NULL || segment == NULL ||
+      segment->read_f32_mono_16k == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  impl = (struct cpkt_sus_transcriber_impl *)self->impl;
+  if (impl->model == NULL || impl->model->impl == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  model_impl = (struct cpkt_sus_model_impl *)impl->model->impl;
+  if (model_impl->context == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  memset(&state, 0, sizeof(state));
+  state.impl = impl;
+  state.model_impl = model_impl;
+  state.config = config;
+  state.prompt_tokens = impl->prompt_tokens;
+  state.prompt_count = impl->prompt_count;
+  state.prompt_capacity = impl->prompt_capacity;
+  state.segment_count = impl->realtime_segment_count;
+  state.use_prompt = (config == NULL || config->keep_context >= 0) ? 1 : 0;
+  state.result = CPKT_SUS_OK;
+
+  impl->prompt_tokens = NULL;
+  impl->prompt_count = 0U;
+  impl->prompt_capacity = 0U;
+
+  if (state.segment_count == 0UL) {
+    cpkt_sus_transcriber_reset_revised_text(impl);
+  }
+
+  if (cpkt_sus_vox_segment_sink(segment, &state) == 0) {
+    result = state.result;
+  } else {
+    result = state.result != CPKT_SUS_OK ? state.result : CPKT_SUS_ERR_CALLBACK;
+  }
+  impl->prompt_tokens = state.prompt_tokens;
+  impl->prompt_count = state.prompt_count;
+  impl->prompt_capacity = state.prompt_capacity;
+  impl->realtime_segment_count = state.segment_count;
+  return result;
 }
 
 static cpkt_sus_result
@@ -1829,6 +1882,7 @@ static void cpkt_sus_transcriber_destroy_impl(cpkt_sus_transcriber *self) {
   impl = (struct cpkt_sus_transcriber_impl *)self->impl;
   if (impl != NULL) {
     free(impl->revised_text);
+    free(impl->prompt_tokens);
   }
   free(self->impl);
   free(self);
@@ -1869,6 +1923,8 @@ static cpkt_sus_result cpkt_sus_model_create_transcriber_impl(
       cpkt_sus_transcriber_transcribe_f32_mono_16k_text_impl;
   transcriber->transcribe_audio_decoder_realtime =
       cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl;
+  transcriber->transcribe_audio_vox_segment =
+      cpkt_sus_transcriber_transcribe_audio_vox_segment_impl;
   transcriber->transcribe_audio_decoder_realtime_text =
       cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl;
   transcriber->revised_text = cpkt_sus_transcriber_revised_text_impl;
@@ -1977,7 +2033,8 @@ cpkt_sus_model_open_cached(cpkt_sus_model **out,
       return result;
     }
   } else {
-    result = cpkt_sus_open_validated_cached_file(out, model_path, entry, config);
+    result =
+        cpkt_sus_open_validated_cached_file(out, model_path, entry, config);
     if ((result == CPKT_SUS_ERR_CHECKSUM || result == CPKT_SUS_ERR_MODEL) &&
         !config->offline) {
       result = cpkt_sus_fetch_cached_file(model_path, cache_dir, entry, config);
@@ -1995,7 +2052,8 @@ cpkt_sus_model_open_cached(cpkt_sus_model **out,
   free(cache_dir);
 
   if (*out == NULL) {
-    result = cpkt_sus_open_validated_cached_file(out, model_path, entry, config);
+    result =
+        cpkt_sus_open_validated_cached_file(out, model_path, entry, config);
   }
   free(model_path);
   return result;

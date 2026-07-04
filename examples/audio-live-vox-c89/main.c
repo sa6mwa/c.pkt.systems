@@ -33,9 +33,8 @@ struct cpkt_live_vox_run {
 };
 
 static float cpkt_live_vox_threshold(const struct cpkt_live_vox_options *opts) {
-  return opts->threshold_milli != 0UL
-             ? (float)opts->threshold_milli / 1000.0f
-             : 0.03f;
+  return opts->threshold_milli != 0UL ? (float)opts->threshold_milli / 1000.0f
+                                      : 0.03f;
 }
 
 static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
@@ -81,10 +80,6 @@ static int cpkt_live_vox_parse_backend(const char *text, int *out) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_AUTO;
   } else if (strcmp(text, "alsa") == 0) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_ALSA;
-  } else if (strcmp(text, "pulseaudio") == 0 || strcmp(text, "pulse") == 0) {
-    *out = CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO;
-  } else if (strcmp(text, "jack") == 0) {
-    *out = CPKT_AUDIO_DEVICE_BACKEND_JACK;
   } else if (strcmp(text, "coreaudio") == 0) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO;
   } else {
@@ -190,9 +185,8 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   total_frames = 0U;
   do {
     frames_read = 0U;
-    result = segment->read_f32_mono_16k(segment, frames,
-                                        CPKT_LIVE_VOX_READ_FRAMES,
-                                        &frames_read);
+    result = segment->read_f32_mono_16k(
+        segment, frames, CPKT_LIVE_VOX_READ_FRAMES, &frames_read);
     if (result != CPKT_AUDIO_OK && result != CPKT_AUDIO_AT_END) {
       encoder->destroy(encoder);
       return 1;
@@ -208,8 +202,7 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
       if (run->playback != NULL) {
         frames_written = 0U;
         if (run->playback->write_f32_mono_16k(run->playback, frames,
-                                              frames_read,
-                                              &frames_written) !=
+                                              frames_read, &frames_written) !=
                 CPKT_AUDIO_OK ||
             frames_written != frames_read) {
           encoder->destroy(encoder);
@@ -236,8 +229,8 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   fprintf(stdout,
           "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d wav=%s\n",
           segment->segment_index, (unsigned long)total_frames,
-          (double)total_frames / 16000.0, segment->hard_cut,
-          segment->is_final, path);
+          (double)total_frames / 16000.0, segment->hard_cut, segment->is_final,
+          path);
   fflush(stdout);
   if (run->summary != NULL) {
     fprintf(run->summary,
@@ -255,16 +248,25 @@ static void cpkt_live_vox_usage(FILE *out) {
   fprintf(out, "usage: cpkt_audio_live_vox_c89_example --live [options]\n\n");
   fprintf(out, "No arguments run a no-device smoke test.\n\n");
   fprintf(out, "Options:\n");
-  fprintf(out, "  --live                      Open the default capture device.\n");
-  fprintf(out, "  --replay N                  Replay segments to default output; default 0.\n");
-  fprintf(out, "  --seconds N                 Capture duration; default 0, run until terminated.\n");
-  fprintf(out, "  --threshold-milli N         VOX threshold * 1000; default 30.\n");
+  fprintf(out,
+          "  --live                      Open the default capture device.\n");
+  fprintf(out, "  --replay N                  Replay segments to default "
+               "output; default 0.\n");
+  fprintf(out, "  --seconds N                 Capture duration; default 0, run "
+               "until terminated.\n");
+  fprintf(out,
+          "  --threshold-milli N         VOX threshold * 1000; default 30.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
-  fprintf(out, "  --max-segment-ms N          Hard cut budget; default 180000.\n");
-  fprintf(out, "  --buffer-ms N               Device ring buffer; default 2000.\n");
-  fprintf(out, "  --period-ms N               Device callback period; default 20.\n");
-  fprintf(out, "  --backend NAME              auto, alsa, pulseaudio, jack, coreaudio.\n");
-  fprintf(out, "  --dump-dir DIR              WAV dump directory; default build/live-vox-dump.\n");
+  fprintf(out,
+          "  --max-segment-ms N          Hard cut budget; default 180000.\n");
+  fprintf(out,
+          "  --buffer-ms N               Device ring buffer; default 2000.\n");
+  fprintf(
+      out,
+      "  --period-ms N               Device callback period; default 20.\n");
+  fprintf(out, "  --backend NAME              auto, alsa, coreaudio.\n");
+  fprintf(out, "  --dump-dir DIR              WAV dump directory; default "
+               "build/live-vox-dump.\n");
 }
 
 static int cpkt_live_vox_parse_options(int argc, char **argv,
@@ -413,9 +415,8 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
   end_time = opts->seconds != 0UL ? time(NULL) + (time_t)opts->seconds : 0;
   while (opts->seconds == 0UL || time(NULL) < end_time) {
     frames_read = 0U;
-    result = capture->read_f32_mono_16k(capture, frames,
-                                        CPKT_LIVE_VOX_READ_FRAMES,
-                                        &frames_read);
+    result = capture->read_f32_mono_16k(
+        capture, frames, CPKT_LIVE_VOX_READ_FRAMES, &frames_read);
     if (result != CPKT_AUDIO_OK) {
       fprintf(stderr, "capture read failed: %s\n",
               cpkt_audio_result_string(result));
@@ -428,7 +429,8 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
     captured_frames += (unsigned long)frames_read;
     result = vox->push_f32_mono_16k(vox, frames, frames_read);
     if (result != CPKT_AUDIO_OK) {
-      fprintf(stderr, "vox push failed: %s\n", cpkt_audio_result_string(result));
+      fprintf(stderr, "vox push failed: %s\n",
+              cpkt_audio_result_string(result));
       goto cleanup;
     }
   }
@@ -450,9 +452,9 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
   fprintf(stdout, "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
           run.segment_count, run.hard_count, run.final_count, opts->dump_dir);
   if (run.summary != NULL) {
-    fprintf(run.summary, "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
-            run.segment_count, run.hard_count, run.final_count,
-            opts->dump_dir);
+    fprintf(run.summary,
+            "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
+            run.segment_count, run.hard_count, run.final_count, opts->dump_dir);
   }
   rc = 0;
 

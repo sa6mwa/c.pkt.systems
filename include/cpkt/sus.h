@@ -14,6 +14,11 @@ typedef struct cpkt_sus_transcriber cpkt_sus_transcriber;
 #define CPKT_AUDIO_DECODER_TYPEDEF
 typedef struct cpkt_audio_decoder cpkt_audio_decoder;
 #endif
+#ifndef CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
+#define CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
+/** Pullable audio VOX segment accepted by speech streaming helpers. */
+typedef struct cpkt_audio_vox_segment cpkt_audio_vox_segment;
+#endif
 /** Compatibility alias for the initial combined model handle name. */
 typedef cpkt_sus_model cpkt_sus;
 
@@ -96,7 +101,8 @@ typedef struct cpkt_sus_segment {
   long t1;
 } cpkt_sus_segment;
 
-/** Committed streaming transcript state delivered after a VOX segment closes. */
+/** Committed streaming transcript state delivered after a VOX segment closes.
+ */
 typedef struct cpkt_sus_realtime_event {
   /** Current session transcript owned by the facade during the callback. */
   const char *text;
@@ -206,7 +212,8 @@ typedef struct cpkt_sus_transcriber_config {
   void *abort_user;
 } cpkt_sus_transcriber_config;
 
-/** VOX-segmented audio-decoder transcription options. Zero initializes defaults. */
+/** VOX-segmented audio-decoder transcription options. Zero initializes
+ * defaults. */
 typedef struct cpkt_sus_realtime_config {
   /**
    * Frames pulled from the audio decoder per read. Zero selects 4096 frames.
@@ -305,11 +312,23 @@ struct cpkt_sus_transcriber {
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
       const cpkt_sus_realtime_config *config);
   /**
+   * Transcribes one cpktaudio VOX segment into this streaming session.
+   *
+   * The segment is consumed during the call. Previous audio is not
+   * retranscribed; prompt tokens captured from prior calls on this transcriber
+   * are used for continuity unless disabled by config->keep_context. The
+   * session transcript is updated and delivered through config->realtime_sink
+   * when provided.
+   */
+  cpkt_sus_result (*transcribe_audio_vox_segment)(
+      cpkt_sus_transcriber *self, cpkt_audio_vox_segment *segment,
+      const cpkt_sus_realtime_config *config);
+  /**
    * Runs VOX-segmented decoder transcription and returns session text.
    *
-   * Audio remains streaming and bounded as with transcribe_audio_decoder_realtime.
-   * The returned text is assembled from committed segment updates and must be
-   * released with cpkt_sus_string_free.
+   * Audio remains streaming and bounded as with
+   * transcribe_audio_decoder_realtime. The returned text is assembled from
+   * committed segment updates and must be released with cpkt_sus_string_free.
    */
   cpkt_sus_result (*transcribe_audio_decoder_realtime_text)(
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
@@ -321,8 +340,7 @@ struct cpkt_sus_transcriber {
    * call. It is empty before any streaming call that produced text. The caller
    * must release *text_out with cpkt_sus_string_free.
    */
-  cpkt_sus_result (*revised_text)(cpkt_sus_transcriber *self,
-                                  char **text_out);
+  cpkt_sus_result (*revised_text)(cpkt_sus_transcriber *self, char **text_out);
   /** Releases the transcriber. The loaded model remains owned by its model
    * handle. */
   void (*destroy)(cpkt_sus_transcriber *self);

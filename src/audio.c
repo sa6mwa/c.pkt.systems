@@ -196,8 +196,7 @@ static int cpkt_audio_ascii_ieq_char(char left, char right) {
          cpkt_audio_ascii_tolower((unsigned char)right);
 }
 
-static int cpkt_audio_ascii_istarts_with(const char *text,
-                                         const char *prefix) {
+static int cpkt_audio_ascii_istarts_with(const char *text, const char *prefix) {
   if (text == NULL || prefix == NULL) {
     return 0;
   }
@@ -280,7 +279,8 @@ cpkt_audio_source_format_from_config(const cpkt_audio_decoder_config *config) {
   return cpkt_audio_format_from_encoding(config->encoding);
 }
 
-static void cpkt_audio_url_source_destroy(struct cpkt_audio_url_source *source) {
+static void
+cpkt_audio_url_source_destroy(struct cpkt_audio_url_source *source) {
   if (source == NULL) {
     return;
   }
@@ -305,8 +305,8 @@ static int cpkt_audio_size_add(size_t left, size_t right, size_t *out) {
   return 1;
 }
 
-static size_t cpkt_audio_url_buffer_end(
-    const struct cpkt_audio_url_source *source) {
+static size_t
+cpkt_audio_url_buffer_end(const struct cpkt_audio_url_source *source) {
   size_t end;
 
   if (source == NULL ||
@@ -374,9 +374,8 @@ static size_t cpkt_audio_url_write(void *buffer, size_t size, size_t nmemb,
   if (needed > source->buffer_capacity) {
     size_t next_capacity;
 
-    next_capacity = source->buffer_capacity == 0U
-                        ? CPKT_AUDIO_URL_BUFFER_CHUNK
-                        : source->buffer_capacity;
+    next_capacity = source->buffer_capacity == 0U ? CPKT_AUDIO_URL_BUFFER_CHUNK
+                                                  : source->buffer_capacity;
     while (next_capacity < needed) {
       if (next_capacity > ((size_t)-1) / 2U) {
         source->failed = 1;
@@ -427,9 +426,8 @@ static size_t cpkt_audio_url_header(char *buffer, size_t size, size_t nmemb,
     ++cursor;
   }
   copied = 0U;
-  while ((size_t)(cursor - buffer) < byte_count &&
-         *cursor != '\r' && *cursor != '\n' &&
-         copied + 1U < sizeof(source->content_type)) {
+  while ((size_t)(cursor - buffer) < byte_count && *cursor != '\r' &&
+         *cursor != '\n' && copied + 1U < sizeof(source->content_type)) {
     source->content_type[copied++] = *cursor++;
   }
   while (copied > 0U && (source->content_type[copied - 1U] == ' ' ||
@@ -467,7 +465,8 @@ cpkt_audio_url_source_collect_done(struct cpkt_audio_url_source *source) {
   }
 }
 
-static int cpkt_audio_url_source_progress(struct cpkt_audio_url_source *source) {
+static int
+cpkt_audio_url_source_progress(struct cpkt_audio_url_source *source) {
   CURLMcode code;
 
   if (source == NULL || source->multi == NULL || source->failed) {
@@ -528,8 +527,8 @@ cpkt_audio_url_source_detect_format(struct cpkt_audio_url_source *source,
   if (format == CPKT_AUDIO_FORMAT_UNKNOWN) {
     buffer_end = cpkt_audio_url_buffer_end(source);
     if (source->buffer_base == 0U && buffer_end != (size_t)-1) {
-      inspect_size = buffer_end < source->buffer_size ? buffer_end
-                                                      : source->buffer_size;
+      inspect_size =
+          buffer_end < source->buffer_size ? buffer_end : source->buffer_size;
       if (inspect_size > 16U) {
         inspect_size = 16U;
       }
@@ -540,8 +539,9 @@ cpkt_audio_url_source_detect_format(struct cpkt_audio_url_source *source,
   return CPKT_AUDIO_OK;
 }
 
-static int cpkt_audio_url_source_download_until(
-    struct cpkt_audio_url_source *source, size_t target_offset) {
+static int
+cpkt_audio_url_source_download_until(struct cpkt_audio_url_source *source,
+                                     size_t target_offset) {
   int queued;
 
   if (source == NULL) {
@@ -709,8 +709,7 @@ static int cpkt_audio_mp3_skip_id3v2(struct cpkt_audio_decoder_impl *impl) {
   }
   tag_size = ((size_t)impl->mp3_bytes[6] << 21U) |
              ((size_t)impl->mp3_bytes[7] << 14U) |
-             ((size_t)impl->mp3_bytes[8] << 7U) |
-             (size_t)impl->mp3_bytes[9];
+             ((size_t)impl->mp3_bytes[8] << 7U) | (size_t)impl->mp3_bytes[9];
   tag_size += 10U;
   if ((impl->mp3_bytes[5] & 0x10U) != 0U) {
     tag_size += 10U;
@@ -764,7 +763,7 @@ cpkt_audio_mp3_decode_next_frame(struct cpkt_audio_decoder_impl *impl) {
         memset(&frame_info, 0, sizeof(frame_info));
         frame_count = ma_dr_mp3dec_decode_frame(
             &impl->mp3, impl->mp3_bytes + impl->mp3_byte_cursor, (int)available,
-          impl->mp3_input, &frame_info);
+            impl->mp3_input, &frame_info);
         if (frame_info.frame_bytes > 0) {
           impl->mp3_byte_cursor += (size_t)frame_info.frame_bytes;
           cpkt_audio_mp3_buffer_compact(impl);
@@ -781,8 +780,8 @@ cpkt_audio_mp3_decode_next_frame(struct cpkt_audio_decoder_impl *impl) {
       }
     }
 
-    bytes_read = cpkt_audio_drmp3_url_read(impl->url_source, chunk,
-                                           sizeof(chunk));
+    bytes_read =
+        cpkt_audio_drmp3_url_read(impl->url_source, chunk, sizeof(chunk));
     if (bytes_read == 0U) {
       if (impl->url_source->failed) {
         return impl->mp3_input_frames > 0 ? CPKT_AUDIO_OK : CPKT_AUDIO_AT_END;
@@ -892,8 +891,9 @@ cpkt_audio_url_source_create(struct cpkt_audio_url_source **out,
   return CPKT_AUDIO_OK;
 }
 
-static cpkt_audio_result cpkt_audio_detect_reader_format(
-    int *format_out, const cpkt_audio_reader *reader) {
+static cpkt_audio_result
+cpkt_audio_detect_reader_format(int *format_out,
+                                const cpkt_audio_reader *reader) {
   unsigned char header[16];
   size_t read_size;
 
@@ -969,8 +969,8 @@ static void cpkt_audio_vox_reset_segment(struct cpkt_audio_vox_impl *impl) {
   impl->open = 0;
 }
 
-static cpkt_audio_result cpkt_audio_vox_spill_to_file(
-    struct cpkt_audio_vox_impl *impl) {
+static cpkt_audio_result
+cpkt_audio_vox_spill_to_file(struct cpkt_audio_vox_impl *impl) {
   if (impl == NULL) {
     return CPKT_AUDIO_ERR_ARG;
   }
@@ -992,8 +992,7 @@ static cpkt_audio_result cpkt_audio_vox_spill_to_file(
 
 static cpkt_audio_result
 cpkt_audio_vox_segment_read_impl(cpkt_audio_vox_segment *self, float *frames,
-                                 size_t frame_capacity,
-                                 size_t *frames_read) {
+                                 size_t frame_capacity, size_t *frames_read) {
   struct cpkt_audio_vox_impl *impl;
   size_t remaining;
   size_t to_read;
@@ -1022,8 +1021,7 @@ cpkt_audio_vox_segment_read_impl(cpkt_audio_vox_segment *self, float *frames,
       return CPKT_AUDIO_ERR_IO;
     }
   } else {
-    memcpy(frames, impl->frames + impl->read_cursor,
-           sizeof(float) * to_read);
+    memcpy(frames, impl->frames + impl->read_cursor, sizeof(float) * to_read);
     read_count = to_read;
   }
   impl->read_cursor += read_count;
@@ -1075,8 +1073,8 @@ static cpkt_audio_result cpkt_audio_vox_emit(struct cpkt_audio_vox_impl *impl,
   return CPKT_AUDIO_OK;
 }
 
-static cpkt_audio_result cpkt_audio_vox_append_frame(
-    struct cpkt_audio_vox_impl *impl, float frame) {
+static cpkt_audio_result
+cpkt_audio_vox_append_frame(struct cpkt_audio_vox_impl *impl, float frame) {
   if (impl == NULL || impl->frames == NULL) {
     return CPKT_AUDIO_ERR_ARG;
   }
@@ -1115,8 +1113,8 @@ static void cpkt_audio_vox_note_loudness(struct cpkt_audio_vox_impl *impl,
   }
 }
 
-static cpkt_audio_result cpkt_audio_vox_emit_state(
-    struct cpkt_audio_vox_impl *impl, int state) {
+static cpkt_audio_result
+cpkt_audio_vox_emit_state(struct cpkt_audio_vox_impl *impl, int state) {
   cpkt_audio_vox_state_event event;
   int callback_result;
 
@@ -1131,8 +1129,7 @@ static cpkt_audio_result cpkt_audio_vox_emit_state(
   event.state = state;
   event.segment_index = impl->segment_index;
   event.threshold = impl->threshold;
-  callback_result =
-      impl->config.state_sink(&event, impl->config.state_user);
+  callback_result = impl->config.state_sink(&event, impl->config.state_user);
   if (callback_result != 0) {
     impl->callback_error = 1;
     return CPKT_AUDIO_ERR_IO;
@@ -1141,8 +1138,7 @@ static cpkt_audio_result cpkt_audio_vox_emit_state(
 }
 
 static cpkt_audio_result
-cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self,
-                                      const float *frames,
+cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self, const float *frames,
                                       size_t frame_count) {
   struct cpkt_audio_vox_impl *impl;
   size_t i;
@@ -1442,10 +1438,9 @@ cpkt_audio_decoder_read_f32_mono_16k_impl(cpkt_audio_decoder *self,
       produced_out = (ma_uint64)frame_capacity - total_out;
       converter_result = ma_data_converter_process_pcm_frames(
           &impl->converter,
-          available_in > 0
-              ? impl->mp3_input +
-                    (impl->mp3_input_cursor * (ma_uint64)impl->mp3_channels)
-              : NULL,
+          available_in > 0 ? impl->mp3_input + (impl->mp3_input_cursor *
+                                                (ma_uint64)impl->mp3_channels)
+                           : NULL,
           &consumed_in, frames + total_out, &produced_out);
       impl->mp3_input_cursor += consumed_in;
       total_out += produced_out;
@@ -1627,15 +1622,38 @@ static ma_backend cpkt_audio_to_ma_backend(int backend) {
   switch (backend) {
   case CPKT_AUDIO_DEVICE_BACKEND_ALSA:
     return ma_backend_alsa;
-  case CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO:
-    return ma_backend_pulseaudio;
-  case CPKT_AUDIO_DEVICE_BACKEND_JACK:
-    return ma_backend_jack;
   case CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO:
     return ma_backend_coreaudio;
   default:
     return ma_backend_null;
   }
+}
+
+static cpkt_audio_result cpkt_audio_resolve_device_backend(int requested,
+                                                           ma_backend *out) {
+  if (out == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (requested == CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO ||
+      requested == CPKT_AUDIO_DEVICE_BACKEND_JACK) {
+    *out = ma_backend_null;
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO) {
+#if defined(__APPLE__)
+    *out = ma_backend_coreaudio;
+#elif defined(__linux__)
+    *out = ma_backend_alsa;
+#else
+    *out = ma_backend_null;
+#endif
+    return CPKT_AUDIO_OK;
+  }
+  *out = cpkt_audio_to_ma_backend(requested);
+  if (*out == ma_backend_null) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  return CPKT_AUDIO_OK;
 }
 
 static ma_uint32 cpkt_audio_device_buffer_frames(unsigned long buffer_ms) {
@@ -1669,9 +1687,8 @@ static void cpkt_audio_capture_callback(ma_device *device, void *output,
   ma_uint32 remaining;
 
   (void)output;
-  impl = device != NULL
-             ? (struct cpkt_audio_capture_impl *)device->pUserData
-             : NULL;
+  impl = device != NULL ? (struct cpkt_audio_capture_impl *)device->pUserData
+                        : NULL;
   if (impl == NULL || input == NULL || frame_count == 0U) {
     return;
   }
@@ -1717,9 +1734,8 @@ static void cpkt_audio_playback_callback(ma_device *device, void *output,
   ma_uint32 remaining;
 
   (void)input;
-  impl = device != NULL
-             ? (struct cpkt_audio_playback_impl *)device->pUserData
-             : NULL;
+  impl = device != NULL ? (struct cpkt_audio_playback_impl *)device->pUserData
+                        : NULL;
   if (output == NULL || frame_count == 0U) {
     return;
   }
@@ -1770,8 +1786,7 @@ cpkt_audio_capture_start_impl(cpkt_audio_capture *self) {
 
 static cpkt_audio_result
 cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
-                                          float *frames,
-                                          size_t frame_capacity,
+                                          float *frames, size_t frame_capacity,
                                           size_t *frames_read) {
   struct cpkt_audio_capture_impl *impl;
   size_t total_read;
@@ -1810,7 +1825,8 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
   return CPKT_AUDIO_OK;
 }
 
-static cpkt_audio_result cpkt_audio_capture_stop_impl(cpkt_audio_capture *self) {
+static cpkt_audio_result
+cpkt_audio_capture_stop_impl(cpkt_audio_capture *self) {
   struct cpkt_audio_capture_impl *impl;
 
   if (self == NULL || self->impl == NULL) {
@@ -1863,11 +1879,9 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
   return CPKT_AUDIO_OK;
 }
 
-static cpkt_audio_result
-cpkt_audio_playback_write_f32_mono_16k_impl(cpkt_audio_playback *self,
-                                            const float *frames,
-                                            size_t frame_count,
-                                            size_t *frames_written) {
+static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
+    cpkt_audio_playback *self, const float *frames, size_t frame_count,
+    size_t *frames_written) {
   struct cpkt_audio_playback_impl *impl;
   size_t total_written;
 
@@ -1906,8 +1920,8 @@ cpkt_audio_playback_write_f32_mono_16k_impl(cpkt_audio_playback *self,
   return CPKT_AUDIO_OK;
 }
 
-static cpkt_audio_result cpkt_audio_playback_drain_impl(
-    cpkt_audio_playback *self) {
+static cpkt_audio_result
+cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
   struct cpkt_audio_playback_impl *impl;
 
   if (self == NULL || self->impl == NULL) {
@@ -1920,8 +1934,8 @@ static cpkt_audio_result cpkt_audio_playback_drain_impl(
   return CPKT_AUDIO_OK;
 }
 
-static cpkt_audio_result cpkt_audio_playback_stop_impl(
-    cpkt_audio_playback *self) {
+static cpkt_audio_result
+cpkt_audio_playback_stop_impl(cpkt_audio_playback *self) {
   struct cpkt_audio_playback_impl *impl;
 
   if (self == NULL || self->impl == NULL) {
@@ -2210,8 +2224,8 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
   if (impl->source_format == CPKT_AUDIO_FORMAT_MP3) {
     impl->mode = CPKT_AUDIO_DECODER_MODE_DRMP3;
     ma_dr_mp3dec_init(&impl->mp3);
-    impl->mp3_input = (ma_int16 *)malloc(sizeof(ma_int16) *
-                                         MA_DR_MP3_MAX_SAMPLES_PER_FRAME);
+    impl->mp3_input =
+        (ma_int16 *)malloc(sizeof(ma_int16) * MA_DR_MP3_MAX_SAMPLES_PER_FRAME);
     if (impl->mp3_input == NULL) {
       decoder->impl = NULL;
       cpkt_audio_url_source_destroy(source);
@@ -2233,8 +2247,8 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
     converter_config = ma_data_converter_config_init(
         ma_format_s16, ma_format_f32, impl->mp3_channels, 1,
         impl->mp3_sample_rate, 16000);
-    ma_status = ma_data_converter_init(&converter_config, NULL,
-                                       &impl->converter);
+    ma_status =
+        ma_data_converter_init(&converter_config, NULL, &impl->converter);
     if (ma_status != MA_SUCCESS) {
       decoder->impl = NULL;
       cpkt_audio_url_source_destroy(source);
@@ -2277,10 +2291,9 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
 }
 
 /** Opens a receiver-shell decoder for callback-based input. */
-CPKT_AUDIO_EXPORT cpkt_audio_result
-cpkt_audio_decoder_open_reader(cpkt_audio_decoder **out,
-                               const cpkt_audio_reader *reader,
-                               const cpkt_audio_decoder_config *config) {
+CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_decoder_open_reader(
+    cpkt_audio_decoder **out, const cpkt_audio_reader *reader,
+    const cpkt_audio_decoder_config *config) {
   cpkt_audio_decoder *decoder;
   struct cpkt_audio_decoder_impl *impl;
   ma_decoder_config ma_config;
@@ -2368,10 +2381,9 @@ cpkt_audio_encoder_open_file(cpkt_audio_encoder **out, const char *path,
 }
 
 /** Opens a receiver-shell encoder for callback-based output. */
-CPKT_AUDIO_EXPORT cpkt_audio_result
-cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
-                               const cpkt_audio_writer *writer,
-                               const cpkt_audio_encoder_config *config) {
+CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_encoder_open_writer(
+    cpkt_audio_encoder **out, const cpkt_audio_writer *writer,
+    const cpkt_audio_encoder_config *config) {
   cpkt_audio_encoder *encoder;
   struct cpkt_audio_encoder_impl *impl;
   ma_encoder_config ma_config;
@@ -2412,9 +2424,8 @@ cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
 }
 
 /** Opens receiver-shell capture from the platform default input device. */
-CPKT_AUDIO_EXPORT cpkt_audio_result
-cpkt_audio_capture_open_default(cpkt_audio_capture **out,
-                                const cpkt_audio_capture_config *config) {
+CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
+    cpkt_audio_capture **out, const cpkt_audio_capture_config *config) {
   cpkt_audio_capture *capture;
   struct cpkt_audio_capture_impl *impl;
   ma_device_config ma_config;
@@ -2430,8 +2441,8 @@ cpkt_audio_capture_open_default(cpkt_audio_capture **out,
     return CPKT_AUDIO_ERR_ARG;
   }
 
-  buffer_frames = cpkt_audio_device_buffer_frames(
-      config != NULL ? config->buffer_ms : 0UL);
+  buffer_frames =
+      cpkt_audio_device_buffer_frames(config != NULL ? config->buffer_ms : 0UL);
   if (buffer_frames == 0U) {
     return CPKT_AUDIO_ERR_ARG;
   }
@@ -2440,8 +2451,8 @@ cpkt_audio_capture_open_default(cpkt_audio_capture **out,
   if (result != CPKT_AUDIO_OK) {
     return result;
   }
-  ma_status = ma_pcm_rb_init(ma_format_f32, 1, buffer_frames, NULL, NULL,
-                             &impl->rb);
+  ma_status =
+      ma_pcm_rb_init(ma_format_f32, 1, buffer_frames, NULL, NULL, &impl->rb);
   if (ma_status != MA_SUCCESS) {
     capture->impl = NULL;
     free(impl);
@@ -2454,12 +2465,20 @@ cpkt_audio_capture_open_default(cpkt_audio_capture **out,
   ma_config.capture.format = ma_format_f32;
   ma_config.capture.channels = 1;
   ma_config.sampleRate = 16000;
-  ma_config.periodSizeInMilliseconds = cpkt_audio_device_period_ms(
-      config != NULL ? config->period_ms : 0UL);
+  ma_config.periodSizeInMilliseconds =
+      cpkt_audio_device_period_ms(config != NULL ? config->period_ms : 0UL);
   ma_config.dataCallback = cpkt_audio_capture_callback;
   ma_config.pUserData = impl;
 
-  backend = cpkt_audio_to_ma_backend(config != NULL ? config->backend : 0);
+  result = cpkt_audio_resolve_device_backend(
+      config != NULL ? config->backend : 0, &backend);
+  if (result != CPKT_AUDIO_OK) {
+    capture->impl = NULL;
+    ma_pcm_rb_uninit(&impl->rb);
+    free(impl);
+    free(capture);
+    return result;
+  }
   if (backend == ma_backend_null) {
     ma_status = ma_device_init(NULL, &ma_config, &impl->device);
   } else {
@@ -2478,9 +2497,8 @@ cpkt_audio_capture_open_default(cpkt_audio_capture **out,
 }
 
 /** Opens receiver-shell playback to the platform default output device. */
-CPKT_AUDIO_EXPORT cpkt_audio_result
-cpkt_audio_playback_open_default(cpkt_audio_playback **out,
-                                 const cpkt_audio_playback_config *config) {
+CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
+    cpkt_audio_playback **out, const cpkt_audio_playback_config *config) {
   cpkt_audio_playback *playback;
   struct cpkt_audio_playback_impl *impl;
   ma_device_config ma_config;
@@ -2496,8 +2514,8 @@ cpkt_audio_playback_open_default(cpkt_audio_playback **out,
     return CPKT_AUDIO_ERR_ARG;
   }
 
-  buffer_frames = cpkt_audio_device_buffer_frames(
-      config != NULL ? config->buffer_ms : 0UL);
+  buffer_frames =
+      cpkt_audio_device_buffer_frames(config != NULL ? config->buffer_ms : 0UL);
   if (buffer_frames == 0U) {
     return CPKT_AUDIO_ERR_ARG;
   }
@@ -2506,8 +2524,8 @@ cpkt_audio_playback_open_default(cpkt_audio_playback **out,
   if (result != CPKT_AUDIO_OK) {
     return result;
   }
-  ma_status = ma_pcm_rb_init(ma_format_f32, 1, buffer_frames, NULL, NULL,
-                             &impl->rb);
+  ma_status =
+      ma_pcm_rb_init(ma_format_f32, 1, buffer_frames, NULL, NULL, &impl->rb);
   if (ma_status != MA_SUCCESS) {
     playback->impl = NULL;
     free(impl);
@@ -2520,12 +2538,20 @@ cpkt_audio_playback_open_default(cpkt_audio_playback **out,
   ma_config.playback.format = ma_format_f32;
   ma_config.playback.channels = 1;
   ma_config.sampleRate = 16000;
-  ma_config.periodSizeInMilliseconds = cpkt_audio_device_period_ms(
-      config != NULL ? config->period_ms : 0UL);
+  ma_config.periodSizeInMilliseconds =
+      cpkt_audio_device_period_ms(config != NULL ? config->period_ms : 0UL);
   ma_config.dataCallback = cpkt_audio_playback_callback;
   ma_config.pUserData = impl;
 
-  backend = cpkt_audio_to_ma_backend(config != NULL ? config->backend : 0);
+  result = cpkt_audio_resolve_device_backend(
+      config != NULL ? config->backend : 0, &backend);
+  if (result != CPKT_AUDIO_OK) {
+    playback->impl = NULL;
+    ma_pcm_rb_uninit(&impl->rb);
+    free(impl);
+    free(playback);
+    return result;
+  }
   if (backend == ma_backend_null) {
     ma_status = ma_device_init(NULL, &ma_config, &impl->device);
   } else {
@@ -2545,8 +2571,7 @@ cpkt_audio_playback_open_default(cpkt_audio_playback **out,
 
 /** Opens a receiver-shell VOX segmenter for float32 mono 16000 Hz PCM. */
 CPKT_AUDIO_EXPORT cpkt_audio_result
-cpkt_audio_vox_open(cpkt_audio_vox **out,
-                    const cpkt_audio_vox_config *config) {
+cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   cpkt_audio_vox *vox;
   struct cpkt_audio_vox_impl *impl;
   unsigned long release_frames;
@@ -2566,9 +2591,8 @@ cpkt_audio_vox_open(cpkt_audio_vox **out,
     return CPKT_AUDIO_ERR_ARG;
   }
 
-  release_ms = config->release_silence_ms != 0UL
-                   ? config->release_silence_ms
-                   : 1500UL;
+  release_ms =
+      config->release_silence_ms != 0UL ? config->release_silence_ms : 1500UL;
   min_ms = config->min_segment_ms != 0UL ? config->min_segment_ms : 100UL;
   if (!cpkt_audio_ms_to_16k_frames(release_ms, &release_frames) ||
       !cpkt_audio_ms_to_16k_frames(min_ms, &min_frames) ||
@@ -2585,11 +2609,9 @@ cpkt_audio_vox_open(cpkt_audio_vox **out,
   memory_spool_bytes = config->memory_spool_bytes != 0UL
                            ? config->memory_spool_bytes
                            : 1048576UL;
-  max_spool_bytes = config->max_spool_bytes != 0UL
-                        ? config->max_spool_bytes
-                        : 1073741824UL;
-  if (memory_spool_bytes < sizeof(float) ||
-      max_spool_bytes < sizeof(float) ||
+  max_spool_bytes =
+      config->max_spool_bytes != 0UL ? config->max_spool_bytes : 1073741824UL;
+  if (memory_spool_bytes < sizeof(float) || max_spool_bytes < sizeof(float) ||
       memory_spool_bytes > max_spool_bytes) {
     return CPKT_AUDIO_ERR_ARG;
   }
@@ -2644,7 +2666,8 @@ CPKT_AUDIO_EXPORT int cpkt_audio_format_can_encode(int format) {
 }
 
 /** Converts an audio result code into a stable diagnostic string. */
-CPKT_AUDIO_EXPORT const char *cpkt_audio_result_string(cpkt_audio_result result) {
+CPKT_AUDIO_EXPORT const char *
+cpkt_audio_result_string(cpkt_audio_result result) {
   switch (result) {
   case CPKT_AUDIO_OK:
     return "ok";

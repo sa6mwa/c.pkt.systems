@@ -79,9 +79,9 @@ typedef enum cpkt_audio_device_backend {
   CPKT_AUDIO_DEVICE_BACKEND_AUTO = 0,
   /** Linux ALSA backend. Requires libasound at runtime. */
   CPKT_AUDIO_DEVICE_BACKEND_ALSA = 1,
-  /** PulseAudio or PipeWire-Pulse backend. Requires libpulse at runtime. */
+  /** Reserved for a future PulseAudio backend. Currently rejected. */
   CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO = 2,
-  /** JACK backend. Requires libjack at runtime. */
+  /** Reserved for a future JACK backend. Currently rejected. */
   CPKT_AUDIO_DEVICE_BACKEND_JACK = 3,
   /** Darwin Core Audio backend. */
   CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO = 4
@@ -175,7 +175,8 @@ typedef struct cpkt_audio_encoder_config {
   unsigned long channels;
 } cpkt_audio_encoder_config;
 
-/** Capture construction options. Zero initializes to default mic, mono 16 kHz. */
+/** Capture construction options. Zero initializes to default mic, mono 16 kHz.
+ */
 typedef struct cpkt_audio_capture_config {
   /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
   int backend;
@@ -185,7 +186,8 @@ typedef struct cpkt_audio_capture_config {
   unsigned long period_ms;
 } cpkt_audio_capture_config;
 
-/** Playback construction options. Zero initializes to default output, mono 16 kHz. */
+/** Playback construction options. Zero initializes to default output, mono 16
+ * kHz. */
 typedef struct cpkt_audio_playback_config {
   /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
   int backend;
@@ -195,8 +197,12 @@ typedef struct cpkt_audio_playback_config {
   unsigned long period_ms;
 } cpkt_audio_playback_config;
 
-/** Pullable VOX segment delivered when speech releases or a budget is reached. */
+#ifndef CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
+#define CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
+/** Pullable VOX segment delivered when speech releases or a budget is reached.
+ */
 typedef struct cpkt_audio_vox_segment cpkt_audio_vox_segment;
+#endif
 
 /** VOX state event delivered when TX/RX state changes or a hard cut occurs. */
 typedef struct cpkt_audio_vox_state_event {
@@ -238,8 +244,8 @@ struct cpkt_audio_vox_segment {
  * Return zero to continue. Returning non-zero makes the active push or flush
  * call return CPKT_AUDIO_ERR_IO.
  */
-typedef int (*cpkt_audio_vox_segment_sink)(
-    cpkt_audio_vox_segment *segment, void *user);
+typedef int (*cpkt_audio_vox_segment_sink)(cpkt_audio_vox_segment *segment,
+                                           void *user);
 
 /**
  * Receives VOX TX/RX state events.
@@ -256,7 +262,8 @@ typedef struct cpkt_audio_vox_config {
   float threshold;
   /** Silence duration that releases VOX. Zero selects 1500 ms. */
   unsigned long release_silence_ms;
-  /** Maximum segment duration before a budget split. Zero disables the time cap. */
+  /** Maximum segment duration before a budget split. Zero disables the time
+   * cap. */
   unsigned long max_segment_ms;
   /** Minimum segment duration to emit. Zero selects 100 ms. */
   unsigned long min_segment_ms;
@@ -352,8 +359,9 @@ struct cpkt_audio_playback {
   /**
    * Queues 32-bit float, mono, 16000 Hz PCM frames for playback.
    *
-   * frames_written is set before return when arguments are valid. The call waits
-   * for bounded ring-buffer space instead of materializing the full stream.
+   * frames_written is set before return when arguments are valid. The call
+   * waits for bounded ring-buffer space instead of materializing the full
+   * stream.
    */
   cpkt_audio_result (*write_f32_mono_16k)(cpkt_audio_playback *self,
                                           const float *frames,

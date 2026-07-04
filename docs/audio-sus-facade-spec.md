@@ -113,9 +113,11 @@ Initial miniaudio build intent:
 - Enable miniaudio device I/O for the `cpkt_audio` capture/playback facade.
   Device backends must use miniaudio runtime loading so ALSA, PulseAudio,
   PipeWire-Pulse, JACK, and similar host audio libraries remain runtime
-  optional instead of downstream link requirements. Linux builds support auto,
-  ALSA, PulseAudio, and JACK backend selection. Darwin builds support auto and
-  Core Audio backend selection.
+  optional instead of downstream link requirements. Linux dynamic builds support
+  auto and ALSA backend selection only while the first device path is proven.
+  Darwin builds support auto and Core Audio backend selection. PulseAudio and
+  JACK are intentionally rejected for now so cpktaudio does not imply bundling
+  the wider desktop-audio stack before ALSA is proven sufficient.
   Fully static glibc consumers may see the standard linker warning for `dlopen`
   in static binaries; this is preferable to making every audio consumer link
   host device backend libraries.
@@ -445,6 +447,10 @@ The decoder realtime path therefore uses `cpkt_audio` VOX segmentation:
 - previous audio is never sent through Whisper again;
 - prompt tokens captured from the previous committed segment are supplied to the
   next `whisper_full` call when prompt carry is enabled;
+- `cpkt_audio_vox_segment` is an intended interop object between the libraries:
+  callers may route VOX segments directly into
+  `cpkt_sus_transcriber->transcribe_audio_vox_segment(...)` instead of
+  extracting PCM and calling a lower-level buffer transcription path;
 - `step_ms` is retained only as a compatibility field and does not schedule
   fixed-step inference.
 

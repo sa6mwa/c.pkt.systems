@@ -1,19 +1,19 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <setjmp.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <signal.h>
 
 #include <cmocka.h>
 
@@ -52,21 +52,36 @@ static const unsigned char test_flac_mono_8000[] = {
     0x64, 0x08, 0x00, 0x27, 0x16, 0x00, 0x00, 0x00, 0x62, 0x62};
 
 static const char test_mp3_mono_44100_base64[] =
-    "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAwAAAAAAAAAAAAAAD/+1DAAAAAAAAAAAAA"
-    "AAAAAAAAAABJbmZvAAAADwAAAAMAAANCAH9/f39/f39/f39/f39/f39/f39/f39/f39/f39/f39/"
-    "f7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v///////////////////////////////"
-    "/////////////wAAAABMYXZjNjEuMTkAAAAAAAAAAAAAAAAkAqMAAAAAAAADQlOBWkoAAAAAAAAA"
-    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//tQxAAACixDLlWUgAGBFWYjOtAAB6rDjjOF02TxocEI"
-    "HFgfXh8YHEYEHonlsy5aD6g7E2vw+GBQFAQDAoJEDE5o0aNsH3iAEAQxOD/BB050+c5fznL+7p93"
-    "Lg+D4Ph8EAxKAMH9IAEIAAEEABhqOhh7cQgAQxTkZGgxtMo1uIUAgcb7B0p2czA4omYlhMYRhIt7"
-    "r9bBHQHT4DlEmC1fhah2jCiW/47hhhLiRHr/5ImReLxiXf/y6ZF4vIl0u/xEFQVER7/gqgBSsYA4"
-    "AdmAPP/7UsQEggpgIRC98QABWQSh4r4gAAHZgTgFyYAgBPGAjgcBltKwGZHsKjmFcA3JgpAHOYEm"
-    "BeGBUgUhgXIEUYBiAVQNRw6CztWZp1+qijh78q3/rXb9NWjq/enG///vAgngcAMmAKgJZgVIFGYD"
-    "ECiGCfBRRnWSrqZkaM9mG9hMZg6YGyYEOCKmB5gbZgdYGeYBiAfprvPDFiwco4UZ1nFaqN+S+/D9"
-    "3bQmxVm9Fn7l/oM+iuYqMAIAp1B2B3CHH43AwFAAA9mFYgg9oFI2fyYX//tSxA2ADeTJe/mJhJEw"
-    "jaMDsvAAU8oeWf0puguE1Ir4jcugdxAHR4uMey6CMwHEwASfFLjTLo4wt6AGEFoIlL5XY3K7BcMH"
-    "oizg+IV39N7vGeEJhqj4GOH3//lApFMwOGZc/6gcEZwCBcg14DjgNtAWCL6mMeai5pFrDmQqbTJo"
-    "DqhXMyZYEtKSYnouKEwFdHL6PSqm1WxYT67Chr7MXVrZesMbNfa3q9PWFQW6////fy3numpMQU1F"
+    "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAwAAAAAAAAAAAAAAD/"
+    "+1DAAAAAAAAAAAAA"
+    "AAAAAAAAAABJbmZvAAAADwAAAAMAAANCAH9/f39/f39/f39/f39/f39/f39/f39/f39/f39/"
+    "f39/"
+    "f7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v/////////////////////////////"
+    "//"
+    "/////////////"
+    "wAAAABMYXZjNjEuMTkAAAAAAAAAAAAAAAAkAqMAAAAAAAADQlOBWkoAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//"
+    "tQxAAACixDLlWUgAGBFWYjOtAAB6rDjjOF02TxocEI"
+    "HFgfXh8YHEYEHonlsy5aD6g7E2vw+GBQFAQDAoJEDE5o0aNsH3iAEAQxOD/"
+    "BB050+c5fznL+7p93"
+    "Lg+"
+    "D4Ph8EAxKAMH9IAEIAAEEABhqOhh7cQgAQxTkZGgxtMo1uIUAgcb7B0p2czA4omYlhMYRhIt7"
+    "r9bBHQHT4DlEmC1fhah2jCiW/47hhhLiRHr/5ImReLxiXf/y6ZF4vIl0u/xEFQVER7/"
+    "gqgBSsYA4"
+    "AdmAPP/"
+    "7UsQEggpgIRC98QABWQSh4r4gAAHZgTgFyYAgBPGAjgcBltKwGZHsKjmFcA3JgpAHOYEm"
+    "BeGBUgUhgXIEUYBiAVQNRw6CztWZp1+qijh78q3/rXb9NWjq/enG///"
+    "vAgngcAMmAKgJZgVIFGYD"
+    "ECiGCfBRRnWSrqZkaM9mG9hMZg6YGyYEOCKmB5gbZgdYGeYBiAfprvPDFiwco4UZ1nFaqN+S+/"
+    "D9"
+    "3bQmxVm9Fn7l/oM+iuYqMAIAp1B2B3CHH43AwFAAA9mFYgg9oFI2fyYX//tSxA2ADeTJe/"
+    "mJhJEw"
+    "jaMDsvAAU8oeWf0puguE1Ir4jcugdxAHR4uMey6CMwHEwASfFLjTLo4wt6AGEFoIlL5XY3K7Bc"
+    "MH"
+    "oizg+IV39N7vGeEJhqj4GOH3//lApFMwOGZc/"
+    "6gcEZwCBcg14DjgNtAWCL6mMeai5pFrDmQqbTJo"
+    "DqhXMyZYEtKSYnouKEwFdHL6PSqm1WxYT67Chr7MXVrZesMbNfa3q9PWFQW6////"
+    "fy3numpMQU1F"
     "My4xMDCqqqqqqqqqqqqqqqqqqqqqqqo=";
 
 static size_t memory_read(void *user, void *buffer, size_t bytes_to_read) {
@@ -367,9 +382,9 @@ static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder,
     assert_true(peak > 0.000001f);
   }
   frames_read = 1;
-  assert_int_equal(decoder->read_f32_mono_16k(decoder, frames, 64,
-                                              &frames_read),
-                   CPKT_AUDIO_AT_END);
+  assert_int_equal(
+      decoder->read_f32_mono_16k(decoder, frames, 64, &frames_read),
+      CPKT_AUDIO_AT_END);
   assert_int_equal(frames_read, 0);
 }
 
@@ -516,19 +531,17 @@ static void test_decoder_callback_failures(void **state) {
 static void test_decoder_reads_from_file(void **state) {
   (void)state;
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_WAV));
-  assert_decoder_reads_fixture_file("cpkt_audio_facade_test.wav",
-                                    test_wav_mono_8000,
-                                    sizeof(test_wav_mono_8000), NULL,
-                                    CPKT_AUDIO_FORMAT_WAV);
+  assert_decoder_reads_fixture_file(
+      "cpkt_audio_facade_test.wav", test_wav_mono_8000,
+      sizeof(test_wav_mono_8000), NULL, CPKT_AUDIO_FORMAT_WAV);
 }
 
 static void test_decoder_reads_flac_file_when_supported(void **state) {
   (void)state;
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_FLAC));
-  assert_decoder_reads_fixture_file("cpkt_audio_facade_test.flac",
-                                    test_flac_mono_8000,
-                                    sizeof(test_flac_mono_8000), NULL,
-                                    CPKT_AUDIO_FORMAT_FLAC);
+  assert_decoder_reads_fixture_file(
+      "cpkt_audio_facade_test.flac", test_flac_mono_8000,
+      sizeof(test_flac_mono_8000), NULL, CPKT_AUDIO_FORMAT_FLAC);
 }
 
 static void test_decoder_reads_mp3_file_when_supported(void **state) {
@@ -598,10 +611,9 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
   }
   mp3_size *= 16U;
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3));
-  assert_int_equal(
-      cpkt_test_start_prefix_http_server(mp3_data, mp3_size, &port,
-                                         &server_pid),
-      0);
+  assert_int_equal(cpkt_test_start_prefix_http_server(mp3_data, mp3_size, &port,
+                                                      &server_pid),
+                   0);
   (void)sprintf(url, "http://127.0.0.1:%u/fixture.mp3", (unsigned int)port);
 
   decoder = NULL;
@@ -610,9 +622,9 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
   frames_read = 0;
-  assert_int_equal(decoder->read_f32_mono_16k(decoder, frames, 512U,
-                                             &frames_read),
-                   CPKT_AUDIO_OK);
+  assert_int_equal(
+      decoder->read_f32_mono_16k(decoder, frames, 512U, &frames_read),
+      CPKT_AUDIO_OK);
   assert_int_equal(clock_gettime(CLOCK_MONOTONIC, &end_time), 0);
   assert_true(frames_read > 0U);
   assert_true(cpkt_test_elapsed_seconds(&start_time, &end_time) < 5.0);
@@ -647,12 +659,10 @@ static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
   mp3_data[9] = (unsigned char)(tag_payload_size & 0x7fU);
   memcpy(mp3_data + 10U + tag_payload_size, mp3_fixture, mp3_size);
 
-  assert_int_equal(
-      cpkt_test_start_prefix_http_server(mp3_data, total_size, &port,
-                                         &server_pid),
-      0);
-  (void)sprintf(url, "http://127.0.0.1:%u/large-id3.mp3",
-                (unsigned int)port);
+  assert_int_equal(cpkt_test_start_prefix_http_server(mp3_data, total_size,
+                                                      &port, &server_pid),
+                   0);
+  (void)sprintf(url, "http://127.0.0.1:%u/large-id3.mp3", (unsigned int)port);
 
   decoder = NULL;
   assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, NULL),
@@ -812,8 +822,7 @@ static int capture_vox_segment(cpkt_audio_vox_segment *segment, void *user) {
   total = 0U;
   do {
     frames_read = 99U;
-    result =
-        segment->read_f32_mono_16k(segment, frames, 256U, &frames_read);
+    result = segment->read_f32_mono_16k(segment, frames, 256U, &frames_read);
     assert_true(result == CPKT_AUDIO_OK || result == CPKT_AUDIO_AT_END);
     total += frames_read;
   } while (result != CPKT_AUDIO_AT_END);
@@ -851,8 +860,7 @@ static void test_vox_releases_on_silence(void **state) {
   vox = NULL;
   assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
   assert_non_null(vox);
-  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 320U),
-                   CPKT_AUDIO_OK);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 320U), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 0UL);
   assert_int_equal(capture.final_count, 0UL);
@@ -893,8 +901,7 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   vox = NULL;
   assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
   assert_non_null(vox);
-  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1000U),
-                   CPKT_AUDIO_OK);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1000U), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 800U);
@@ -915,8 +922,8 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   vox->destroy(vox);
 }
 
-static void test_vox_releases_at_hang_time_even_when_more_audio_fits(
-    void **state) {
+static void
+test_vox_releases_at_hang_time_even_when_more_audio_fits(void **state) {
   struct vox_capture capture;
   cpkt_audio_vox_config config;
   cpkt_audio_vox *vox;
@@ -946,8 +953,7 @@ static void test_vox_releases_at_hang_time_even_when_more_audio_fits(
   vox = NULL;
   assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
   assert_non_null(vox);
-  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1360U),
-                   CPKT_AUDIO_OK);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1360U), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 0UL);
   assert_int_equal(capture.frames[0], 760U);
@@ -988,8 +994,7 @@ static void test_vox_flush_drops_subminimum_post_cut_tail(void **state) {
   vox = NULL;
   assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
   assert_non_null(vox);
-  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1380U),
-                   CPKT_AUDIO_OK);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1380U), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 800U);
@@ -1025,8 +1030,7 @@ static void test_vox_spills_and_hard_cuts_at_storage_budget(void **state) {
   vox = NULL;
   assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
   assert_non_null(vox);
-  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 48U),
-                   CPKT_AUDIO_OK);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 48U), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 32U);
@@ -1037,8 +1041,8 @@ static void test_vox_spills_and_hard_cuts_at_storage_budget(void **state) {
   vox->destroy(vox);
 }
 
-static void test_vox_rejects_invalid_and_reports_callback_failure(
-    void **state) {
+static void
+test_vox_rejects_invalid_and_reports_callback_failure(void **state) {
   struct vox_capture capture;
   cpkt_audio_vox_config config;
   cpkt_audio_vox *vox;
@@ -1065,8 +1069,7 @@ static void test_vox_rejects_invalid_and_reports_callback_failure(
   }
   assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
   assert_non_null(vox);
-  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 16U),
-                   CPKT_AUDIO_ERR_IO);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 16U), CPKT_AUDIO_ERR_IO);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_ERR_IO);
   vox->destroy(vox);
 }
@@ -1076,6 +1079,8 @@ static void test_invalid_arguments(void **state) {
   cpkt_audio_encoder *encoder;
   cpkt_audio_capture *capture;
   cpkt_audio_playback *playback;
+  cpkt_audio_capture_config capture_config;
+  cpkt_audio_playback_config playback_config;
   cpkt_audio_reader reader;
   cpkt_audio_writer writer;
   cpkt_audio_encoder_config encoder_config;
@@ -1090,9 +1095,9 @@ static void test_invalid_arguments(void **state) {
                    CPKT_AUDIO_ERR_ARG);
   assert_null(decoder);
   decoder = (cpkt_audio_decoder *)1;
-  assert_int_equal(cpkt_audio_decoder_open_url(NULL, "https://example.invalid",
-                                               NULL),
-                   CPKT_AUDIO_ERR_ARG);
+  assert_int_equal(
+      cpkt_audio_decoder_open_url(NULL, "https://example.invalid", NULL),
+      CPKT_AUDIO_ERR_ARG);
   assert_int_equal(cpkt_audio_decoder_open_url(&decoder, "", NULL),
                    CPKT_AUDIO_ERR_ARG);
   assert_null(decoder);
@@ -1138,6 +1143,21 @@ static void test_invalid_arguments(void **state) {
                    CPKT_AUDIO_ERR_ARG);
   (void)playback;
 
+  memset(&capture_config, 0, sizeof(capture_config));
+  capture_config.backend = CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO;
+  capture = (cpkt_audio_capture *)1;
+  assert_int_equal(cpkt_audio_capture_open_default(&capture, &capture_config),
+                   CPKT_AUDIO_ERR_ARG);
+  assert_null(capture);
+
+  memset(&playback_config, 0, sizeof(playback_config));
+  playback_config.backend = CPKT_AUDIO_DEVICE_BACKEND_JACK;
+  playback = (cpkt_audio_playback *)1;
+  assert_int_equal(
+      cpkt_audio_playback_open_default(&playback, &playback_config),
+      CPKT_AUDIO_ERR_ARG);
+  assert_null(playback);
+
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_WAV));
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_FLAC));
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3));
@@ -1168,7 +1188,8 @@ int main(void) {
       cmocka_unit_test(test_encoder_callback_write_failure),
       cmocka_unit_test(test_vox_releases_on_silence),
       cmocka_unit_test(test_vox_hard_cuts_at_segment_budget),
-      cmocka_unit_test(test_vox_releases_at_hang_time_even_when_more_audio_fits),
+      cmocka_unit_test(
+          test_vox_releases_at_hang_time_even_when_more_audio_fits),
       cmocka_unit_test(test_vox_flush_drops_subminimum_post_cut_tail),
       cmocka_unit_test(test_vox_spills_and_hard_cuts_at_storage_budget),
       cmocka_unit_test(test_vox_rejects_invalid_and_reports_callback_failure),
