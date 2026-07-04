@@ -1132,6 +1132,10 @@ else()
     "libgcc_s\\.so[^]]*"
     "libcpktsus GCC runtime dependency closure")
   cpkt_assert_dynamic_exports_match(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
+    "^cpkt_audio_"
+    "libcpktaudio public ABI surface")
+  cpkt_assert_dynamic_exports_match(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "^cpkt_sus_"
     "libcpktsus public ABI surface")
