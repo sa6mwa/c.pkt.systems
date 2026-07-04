@@ -382,7 +382,9 @@ target_link_libraries(cpkt_sus_static PUBLIC
   cpkt::curl_static
   cpkt::openssl_crypto_static
 )
-target_compile_definitions(cpkt_sus_static PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
+target_compile_definitions(cpkt_sus_static PRIVATE
+  CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}"
+  CPKT_SUS_BACKEND_CAPABILITIES="${CPKT_SUS_BACKEND_CAPABILITIES}")
 set_target_properties(cpkt_sus_static PROPERTIES
   OUTPUT_NAME cpktsus
   POSITION_INDEPENDENT_CODE ON
@@ -400,7 +402,9 @@ target_link_libraries(cpkt_sus_shared PUBLIC
   cpkt::curl_shared
   cpkt::openssl_crypto_shared
 )
-target_compile_definitions(cpkt_sus_shared PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
+target_compile_definitions(cpkt_sus_shared PRIVATE
+  CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}"
+  CPKT_SUS_BACKEND_CAPABILITIES="${CPKT_SUS_BACKEND_CAPABILITIES}")
 set_target_properties(cpkt_sus_shared PROPERTIES
   OUTPUT_NAME cpktsus
   POSITION_INDEPENDENT_CODE ON

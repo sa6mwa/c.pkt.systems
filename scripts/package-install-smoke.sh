@@ -509,35 +509,39 @@ int main(void) {
 
   if (cpkt_sus_backend_version() == 0 ||
       cpkt_sus_backend_system_info() == 0 ||
+      cpkt_sus_backend_capabilities() == 0 ||
       cpkt_sus_facade_version() == 0) {
     return 1;
   }
-  if (cpkt_sus_result_string(CPKT_SUS_ERR_MODEL) == 0) {
+  if (strcmp(cpkt_sus_backend_capabilities(), "cpu") != 0) {
     return 2;
   }
-  if (cpkt_sus_model_catalog_count() == 0) {
+  if (cpkt_sus_result_string(CPKT_SUS_ERR_MODEL) == 0) {
     return 3;
   }
-  if (cpkt_sus_model_catalog_default(&entry) != CPKT_SUS_OK) {
+  if (cpkt_sus_model_catalog_count() == 0) {
     return 4;
   }
-  if (entry.name == 0 || strcmp(entry.name, "small") != 0) {
+  if (cpkt_sus_model_catalog_default(&entry) != CPKT_SUS_OK) {
     return 5;
   }
-  if (cpkt_sus_model_catalog_find("kb-whisper-small", &entry) != CPKT_SUS_OK) {
+  if (entry.name == 0 || strcmp(entry.name, "small") != 0) {
     return 6;
   }
-  if (entry.provider == 0 || strcmp(entry.provider, "KBLab/kb-whisper-small") != 0) {
+  if (cpkt_sus_model_catalog_find("kb-whisper-small", &entry) != CPKT_SUS_OK) {
     return 7;
+  }
+  if (entry.provider == 0 || strcmp(entry.provider, "KBLab/kb-whisper-small") != 0) {
+    return 8;
   }
   memset(&config, 0, sizeof(config));
   config.model_path = "";
   model = (cpkt_sus_model *)1;
   if (cpkt_sus_model_open_path(&model, &config) != CPKT_SUS_ERR_ARG) {
-    return 8;
+    return 9;
   }
   if (model != 0) {
-    return 9;
+    return 10;
   }
   cpkt_sus_string_free(0);
   return 0;

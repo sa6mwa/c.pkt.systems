@@ -151,7 +151,8 @@ option remains the force-CPU build switch.
 The exact option set should be kept in the dependency build logic and covered by
 a build metadata/provenance test so host-native acceleration does not
 accidentally enter release artifacts. Package metadata must record the compiled
-backend set, initially `cpu`.
+backend set, initially `cpu`. The public facade reports the same compiled set
+through `cpkt_sus_backend_capabilities()`.
 
 Future GPU-enabled artifacts must follow target-specific dependency detection.
 Backend autodetection must inspect the configured target toolchain and

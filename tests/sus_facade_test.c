@@ -24,6 +24,7 @@ static void test_backend_metadata(void **state) {
   assert_true(cpkt_sus_backend_version()[0] != '\0');
   assert_non_null(cpkt_sus_backend_system_info());
   assert_true(cpkt_sus_backend_system_info()[0] != '\0');
+  assert_string_equal(cpkt_sus_backend_capabilities(), "cpu");
   assert_string_equal(cpkt_sus_facade_version(), "0");
 }
 

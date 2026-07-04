@@ -254,6 +254,8 @@ cpkt_sus_result cpkt_sus_model_catalog_default(cpkt_sus_model_entry *entry);
 const char *cpkt_sus_backend_version(void);
 /** Returns the linked backend system information string. */
 const char *cpkt_sus_backend_system_info(void);
+/** Returns compiled backend capabilities such as "cpu". */
+const char *cpkt_sus_backend_capabilities(void);
 /** Returns the public facade ABI version string. */
 const char *cpkt_sus_facade_version(void);
 /** Returns a stable human-readable string for a speech result code. */

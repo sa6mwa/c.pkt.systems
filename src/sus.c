@@ -17,6 +17,10 @@
 #define CPKT_SUS_FACADE_VERSION "0"
 #endif
 
+#ifndef CPKT_SUS_BACKEND_CAPABILITIES
+#define CPKT_SUS_BACKEND_CAPABILITIES "cpu"
+#endif
+
 struct cpkt_sus_model_impl {
   struct whisper_context *context;
   int cpu_only;
@@ -1181,6 +1185,11 @@ const char *cpkt_sus_backend_version(void) { return whisper_version(); }
 /** Returns the linked backend system information string. */
 const char *cpkt_sus_backend_system_info(void) {
   return whisper_print_system_info();
+}
+
+/** Returns the compiled backend capability list. */
+const char *cpkt_sus_backend_capabilities(void) {
+  return CPKT_SUS_BACKEND_CAPABILITIES;
 }
 
 /** Returns the public facade ABI version string. */
