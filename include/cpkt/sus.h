@@ -89,6 +89,28 @@ typedef struct cpkt_sus_segment {
   long t1;
 } cpkt_sus_segment;
 
+/** Read-only curated cached-model catalog entry. */
+typedef struct cpkt_sus_model_entry {
+  /** Stable public model name accepted by cpkt_sus_model_open_cached. */
+  const char *name;
+  /** Provider and repository identifier for the model artifact. */
+  const char *provider;
+  /** Source URL used by the default cache fetcher. */
+  const char *source_url;
+  /** Cache filename used for this model. */
+  const char *filename;
+  /** Lowercase hex SHA-256 expected for the source artifact. */
+  const char *sha256;
+  /** Expected source artifact size in bytes when known, or zero. */
+  unsigned long size_bytes;
+  /** License or provenance label for the model artifact. */
+  const char *license;
+  /** Quantization label such as "f16", "q5_0", or "q5_1". */
+  const char *quantization;
+  /** Non-zero when this entry is the default cached model. */
+  int is_default;
+} cpkt_sus_model_entry;
+
 /**
  * Receives a transcript segment.
  *
@@ -207,6 +229,26 @@ cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
 
 /** Releases strings allocated by cpkt_sus materialized-text helpers. */
 void cpkt_sus_string_free(char *text);
+
+/** Returns the number of curated cached-model catalog entries. */
+unsigned long cpkt_sus_model_catalog_count(void);
+/**
+ * Copies a curated cached-model catalog entry by index.
+ *
+ * The strings referenced by *entry are owned by the facade for process
+ * lifetime. Returns CPKT_SUS_ERR_LOOKUP when index is out of range.
+ */
+cpkt_sus_result cpkt_sus_model_catalog_entry(unsigned long index,
+                                             cpkt_sus_model_entry *entry);
+/**
+ * Copies the curated cached-model catalog entry for name.
+ *
+ * NULL or empty name selects the default entry.
+ */
+cpkt_sus_result cpkt_sus_model_catalog_find(const char *name,
+                                            cpkt_sus_model_entry *entry);
+/** Copies the default curated cached-model catalog entry. */
+cpkt_sus_result cpkt_sus_model_catalog_default(cpkt_sus_model_entry *entry);
 
 /** Returns the linked backend version string. */
 const char *cpkt_sus_backend_version(void);

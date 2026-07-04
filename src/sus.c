@@ -212,6 +212,26 @@ static long cpkt_sus_i64_to_long(int64_t value) {
 
 static const char *cpkt_sus_default_model_name(void) { return "small"; }
 
+static unsigned long cpkt_sus_catalog_count_internal(void) {
+  return (unsigned long)(sizeof(cpkt_sus_catalog) /
+                         sizeof(cpkt_sus_catalog[0]));
+}
+
+static void
+cpkt_sus_copy_catalog_entry(cpkt_sus_model_entry *out,
+                            const struct cpkt_sus_catalog_entry *entry) {
+  memset(out, 0, sizeof(*out));
+  out->name = entry->name;
+  out->provider = entry->repo;
+  out->source_url = entry->url;
+  out->filename = entry->filename;
+  out->sha256 = entry->sha256;
+  out->size_bytes = entry->size_bytes;
+  out->license = entry->license;
+  out->quantization = entry->quantization;
+  out->is_default = entry->is_default;
+}
+
 static const struct cpkt_sus_catalog_entry *
 cpkt_sus_find_catalog_entry(const char *name) {
   size_t i;
@@ -1109,6 +1129,51 @@ cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
 
 /** Releases strings allocated by materialized transcription helpers. */
 void cpkt_sus_string_free(char *text) { free(text); }
+
+/** Returns the number of entries in the curated cached-model catalog. */
+unsigned long cpkt_sus_model_catalog_count(void) {
+  return cpkt_sus_catalog_count_internal();
+}
+
+/** Copies one curated cached-model catalog entry by index. */
+cpkt_sus_result cpkt_sus_model_catalog_entry(unsigned long index,
+                                             cpkt_sus_model_entry *entry) {
+  if (entry != NULL) {
+    memset(entry, 0, sizeof(*entry));
+  }
+  if (entry == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  if (index >= cpkt_sus_catalog_count_internal()) {
+    return CPKT_SUS_ERR_LOOKUP;
+  }
+  cpkt_sus_copy_catalog_entry(entry, &cpkt_sus_catalog[index]);
+  return CPKT_SUS_OK;
+}
+
+/** Copies a curated cached-model catalog entry by model name. */
+cpkt_sus_result cpkt_sus_model_catalog_find(const char *name,
+                                            cpkt_sus_model_entry *entry) {
+  const struct cpkt_sus_catalog_entry *found;
+
+  if (entry != NULL) {
+    memset(entry, 0, sizeof(*entry));
+  }
+  if (entry == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  found = cpkt_sus_find_catalog_entry(name);
+  if (found == NULL) {
+    return CPKT_SUS_ERR_LOOKUP;
+  }
+  cpkt_sus_copy_catalog_entry(entry, found);
+  return CPKT_SUS_OK;
+}
+
+/** Copies the default curated cached-model catalog entry. */
+cpkt_sus_result cpkt_sus_model_catalog_default(cpkt_sus_model_entry *entry) {
+  return cpkt_sus_model_catalog_find(NULL, entry);
+}
 
 /** Returns the linked backend version string. */
 const char *cpkt_sus_backend_version(void) { return whisper_version(); }

@@ -458,6 +458,16 @@ Each entry must include:
 - quantization label, if any;
 - whether it is the default.
 
+Current implementation status:
+
+- curated OpenAI-derived and KBLab GGML entries are compiled into
+  `libcpktsus`;
+- public query helpers expose catalog count, lookup by index, lookup by name,
+  and default entry selection;
+- catalog strings are facade-owned and valid for process lifetime;
+- exact checksums and sizes are pinned in the compiled catalog and covered by
+  unit tests for representative default, KBLab, and quantized entries.
+
 Initial OpenAI-derived whisper.cpp GGML entries:
 
 - `tiny`

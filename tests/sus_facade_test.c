@@ -95,6 +95,66 @@ static void test_model_helpers_reject_invalid_arguments(void **state) {
   cpkt_sus_string_free(NULL);
 }
 
+static void test_model_catalog_queries(void **state) {
+  cpkt_sus_model_entry entry;
+  unsigned long count;
+
+  (void)state;
+
+  count = cpkt_sus_model_catalog_count();
+  assert_true(count >= 30UL);
+
+  memset(&entry, 0xff, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_entry(0, &entry), CPKT_SUS_OK);
+  assert_non_null(entry.name);
+  assert_non_null(entry.provider);
+  assert_non_null(entry.source_url);
+  assert_non_null(entry.filename);
+  assert_non_null(entry.sha256);
+  assert_int_equal(strlen(entry.sha256), 64);
+
+  memset(&entry, 0, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_default(&entry), CPKT_SUS_OK);
+  assert_string_equal(entry.name, "small");
+  assert_string_equal(entry.provider, "ggerganov/whisper.cpp");
+  assert_string_equal(entry.filename, "ggml-small.bin");
+  assert_string_equal(entry.quantization, "f16");
+  assert_true(entry.is_default != 0);
+  assert_string_equal(
+      entry.sha256,
+      "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b");
+
+  memset(&entry, 0, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_find("", &entry), CPKT_SUS_OK);
+  assert_string_equal(entry.name, "small");
+
+  memset(&entry, 0, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_find("kb-whisper-small", &entry),
+                   CPKT_SUS_OK);
+  assert_string_equal(entry.provider, "KBLab/kb-whisper-small");
+  assert_string_equal(entry.filename, "ggml-model.bin");
+  assert_string_equal(entry.license, "Apache-2.0");
+
+  memset(&entry, 0, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_find("large-v3-turbo:q5_0", &entry),
+                   CPKT_SUS_OK);
+  assert_string_equal(entry.filename, "ggml-large-v3-turbo-q5_0.bin");
+  assert_string_equal(entry.quantization, "q5_0");
+
+  memset(&entry, 0xff, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_find("not-a-model", &entry),
+                   CPKT_SUS_ERR_LOOKUP);
+  assert_null(entry.name);
+
+  memset(&entry, 0xff, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_entry(count, &entry),
+                   CPKT_SUS_ERR_LOOKUP);
+  assert_null(entry.name);
+
+  assert_int_equal(cpkt_sus_model_catalog_entry(0, NULL), CPKT_SUS_ERR_ARG);
+  assert_int_equal(cpkt_sus_model_catalog_default(NULL), CPKT_SUS_ERR_ARG);
+}
+
 static void test_cached_open_contract(void **state) {
   cpkt_sus_cache_config config;
   cpkt_sus_model *model;
@@ -220,6 +280,7 @@ int main(void) {
       cmocka_unit_test(test_open_model_rejects_invalid_arguments),
       cmocka_unit_test(test_open_model_reports_load_failure),
       cmocka_unit_test(test_model_helpers_reject_invalid_arguments),
+      cmocka_unit_test(test_model_catalog_queries),
       cmocka_unit_test(test_cached_open_contract),
       cmocka_unit_test(test_cached_open_downloads_to_temp_before_rename),
       cmocka_unit_test(test_result_strings),
