@@ -156,6 +156,9 @@ static void cpkt_test_log_sink(const cpkt_sus_log_event *event, void *user) {
   assert_non_null(event);
   assert_non_null(event->component);
   assert_non_null(event->message);
+  assert_true(event->level >= CPKT_SUS_LOG_NONE);
+  assert_true(event->level != CPKT_SUS_LOG_CONT);
+  assert_true(event->level <= CPKT_SUS_LOG_ERROR);
   ++capture->count;
   capture->last_level = event->level;
   capture->last_component = event->component;
@@ -224,6 +227,7 @@ static void test_log_callback_receives_backend_events(void **state) {
   assert_true(capture.count > 0UL);
   assert_string_equal(capture.last_component, "whisper");
   assert_true(capture.last_level >= CPKT_SUS_LOG_NONE);
+  assert_true(capture.last_level <= CPKT_SUS_LOG_ERROR);
   assert_non_null(capture.last_message);
   cpkt_sus_log_set(NULL, NULL);
 }
