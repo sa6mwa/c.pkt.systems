@@ -1376,6 +1376,7 @@ libxml2_words=$(pkg_config_words libxml-2.0)
 lua_words=$(pkg_config_words lua)
 mqttc_words=$(pkg_config_words mqtt-c)
 lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
+audio_words=$(pkg_config_words cpkt-audio)
 open62541_words=$(pkg_config_words open62541)
 opcua_words=$(pkg_config_words cpkt-opcua)
 sus_words=$(pkg_config_words cpkt-sus)
@@ -1432,6 +1433,8 @@ assert_words_contain "$libxml2_words" "-lm" "libxml-2.0.pc --static output"
 assert_words_contain "$lua_words" "-lm" "lua.pc --static output"
 assert_words_contain "$lua_runtime_words" "-llua" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$lua_runtime_words" "-lm" "cpkt-lua-runtime.pc --static output"
+assert_words_contain "$audio_words" "-lcpktaudio" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lminiaudio" "cpkt-audio.pc --static output"
 assert_words_contain "$mqttc_words" "-lmqttc" "mqtt-c.pc --static output"
 assert_words_contain "$open62541_words" "-lssl" "open62541.pc --static output"
 assert_words_contain "$open62541_words" "-lcrypto" "open62541.pc --static output"

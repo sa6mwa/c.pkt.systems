@@ -697,7 +697,7 @@ foreach(_path
     "lib/liblua.a"
     "lib/libmqttc.a"
     "lib/libopen62541.a"
-    "lib/libcpkt_audio.a"
+    "lib/libcpktaudio.a"
     "lib/libcpkt_lua_runtime.a"
     "lib/libcpktsus.a"
     "lib/libcpkt_opcua.a"
@@ -957,7 +957,7 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     3
     "Lua runtime facade Darwin shared library entries")
   cpkt_assert_archive_exact_matches(
-    "^${_archive_stem_re}/lib/libcpkt_audio([^/]*)?\\.dylib$"
+    "^${_archive_stem_re}/lib/libcpktaudio([^/]*)?\\.dylib$"
     3
     "audio facade Darwin shared library entries")
   cpkt_assert_archive_exact_matches(
@@ -991,9 +991,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpkt_lua_runtime.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
-      "lib/libcpkt_audio.dylib"
-      "lib/libcpkt_audio.${CPKT_AUDIO_ABI_VERSION}.dylib"
-      "lib/libcpkt_audio.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpktaudio.dylib"
+      "lib/libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib"
+      "lib/libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libcpktsus.dylib"
       "lib/libcpktsus.${CPKT_SUS_ABI_VERSION}.dylib"
       "lib/libcpktsus.${CPKT_BUNDLE_VERSION}.dylib")
@@ -1026,7 +1026,7 @@ else()
     3
     "Lua runtime facade Linux shared library entries")
   cpkt_assert_archive_exact_matches(
-    "^${_archive_stem_re}/lib/libcpkt_audio\\.so([^/]*)?$"
+    "^${_archive_stem_re}/lib/libcpktaudio\\.so([^/]*)?$"
     3
     "audio facade Linux shared library entries")
   cpkt_assert_archive_exact_matches(
@@ -1075,9 +1075,9 @@ else()
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
       "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
-      "lib/libcpkt_audio.so"
-      "lib/libcpkt_audio.so.${CPKT_AUDIO_ABI_VERSION}"
-      "lib/libcpkt_audio.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpktaudio.so"
+      "lib/libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}"
+      "lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpktsus.so"
       "lib/libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
       "lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}")
@@ -1100,7 +1100,7 @@ else()
       "lib/libxml2.so.16.1.3"
       "lib/libmqttc.so.1.1.2"
       "lib/libcpkt_lua_runtime.so"
-      "lib/libcpkt_audio.so"
+      "lib/libcpktaudio.so"
       "lib/libcpktsus.so"
       "lib/libwhisper.so.1.9.1"
       "lib/libggml.so.0.15.1"
@@ -1116,9 +1116,9 @@ else()
     "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
     "libcpkt_lua_runtime SONAME")
   cpkt_assert_elf_soname(
-    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_audio.so.${CPKT_BUNDLE_VERSION}"
-    "libcpkt_audio.so.${CPKT_AUDIO_ABI_VERSION}"
-    "libcpkt_audio SONAME")
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
+    "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}"
+    "libcpktaudio SONAME")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "libcpktsus.so.${CPKT_SUS_ABI_VERSION}"

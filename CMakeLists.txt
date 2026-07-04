@@ -333,7 +333,7 @@ target_include_directories(cpkt_audio_static
 )
 target_link_libraries(cpkt_audio_static PUBLIC cpkt::miniaudio_static)
 set_target_properties(cpkt_audio_static PROPERTIES
-  OUTPUT_NAME cpkt_audio
+  OUTPUT_NAME cpktaudio
   POSITION_INDEPENDENT_CODE ON
 )
 
@@ -346,7 +346,7 @@ target_include_directories(cpkt_audio_shared
 )
 target_link_libraries(cpkt_audio_shared PUBLIC cpkt::miniaudio_shared)
 set_target_properties(cpkt_audio_shared PROPERTIES
-  OUTPUT_NAME cpkt_audio
+  OUTPUT_NAME cpktaudio
   POSITION_INDEPENDENT_CODE ON
   SOVERSION "${CPKT_AUDIO_ABI_VERSION}"
   VERSION "${PROJECT_VERSION}"

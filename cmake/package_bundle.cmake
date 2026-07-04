@@ -56,9 +56,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
-  set(_cpkt_audio_shared_library_link_name "libcpkt_audio.dylib")
-  set(_cpkt_audio_shared_library_abi_name "libcpkt_audio.${CPKT_AUDIO_ABI_VERSION}.dylib")
-  set(_cpkt_audio_shared_library_real_name "libcpkt_audio.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_audio_shared_library_link_name "libcpktaudio.dylib")
+  set(_cpkt_audio_shared_library_abi_name "libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib")
+  set(_cpkt_audio_shared_library_real_name "libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_sus_shared_library_link_name "libcpktsus.dylib")
   set(_cpkt_sus_shared_library_abi_name "libcpktsus.${CPKT_SUS_ABI_VERSION}.dylib")
   set(_cpkt_sus_shared_library_real_name "libcpktsus.${CPKT_BUNDLE_VERSION}.dylib")
@@ -75,9 +75,9 @@ else()
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.so")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
-  set(_cpkt_audio_shared_library_link_name "libcpkt_audio.so")
-  set(_cpkt_audio_shared_library_abi_name "libcpkt_audio.so.${CPKT_AUDIO_ABI_VERSION}")
-  set(_cpkt_audio_shared_library_real_name "libcpkt_audio.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_audio_shared_library_link_name "libcpktaudio.so")
+  set(_cpkt_audio_shared_library_abi_name "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}")
+  set(_cpkt_audio_shared_library_real_name "libcpktaudio.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_sus_shared_library_link_name "libcpktsus.so")
   set(_cpkt_sus_shared_library_abi_name "libcpktsus.so.${CPKT_SUS_ABI_VERSION}")
   set(_cpkt_sus_shared_library_real_name "libcpktsus.so.${CPKT_BUNDLE_VERSION}")
@@ -174,7 +174,7 @@ cpkt_stage_facade_library(
 cpkt_stage_facade_library(
   "audio facade"
   "${CPKT_AUDIO_STATIC_LIBRARY}"
-  "libcpkt_audio"
+  "libcpktaudio"
   "${CPKT_AUDIO_SHARED_LIBRARY}"
   "${_cpkt_audio_shared_library_real_name}"
   "${_cpkt_audio_shared_library_abi_name}"
@@ -587,7 +587,7 @@ file(WRITE "${_stage_root}/lib/cmake/CpktAudio/CpktAudioConfig.cmake"
   "if(NOT TARGET cpkt::audio)\n"
   "  add_library(cpkt::audio STATIC IMPORTED)\n"
   "  set_target_properties(cpkt::audio PROPERTIES\n"
-  "    IMPORTED_LOCATION \"\${_cpkt_audio_prefix}/lib/libcpkt_audio${_cpkt_static_library_suffix}\"\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_audio_prefix}/lib/libcpktaudio${_cpkt_static_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_audio_prefix}/include\"\n"
   "    INTERFACE_LINK_LIBRARIES miniaudio::miniaudio\n"
   "  )\n"
@@ -595,7 +595,7 @@ file(WRITE "${_stage_root}/lib/cmake/CpktAudio/CpktAudioConfig.cmake"
   "if(NOT TARGET cpkt::audio_shared)\n"
   "  add_library(cpkt::audio_shared SHARED IMPORTED)\n"
   "  set_target_properties(cpkt::audio_shared PROPERTIES\n"
-  "    IMPORTED_LOCATION \"\${_cpkt_audio_prefix}/lib/libcpkt_audio${_cpkt_shared_library_suffix}\"\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_audio_prefix}/lib/libcpktaudio${_cpkt_shared_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_audio_prefix}/include\"\n"
   "    INTERFACE_LINK_LIBRARIES cpkt::miniaudio_shared\n"
   "  )\n"
@@ -938,7 +938,7 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-audio.pc"
   "Description: C89-safe miniaudio facade from c.pkt.systems\n"
   "Version: ${CPKT_MINIAUDIO_VERSION}\n"
   "Requires.private: miniaudio\n"
-  "Libs: -L\${libdir} -lcpkt_audio\n"
+  "Libs: -L\${libdir} -lcpktaudio\n"
   "Cflags: -I\${includedir}\n"
 )
 file(WRITE "${_stage_root}/lib/pkgconfig/whisper.pc"
