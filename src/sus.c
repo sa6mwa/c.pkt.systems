@@ -1228,7 +1228,8 @@ static cpkt_sus_result
 cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
                              const cpkt_sus_segmented_config *config,
                              const char *text, size_t text_len,
-                             unsigned long step_index, int final) {
+                             unsigned long step_index, long t0, long t1,
+                             int final) {
   cpkt_sus_segmented_event event;
   cpkt_sus_result result;
   int callback_result;
@@ -1253,6 +1254,8 @@ cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
   memset(&event, 0, sizeof(event));
   event.text = impl->revised_text != NULL ? impl->revised_text : "";
   event.text_length = (unsigned long)impl->revised_length;
+  event.t0 = t0;
+  event.t1 = t1;
   event.step_index = step_index;
   event.is_final = final;
   callback_result = config->segmented_sink(&event, config->segmented_user);
@@ -1531,6 +1534,8 @@ struct cpkt_sus_vox_transcribe_state {
   size_t prompt_count;
   size_t prompt_capacity;
   unsigned long segment_count;
+  long last_t0;
+  long last_t1;
   int final_emitted;
   int use_prompt;
   cpkt_sus_result result;
@@ -1697,11 +1702,14 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
   }
   state->result =
       cpkt_sus_emit_segmented_event(impl, state->config, text, strlen(text),
-                                   state->segment_count, segment->is_final);
+                                   state->segment_count, segment->t0,
+                                   segment->t1, segment->is_final);
   free(text);
   if (state->result != CPKT_SUS_OK) {
     return 1;
   }
+  state->last_t0 = segment->t0;
+  state->last_t1 = segment->t1;
   if (segment->is_final) {
     state->final_emitted = 1;
   }
@@ -1838,7 +1846,8 @@ cpkt_sus_transcriber_transcribe_audio_decoder_segmented_impl(
   if (!state.final_emitted) {
     sus_result = cpkt_sus_emit_segmented_event(
         impl, config, NULL, 0U,
-        state.segment_count == 0UL ? 0UL : state.segment_count - 1UL, 1);
+        state.segment_count == 0UL ? 0UL : state.segment_count - 1UL,
+        state.last_t0, state.last_t1, 1);
     if (sus_result != CPKT_SUS_OK) {
       goto cleanup;
     }

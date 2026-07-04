@@ -276,8 +276,8 @@ static int cpkt_vox_segment_sink(cpkt_audio_vox_segment *segment, void *user) {
   char filename[64];
   char path[CPKT_VOX_PATH_MAX];
   unsigned long duration_ms;
-  unsigned long approx_end_ms;
-  unsigned long approx_start_ms;
+  unsigned long start_ms;
+  unsigned long end_ms;
   unsigned long peak_milli;
   unsigned long mean_abs_milli;
   const char *reason;
@@ -300,9 +300,8 @@ static int cpkt_vox_segment_sink(cpkt_audio_vox_segment *segment, void *user) {
     return 1;
   }
   duration_ms = cpkt_vox_frames_to_ms(segment->frame_count);
-  approx_end_ms = cpkt_vox_frames_to_ms(run->input_frames_seen);
-  approx_start_ms = approx_end_ms > duration_ms ? approx_end_ms - duration_ms
-                                                : 0UL;
+  start_ms = (unsigned long)segment->t0 * 10UL;
+  end_ms = (unsigned long)segment->t1 * 10UL;
   if (segment->hard_cut) {
     reason = "budget-or-spool-hard-cut";
     ++run->hard_cut_count;
@@ -319,10 +318,10 @@ static int cpkt_vox_segment_sink(cpkt_audio_vox_segment *segment, void *user) {
     fits = "no";
   }
   cpkt_vox_emit(run,
-                "segment=%lu approx_start_ms=%lu approx_end_ms=%lu "
+                "segment=%lu start_ms=%lu end_ms=%lu "
                 "duration_ms=%lu frames=%lu reason=%s hard_cut=%d final=%d "
                 "fits_budget=%s peak_milli=%lu mean_abs_milli=%lu wav=%s\n",
-                segment->segment_index, approx_start_ms, approx_end_ms,
+                segment->segment_index, start_ms, end_ms,
                 duration_ms, (unsigned long)segment->frame_count, reason,
                 segment->hard_cut, segment->is_final, fits, peak_milli,
                 mean_abs_milli, path);

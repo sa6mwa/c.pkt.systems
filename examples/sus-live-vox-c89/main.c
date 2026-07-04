@@ -377,8 +377,9 @@ static int cpkt_sus_live_segmented_sink(const cpkt_sus_segmented_event *event,
   if (run == NULL || event == NULL || event->text == NULL) {
     return 1;
   }
-  sprintf(line, "TXT segment=%lu final=%d chars=%lu: ",
-          run->current_segment_index, event->is_final, event->text_length);
+  sprintf(line, "TXT segment=%lu t0=%ld t1=%ld final=%d chars=%lu: ",
+          run->current_segment_index, event->t0, event->t1, event->is_final,
+          event->text_length);
   cpkt_sus_live_emit(run, line);
   cpkt_sus_live_emit(run, event->text);
   cpkt_sus_live_emit(run, "\n");
@@ -398,10 +399,13 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   if (run == NULL || run->model == NULL || segment == NULL) {
     return 1;
   }
-  sprintf(line, "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d\n",
-          segment->segment_index, (unsigned long)segment->frame_count,
-          (double)segment->frame_count / 16000.0, segment->hard_cut,
-          segment->is_final);
+  sprintf(line,
+          "segment index=%lu t0=%ld t1=%ld frames=%lu seconds=%.3f hard=%d "
+          "final=%d\n",
+          segment->segment_index, segment->t0, segment->t1,
+          (unsigned long)segment->frame_count,
+          (double)segment->frame_count / 16000.0,
+          segment->hard_cut, segment->is_final);
   cpkt_sus_live_emit(run, line);
 
   transcriber = NULL;

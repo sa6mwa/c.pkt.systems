@@ -151,6 +151,10 @@ typedef struct cpkt_sus_segmented_event {
   const char *text;
   /** Transcript text length in bytes, excluding the terminating NUL. */
   unsigned long text_length;
+  /** Start time in 10 ms units on the input PCM timeline. */
+  long t0;
+  /** End time in 10 ms units on the input PCM timeline. */
+  long t1;
   /** Number of committed speech segments completed before this event. */
   unsigned long step_index;
   /** Non-zero only when the event is the final end-of-stream event. */

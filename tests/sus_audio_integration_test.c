@@ -14,6 +14,9 @@ struct cpkt_sus_test_segmented_events {
   const char *expected;
   unsigned long count;
   unsigned long final_count;
+  long last_t0;
+  long last_t1;
+  int saw_timestamp;
   int matched_expected;
 };
 
@@ -106,6 +109,17 @@ cpkt_sus_test_segmented_sink(const cpkt_sus_segmented_event *event, void *user) 
   }
 
   ++events->count;
+  if (event->t1 < event->t0) {
+    return 1;
+  }
+  if (events->count > 1UL && event->t1 < events->last_t1) {
+    return 1;
+  }
+  events->last_t0 = event->t0;
+  events->last_t1 = event->t1;
+  if (event->t1 > event->t0) {
+    events->saw_timestamp = 1;
+  }
   if (event->is_final) {
     ++events->final_count;
   }
@@ -883,6 +897,10 @@ int main(void) {
     fprintf(stderr, "progress callback was not invoked\n");
     goto cleanup;
   }
+  if (!events.saw_timestamp) {
+    fprintf(stderr, "segmented transcript callback did not receive timestamps\n");
+    goto cleanup;
+  }
   if (!events.matched_expected ||
       !cpkt_sus_test_contains_expected(text, NULL, expected)) {
     fprintf(stderr, "expected transcript text was not found\n");
@@ -915,6 +933,11 @@ int main(void) {
     fprintf(stderr,
             "unexpected direct VOX final event count: expected=%lu actual=%lu\n",
             expected_final_segments, direct_events.final_count);
+    goto cleanup;
+  }
+  if (!direct_events.saw_timestamp) {
+    fprintf(stderr,
+            "direct VOX segment callback did not receive timestamps\n");
     goto cleanup;
   }
   if (!direct_events.matched_expected ||

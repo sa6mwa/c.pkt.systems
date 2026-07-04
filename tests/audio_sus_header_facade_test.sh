@@ -44,8 +44,17 @@ cat > "$work_root/audio_header_c89.c" <<'EOF'
 int main(void) {
   cpkt_audio_decoder_config decoder_config;
   cpkt_audio_encoder_config encoder_config;
+  cpkt_audio_vox_segment vox_segment;
   cpkt_audio_stream_info info;
 
+  vox_segment.impl = 0;
+  vox_segment.frame_count = 0U;
+  vox_segment.t0 = 0;
+  vox_segment.t1 = 0;
+  vox_segment.segment_index = 0UL;
+  vox_segment.hard_cut = 0;
+  vox_segment.is_final = 0;
+  vox_segment.read_f32_mono_16k = 0;
   decoder_config.encoding = CPKT_AUDIO_ENCODING_UNKNOWN;
   encoder_config.format = CPKT_AUDIO_FORMAT_WAV;
   encoder_config.sample_rate = 16000UL;
@@ -54,7 +63,7 @@ int main(void) {
   info.output_sample_rate = encoder_config.sample_rate;
   info.output_channels = encoder_config.channels;
   info.output_frame_count = 0UL;
-  return decoder_config.encoding + info.source_format;
+  return decoder_config.encoding + info.source_format + vox_segment.hard_cut;
 }
 EOF
 
@@ -101,6 +110,8 @@ int main(void) {
 
   event.text = "";
   event.text_length = 0UL;
+  event.t0 = 0;
+  event.t1 = 0;
   event.step_index = 0UL;
   event.is_final = 0;
 

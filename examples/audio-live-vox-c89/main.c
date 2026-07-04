@@ -302,25 +302,28 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   }
   if (path[0] != '\0') {
     fprintf(stdout,
-            "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d "
-            "wav=%s\n",
-            segment->segment_index, (unsigned long)total_frames,
+            "segment index=%lu t0=%ld t1=%ld frames=%lu seconds=%.3f "
+            "hard=%d final=%d wav=%s\n",
+            segment->segment_index, segment->t0, segment->t1,
+            (unsigned long)total_frames,
             (double)total_frames / 16000.0, segment->hard_cut,
             segment->is_final, path);
   } else {
     fprintf(stdout,
-            "segment index=%lu frames=%lu seconds=%.3f hard=%d "
-            "final=%d\n",
-            segment->segment_index, (unsigned long)total_frames,
+            "segment index=%lu t0=%ld t1=%ld frames=%lu seconds=%.3f "
+            "hard=%d final=%d\n",
+            segment->segment_index, segment->t0, segment->t1,
+            (unsigned long)total_frames,
             (double)total_frames / 16000.0, segment->hard_cut,
             segment->is_final);
   }
   fflush(stdout);
   if (run->summary != NULL) {
     fprintf(run->summary,
-            "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d "
-            "wav=%s\n",
-            segment->segment_index, (unsigned long)total_frames,
+            "segment index=%lu t0=%ld t1=%ld frames=%lu seconds=%.3f "
+            "hard=%d final=%d wav=%s\n",
+            segment->segment_index, segment->t0, segment->t1,
+            (unsigned long)total_frames,
             (double)total_frames / 16000.0, segment->hard_cut,
             segment->is_final, path);
     fflush(run->summary);

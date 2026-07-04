@@ -222,6 +222,10 @@ struct cpkt_audio_vox_segment {
   void *impl;
   /** Number of mono 16000 Hz PCM frames in frames. */
   size_t frame_count;
+  /** Segment start time in 10 ms units on the input PCM timeline. */
+  long t0;
+  /** Segment end time in 10 ms units on the input PCM timeline. */
+  long t1;
   /** Zero-based segment number emitted by this VOX instance. */
   unsigned long segment_index;
   /** Non-zero when the segment was closed by max_segment_ms, not silence. */

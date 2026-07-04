@@ -781,6 +781,8 @@ struct vox_capture {
   int states[16];
   unsigned long state_segments[16];
   size_t frames[8];
+  long t0[8];
+  long t1[8];
   float first_frame[8];
   int fail;
 };
@@ -821,6 +823,8 @@ static int capture_vox_segment(cpkt_audio_vox_segment *segment, void *user) {
     ++capture->final_count;
   }
   assert_int_equal(segment->segment_index, capture->count);
+  capture->t0[capture->count] = segment->t0;
+  capture->t1[capture->count] = segment->t1;
   total = 0U;
   do {
     frames_read = 99U;
@@ -870,6 +874,8 @@ static void test_vox_releases_on_silence(void **state) {
   assert_int_equal(capture.hard_count, 0UL);
   assert_int_equal(capture.final_count, 0UL);
   assert_int_equal(capture.frames[0], 320U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 2);
   assert_int_equal(capture.state_count, 2UL);
   assert_int_equal(capture.states[0], CPKT_AUDIO_VOX_TX_ON);
   assert_int_equal(capture.state_segments[0], 0UL);
@@ -913,6 +919,8 @@ static void test_vox_includes_prebuffer_before_threshold(void **state) {
   assert_int_equal(vox->push_f32_mono_16k(vox, frames, 440U), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.frames[0], 360U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 3);
   assert_float_equal(capture.first_frame[0], 0.01f, 0.0001f);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   vox->destroy(vox);
@@ -948,6 +956,8 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 800U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 5);
   assert_int_equal(capture.state_count, 3UL);
   assert_int_equal(capture.states[0], CPKT_AUDIO_VOX_TX_ON);
   assert_int_equal(capture.state_segments[0], 0UL);
@@ -959,6 +969,8 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   assert_int_equal(capture.count, 2UL);
   assert_int_equal(capture.final_count, 1UL);
   assert_int_equal(capture.frames[1], 200U);
+  assert_int_equal(capture.t0[1], 5);
+  assert_int_equal(capture.t1[1], 7);
   assert_int_equal(capture.state_count, 4UL);
   assert_int_equal(capture.states[3], CPKT_AUDIO_VOX_TX_OFF);
   assert_int_equal(capture.state_segments[3], 1UL);
@@ -1000,10 +1012,14 @@ test_vox_releases_at_hang_time_even_when_more_audio_fits(void **state) {
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 0UL);
   assert_int_equal(capture.frames[0], 760U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 5);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 2UL);
   assert_int_equal(capture.final_count, 1UL);
   assert_int_equal(capture.frames[1], 620U);
+  assert_int_equal(capture.t0[1], 4);
+  assert_int_equal(capture.t1[1], 9);
   vox->destroy(vox);
 }
 
@@ -1041,6 +1057,8 @@ static void test_vox_flush_drops_subminimum_post_cut_tail(void **state) {
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 800U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 5);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.final_count, 0UL);
@@ -1077,10 +1095,14 @@ static void test_vox_spills_and_hard_cuts_at_storage_budget(void **state) {
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 32U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 1);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 2UL);
   assert_int_equal(capture.final_count, 1UL);
   assert_int_equal(capture.frames[1], 16U);
+  assert_int_equal(capture.t0[1], 0);
+  assert_int_equal(capture.t1[1], 1);
   vox->destroy(vox);
 }
 
@@ -1148,9 +1170,13 @@ static void test_ptt_toggles_and_emits_segments(void **state) {
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 800U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 6);
   assert_int_equal(ptt->release(ptt), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 2UL);
   assert_int_equal(capture.frames[1], 200U);
+  assert_int_equal(capture.t0[1], 5);
+  assert_int_equal(capture.t1[1], 7);
   assert_int_equal(capture.final_count, 0UL);
   assert_int_equal(capture.state_count, 4UL);
   assert_int_equal(capture.states[0], CPKT_AUDIO_VOX_TX_ON);

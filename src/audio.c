@@ -109,6 +109,8 @@ struct cpkt_audio_vox_impl {
   size_t read_cursor;
   size_t prebuffer_count;
   size_t prebuffer_cursor;
+  size_t source_frame_cursor;
+  size_t segment_start_frame;
   FILE *spool_file;
   unsigned long release_silence_frames;
   unsigned long max_segment_frames;
@@ -964,6 +966,45 @@ static float cpkt_audio_absf(float value) {
   return value < 0.0f ? -value : value;
 }
 
+static long cpkt_audio_16k_frame_to_10ms_floor(size_t frame) {
+  size_t value;
+
+  value = frame / 160U;
+  if (value > (size_t)LONG_MAX) {
+    return LONG_MAX;
+  }
+  return (long)value;
+}
+
+static long cpkt_audio_16k_frame_to_10ms_ceil(size_t frame) {
+  size_t value;
+
+  value = frame / 160U;
+  if ((frame % 160U) != 0U && value < (size_t)LONG_MAX) {
+    ++value;
+  }
+  if (value > (size_t)LONG_MAX) {
+    return LONG_MAX;
+  }
+  return (long)value;
+}
+
+static size_t cpkt_audio_saturating_size_add(size_t left, size_t right) {
+  if (left > ((size_t)-1) - right) {
+    return (size_t)-1;
+  }
+  return left + right;
+}
+
+static void cpkt_audio_vox_advance_source(struct cpkt_audio_vox_impl *impl,
+                                          size_t frame_count) {
+  if (impl == NULL) {
+    return;
+  }
+  impl->source_frame_cursor =
+      cpkt_audio_saturating_size_add(impl->source_frame_cursor, frame_count);
+}
+
 static void cpkt_audio_vox_reset_segment(struct cpkt_audio_vox_impl *impl) {
   if (impl == NULL) {
     return;
@@ -1076,6 +1117,10 @@ static cpkt_audio_result cpkt_audio_vox_emit(struct cpkt_audio_vox_impl *impl,
   memset(&segment, 0, sizeof(segment));
   segment.impl = impl;
   segment.frame_count = impl->total_frame_count;
+  segment.t0 = cpkt_audio_16k_frame_to_10ms_floor(impl->segment_start_frame);
+  segment.t1 = cpkt_audio_16k_frame_to_10ms_ceil(
+      cpkt_audio_saturating_size_add(impl->segment_start_frame,
+                                     impl->total_frame_count));
   segment.segment_index = impl->segment_index;
   segment.hard_cut = hard_cut;
   segment.is_final = is_final;
@@ -1215,14 +1260,21 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self, const float *frames,
 
   for (i = 0U; i < frame_count; ++i) {
     int loud;
+    size_t frame_position;
 
+    frame_position = impl->source_frame_cursor;
     loud = cpkt_audio_absf(frames[i]) >= impl->threshold ? 1 : 0;
     if (!impl->open && !loud) {
       cpkt_audio_vox_prebuffer_frame(impl, frames[i]);
+      cpkt_audio_vox_advance_source(impl, 1U);
       continue;
     }
     if (!impl->open) {
       impl->open = 1;
+      impl->segment_start_frame =
+          frame_position >= impl->prebuffer_count
+              ? frame_position - impl->prebuffer_count
+              : 0U;
       impl->silence_frames = 0UL;
       impl->memory_frame_count = 0U;
       impl->total_frame_count = 0U;
@@ -1255,6 +1307,7 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self, const float *frames,
       return result;
     }
 
+    cpkt_audio_vox_advance_source(impl, 1U);
     cpkt_audio_vox_note_loudness(impl, loud);
 
     if (impl->release_silence_frames != 0UL &&
@@ -1338,6 +1391,7 @@ static cpkt_audio_result cpkt_audio_ptt_press_impl(cpkt_audio_ptt *self) {
     return CPKT_AUDIO_OK;
   }
   impl->open = 1;
+  impl->segment_start_frame = impl->source_frame_cursor;
   impl->silence_frames = 0UL;
   impl->memory_frame_count = 0U;
   impl->total_frame_count = 0U;
@@ -1389,6 +1443,7 @@ cpkt_audio_ptt_push_f32_mono_16k_impl(cpkt_audio_ptt *self, const float *frames,
     return CPKT_AUDIO_ERR_IO;
   }
   if (!impl->ptt_pressed) {
+    cpkt_audio_vox_advance_source(impl, frame_count);
     return CPKT_AUDIO_OK;
   }
 
@@ -1416,6 +1471,7 @@ cpkt_audio_ptt_push_f32_mono_16k_impl(cpkt_audio_ptt *self, const float *frames,
     if (result != CPKT_AUDIO_OK) {
       return result;
     }
+    cpkt_audio_vox_advance_source(impl, 1U);
     ++impl->speech_frame_count;
 
     if (impl->max_segment_frames != 0UL &&

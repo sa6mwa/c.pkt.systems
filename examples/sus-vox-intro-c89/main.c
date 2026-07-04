@@ -217,16 +217,16 @@ static int cpkt_sus_vox_segmented_sink(const cpkt_sus_segmented_event *event,
     delta_offset = 0UL;
   }
   delta_length = event->text_length - delta_offset;
-  printf("stream segment=%lu final=%d elapsed_ms=%lu total_chars=%lu "
+  printf("stream segment=%lu t0=%ld t1=%ld final=%d elapsed_ms=%lu total_chars=%lu "
          "delta_chars=%lu text=",
-         event->step_index, event->is_final,
+         event->step_index, event->t0, event->t1, event->is_final,
          cpkt_sus_vox_elapsed_ms(events->started), event->text_length,
          delta_length);
   if (events->summary_file != NULL) {
     fprintf(events->summary_file,
-            "stream segment=%lu final=%d elapsed_ms=%lu total_chars=%lu "
+            "stream segment=%lu t0=%ld t1=%ld final=%d elapsed_ms=%lu total_chars=%lu "
             "delta_chars=%lu text=",
-            event->step_index, event->is_final,
+            event->step_index, event->t0, event->t1, event->is_final,
             cpkt_sus_vox_elapsed_ms(events->started), event->text_length,
             delta_length);
   }

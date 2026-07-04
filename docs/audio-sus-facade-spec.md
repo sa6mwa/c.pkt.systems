@@ -461,7 +461,9 @@ explicit library-side segment mode:
 - `cpkt_audio_vox_segment` is an intended interop object between the libraries:
   callers may route VOX segments directly into
   `cpkt_sus_transcriber->transcribe_audio_vox_segment(...)` instead of
-  extracting PCM and calling a lower-level buffer transcription path;
+  extracting PCM and calling a lower-level buffer transcription path. VOX
+  segments and sus segmented transcript events carry `t0`/`t1` timestamps in
+  10 ms units on the input PCM timeline;
 - `step_ms` is retained only as a compatibility field and does not schedule
   fixed-step inference.
 
