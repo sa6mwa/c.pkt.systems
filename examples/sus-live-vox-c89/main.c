@@ -87,7 +87,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
   opts->seconds = 0UL;
   opts->threshold_milli = 60UL;
   opts->hang_ms = 1500UL;
-  opts->prebuffer_ms = 20UL;
+  opts->prebuffer_ms = 50UL;
   opts->max_segment_ms = 0UL;
   opts->buffer_ms = 2000UL;
   opts->period_ms = 20UL;
@@ -139,6 +139,124 @@ static int cpkt_sus_live_parse_backend(const char *text, int *out) {
     return 0;
   }
   return 1;
+}
+
+static char *cpkt_sus_live_join2(const char *left, const char *right) {
+  char *out;
+  size_t left_len;
+  size_t right_len;
+  int needs_slash;
+
+  if (left == NULL || right == NULL) {
+    return NULL;
+  }
+  left_len = strlen(left);
+  right_len = strlen(right);
+  needs_slash = left_len > 0U && left[left_len - 1U] != '/';
+  out = (char *)malloc(left_len + (needs_slash ? 1U : 0U) + right_len + 1U);
+  if (out == NULL) {
+    return NULL;
+  }
+  memcpy(out, left, left_len);
+  if (needs_slash) {
+    out[left_len] = '/';
+    ++left_len;
+  }
+  memcpy(out + left_len, right, right_len);
+  out[left_len + right_len] = '\0';
+  return out;
+}
+
+static char *cpkt_sus_live_default_cache_dir(void) {
+  const char *xdg_cache_home;
+  const char *home;
+  char *base;
+  char *path;
+
+  xdg_cache_home = getenv("XDG_CACHE_HOME");
+  if (xdg_cache_home != NULL && xdg_cache_home[0] != '\0') {
+    return cpkt_sus_live_join2(xdg_cache_home, "cpkt/susurro/models");
+  }
+  home = getenv("HOME");
+  if (home == NULL || home[0] == '\0') {
+    return NULL;
+  }
+  base = cpkt_sus_live_join2(home, ".cache");
+  if (base == NULL) {
+    return NULL;
+  }
+  path = cpkt_sus_live_join2(base, "cpkt/susurro/models");
+  free(base);
+  return path;
+}
+
+static int cpkt_sus_live_file_exists(const char *path) {
+  struct stat st;
+
+  if (path == NULL || stat(path, &st) != 0) {
+    return 0;
+  }
+  return S_ISREG(st.st_mode) ? 1 : 0;
+}
+
+static void
+cpkt_sus_live_print_startup(const struct cpkt_sus_live_options *opts) {
+  cpkt_sus_model_entry entry;
+  const char *cache_dir_value;
+  const char *cache_state;
+  char *cache_dir;
+  char *cache_path;
+
+  if (opts == NULL) {
+    return;
+  }
+  if (opts->model_path != NULL) {
+    fprintf(stderr,
+            "status mode=%s model_path=%s language=%s threshold=%.3f "
+            "hang_ms=%lu prebuffer_ms=%lu\n",
+            opts->ptt ? "ptt" : "vox", opts->model_path,
+            opts->language != NULL ? opts->language : "auto",
+            (double)cpkt_sus_live_threshold(opts), opts->hang_ms,
+            opts->prebuffer_ms);
+    return;
+  }
+
+  cache_dir = NULL;
+  cache_path = NULL;
+  if (cpkt_sus_model_catalog_find(opts->model, &entry) == CPKT_SUS_OK &&
+      entry.filename != NULL) {
+    cache_dir_value = opts->cache_dir;
+    if (cache_dir_value == NULL || cache_dir_value[0] == '\0') {
+      cache_dir = cpkt_sus_live_default_cache_dir();
+      cache_dir_value = cache_dir;
+    }
+    if (cache_dir_value != NULL) {
+      cache_path = cpkt_sus_live_join2(cache_dir_value, entry.filename);
+    }
+  }
+
+  if (cache_path != NULL) {
+    cache_state = cpkt_sus_live_file_exists(cache_path) ? "cached" : "download";
+    fprintf(stderr,
+            "status mode=%s model=%s cache=%s cache_state=%s language=%s "
+            "threshold=%.3f hang_ms=%lu prebuffer_ms=%lu\n",
+            opts->ptt ? "ptt" : "vox", opts->model != NULL ? opts->model : "tiny",
+            cache_path, cache_state,
+            opts->language != NULL ? opts->language : "auto",
+            (double)cpkt_sus_live_threshold(opts), opts->hang_ms,
+            opts->prebuffer_ms);
+  } else {
+    fprintf(stderr,
+            "status mode=%s model=%s cache=(unresolved) language=%s "
+            "threshold=%.3f hang_ms=%lu prebuffer_ms=%lu\n",
+            opts->ptt ? "ptt" : "vox", opts->model != NULL ? opts->model : "tiny",
+            opts->language != NULL ? opts->language : "auto",
+            (double)cpkt_sus_live_threshold(opts), opts->hang_ms,
+            opts->prebuffer_ms);
+  }
+
+  free(cache_path);
+  free(cache_dir);
 }
 
 static int cpkt_sus_live_join_path(char *out, size_t out_size, const char *dir,
@@ -373,6 +491,7 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
     }
   }
 
+  cpkt_sus_live_print_startup(opts);
   if (!cpkt_sus_live_open_model(&model, opts)) {
     goto cleanup;
   }
@@ -527,7 +646,7 @@ static void cpkt_sus_live_usage(FILE *out) {
           "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
-          "  --prebuffer-ms N            VOX prebuffer; default 20.\n");
+          "  --prebuffer-ms N            VOX prebuffer; default 50.\n");
   fprintf(out,
           "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
   fprintf(out,
