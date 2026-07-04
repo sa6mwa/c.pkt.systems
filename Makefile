@@ -129,7 +129,7 @@ example-audio-vox-intro:
 example-audio-live-vox:
 	$(CMAKE) --preset debug
 	$(CMAKE) --build --preset debug --target cpkt_audio_live_vox_c89_example
-	"$$(pwd)/build/debug/cpkt_audio_live_vox_c89_example" --live $(CPKT_AUDIO_LIVE_VOX_ARGS)
+	"$$(pwd)/build/debug/cpkt_audio_live_vox_c89_example" $(CPKT_AUDIO_LIVE_VOX_ARGS)
 
 example-sus-vox-intro:
 	$(CMAKE) --preset debug
@@ -139,7 +139,7 @@ example-sus-vox-intro:
 example-sus-live-vox:
 	$(CMAKE) --preset debug
 	$(CMAKE) --build --preset debug --target cpkt_sus_live_vox_c89_example
-	"$$(pwd)/build/debug/cpkt_sus_live_vox_c89_example" --live $(CPKT_SUS_LIVE_VOX_ARGS)
+	"$$(pwd)/build/debug/cpkt_sus_live_vox_c89_example" $(CPKT_SUS_LIVE_VOX_ARGS)
 
 cpktxscribe:
 	$(CMAKE) --preset debug

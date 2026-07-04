@@ -14,9 +14,9 @@
 #define CPKT_LIVE_VOX_PATH_MAX 4096
 
 struct cpkt_live_vox_options {
-  int live;
   int ptt;
-  int replay;
+  int playback;
+  int smoke;
   int backend;
   unsigned long seconds;
   unsigned long threshold_milli;
@@ -81,6 +81,7 @@ static float cpkt_live_vox_threshold(const struct cpkt_live_vox_options *opts) {
 
 static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
   memset(opts, 0, sizeof(*opts));
+  opts->playback = 1;
   opts->seconds = 0UL;
   opts->threshold_milli = 30UL;
   opts->hang_ms = 1500UL;
@@ -341,15 +342,14 @@ static cpkt_audio_result cpkt_live_vox_ptt_poll(cpkt_audio_ptt *ptt, int *tx) {
 }
 
 static void cpkt_live_vox_usage(FILE *out) {
-  fprintf(out, "usage: cpkt_audio_live_vox_c89_example --live [options]\n\n");
-  fprintf(out, "No arguments run a no-device smoke test.\n\n");
+  fprintf(out, "usage: cpkt_audio_live_vox_c89_example [options]\n\n");
+  fprintf(out, "No arguments open the default capture device, segment by VOX, "
+               "and play each segment back.\n\n");
   fprintf(out, "Options:\n");
-  fprintf(out,
-          "  --live                      Open the default capture device.\n");
   fprintf(out, "  --ptt                       Use push-to-talk instead of VOX; "
                "space/p toggles TX, q quits.\n");
-  fprintf(out, "  --replay N                  Replay segments to default "
-               "output; default 0.\n");
+  fprintf(out,
+          "  --no-playback               Do not play captured segments back.\n");
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
@@ -364,26 +364,23 @@ static void cpkt_live_vox_usage(FILE *out) {
       "  --period-ms N               Device callback period; default 20.\n");
   fprintf(out, "  --backend NAME              auto, alsa, coreaudio.\n");
   fprintf(out, "  --dump-dir DIR              Optional WAV dump directory.\n");
+  fprintf(out, "  --smoke                     Run no-device smoke check.\n");
 }
 
 static int cpkt_live_vox_parse_options(int argc, char **argv,
                                        struct cpkt_live_vox_options *opts) {
   int i;
-  unsigned long parsed;
 
   for (i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--help") == 0) {
       cpkt_live_vox_usage(stdout);
       exit(0);
     } else if (strcmp(argv[i], "--live") == 0) {
-      opts->live = 1;
+      /* Compatibility no-op: live mode is the default. */
     } else if (strcmp(argv[i], "--ptt") == 0) {
       opts->ptt = 1;
-    } else if (strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
-      if (!cpkt_live_vox_parse_ulong(argv[++i], &parsed)) {
-        return 0;
-      }
-      opts->replay = parsed != 0UL ? 1 : 0;
+    } else if (strcmp(argv[i], "--no-playback") == 0) {
+      opts->playback = 0;
     } else if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) {
       if (!cpkt_live_vox_parse_ulong(argv[++i], &opts->seconds)) {
         return 0;
@@ -414,6 +411,8 @@ static int cpkt_live_vox_parse_options(int argc, char **argv,
       }
     } else if (strcmp(argv[i], "--dump-dir") == 0 && i + 1 < argc) {
       opts->dump_dir = argv[++i];
+    } else if (strcmp(argv[i], "--smoke") == 0) {
+      opts->smoke = 1;
     } else {
       return 0;
     }
@@ -474,7 +473,7 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
     goto cleanup;
   }
 
-  if (opts->replay) {
+  if (opts->playback) {
     memset(&playback_config, 0, sizeof(playback_config));
     playback_config.backend = opts->backend;
     playback_config.buffer_ms = opts->buffer_ms;
@@ -633,9 +632,8 @@ int main(int argc, char **argv) {
     cpkt_live_vox_usage(stderr);
     return 2;
   }
-  if (!opts.live) {
-    printf("cpkt_audio_live_vox_c89_example smoke ok; pass --live to open the "
-           "default capture device\n");
+  if (opts.smoke) {
+    printf("cpkt_audio_live_vox_c89_example smoke ok\n");
     return 0;
   }
   if (opts.ptt && !isatty(STDIN_FILENO)) {

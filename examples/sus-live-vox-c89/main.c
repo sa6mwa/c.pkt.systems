@@ -15,8 +15,8 @@
 #define CPKT_SUS_LIVE_PATH_MAX 4096
 
 struct cpkt_sus_live_options {
-  int live;
   int ptt;
+  int smoke;
   int backend;
   int cpu_only;
   unsigned long seconds;
@@ -528,11 +528,10 @@ cleanup:
 }
 
 static void cpkt_sus_live_usage(FILE *out) {
-  fprintf(out, "usage: cpkt_sus_live_vox_c89_example --live [options]\n\n");
-  fprintf(out, "No arguments run a no-device smoke test.\n\n");
+  fprintf(out, "usage: cpkt_sus_live_vox_c89_example [options]\n\n");
+  fprintf(out, "No arguments open the default capture device, segment by VOX, "
+               "and transcribe each segment.\n\n");
   fprintf(out, "Options:\n");
-  fprintf(out,
-          "  --live                      Open the default capture device.\n");
   fprintf(out, "  --ptt                       Use push-to-talk instead of VOX; "
                "space/p toggles TX, q quits.\n");
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
@@ -558,6 +557,7 @@ static void cpkt_sus_live_usage(FILE *out) {
       "  --cpu-only N                1 for CPU-only, 0 for backend default.\n");
   fprintf(out,
           "  --dump-dir DIR              Optional summary dump directory.\n");
+  fprintf(out, "  --smoke                     Run no-device smoke check.\n");
 }
 
 static int cpkt_sus_live_parse_options(int argc, char **argv,
@@ -570,7 +570,7 @@ static int cpkt_sus_live_parse_options(int argc, char **argv,
       cpkt_sus_live_usage(stdout);
       exit(0);
     } else if (strcmp(argv[i], "--live") == 0) {
-      opts->live = 1;
+      /* Compatibility no-op: live mode is the default. */
     } else if (strcmp(argv[i], "--ptt") == 0) {
       opts->ptt = 1;
     } else if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) {
@@ -616,6 +616,8 @@ static int cpkt_sus_live_parse_options(int argc, char **argv,
       opts->cpu_only = parsed != 0UL ? 1 : 0;
     } else if (strcmp(argv[i], "--dump-dir") == 0 && i + 1 < argc) {
       opts->dump_dir = argv[++i];
+    } else if (strcmp(argv[i], "--smoke") == 0) {
+      opts->smoke = 1;
     } else {
       return 0;
     }
@@ -639,17 +641,12 @@ int main(int argc, char **argv) {
   struct cpkt_sus_live_options opts;
 
   cpkt_sus_live_defaults(&opts);
-  if (argc == 1) {
-    return cpkt_sus_live_smoke();
-  }
   if (!cpkt_sus_live_parse_options(argc, argv, &opts)) {
     cpkt_sus_live_usage(stderr);
     return 64;
   }
-  if (!opts.live) {
-    printf("cpkt_sus_live_vox_c89_example smoke ok; pass --live to open the "
-           "default capture device\n");
-    return 0;
+  if (opts.smoke) {
+    return cpkt_sus_live_smoke();
   }
   if (opts.ptt && !isatty(STDIN_FILENO)) {
     fprintf(stderr, "--ptt requires stdin to be a tty\n");

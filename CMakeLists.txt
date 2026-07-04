@@ -784,11 +784,11 @@ if(CPKT_BUILD_TESTS)
     add_test(NAME audio_vox_intro_c89_example
       COMMAND cpkt_audio_vox_intro_c89_example)
     add_test(NAME audio_live_vox_c89_example
-      COMMAND cpkt_audio_live_vox_c89_example)
+      COMMAND cpkt_audio_live_vox_c89_example --smoke)
     add_test(NAME sus_vox_intro_c89_example
       COMMAND cpkt_sus_vox_intro_c89_example)
     add_test(NAME sus_live_vox_c89_example
-      COMMAND cpkt_sus_live_vox_c89_example)
+      COMMAND cpkt_sus_live_vox_c89_example --smoke)
     set_tests_properties(audio_sus_c89_example PROPERTIES
       ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     set_tests_properties(sus_vox_intro_c89_example PROPERTIES
