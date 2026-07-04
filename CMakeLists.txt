@@ -535,6 +535,10 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
         -DCPKT_BINARY=$<TARGET_FILE:cpktxscribe>
         -P ${CMAKE_SOURCE_DIR}/cmake/check_binary_absent_strings.cmake)
     add_test(
+      NAME cpktxscribe_nodevice_policy
+      COMMAND ${CMAKE_SOURCE_DIR}/tests/cpktxscribe_nodevice_policy_test.sh
+        ${CMAKE_SOURCE_DIR})
+    add_test(
       NAME cpktxscribe_cache_status
       COMMAND ${CMAKE_SOURCE_DIR}/tests/cpktxscribe_cache_status_test.sh
         $<TARGET_FILE:cpktxscribe>)
