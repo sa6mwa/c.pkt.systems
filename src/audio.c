@@ -1631,6 +1631,8 @@ static ma_backend cpkt_audio_to_ma_backend(int backend) {
     return ma_backend_pulseaudio;
   case CPKT_AUDIO_DEVICE_BACKEND_JACK:
     return ma_backend_jack;
+  case CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO:
+    return ma_backend_coreaudio;
   default:
     return ma_backend_null;
   }

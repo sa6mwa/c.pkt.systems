@@ -40,7 +40,7 @@ static float cpkt_live_vox_threshold(const struct cpkt_live_vox_options *opts) {
 
 static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
   memset(opts, 0, sizeof(*opts));
-  opts->seconds = 30UL;
+  opts->seconds = 0UL;
   opts->threshold_milli = 30UL;
   opts->hang_ms = 1500UL;
   opts->max_segment_ms = 180000UL;
@@ -85,6 +85,8 @@ static int cpkt_live_vox_parse_backend(const char *text, int *out) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO;
   } else if (strcmp(text, "jack") == 0) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_JACK;
+  } else if (strcmp(text, "coreaudio") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO;
   } else {
     return 0;
   }
@@ -255,13 +257,13 @@ static void cpkt_live_vox_usage(FILE *out) {
   fprintf(out, "Options:\n");
   fprintf(out, "  --live                      Open the default capture device.\n");
   fprintf(out, "  --replay N                  Replay segments to default output; default 0.\n");
-  fprintf(out, "  --seconds N                 Capture duration; default 30.\n");
+  fprintf(out, "  --seconds N                 Capture duration; default 0, run until terminated.\n");
   fprintf(out, "  --threshold-milli N         VOX threshold * 1000; default 30.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out, "  --max-segment-ms N          Hard cut budget; default 180000.\n");
   fprintf(out, "  --buffer-ms N               Device ring buffer; default 2000.\n");
   fprintf(out, "  --period-ms N               Device callback period; default 20.\n");
-  fprintf(out, "  --backend NAME              auto, alsa, pulseaudio, jack.\n");
+  fprintf(out, "  --backend NAME              auto, alsa, pulseaudio, jack, coreaudio.\n");
   fprintf(out, "  --dump-dir DIR              WAV dump directory; default build/live-vox-dump.\n");
 }
 
@@ -408,8 +410,8 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
   }
 
   captured_frames = 0UL;
-  end_time = time(NULL) + (time_t)opts->seconds;
-  while (time(NULL) < end_time) {
+  end_time = opts->seconds != 0UL ? time(NULL) + (time_t)opts->seconds : 0;
+  while (opts->seconds == 0UL || time(NULL) < end_time) {
     frames_read = 0U;
     result = capture->read_f32_mono_16k(capture, frames,
                                         CPKT_LIVE_VOX_READ_FRAMES,

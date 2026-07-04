@@ -1239,6 +1239,9 @@ function(cpkt_add_miniaudio)
       -dynamiclib
       -Wl,-install_name,@rpath/libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}
     )
+    if(CMAKE_LINKER)
+      list(APPEND miniaudio_shared_link_flags "-fuse-ld=${CMAKE_LINKER}")
+    endif()
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(miniaudio_shared_library "${install_dir}/lib/libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(miniaudio_shared_link_flags

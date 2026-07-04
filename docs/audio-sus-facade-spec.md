@@ -113,10 +113,15 @@ Initial miniaudio build intent:
 - Enable miniaudio device I/O for the `cpkt_audio` capture/playback facade.
   Device backends must use miniaudio runtime loading so ALSA, PulseAudio,
   PipeWire-Pulse, JACK, and similar host audio libraries remain runtime
-  optional instead of downstream link requirements.
+  optional instead of downstream link requirements. Linux builds support auto,
+  ALSA, PulseAudio, and JACK backend selection. Darwin builds support auto and
+  Core Audio backend selection.
   Fully static glibc consumers may see the standard linker warning for `dlopen`
   in static binaries; this is preferable to making every audio consumer link
   host device backend libraries.
+  A future Darwin notarized-app mode may deliberately disable runtime loading
+  and link CoreFoundation/CoreAudio/AudioToolbox frameworks, but the default SDK
+  should keep runtime backend loading enabled.
 - Disable engine, resource manager, node graph, generation, and other playback
   surfaces unless a future facade explicitly needs them.
 - Avoid optional external Vorbis/Opus extras in the first release unless their

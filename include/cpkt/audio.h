@@ -82,7 +82,9 @@ typedef enum cpkt_audio_device_backend {
   /** PulseAudio or PipeWire-Pulse backend. Requires libpulse at runtime. */
   CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO = 2,
   /** JACK backend. Requires libjack at runtime. */
-  CPKT_AUDIO_DEVICE_BACKEND_JACK = 3
+  CPKT_AUDIO_DEVICE_BACKEND_JACK = 3,
+  /** Darwin Core Audio backend. */
+  CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO = 4
 } cpkt_audio_device_backend;
 
 /** VOX state transition identifiers delivered to cpkt_audio_vox_state_sink. */
