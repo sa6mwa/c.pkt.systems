@@ -108,6 +108,7 @@ struct cpkt_audio_vox_impl {
   unsigned long segment_index;
   float threshold;
   int open;
+  int ptt_pressed;
   int callback_error;
 };
 
@@ -1240,6 +1241,156 @@ static cpkt_audio_result cpkt_audio_vox_flush_impl(cpkt_audio_vox *self) {
 }
 
 static void cpkt_audio_vox_destroy_impl(cpkt_audio_vox *self) {
+  struct cpkt_audio_vox_impl *impl;
+
+  if (self == NULL) {
+    return;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl != NULL) {
+    if (impl->spool_file != NULL) {
+      fclose(impl->spool_file);
+    }
+    free(impl->frames);
+    free(impl);
+  }
+  free(self);
+}
+
+static cpkt_audio_result cpkt_audio_ptt_press_impl(cpkt_audio_ptt *self) {
+  struct cpkt_audio_vox_impl *impl;
+  cpkt_audio_result result;
+
+  if (self == NULL || self->impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  impl->ptt_pressed = 1;
+  if (impl->open) {
+    return CPKT_AUDIO_OK;
+  }
+  impl->open = 1;
+  impl->silence_frames = 0UL;
+  impl->memory_frame_count = 0U;
+  impl->total_frame_count = 0U;
+  impl->speech_frame_count = 0U;
+  impl->read_cursor = 0U;
+  result = cpkt_audio_vox_emit_state(impl, CPKT_AUDIO_VOX_TX_ON);
+  return result;
+}
+
+static cpkt_audio_result cpkt_audio_ptt_release_impl(cpkt_audio_ptt *self) {
+  struct cpkt_audio_vox_impl *impl;
+  cpkt_audio_result result;
+
+  if (self == NULL || self->impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  impl->ptt_pressed = 0;
+  if (!impl->open) {
+    return CPKT_AUDIO_OK;
+  }
+  result = cpkt_audio_vox_emit_state(impl, CPKT_AUDIO_VOX_TX_OFF);
+  if (result != CPKT_AUDIO_OK) {
+    return result;
+  }
+  if (impl->total_frame_count == 0U) {
+    cpkt_audio_vox_reset_segment(impl);
+    return CPKT_AUDIO_OK;
+  }
+  return cpkt_audio_vox_emit(impl, 0, 0);
+}
+
+static cpkt_audio_result
+cpkt_audio_ptt_push_f32_mono_16k_impl(cpkt_audio_ptt *self, const float *frames,
+                                      size_t frame_count) {
+  struct cpkt_audio_vox_impl *impl;
+  size_t i;
+  cpkt_audio_result result;
+
+  if (self == NULL || self->impl == NULL ||
+      (frames == NULL && frame_count != 0U)) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  if (!impl->ptt_pressed) {
+    return CPKT_AUDIO_OK;
+  }
+
+  for (i = 0U; i < frame_count; ++i) {
+    if (!impl->open) {
+      result = cpkt_audio_ptt_press_impl((cpkt_audio_ptt *)self);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+    }
+
+    result = cpkt_audio_vox_append_frame(impl, frames[i]);
+    if (result == CPKT_AUDIO_AT_END) {
+      result = cpkt_audio_vox_emit_state(impl, CPKT_AUDIO_VOX_HARD_CUT);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+      result = cpkt_audio_vox_emit(impl, 1, 0);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+      --i;
+      continue;
+    }
+    if (result != CPKT_AUDIO_OK) {
+      return result;
+    }
+    ++impl->speech_frame_count;
+
+    if (impl->max_segment_frames != 0UL &&
+        impl->total_frame_count >= impl->max_segment_frames) {
+      result = cpkt_audio_vox_emit_state(impl, CPKT_AUDIO_VOX_HARD_CUT);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+      result = cpkt_audio_vox_emit(impl, 1, 0);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+    }
+  }
+  return CPKT_AUDIO_OK;
+}
+
+static cpkt_audio_result cpkt_audio_ptt_flush_impl(cpkt_audio_ptt *self) {
+  struct cpkt_audio_vox_impl *impl;
+  cpkt_audio_result result;
+
+  if (self == NULL || self->impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  impl->ptt_pressed = 0;
+  if (!impl->open || impl->total_frame_count == 0U) {
+    return CPKT_AUDIO_OK;
+  }
+  result = cpkt_audio_vox_emit_state(impl, CPKT_AUDIO_VOX_TX_OFF);
+  if (result != CPKT_AUDIO_OK) {
+    return result;
+  }
+  return cpkt_audio_vox_emit(impl, 0, 1);
+}
+
+static void cpkt_audio_ptt_destroy_impl(cpkt_audio_ptt *self) {
   struct cpkt_audio_vox_impl *impl;
 
   if (self == NULL) {
@@ -2651,6 +2802,89 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   vox->flush = cpkt_audio_vox_flush_impl;
   vox->destroy = cpkt_audio_vox_destroy_impl;
   *out = vox;
+  return CPKT_AUDIO_OK;
+}
+
+/** Opens a receiver-shell PTT segmenter for float32 mono 16000 Hz PCM. */
+CPKT_AUDIO_EXPORT cpkt_audio_result
+cpkt_audio_ptt_open(cpkt_audio_ptt **out, const cpkt_audio_ptt_config *config) {
+  cpkt_audio_ptt *ptt;
+  struct cpkt_audio_vox_impl *impl;
+  unsigned long max_frames;
+  unsigned long min_frames;
+  unsigned long min_ms;
+  unsigned long memory_spool_bytes;
+  unsigned long max_spool_bytes;
+  size_t memory_spool_frames;
+  size_t max_spool_frames;
+
+  if (out != NULL) {
+    *out = NULL;
+  }
+  if (out == NULL || config == NULL || config->segment_sink == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+
+  min_ms = config->min_segment_ms != 0UL ? config->min_segment_ms : 100UL;
+  if (!cpkt_audio_ms_to_16k_frames(min_ms, &min_frames) ||
+      (config->max_segment_ms != 0UL &&
+       !cpkt_audio_ms_to_16k_frames(config->max_segment_ms, &max_frames))) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (config->max_segment_ms == 0UL) {
+    max_frames = 0UL;
+  }
+  if (max_frames != 0UL && min_frames > max_frames) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  memory_spool_bytes = config->memory_spool_bytes != 0UL
+                           ? config->memory_spool_bytes
+                           : 1048576UL;
+  max_spool_bytes =
+      config->max_spool_bytes != 0UL ? config->max_spool_bytes : 1073741824UL;
+  if (memory_spool_bytes < sizeof(float) || max_spool_bytes < sizeof(float) ||
+      memory_spool_bytes > max_spool_bytes) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  memory_spool_frames = (size_t)(memory_spool_bytes / sizeof(float));
+  max_spool_frames = (size_t)(max_spool_bytes / sizeof(float));
+  if (memory_spool_frames == 0U || max_spool_frames == 0U ||
+      memory_spool_frames > ((size_t)-1) / sizeof(float)) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+
+  ptt = (cpkt_audio_ptt *)calloc(1, sizeof(*ptt));
+  if (ptt == NULL) {
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+  impl = (struct cpkt_audio_vox_impl *)calloc(1, sizeof(*impl));
+  if (impl == NULL) {
+    free(ptt);
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+  impl->frames = (float *)malloc(sizeof(float) * memory_spool_frames);
+  if (impl->frames == NULL) {
+    free(impl);
+    free(ptt);
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+
+  impl->config.segment_sink = config->segment_sink;
+  impl->config.segment_user = config->segment_user;
+  impl->config.state_sink = config->state_sink;
+  impl->config.state_user = config->state_user;
+  impl->max_segment_frames = max_frames;
+  impl->min_segment_frames = min_frames;
+  impl->frame_capacity = memory_spool_frames;
+  impl->max_spool_frames = max_spool_frames;
+
+  ptt->impl = impl;
+  ptt->press = cpkt_audio_ptt_press_impl;
+  ptt->push_f32_mono_16k = cpkt_audio_ptt_push_f32_mono_16k_impl;
+  ptt->release = cpkt_audio_ptt_release_impl;
+  ptt->flush = cpkt_audio_ptt_flush_impl;
+  ptt->destroy = cpkt_audio_ptt_destroy_impl;
+  *out = ptt;
   return CPKT_AUDIO_OK;
 }
 

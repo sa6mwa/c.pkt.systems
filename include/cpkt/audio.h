@@ -20,6 +20,8 @@ typedef struct cpkt_audio_capture cpkt_audio_capture;
 typedef struct cpkt_audio_playback cpkt_audio_playback;
 /** Handle for a float32 mono 16 kHz voice-operated segmenter. */
 typedef struct cpkt_audio_vox cpkt_audio_vox;
+/** Handle for a float32 mono 16 kHz push-to-talk segmenter. */
+typedef struct cpkt_audio_ptt cpkt_audio_ptt;
 
 /** Result codes returned by the audio facade. */
 typedef enum cpkt_audio_result {
@@ -287,6 +289,33 @@ typedef struct cpkt_audio_vox_config {
   void *state_user;
 } cpkt_audio_vox_config;
 
+/** PTT construction options. Zero initializes to capture-friendly defaults. */
+typedef struct cpkt_audio_ptt_config {
+  /** Maximum TX segment duration before a budget split. Zero disables the time
+   * cap. */
+  unsigned long max_segment_ms;
+  /** Minimum segment duration to emit. Zero selects 100 ms. */
+  unsigned long min_segment_ms;
+  /**
+   * Bytes kept in memory before spilling an open segment to an anonymous
+   * temporary file. Zero selects 1 MiB.
+   */
+  unsigned long memory_spool_bytes;
+  /**
+   * Maximum bytes for one open PTT segment before forced hard cut. Zero selects
+   * 1 GiB. The cap applies to RAM plus disk-backed spool bytes.
+   */
+  unsigned long max_spool_bytes;
+  /** Required sink for emitted PTT speech segments. */
+  cpkt_audio_vox_segment_sink segment_sink;
+  /** User value passed to segment_sink. */
+  void *segment_user;
+  /** Optional sink for TX/RX state transitions and hard cuts. */
+  cpkt_audio_vox_state_sink state_sink;
+  /** User value passed to state_sink. */
+  void *state_user;
+} cpkt_audio_ptt_config;
+
 /** Receiver shell for decoder operations. */
 struct cpkt_audio_decoder {
   /** Private implementation pointer. Callers must not inspect or modify it. */
@@ -396,6 +425,29 @@ struct cpkt_audio_vox {
   void (*destroy)(cpkt_audio_vox *self);
 };
 
+/** Receiver shell for float32 mono 16 kHz push-to-talk segmenting. */
+struct cpkt_audio_ptt {
+  /** Private implementation pointer. Callers must not inspect or modify it. */
+  void *impl;
+  /** Opens TX. Repeated calls while TX is open are OK. */
+  cpkt_audio_result (*press)(cpkt_audio_ptt *self);
+  /**
+   * Pushes captured mono 16 kHz PCM into the current PTT segment.
+   *
+   * Frames pushed while TX is closed are ignored. The facade may synchronously
+   * invoke segment_sink when max_segment_ms or max_spool_bytes is reached.
+   */
+  cpkt_audio_result (*push_f32_mono_16k)(cpkt_audio_ptt *self,
+                                         const float *frames,
+                                         size_t frame_count);
+  /** Closes TX and emits the current segment when it meets min_segment_ms. */
+  cpkt_audio_result (*release)(cpkt_audio_ptt *self);
+  /** Ends the stream and emits any open PTT segment as final. */
+  cpkt_audio_result (*flush)(cpkt_audio_ptt *self);
+  /** Releases the PTT handle and its bounded segment buffer. */
+  void (*destroy)(cpkt_audio_ptt *self);
+};
+
 /**
  * Opens an audio decoder from a filesystem path.
  *
@@ -484,6 +536,16 @@ cpkt_audio_playback_open_default(cpkt_audio_playback **out,
  */
 cpkt_audio_result cpkt_audio_vox_open(cpkt_audio_vox **out,
                                       const cpkt_audio_vox_config *config);
+
+/**
+ * Opens a float32 mono 16 kHz push-to-talk segmenter.
+ *
+ * PTT uses caller-driven press/release control and the same pullable segment
+ * sink shape as VOX. It never materializes a whole stream; open TX segments
+ * spill to disk and hard-cut at the configured storage or duration caps.
+ */
+cpkt_audio_result cpkt_audio_ptt_open(cpkt_audio_ptt **out,
+                                      const cpkt_audio_ptt_config *config);
 
 /**
  * Returns non-zero when format is supported for decoding by this facade build.

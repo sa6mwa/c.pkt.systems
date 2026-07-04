@@ -472,6 +472,17 @@ from the same transcriber after completion. The revised text path may
 materialize text, but it must not materialize decoded audio beyond the current
 bounded Whisper segment.
 
+Push-to-talk is the caller-driven sibling to VOX for live capture use:
+
+- `cpkt_audio_ptt` exposes `press`, `push_f32_mono_16k`, `release`, `flush`,
+  and `destroy` receiver methods;
+- PTT emits the same pullable `cpkt_audio_vox_segment` shape as VOX, so
+  downstream code and `cpktsus` can consume PTT and VOX segments identically;
+- PTT is capture/control driven only; it has no decoder or playback role;
+- examples use portable raw-tty toggle control for PTT, where space or `p`
+  toggles TX/RX and `q` exits. Modifier-hold controls are intentionally not
+  modeled because ordinary ttys do not report key-up or modifier-only events.
+
 Initial transcription options should expose only stable, high-value knobs:
 
 - model handle;

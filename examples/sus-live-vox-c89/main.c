@@ -1,18 +1,22 @@
 #include <cpkt/audio.h>
 #include <cpkt/sus.h>
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <termios.h>
 #include <time.h>
+#include <unistd.h>
 
 #define CPKT_SUS_LIVE_READ_FRAMES 512U
 #define CPKT_SUS_LIVE_PATH_MAX 4096
 
 struct cpkt_sus_live_options {
   int live;
+  int ptt;
   int backend;
   int cpu_only;
   unsigned long seconds;
@@ -37,6 +41,44 @@ struct cpkt_sus_live_run {
   unsigned long final_count;
   FILE *summary;
 };
+
+static struct termios cpkt_sus_live_saved_tty;
+static int cpkt_sus_live_raw_tty = 0;
+static volatile sig_atomic_t cpkt_sus_live_stop = 0;
+
+static void cpkt_sus_live_restore_tty(void) {
+  if (cpkt_sus_live_raw_tty) {
+    (void)tcsetattr(STDIN_FILENO, TCSANOW, &cpkt_sus_live_saved_tty);
+    cpkt_sus_live_raw_tty = 0;
+  }
+}
+
+static void cpkt_sus_live_signal_stop(int signum) {
+  (void)signum;
+  cpkt_sus_live_stop = 1;
+}
+
+static int cpkt_sus_live_enable_raw_tty(void) {
+  struct termios raw;
+
+  if (!isatty(STDIN_FILENO)) {
+    return 0;
+  }
+  if (tcgetattr(STDIN_FILENO, &cpkt_sus_live_saved_tty) != 0) {
+    return 0;
+  }
+  raw = cpkt_sus_live_saved_tty;
+  raw.c_lflag &= (tcflag_t) ~(ICANON | ECHO);
+  raw.c_cc[VMIN] = 0;
+  raw.c_cc[VTIME] = 0;
+  if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) != 0) {
+    return 0;
+  }
+  cpkt_sus_live_raw_tty = 1;
+  (void)atexit(cpkt_sus_live_restore_tty);
+  (void)signal(SIGINT, cpkt_sus_live_signal_stop);
+  return 1;
+}
 
 static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
   memset(opts, 0, sizeof(*opts));
@@ -205,6 +247,42 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   return 0;
 }
 
+static cpkt_audio_result cpkt_sus_live_ptt_toggle(cpkt_audio_ptt *ptt,
+                                                  int *tx) {
+  if (ptt == NULL || tx == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (*tx) {
+    *tx = 0;
+    return ptt->release(ptt);
+  }
+  *tx = 1;
+  return ptt->press(ptt);
+}
+
+static cpkt_audio_result cpkt_sus_live_ptt_poll(cpkt_audio_ptt *ptt, int *tx) {
+  unsigned char ch;
+  ssize_t count;
+  cpkt_audio_result result;
+
+  for (;;) {
+    count = read(STDIN_FILENO, &ch, 1U);
+    if (count <= 0) {
+      return CPKT_AUDIO_OK;
+    }
+    if (ch == 'q' || ch == 'Q') {
+      cpkt_sus_live_stop = 1;
+      return CPKT_AUDIO_OK;
+    }
+    if (ch == ' ' || ch == 'p' || ch == 'P') {
+      result = cpkt_sus_live_ptt_toggle(ptt, tx);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+    }
+  }
+}
+
 static int cpkt_sus_live_open_model(cpkt_sus_model **out,
                                     const struct cpkt_sus_live_options *opts) {
   cpkt_sus_model_config path_config;
@@ -233,10 +311,12 @@ static int cpkt_sus_live_open_model(cpkt_sus_model **out,
 static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   cpkt_audio_capture *capture;
   cpkt_audio_vox *vox;
+  cpkt_audio_ptt *ptt;
   cpkt_sus_model *model;
   cpkt_sus_transcriber *transcriber;
   cpkt_audio_capture_config capture_config;
   cpkt_audio_vox_config vox_config;
+  cpkt_audio_ptt_config ptt_config;
   cpkt_sus_transcriber_config transcriber_config;
   cpkt_sus_realtime_config realtime_config;
   struct cpkt_sus_live_run run;
@@ -247,12 +327,15 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   cpkt_audio_result audio_result;
   cpkt_sus_result sus_result;
   int rc;
+  int ptt_tx;
 
   capture = NULL;
   vox = NULL;
+  ptt = NULL;
   model = NULL;
   transcriber = NULL;
   rc = 1;
+  ptt_tx = 0;
   memset(&run, 0, sizeof(run));
   run.options = opts;
 
@@ -300,23 +383,46 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
     goto cleanup;
   }
 
-  memset(&vox_config, 0, sizeof(vox_config));
-  vox_config.threshold = cpkt_sus_live_threshold(opts);
-  vox_config.release_silence_ms = opts->hang_ms;
-  vox_config.max_segment_ms = opts->max_segment_ms;
-  vox_config.min_segment_ms = 100UL;
-  vox_config.segment_sink = cpkt_sus_live_segment_sink;
-  vox_config.segment_user = &run;
-  vox_config.state_sink = cpkt_sus_live_state_sink;
-  vox_config.state_user = &run;
-  audio_result = cpkt_audio_vox_open(&vox, &vox_config);
-  if (audio_result != CPKT_AUDIO_OK) {
-    fprintf(stderr, "vox open failed: %s\n",
-            cpkt_audio_result_string(audio_result));
-    goto cleanup;
+  if (opts->ptt) {
+    if (!cpkt_sus_live_enable_raw_tty()) {
+      fprintf(stderr, "--ptt requires stdin to be a tty\n");
+      goto cleanup;
+    }
+    memset(&ptt_config, 0, sizeof(ptt_config));
+    ptt_config.max_segment_ms = opts->max_segment_ms;
+    ptt_config.min_segment_ms = 100UL;
+    ptt_config.segment_sink = cpkt_sus_live_segment_sink;
+    ptt_config.segment_user = &run;
+    ptt_config.state_sink = cpkt_sus_live_state_sink;
+    ptt_config.state_user = &run;
+    audio_result = cpkt_audio_ptt_open(&ptt, &ptt_config);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "ptt open failed: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
+  } else {
+    memset(&vox_config, 0, sizeof(vox_config));
+    vox_config.threshold = cpkt_sus_live_threshold(opts);
+    vox_config.release_silence_ms = opts->hang_ms;
+    vox_config.max_segment_ms = opts->max_segment_ms;
+    vox_config.min_segment_ms = 100UL;
+    vox_config.segment_sink = cpkt_sus_live_segment_sink;
+    vox_config.segment_user = &run;
+    vox_config.state_sink = cpkt_sus_live_state_sink;
+    vox_config.state_user = &run;
+    audio_result = cpkt_audio_vox_open(&vox, &vox_config);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "vox open failed: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
   }
 
   cpkt_sus_live_emit(&run, "RX\n");
+  if (opts->ptt) {
+    cpkt_sus_live_emit(&run, "PTT ready: space/p toggles TX, q quits\n");
+  }
   audio_result = capture->start(capture);
   if (audio_result != CPKT_AUDIO_OK) {
     fprintf(stderr, "capture start failed: %s\n",
@@ -325,7 +431,16 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   }
 
   end_time = opts->seconds != 0UL ? time(NULL) + (time_t)opts->seconds : 0;
-  while (opts->seconds == 0UL || time(NULL) < end_time) {
+  while (!cpkt_sus_live_stop &&
+         (opts->seconds == 0UL || time(NULL) < end_time)) {
+    if (opts->ptt) {
+      audio_result = cpkt_sus_live_ptt_poll(ptt, &ptt_tx);
+      if (audio_result != CPKT_AUDIO_OK) {
+        fprintf(stderr, "ptt control failed: %s\n",
+                cpkt_audio_result_string(audio_result));
+        goto cleanup;
+      }
+    }
     frames_read = 0U;
     audio_result = capture->read_f32_mono_16k(
         capture, frames, CPKT_SUS_LIVE_READ_FRAMES, &frames_read);
@@ -338,9 +453,10 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
       cpkt_sus_live_sleep_ms(5UL);
       continue;
     }
-    audio_result = vox->push_f32_mono_16k(vox, frames, frames_read);
+    audio_result = opts->ptt ? ptt->push_f32_mono_16k(ptt, frames, frames_read)
+                             : vox->push_f32_mono_16k(vox, frames, frames_read);
     if (audio_result != CPKT_AUDIO_OK) {
-      fprintf(stderr, "vox push failed: %s\n",
+      fprintf(stderr, "%s push failed: %s\n", opts->ptt ? "ptt" : "vox",
               cpkt_audio_result_string(audio_result));
       goto cleanup;
     }
@@ -352,9 +468,9 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
             cpkt_audio_result_string(audio_result));
     goto cleanup;
   }
-  audio_result = vox->flush(vox);
+  audio_result = opts->ptt ? ptt->flush(ptt) : vox->flush(vox);
   if (audio_result != CPKT_AUDIO_OK) {
-    fprintf(stderr, "vox flush failed: %s\n",
+    fprintf(stderr, "%s flush failed: %s\n", opts->ptt ? "ptt" : "vox",
             cpkt_audio_result_string(audio_result));
     goto cleanup;
   }
@@ -383,6 +499,10 @@ cleanup:
   if (vox != NULL) {
     vox->destroy(vox);
   }
+  if (ptt != NULL) {
+    ptt->destroy(ptt);
+  }
+  cpkt_sus_live_restore_tty();
   if (capture != NULL) {
     (void)capture->stop(capture);
     capture->destroy(capture);
@@ -405,6 +525,8 @@ static void cpkt_sus_live_usage(FILE *out) {
   fprintf(out, "Options:\n");
   fprintf(out,
           "  --live                      Open the default capture device.\n");
+  fprintf(out, "  --ptt                       Use push-to-talk instead of VOX; "
+               "space/p toggles TX, q quits.\n");
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
@@ -441,6 +563,8 @@ static int cpkt_sus_live_parse_options(int argc, char **argv,
       exit(0);
     } else if (strcmp(argv[i], "--live") == 0) {
       opts->live = 1;
+    } else if (strcmp(argv[i], "--ptt") == 0) {
+      opts->ptt = 1;
     } else if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) {
       if (!cpkt_sus_live_parse_ulong(argv[++i], &opts->seconds)) {
         return 0;
@@ -518,6 +642,10 @@ int main(int argc, char **argv) {
     printf("cpkt_sus_live_vox_c89_example smoke ok; pass --live to open the "
            "default capture device\n");
     return 0;
+  }
+  if (opts.ptt && !isatty(STDIN_FILENO)) {
+    fprintf(stderr, "--ptt requires stdin to be a tty\n");
+    return 64;
   }
   return cpkt_sus_live_run(&opts);
 }
