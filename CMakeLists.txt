@@ -695,6 +695,11 @@ if(CPKT_BUILD_TESTS)
           TIMEOUT 30)
       add_test(NAME lua_runtime_mock_unit COMMAND cpkt_lua_runtime_mock_test)
       add_test(
+        NAME sus_model_catalog_metadata
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/sus_model_catalog_metadata_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
         NAME clangd_surface
         COMMAND
           "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh"

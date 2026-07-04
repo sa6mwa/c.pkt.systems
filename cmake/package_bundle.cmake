@@ -1005,6 +1005,9 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "sus_abi_version=${CPKT_SUS_ABI_VERSION}\n"
   "opcua_abi_version=${CPKT_OPCUA_ABI_VERSION}\n"
 )
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
+  "${_stage_root}/share/c.pkt.systems/sus-model-catalog.tsv")
 
 file(MAKE_DIRECTORY
   "${_stage_root}/share/doc/c.pkt.systems"
@@ -1021,6 +1024,9 @@ file(COPY_FILE
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/audio-sus-facade-spec.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/sus-model-catalog.tsv")
 file(COPY
   "${CPKT_SOURCE_DIR}/examples/"
   DESTINATION "${_stage_root}/share/doc/c.pkt.systems/examples")

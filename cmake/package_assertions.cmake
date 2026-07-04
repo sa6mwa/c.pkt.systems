@@ -451,6 +451,23 @@ if(NOT EXISTS "${_manifest_path}")
   message(FATAL_ERROR "missing package manifest: ${_manifest_path}")
 endif()
 file(READ "${_manifest_path}" _manifest_text)
+set(_sus_model_catalog_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/sus-model-catalog.tsv")
+if(NOT EXISTS "${_sus_model_catalog_path}")
+  message(FATAL_ERROR "missing sus model catalog metadata: ${_sus_model_catalog_path}")
+endif()
+file(READ "${_sus_model_catalog_path}" _sus_model_catalog_text)
+if(NOT _sus_model_catalog_text MATCHES "^name\tprovider\tfilename\tsource_url\tsha256\tsize_bytes\tlicense\tquantization\tis_default\n")
+  message(FATAL_ERROR "sus model catalog metadata has an unexpected header")
+endif()
+foreach(_required_model_catalog_entry
+    "small\tggerganov/whisper.cpp\tggml-small.bin\thttps://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin\t1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b\t487601967\tMIT\tf16\t1"
+    "kb-whisper-small\tKBLab/kb-whisper-small\tggml-model.bin\thttps://huggingface.co/KBLab/kb-whisper-small/resolve/main/ggml-model.bin\tde6911330cbdc131362f7a955682b65c8a5a2394caba73e7ea821a9822efb8c6\t487601984\tApache-2.0\tf16\t0"
+    "large-v3-turbo:q5_0\tggerganov/whisper.cpp\tggml-large-v3-turbo-q5_0.bin\thttps://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin\t394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2\t574041195\tMIT\tq5_0\t0")
+  string(FIND "${_sus_model_catalog_text}" "${_required_model_catalog_entry}" _required_model_catalog_entry_index)
+  if(_required_model_catalog_entry_index EQUAL -1)
+    message(FATAL_ERROR "sus model catalog metadata is missing required entry: ${_required_model_catalog_entry}")
+  endif()
+endforeach()
 if(NOT _manifest_text MATCHES "(^|\n)lua_runtime_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing lua_runtime_abi_version")
 endif()
@@ -660,10 +677,12 @@ foreach(_path
     "lib/pkgconfig/cpkt-opcua.pc"
     "lib/pkgconfig/open62541.pc"
     "share/c.pkt.systems/manifest.txt"
+    "share/c.pkt.systems/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/LICENSE"
     "share/doc/c.pkt.systems/README.md"
     "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/examples/abi_smoke.c"
     "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
     "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
