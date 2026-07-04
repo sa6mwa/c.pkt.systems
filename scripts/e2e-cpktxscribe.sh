@@ -14,7 +14,7 @@ mkdir -p "$out_dir"
   --model tiny \
   --language en \
   --vox-threshold 0.03 \
-  --hang-ms 500 \
+  --hang-ms 1500 \
   --segment-ms 7000 \
   "$url" >"$stdout_path" 2>"$stderr_path"
 

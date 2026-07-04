@@ -220,7 +220,7 @@ static void cpkt_sus_test_realtime_config(cpkt_sus_realtime_config *config) {
   config->length_ms = cpkt_sus_test_env_ulong(
       "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 7000UL);
   config->keep_ms =
-      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 500UL);
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 1500UL);
   config->vox_threshold =
       cpkt_sus_test_env_float("CPKT_SUS_INTEGRATION_VOX_THRESHOLD", 0.03f);
   config->memory_spool_bytes = cpkt_sus_test_env_ulong(

@@ -48,7 +48,7 @@ static int cpkt_example_transcribe_file(const char *model_path,
   realtime_config.read_frames = CPKT_EXAMPLE_READ_FRAMES;
   realtime_config.step_ms = 1000UL;
   realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 200UL;
+  realtime_config.keep_ms = 1500UL;
   realtime_config.realtime_sink = cpkt_example_realtime_sink;
   realtime_config.realtime_user = stdout;
 

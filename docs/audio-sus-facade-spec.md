@@ -424,7 +424,8 @@ unacceptable, and it creates a misleading streaming surface.
 The decoder realtime path therefore uses `cpkt_audio` VOX segmentation:
 
 - audio is decoded and pushed through VOX as float32 mono 16000 Hz PCM;
-- silence release closes a segment after `keep_ms` milliseconds;
+- silence release closes a segment after `keep_ms` milliseconds, defaulting to
+  1500 ms;
 - continuous speech is hard-cut after `length_ms` milliseconds, defaulting to
   7000 ms for `cpkt_sus`;
 - sus zero-config VOX uses a lower speech-oriented threshold than generic audio

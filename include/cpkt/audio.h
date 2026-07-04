@@ -187,9 +187,9 @@ typedef int (*cpkt_audio_vox_segment_sink)(
 typedef struct cpkt_audio_vox_config {
   /** RMS power threshold that opens or keeps VOX active. Zero selects 0.01. */
   float threshold;
-  /** Silence duration that releases VOX. Zero selects 2000 ms. */
+  /** Silence duration that releases VOX. Zero selects 1500 ms. */
   unsigned long release_silence_ms;
-  /** Maximum segment duration before a hard cut. Zero disables the time cap. */
+  /** Maximum segment duration before a budget split. Zero disables the time cap. */
   unsigned long max_segment_ms;
   /** Minimum segment duration to emit. Zero selects 100 ms. */
   unsigned long min_segment_ms;

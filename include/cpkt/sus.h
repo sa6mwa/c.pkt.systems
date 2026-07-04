@@ -224,7 +224,7 @@ typedef struct cpkt_sus_realtime_config {
    */
   unsigned long length_ms;
   /**
-   * Silence duration that releases VOX, in milliseconds. Zero selects 2000 ms.
+   * Silence duration that releases VOX, in milliseconds. Zero selects 1500 ms.
    */
   unsigned long keep_ms;
   /**

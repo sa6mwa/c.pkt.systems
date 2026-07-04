@@ -1666,7 +1666,7 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
   length_ms =
       config != NULL && config->length_ms != 0UL ? config->length_ms : 7000UL;
   keep_ms =
-      config != NULL && config->keep_ms != 0UL ? config->keep_ms : 2000UL;
+      config != NULL && config->keep_ms != 0UL ? config->keep_ms : 1500UL;
   if (read_frames == 0UL || read_frames > ((unsigned long)-1) / sizeof(float)) {
     return CPKT_SUS_ERR_ARG;
   }

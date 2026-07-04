@@ -572,7 +572,7 @@ int main(void) {
   memset(&event, 0, sizeof(event));
   realtime_config.step_ms = 1000UL;
   realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 2000UL;
+  realtime_config.keep_ms = 1500UL;
   realtime_config.memory_spool_bytes = 1024UL * 1024UL;
   realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   event.is_final = 1;
@@ -652,7 +652,7 @@ int main(void) {
   memset(&event, 0, sizeof(event));
   realtime_config.step_ms = 1000UL;
   realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 2000UL;
+  realtime_config.keep_ms = 1500UL;
   realtime_config.memory_spool_bytes = 1024UL * 1024UL;
   realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   event.step_index = 1UL;

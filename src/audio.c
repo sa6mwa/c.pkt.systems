@@ -2198,7 +2198,7 @@ cpkt_audio_vox_open(cpkt_audio_vox **out,
 
   release_ms = config->release_silence_ms != 0UL
                    ? config->release_silence_ms
-                   : 2000UL;
+                   : 1500UL;
   min_ms = config->min_segment_ms != 0UL ? config->min_segment_ms : 100UL;
   if (!cpkt_audio_ms_to_16k_frames(release_ms, &release_frames) ||
       !cpkt_audio_ms_to_16k_frames(min_ms, &min_frames) ||

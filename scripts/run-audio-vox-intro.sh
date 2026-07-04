@@ -8,12 +8,12 @@ cache_root=${CPKT_AUDIO_VOX_INTRO_CACHE:-"${XDG_CACHE_HOME:-"$HOME/.cache"}/c.pk
 audio_path="$cache_root/intro.mp3"
 dump_dir=${CPKT_AUDIO_VOX_INTRO_DUMP_DIR:-"$repo_root/build/vox-intro-dump"}
 threshold=${CPKT_AUDIO_VOX_INTRO_THRESHOLD:-0.03}
-hang_ms=${CPKT_AUDIO_VOX_INTRO_HANG_MS:-500}
+hang_ms=${CPKT_AUDIO_VOX_INTRO_HANG_MS:-1500}
 budget_ms=${CPKT_AUDIO_VOX_INTRO_BUDGET_MS:-7000}
 memory_spool_bytes=${CPKT_AUDIO_VOX_INTRO_MEMORY_SPOOL_BYTES:-65536}
 max_spool_bytes=${CPKT_AUDIO_VOX_INTRO_MAX_SPOOL_BYTES:-1073741824}
 assert_expected=${CPKT_AUDIO_VOX_INTRO_ASSERT:-auto}
-expected_segments=${CPKT_AUDIO_VOX_INTRO_EXPECTED_SEGMENTS:-11}
+expected_segments=${CPKT_AUDIO_VOX_INTRO_EXPECTED_SEGMENTS:-7}
 expected_hard_cuts=${CPKT_AUDIO_VOX_INTRO_EXPECTED_HARD_CUTS:-0}
 expected_final_segments=${CPKT_AUDIO_VOX_INTRO_EXPECTED_FINAL_SEGMENTS:-1}
 
@@ -64,7 +64,7 @@ printf '[audio-vox-intro] threshold=%s hang-ms=%s budget-ms=%s\n' \
   --max-spool-bytes "$max_spool_bytes"
 
 if [ "$assert_expected" = "auto" ]; then
-  if [ "$threshold" = "0.03" ] && [ "$hang_ms" = "500" ] && [ "$budget_ms" = "7000" ]; then
+  if [ "$threshold" = "0.03" ] && [ "$hang_ms" = "1500" ] && [ "$budget_ms" = "7000" ]; then
     assert_expected=1
   else
     assert_expected=0

@@ -11,7 +11,7 @@ model_cache=${CPKT_SUS_VOX_INTRO_MODEL_CACHE:-"$cache_root/models"}
 model=${CPKT_SUS_VOX_INTRO_MODEL:-tiny}
 language=${CPKT_SUS_VOX_INTRO_LANGUAGE:-en}
 threshold=${CPKT_SUS_VOX_INTRO_THRESHOLD:-0.03}
-hang_ms=${CPKT_SUS_VOX_INTRO_HANG_MS:-500}
+hang_ms=${CPKT_SUS_VOX_INTRO_HANG_MS:-1500}
 budget_ms=${CPKT_SUS_VOX_INTRO_BUDGET_MS:-7000}
 read_frames=${CPKT_SUS_VOX_INTRO_READ_FRAMES:-4096}
 

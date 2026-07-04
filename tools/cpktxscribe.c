@@ -63,7 +63,7 @@ static void cpktxscribe_defaults(struct cpktxscribe_options *options) {
   options->final_newline = 1;
   options->read_frames = CPKTXSCRIBE_DEFAULT_READ_FRAMES;
   options->length_ms = 7000UL;
-  options->hang_ms = 500UL;
+  options->hang_ms = 1500UL;
   options->memory_spool_bytes = CPKTXSCRIBE_DEFAULT_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKTXSCRIBE_DEFAULT_MAX_SPOOL_BYTES;
   options->vox_threshold = 0.03f;
@@ -291,7 +291,7 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "  --max-tokens N               Backend max tokens override.\n");
   fprintf(out, "\nVOX:\n");
   fprintf(out, "  --vox-threshold VALUE        RMS threshold; default 0.03.\n");
-  fprintf(out, "  --hang-ms N                  Silence release time; default 500.\n");
+  fprintf(out, "  --hang-ms N                  Silence release time; default 1500.\n");
   fprintf(out, "  --segment-ms N               Segment budget; default 7000.\n");
   fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
   fprintf(out, "  --memory-spool-bytes N       RAM before spool; default 65536.\n");
