@@ -10,12 +10,14 @@ struct cpkt_audio_decoder_impl {
   ma_decoder decoder;
   cpkt_audio_reader reader;
   int owns_reader;
+  int callback_error;
 };
 
 struct cpkt_audio_encoder_impl {
   ma_encoder encoder;
   cpkt_audio_writer writer;
   int closed;
+  int callback_error;
 };
 
 static ma_encoding_format cpkt_audio_to_ma_encoding(int encoding) {
@@ -71,15 +73,21 @@ static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
                                         size_t bytes_to_read,
                                         size_t *bytes_read) {
   cpkt_audio_reader *reader;
+  struct cpkt_audio_decoder_impl *impl;
   size_t nread;
 
-  reader = (cpkt_audio_reader *)decoder->pUserData;
+  impl = (struct cpkt_audio_decoder_impl *)decoder->pUserData;
+  reader = impl != NULL ? &impl->reader : NULL;
   if (reader == NULL || reader->read == NULL || bytes_read == NULL) {
+    if (impl != NULL) {
+      impl->callback_error = 1;
+    }
     return MA_INVALID_ARGS;
   }
 
   nread = reader->read(reader->user, buffer, bytes_to_read);
   if (nread > bytes_to_read) {
+    impl->callback_error = 1;
     return MA_IO_ERROR;
   }
   *bytes_read = nread;
@@ -89,13 +97,16 @@ static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
 static ma_result cpkt_audio_reader_seek(ma_decoder *decoder, ma_int64 offset,
                                         ma_seek_origin origin) {
   cpkt_audio_reader *reader;
+  struct cpkt_audio_decoder_impl *impl;
   int cpkt_origin;
 
-  reader = (cpkt_audio_reader *)decoder->pUserData;
+  impl = (struct cpkt_audio_decoder_impl *)decoder->pUserData;
+  reader = impl != NULL ? &impl->reader : NULL;
   if (reader == NULL || reader->seek == NULL) {
     return MA_NOT_IMPLEMENTED;
   }
   if (offset > LONG_MAX || offset < LONG_MIN) {
+    impl->callback_error = 1;
     return MA_INVALID_ARGS;
   }
 
@@ -108,6 +119,7 @@ static ma_result cpkt_audio_reader_seek(ma_decoder *decoder, ma_int64 offset,
   }
 
   if (reader->seek(reader->user, (long)offset, cpkt_origin) != 0) {
+    impl->callback_error = 1;
     return MA_IO_ERROR;
   }
   return MA_SUCCESS;
@@ -118,31 +130,43 @@ static ma_result cpkt_audio_writer_write(ma_encoder *encoder,
                                          size_t bytes_to_write,
                                          size_t *bytes_written) {
   cpkt_audio_writer *writer;
+  struct cpkt_audio_encoder_impl *impl;
   size_t nwritten;
 
-  writer = (cpkt_audio_writer *)encoder->pUserData;
+  impl = (struct cpkt_audio_encoder_impl *)encoder->pUserData;
+  writer = impl != NULL ? &impl->writer : NULL;
   if (writer == NULL || writer->write == NULL || bytes_written == NULL) {
+    if (impl != NULL) {
+      impl->callback_error = 1;
+    }
     return MA_INVALID_ARGS;
   }
 
   nwritten = writer->write(writer->user, buffer, bytes_to_write);
   if (nwritten > bytes_to_write) {
+    impl->callback_error = 1;
     return MA_IO_ERROR;
   }
   *bytes_written = nwritten;
+  if (nwritten != bytes_to_write) {
+    impl->callback_error = 1;
+  }
   return nwritten == bytes_to_write ? MA_SUCCESS : MA_IO_ERROR;
 }
 
 static ma_result cpkt_audio_writer_seek(ma_encoder *encoder, ma_int64 offset,
                                         ma_seek_origin origin) {
   cpkt_audio_writer *writer;
+  struct cpkt_audio_encoder_impl *impl;
   int cpkt_origin;
 
-  writer = (cpkt_audio_writer *)encoder->pUserData;
+  impl = (struct cpkt_audio_encoder_impl *)encoder->pUserData;
+  writer = impl != NULL ? &impl->writer : NULL;
   if (writer == NULL || writer->seek == NULL) {
     return MA_NOT_IMPLEMENTED;
   }
   if (offset > LONG_MAX || offset < LONG_MIN) {
+    impl->callback_error = 1;
     return MA_INVALID_ARGS;
   }
 
@@ -155,6 +179,7 @@ static ma_result cpkt_audio_writer_seek(ma_encoder *encoder, ma_int64 offset,
   }
 
   if (writer->seek(writer->user, (long)offset, cpkt_origin) != 0) {
+    impl->callback_error = 1;
     return MA_IO_ERROR;
   }
   return MA_SUCCESS;
@@ -190,6 +215,9 @@ cpkt_audio_decoder_read_f32_mono_16k_impl(cpkt_audio_decoder *self,
   result =
       ma_decoder_read_pcm_frames(&impl->decoder, frames, requested, &actual);
   *frames_read = (size_t)actual;
+  if (result != MA_SUCCESS && result != MA_AT_END && impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
   if (result == MA_AT_END && actual > 0) {
     return CPKT_AUDIO_OK;
   }
@@ -276,6 +304,9 @@ cpkt_audio_encoder_write_f32_impl(cpkt_audio_encoder *self, const float *frames,
   result =
       ma_encoder_write_pcm_frames(&impl->encoder, frames, requested, &actual);
   *frames_written = (size_t)actual;
+  if (result != MA_SUCCESS && impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
   return cpkt_audio_from_ma_result(result);
 }
 
@@ -291,6 +322,9 @@ cpkt_audio_encoder_close_impl(cpkt_audio_encoder *self) {
   if (!impl->closed) {
     ma_encoder_uninit(&impl->encoder);
     impl->closed = 1;
+  }
+  if (impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
   }
   return CPKT_AUDIO_OK;
 }
@@ -473,12 +507,14 @@ cpkt_audio_decoder_open_reader(cpkt_audio_decoder **out,
 
   ma_config = cpkt_audio_ma_decoder_config(config);
   ma_status = ma_decoder_init(cpkt_audio_reader_read, cpkt_audio_reader_seek,
-                              &impl->reader, &ma_config, &impl->decoder);
+                              impl, &ma_config, &impl->decoder);
   if (ma_status != MA_SUCCESS) {
+    result = impl->callback_error ? CPKT_AUDIO_ERR_IO
+                                  : cpkt_audio_from_ma_result(ma_status);
     decoder->impl = NULL;
     free(impl);
     free(decoder);
-    return cpkt_audio_from_ma_result(ma_status);
+    return result;
   }
 
   *out = decoder;
@@ -554,12 +590,14 @@ cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
   impl->writer = *writer;
 
   ma_status = ma_encoder_init(cpkt_audio_writer_write, cpkt_audio_writer_seek,
-                              &impl->writer, &ma_config, &impl->encoder);
+                              impl, &ma_config, &impl->encoder);
   if (ma_status != MA_SUCCESS) {
+    result = impl->callback_error ? CPKT_AUDIO_ERR_IO
+                                  : cpkt_audio_from_ma_result(ma_status);
     encoder->impl = NULL;
     free(impl);
     free(encoder);
-    return cpkt_audio_from_ma_result(ma_status);
+    return result;
   }
 
   *out = encoder;

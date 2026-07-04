@@ -13,12 +13,14 @@ struct memory_reader {
   const unsigned char *data;
   size_t size;
   size_t cursor;
+  size_t max_chunk;
 };
 
 struct memory_writer {
   unsigned char data[1024];
   size_t size;
   size_t cursor;
+  size_t fail_after_size;
 };
 
 static const unsigned char test_wav_mono_8000[] = {
@@ -36,6 +38,9 @@ static size_t memory_read(void *user, void *buffer, size_t bytes_to_read) {
   reader = (struct memory_reader *)user;
   remaining = reader->size - reader->cursor;
   to_copy = remaining < bytes_to_read ? remaining : bytes_to_read;
+  if (reader->max_chunk != 0 && to_copy > reader->max_chunk) {
+    to_copy = reader->max_chunk;
+  }
   if (to_copy > 0) {
     memcpy(buffer, reader->data + reader->cursor, to_copy);
     reader->cursor += to_copy;
@@ -66,6 +71,19 @@ static int memory_seek(void *user, long offset, int origin) {
   return 0;
 }
 
+static int failing_seek(void *user, long offset, int origin) {
+  (void)user;
+  (void)offset;
+  (void)origin;
+  return -1;
+}
+
+static size_t invalid_read(void *user, void *buffer, size_t bytes_to_read) {
+  (void)user;
+  (void)buffer;
+  return bytes_to_read + 1U;
+}
+
 static size_t memory_write(void *user, const void *buffer,
                            size_t bytes_to_write) {
   struct memory_writer *writer;
@@ -74,6 +92,14 @@ static size_t memory_write(void *user, const void *buffer,
 
   writer = (struct memory_writer *)user;
   remaining = sizeof(writer->data) - writer->cursor;
+  if (writer->fail_after_size != 0) {
+    if (writer->cursor >= writer->fail_after_size) {
+      return 0;
+    }
+    if (remaining > writer->fail_after_size - writer->cursor) {
+      remaining = writer->fail_after_size - writer->cursor;
+    }
+  }
   to_copy = remaining < bytes_to_write ? remaining : bytes_to_write;
   if (to_copy > 0) {
     memcpy(writer->data + writer->cursor, buffer, to_copy);
@@ -132,6 +158,11 @@ static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder) {
   } while (result != CPKT_AUDIO_AT_END);
 
   assert_true(total >= 8);
+  frames_read = 1;
+  assert_int_equal(decoder->read_f32_mono_16k(decoder, frames, 64,
+                                              &frames_read),
+                   CPKT_AUDIO_AT_END);
+  assert_int_equal(frames_read, 0);
 }
 
 static void write_test_pcm(cpkt_audio_encoder *encoder) {
@@ -171,6 +202,56 @@ static void test_decoder_reads_from_callback_reader(void **state) {
   assert_non_null(decoder->destroy);
   assert_decoder_reads_f32_mono_16k(decoder);
   decoder->destroy(decoder);
+}
+
+static void test_decoder_reads_fragmented_callback_reader(void **state) {
+  struct memory_reader memory;
+  cpkt_audio_reader reader;
+  cpkt_audio_decoder *decoder;
+
+  (void)state;
+  memset(&memory, 0, sizeof(memory));
+  memory.data = test_wav_mono_8000;
+  memory.size = sizeof(test_wav_mono_8000);
+  memory.max_chunk = 16;
+  memset(&reader, 0, sizeof(reader));
+  reader.user = &memory;
+  reader.read = memory_read;
+  reader.seek = memory_seek;
+
+  decoder = NULL;
+  assert_int_equal(cpkt_audio_decoder_open_reader(&decoder, &reader, NULL),
+                   CPKT_AUDIO_OK);
+  assert_non_null(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder);
+  decoder->destroy(decoder);
+}
+
+static void test_decoder_callback_failures(void **state) {
+  struct memory_reader memory;
+  cpkt_audio_reader reader;
+  cpkt_audio_decoder *decoder;
+
+  (void)state;
+  memset(&memory, 0, sizeof(memory));
+  memory.data = test_wav_mono_8000;
+  memory.size = sizeof(test_wav_mono_8000);
+  memset(&reader, 0, sizeof(reader));
+  reader.user = &memory;
+  reader.read = memory_read;
+  reader.seek = failing_seek;
+
+  decoder = (cpkt_audio_decoder *)1;
+  assert_int_equal(cpkt_audio_decoder_open_reader(&decoder, &reader, NULL),
+                   CPKT_AUDIO_ERR_IO);
+  assert_null(decoder);
+
+  memset(&reader, 0, sizeof(reader));
+  reader.read = invalid_read;
+  decoder = (cpkt_audio_decoder *)1;
+  assert_int_equal(cpkt_audio_decoder_open_reader(&decoder, &reader, NULL),
+                   CPKT_AUDIO_ERR_IO);
+  assert_null(decoder);
 }
 
 static void test_decoder_reads_from_file(void **state) {
@@ -267,6 +348,36 @@ static void test_encoder_writes_wav_callback_writer(void **state) {
   decoder->destroy(decoder);
 }
 
+static void test_encoder_callback_write_failure(void **state) {
+  struct memory_writer memory;
+  cpkt_audio_writer writer;
+  cpkt_audio_encoder *encoder;
+  float frames[16];
+  size_t frames_written;
+  size_t i;
+
+  (void)state;
+  memset(&memory, 0, sizeof(memory));
+  memset(&writer, 0, sizeof(writer));
+  writer.user = &memory;
+  writer.write = memory_write;
+  writer.seek = memory_writer_seek;
+
+  encoder = NULL;
+  assert_int_equal(cpkt_audio_encoder_open_writer(&encoder, &writer, NULL),
+                   CPKT_AUDIO_OK);
+  assert_non_null(encoder);
+  memory.fail_after_size = memory.size + 1U;
+  for (i = 0; i < 16; ++i) {
+    frames[i] = (float)i / 16.0f;
+  }
+  frames_written = 99;
+  assert_int_equal(encoder->write_f32(encoder, frames, 16, &frames_written),
+                   CPKT_AUDIO_OK);
+  assert_int_equal(encoder->close(encoder), CPKT_AUDIO_ERR_IO);
+  encoder->destroy(encoder);
+}
+
 static void test_invalid_arguments(void **state) {
   cpkt_audio_decoder *decoder;
   cpkt_audio_encoder *encoder;
@@ -331,9 +442,12 @@ static void test_invalid_arguments(void **state) {
 int main(void) {
   const struct CMUnitTest tests[] = {
       cmocka_unit_test(test_decoder_reads_from_callback_reader),
+      cmocka_unit_test(test_decoder_reads_fragmented_callback_reader),
+      cmocka_unit_test(test_decoder_callback_failures),
       cmocka_unit_test(test_decoder_reads_from_file),
       cmocka_unit_test(test_encoder_writes_wav_file),
       cmocka_unit_test(test_encoder_writes_wav_callback_writer),
+      cmocka_unit_test(test_encoder_callback_write_failure),
       cmocka_unit_test(test_invalid_arguments),
   };
   return cmocka_run_group_tests(tests, NULL, NULL);
