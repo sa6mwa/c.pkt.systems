@@ -1079,6 +1079,13 @@ cpkt_stage_license("miniaudio" "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio/src/LICE
 cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src/LICENSE")
 cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
 cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src/LICENSE")
+file(MAKE_DIRECTORY "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/third_party/kblab-whisper-models/LICENSE"
+  "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models/LICENSE")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/third_party/kblab-whisper-models/PROVENANCE.md"
+  "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md")
 file(MAKE_DIRECTORY "${_stage_root}/share/doc/c.pkt.systems/third_party/open62541/patches")
 file(COPY
   "${CPKT_SOURCE_DIR}/vendor/open62541/patches/series"

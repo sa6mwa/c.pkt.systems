@@ -759,6 +759,8 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/lua/LICENSE"
     "share/doc/c.pkt.systems/third_party/miniaudio/LICENSE"
     "share/doc/c.pkt.systems/third_party/whisper.cpp/LICENSE"
+    "share/doc/c.pkt.systems/third_party/kblab-whisper-models/LICENSE"
+    "share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md"
     "share/doc/c.pkt.systems/third_party/mqtt-c/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/patches/series"
