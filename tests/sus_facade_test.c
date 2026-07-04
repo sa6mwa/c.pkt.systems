@@ -1,7 +1,9 @@
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include <cmocka.h>
 
@@ -88,9 +90,13 @@ static void test_model_helpers_reject_invalid_arguments(void **state) {
 static void test_cached_open_contract(void **state) {
   cpkt_sus_cache_config config;
   cpkt_sus_model *model;
+  FILE *file;
 
   (void)state;
   memset(&config, 0, sizeof(config));
+  config.cache_dir = "cpkt-sus-test-cache";
+  (void)mkdir(config.cache_dir, 0700);
+  (void)remove("cpkt-sus-test-cache/ggml-small.bin");
 
   model = (cpkt_sus_model *)1;
   assert_int_equal(cpkt_sus_model_open_cached(NULL, &config), CPKT_SUS_ERR_ARG);
@@ -101,20 +107,46 @@ static void test_cached_open_contract(void **state) {
 
   model = (cpkt_sus_model *)1;
   assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
-                   CPKT_SUS_ERR_ARG);
+                   CPKT_SUS_ERR_IO);
   assert_null(model);
 
   config.model = "";
   model = (cpkt_sus_model *)1;
   assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
-                   CPKT_SUS_ERR_ARG);
+                   CPKT_SUS_ERR_IO);
+  assert_null(model);
+
+  config.model = "not-a-cpkt-model";
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_LOOKUP);
   assert_null(model);
 
   config.model = "small";
+  config.sha256 = "not-a-sha";
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_ARG);
+  assert_null(model);
+
+  config.sha256 = NULL;
+  file = fopen("cpkt-sus-test-cache/ggml-small.bin", "wb");
+  assert_non_null(file);
+  assert_int_equal(fwrite("not a whisper model", 1, 19, file), 19);
+  assert_int_equal(fclose(file), 0);
+
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_CHECKSUM);
+  assert_null(model);
+
+  config.insecure_no_checksum = 1;
   model = (cpkt_sus_model *)1;
   assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
                    CPKT_SUS_ERR_MODEL);
   assert_null(model);
+
+  (void)remove("cpkt-sus-test-cache/ggml-small.bin");
 }
 
 static void test_result_strings(void **state) {
@@ -122,6 +154,10 @@ static void test_result_strings(void **state) {
 
   assert_int_equal(cpkt_sus_result_string(CPKT_SUS_OK)[0], 'o');
   assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_CALLBACK)[0], 'c');
+  assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_LOOKUP)[0], 'm');
+  assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_IO)[0], 'I');
+  assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_CHECKSUM)[0], 'c');
+  assert_int_equal(cpkt_sus_result_string(CPKT_SUS_ERR_NETWORK)[0], 'n');
   assert_int_equal(cpkt_sus_result_string((cpkt_sus_result)999)[0], 'u');
 }
 

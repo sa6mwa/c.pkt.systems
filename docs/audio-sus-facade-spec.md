@@ -362,6 +362,18 @@ Model loading must support:
 - explicit insecure/no-checksum mode, off by default;
 - atomic download/write/verify/rename behavior.
 
+Current implementation status:
+
+- explicit-path loading is implemented;
+- cache-backed loading resolves curated model names, default `small`, explicit
+  cache directories, XDG/HOME cache directories, existing local cache files,
+  pinned checksums, user checksum overrides, and explicit insecure checksum
+  bypass;
+- missing local cache entries currently return `CPKT_SUS_ERR_IO`; the libcurl
+  download/write/verify/rename route is the next implementation slice;
+- cache loading returns distinct lookup, I/O, checksum, model-load, and future
+  network result codes.
+
 Opening from a path must not perform network access.
 
 Opening from cache may perform network access only because the caller selected
@@ -446,14 +458,24 @@ Initial OpenAI-derived whisper.cpp GGML entries:
 
 - `tiny`
 - `tiny.en`
+- `tiny:q5_1`
+- `tiny.en:q5_1`
 - `base`
 - `base.en`
+- `base:q5_1`
+- `base.en:q5_1`
 - `small`
 - `small.en`
+- `small:q5_1`
+- `small.en:q5_1`
 - `medium`
 - `medium.en`
+- `medium:q5_0`
+- `medium.en:q5_0`
 - `large-v3`
+- `large-v3:q5_0`
 - `large-v3-turbo`
+- `large-v3-turbo:q5_0`
 
 The default cached model is `small`, the multilingual OpenAI-derived
 whisper.cpp GGML model.
@@ -461,10 +483,15 @@ whisper.cpp GGML model.
 Initial KBLab Swedish-optimized GGML entries:
 
 - `kb-whisper-tiny`
+- `kb-whisper-tiny:q5_0`
 - `kb-whisper-base`
+- `kb-whisper-base:q5_0`
 - `kb-whisper-small`
+- `kb-whisper-small:q5_0`
 - `kb-whisper-medium`
+- `kb-whisper-medium:q5_0`
 - `kb-whisper-large`
+- `kb-whisper-large:q5_0`
 
 For example:
 

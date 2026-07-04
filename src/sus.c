@@ -2,9 +2,12 @@
 
 #include <limits.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 
+#include <openssl/evp.h>
 #include <whisper.h>
 
 #ifndef CPKT_SUS_FACADE_VERSION
@@ -22,6 +25,170 @@ struct cpkt_sus_transcriber_impl {
   int callback_error;
 };
 
+struct cpkt_sus_catalog_entry {
+  const char *name;
+  const char *repo;
+  const char *filename;
+  const char *url;
+  const char *sha256;
+  unsigned long size_bytes;
+  const char *license;
+  const char *quantization;
+  int is_default;
+};
+
+static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
+    {"tiny", "ggerganov/whisper.cpp", "ggml-tiny.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+     "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
+     77691713UL, "MIT", "f16", 0},
+    {"tiny.en", "ggerganov/whisper.cpp", "ggml-tiny.en.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-tiny.en.bin",
+     "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f",
+     77704715UL, "MIT", "f16", 0},
+    {"tiny:q5_1", "ggerganov/whisper.cpp", "ggml-tiny-q5_1.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-tiny-q5_1.bin",
+     "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7",
+     32152673UL, "MIT", "q5_1", 0},
+    {"tiny.en:q5_1", "ggerganov/whisper.cpp", "ggml-tiny.en-q5_1.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-tiny.en-q5_1.bin",
+     "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b",
+     32166155UL, "MIT", "q5_1", 0},
+    {"base", "ggerganov/whisper.cpp", "ggml-base.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+     "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe",
+     147951465UL, "MIT", "f16", 0},
+    {"base.en", "ggerganov/whisper.cpp", "ggml-base.en.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-base.en.bin",
+     "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+     147964211UL, "MIT", "f16", 0},
+    {"base:q5_1", "ggerganov/whisper.cpp", "ggml-base-q5_1.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-base-q5_1.bin",
+     "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898",
+     59707625UL, "MIT", "q5_1", 0},
+    {"base.en:q5_1", "ggerganov/whisper.cpp", "ggml-base.en-q5_1.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-base.en-q5_1.bin",
+     "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f",
+     59721011UL, "MIT", "q5_1", 0},
+    {"small", "ggerganov/whisper.cpp", "ggml-small.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-small.bin",
+     "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
+     487601967UL, "MIT", "f16", 1},
+    {"small.en", "ggerganov/whisper.cpp", "ggml-small.en.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-small.en.bin",
+     "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d",
+     487614201UL, "MIT", "f16", 0},
+    {"small:q5_1", "ggerganov/whisper.cpp", "ggml-small-q5_1.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-small-q5_1.bin",
+     "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+     190085487UL, "MIT", "q5_1", 0},
+    {"small.en:q5_1", "ggerganov/whisper.cpp", "ggml-small.en-q5_1.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-small.en-q5_1.bin",
+     "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30",
+     190098681UL, "MIT", "q5_1", 0},
+    {"medium", "ggerganov/whisper.cpp", "ggml-medium.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-medium.bin",
+     "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208",
+     1533763059UL, "MIT", "f16", 0},
+    {"medium.en", "ggerganov/whisper.cpp", "ggml-medium.en.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-medium.en.bin",
+     "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356",
+     1533774781UL, "MIT", "f16", 0},
+    {"medium:q5_0", "ggerganov/whisper.cpp", "ggml-medium-q5_0.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-medium-q5_0.bin",
+     "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f",
+     539212467UL, "MIT", "q5_0", 0},
+    {"medium.en:q5_0", "ggerganov/whisper.cpp", "ggml-medium.en-q5_0.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-medium.en-q5_0.bin",
+     "76733e26ad8fe1c7a5bf7531a9d41917b2adc0f20f2e4f5531688a8c6cd88eb0",
+     539225533UL, "MIT", "q5_0", 0},
+    {"large-v3", "ggerganov/whisper.cpp", "ggml-large-v3.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-large-v3.bin",
+     "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+     3095033483UL, "MIT", "f16", 0},
+    {"large-v3:q5_0", "ggerganov/whisper.cpp", "ggml-large-v3-q5_0.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-large-v3-q5_0.bin",
+     "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1",
+     1081140203UL, "MIT", "q5_0", 0},
+    {"large-v3-turbo", "ggerganov/whisper.cpp", "ggml-large-v3-turbo.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-large-v3-turbo.bin",
+     "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+     1624555275UL, "MIT", "f16", 0},
+    {"large-v3-turbo:q5_0", "ggerganov/whisper.cpp",
+     "ggml-large-v3-turbo-q5_0.bin",
+     "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
+     "ggml-large-v3-turbo-q5_0.bin",
+     "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
+     574041195UL, "MIT", "q5_0", 0},
+    {"kb-whisper-tiny", "KBLab/kb-whisper-tiny", "ggml-model.bin",
+     "https://huggingface.co/KBLab/kb-whisper-tiny/resolve/main/"
+     "ggml-model.bin",
+     "054187c95948ee0455d428db0c0d6c84d6c6157dab72e86857ced13233118b03",
+     77691730UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-tiny:q5_0", "KBLab/kb-whisper-tiny", "ggml-model-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-tiny/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "98d46b7d23e5528d006e8a42e29eb0cb39b44bed94e1329f10f57d1fd15c658b",
+     29875738UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-base", "KBLab/kb-whisper-base", "ggml-model.bin",
+     "https://huggingface.co/KBLab/kb-whisper-base/resolve/main/"
+     "ggml-model.bin",
+     "f5e3cdb33e537eedfa2a749b5cae28c4c511873a1b13362f87dffbe07891d3fe",
+     147951482UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-base:q5_0", "KBLab/kb-whisper-base", "ggml-model-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-base/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "aead29b356bca8840e72a8dc2286e2d69e6702639751a1e60cb3c8eacefec546",
+     55295450UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-small", "KBLab/kb-whisper-small", "ggml-model.bin",
+     "https://huggingface.co/KBLab/kb-whisper-small/resolve/main/"
+     "ggml-model.bin",
+     "de6911330cbdc131362f7a955682b65c8a5a2394caba73e7ea821a9822efb8c6",
+     487601984UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-small:q5_0", "KBLab/kb-whisper-small", "ggml-model-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-small/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "6768836a51abc902e420c613153e6d418c90ea2774e913274d02ab23170225b7",
+     175209680UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-medium", "KBLab/kb-whisper-medium", "ggml-model.bin",
+     "https://huggingface.co/KBLab/kb-whisper-medium/resolve/main/"
+     "ggml-model.bin",
+     "1b7842bc1c3f79fb3bf043a0a3590961d625a49ef3ccbdceb00e738c5dd8b015",
+     1533763076UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-medium:q5_0", "KBLab/kb-whisper-medium", "ggml-model-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-medium/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "7f8762e0ade9e0073674c0d5acae942a0b1ea98add9baa008ee89c94eaba43d0",
+     539212484UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-large", "KBLab/kb-whisper-large", "ggml-model.bin",
+     "https://huggingface.co/KBLab/kb-whisper-large/resolve/main/"
+     "ggml-model.bin",
+     "b66f2dda369a88f6c03fe37326d7cc37aa216f6f34e6fc1be686e497ba9c2f39",
+     3095033483UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-large:q5_0", "KBLab/kb-whisper-large", "ggml-model-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-large/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "6d2863812d7410322bb7d8647a5c7260761300fa946714c9ed66d22bb30bcb19",
+     1081140203UL, "Apache-2.0", "q5_0", 0},
+};
+
 static long cpkt_sus_i64_to_long(int64_t value) {
   if (value > (int64_t)LONG_MAX) {
     return LONG_MAX;
@@ -30,6 +197,248 @@ static long cpkt_sus_i64_to_long(int64_t value) {
     return LONG_MIN;
   }
   return (long)value;
+}
+
+static const char *cpkt_sus_default_model_name(void) { return "small"; }
+
+static const struct cpkt_sus_catalog_entry *
+cpkt_sus_find_catalog_entry(const char *name) {
+  size_t i;
+
+  if (name == NULL || name[0] == '\0') {
+    name = cpkt_sus_default_model_name();
+  }
+  for (i = 0U; i < sizeof(cpkt_sus_catalog) / sizeof(cpkt_sus_catalog[0]);
+       ++i) {
+    if (strcmp(cpkt_sus_catalog[i].name, name) == 0) {
+      return &cpkt_sus_catalog[i];
+    }
+  }
+  return NULL;
+}
+
+static int cpkt_sus_is_sha256_hex(const char *text) {
+  size_t i;
+  char c;
+
+  if (text == NULL || strlen(text) != 64U) {
+    return 0;
+  }
+  for (i = 0U; i < 64U; ++i) {
+    c = text[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static char *cpkt_sus_strdup_range(const char *text, size_t length) {
+  char *copy;
+
+  copy = (char *)malloc(length + 1U);
+  if (copy == NULL) {
+    return NULL;
+  }
+  memcpy(copy, text, length);
+  copy[length] = '\0';
+  return copy;
+}
+
+static cpkt_sus_result cpkt_sus_join2(char **out, const char *left,
+                                      const char *right) {
+  size_t left_len;
+  size_t right_len;
+  size_t needs_slash;
+  char *joined;
+
+  if (out != NULL) {
+    *out = NULL;
+  }
+  if (out == NULL || left == NULL || left[0] == '\0' || right == NULL ||
+      right[0] == '\0') {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  left_len = strlen(left);
+  right_len = strlen(right);
+  needs_slash = left[left_len - 1U] == '/' ? 0U : 1U;
+  if (left_len > ((size_t)-1) - needs_slash - right_len - 1U) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+
+  joined = (char *)malloc(left_len + needs_slash + right_len + 1U);
+  if (joined == NULL) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+  memcpy(joined, left, left_len);
+  if (needs_slash) {
+    joined[left_len] = '/';
+  }
+  memcpy(joined + left_len + needs_slash, right, right_len);
+  joined[left_len + needs_slash + right_len] = '\0';
+  *out = joined;
+  return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result cpkt_sus_default_cache_dir(char **out) {
+  const char *xdg_cache_home;
+  const char *home;
+  char *base;
+  cpkt_sus_result result;
+
+  if (out != NULL) {
+    *out = NULL;
+  }
+  if (out == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  xdg_cache_home = getenv("XDG_CACHE_HOME");
+  if (xdg_cache_home != NULL && xdg_cache_home[0] != '\0') {
+    return cpkt_sus_join2(out, xdg_cache_home, "cpkt/susurro/models");
+  }
+
+  home = getenv("HOME");
+  if (home == NULL || home[0] == '\0') {
+    return CPKT_SUS_ERR_IO;
+  }
+
+  result = cpkt_sus_join2(&base, home, ".cache");
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+  result = cpkt_sus_join2(out, base, "cpkt/susurro/models");
+  free(base);
+  return result;
+}
+
+static cpkt_sus_result
+cpkt_sus_cache_dir_from_config(char **out,
+                               const cpkt_sus_cache_config *config) {
+  const char *configured;
+
+  if (out != NULL) {
+    *out = NULL;
+  }
+  if (out == NULL || config == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  configured = config->cache_dir;
+  if (configured != NULL && configured[0] != '\0') {
+    *out = cpkt_sus_strdup_range(configured, strlen(configured));
+    return *out == NULL ? CPKT_SUS_ERR_ALLOC : CPKT_SUS_OK;
+  }
+  return cpkt_sus_default_cache_dir(out);
+}
+
+static int cpkt_sus_file_exists(const char *path) {
+  struct stat st;
+
+  if (path == NULL || path[0] == '\0') {
+    return 0;
+  }
+  if (stat(path, &st) != 0) {
+    return 0;
+  }
+  return S_ISREG(st.st_mode) ? 1 : 0;
+}
+
+static cpkt_sus_result cpkt_sus_sha256_file(char out_hex[65],
+                                            const char *path) {
+  unsigned char digest[EVP_MAX_MD_SIZE];
+  unsigned int digest_len;
+  unsigned char buffer[32768];
+  EVP_MD_CTX *ctx;
+  FILE *file;
+  size_t count;
+  static const char hex[] = "0123456789abcdef";
+  unsigned int i;
+
+  if (out_hex == NULL || path == NULL || path[0] == '\0') {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  file = fopen(path, "rb");
+  if (file == NULL) {
+    return CPKT_SUS_ERR_IO;
+  }
+
+  ctx = EVP_MD_CTX_new();
+  if (ctx == NULL) {
+    fclose(file);
+    return CPKT_SUS_ERR_ALLOC;
+  }
+  if (EVP_DigestInit_ex(ctx, EVP_sha256(), NULL) != 1) {
+    EVP_MD_CTX_free(ctx);
+    fclose(file);
+    return CPKT_SUS_ERR_UPSTREAM;
+  }
+
+  while ((count = fread(buffer, 1U, sizeof(buffer), file)) > 0U) {
+    if (EVP_DigestUpdate(ctx, buffer, count) != 1) {
+      EVP_MD_CTX_free(ctx);
+      fclose(file);
+      return CPKT_SUS_ERR_UPSTREAM;
+    }
+  }
+  if (ferror(file)) {
+    EVP_MD_CTX_free(ctx);
+    fclose(file);
+    return CPKT_SUS_ERR_IO;
+  }
+  if (EVP_DigestFinal_ex(ctx, digest, &digest_len) != 1 || digest_len != 32U) {
+    EVP_MD_CTX_free(ctx);
+    fclose(file);
+    return CPKT_SUS_ERR_UPSTREAM;
+  }
+
+  EVP_MD_CTX_free(ctx);
+  fclose(file);
+
+  for (i = 0U; i < digest_len; ++i) {
+    out_hex[i * 2U] = hex[(digest[i] >> 4U) & 0x0FU];
+    out_hex[(i * 2U) + 1U] = hex[digest[i] & 0x0FU];
+  }
+  out_hex[64] = '\0';
+  return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result
+cpkt_sus_validate_cached_file(const char *path,
+                              const struct cpkt_sus_catalog_entry *entry,
+                              const cpkt_sus_cache_config *config) {
+  const char *expected_sha256;
+  char actual_sha256[65];
+  cpkt_sus_result result;
+
+  if (path == NULL || entry == NULL || config == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  if (config->insecure_no_checksum) {
+    return CPKT_SUS_OK;
+  }
+
+  expected_sha256 = entry->sha256;
+  if (config->sha256 != NULL && config->sha256[0] != '\0') {
+    if (!cpkt_sus_is_sha256_hex(config->sha256)) {
+      return CPKT_SUS_ERR_ARG;
+    }
+    expected_sha256 = config->sha256;
+  }
+  if (!cpkt_sus_is_sha256_hex(expected_sha256)) {
+    return CPKT_SUS_ERR_CHECKSUM;
+  }
+
+  result = cpkt_sus_sha256_file(actual_sha256, path);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+  if (strcmp(actual_sha256, expected_sha256) != 0) {
+    return CPKT_SUS_ERR_CHECKSUM;
+  }
+  return CPKT_SUS_OK;
 }
 
 static cpkt_sus_result cpkt_sus_info_impl(const cpkt_sus_model *self,
@@ -374,18 +783,59 @@ cpkt_sus_result cpkt_sus_open_model(cpkt_sus **out,
   return cpkt_sus_model_open_path((cpkt_sus_model **)out, config);
 }
 
-/** Opens a cache-backed model handle once the resolver is wired. */
+/** Opens a cache-backed model handle through the curated local resolver. */
 cpkt_sus_result
 cpkt_sus_model_open_cached(cpkt_sus_model **out,
                            const cpkt_sus_cache_config *config) {
+  const struct cpkt_sus_catalog_entry *entry;
+  cpkt_sus_model_config model_config;
+  cpkt_sus_result result;
+  char *cache_dir;
+  char *model_path;
+
   if (out != NULL) {
     *out = NULL;
   }
-  if (out == NULL || config == NULL || config->model == NULL ||
-      config->model[0] == '\0') {
+  if (out == NULL || config == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
-  return CPKT_SUS_ERR_MODEL;
+
+  if (config->sha256 != NULL && config->sha256[0] != '\0' &&
+      !cpkt_sus_is_sha256_hex(config->sha256)) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  entry = cpkt_sus_find_catalog_entry(config->model);
+  if (entry == NULL) {
+    return CPKT_SUS_ERR_LOOKUP;
+  }
+
+  cache_dir = NULL;
+  model_path = NULL;
+  result = cpkt_sus_cache_dir_from_config(&cache_dir, config);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+  result = cpkt_sus_join2(&model_path, cache_dir, entry->filename);
+  free(cache_dir);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+
+  if (!cpkt_sus_file_exists(model_path)) {
+    free(model_path);
+    return CPKT_SUS_ERR_IO;
+  }
+
+  result = cpkt_sus_validate_cached_file(model_path, entry, config);
+  if (result == CPKT_SUS_OK) {
+    memset(&model_config, 0, sizeof(model_config));
+    model_config.model_path = model_path;
+    model_config.cpu_only = config->cpu_only;
+    result = cpkt_sus_model_open_path(out, &model_config);
+  }
+  free(model_path);
+  return result;
 }
 
 /** Creates a transcriber bound to an opened model. */
@@ -431,6 +881,14 @@ const char *cpkt_sus_result_string(cpkt_sus_result result) {
     return "upstream error";
   case CPKT_SUS_ERR_CALLBACK:
     return "callback error";
+  case CPKT_SUS_ERR_LOOKUP:
+    return "model lookup failed";
+  case CPKT_SUS_ERR_IO:
+    return "I/O error";
+  case CPKT_SUS_ERR_CHECKSUM:
+    return "checksum mismatch";
+  case CPKT_SUS_ERR_NETWORK:
+    return "network error";
   default:
     return "unknown result";
   }

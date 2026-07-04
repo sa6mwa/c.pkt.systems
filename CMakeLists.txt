@@ -361,7 +361,10 @@ target_include_directories(cpkt_sus_static
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
-target_link_libraries(cpkt_sus_static PUBLIC cpkt::whisper_static)
+target_link_libraries(cpkt_sus_static PUBLIC
+  cpkt::whisper_static
+  cpkt::openssl_crypto_static
+)
 target_compile_definitions(cpkt_sus_static PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
 set_target_properties(cpkt_sus_static PROPERTIES
   OUTPUT_NAME cpktsus
@@ -375,7 +378,10 @@ target_include_directories(cpkt_sus_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
-target_link_libraries(cpkt_sus_shared PUBLIC cpkt::whisper_shared)
+target_link_libraries(cpkt_sus_shared PUBLIC
+  cpkt::whisper_shared
+  cpkt::openssl_crypto_shared
+)
 target_compile_definitions(cpkt_sus_shared PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
 set_target_properties(cpkt_sus_shared PROPERTIES
   OUTPUT_NAME cpktsus
@@ -660,7 +666,7 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME audio_facade_unit COMMAND cpkt_audio_facade_test)
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
       set_tests_properties(sus_facade_unit PROPERTIES
-        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib")
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib")
       add_test(NAME abi_test_shared COMMAND cpkt_abi_test_shared)
       add_test(NAME abi_test_static COMMAND cpkt_abi_test_static)
       add_test(NAME lua_runtime_unit COMMAND cpkt_lua_runtime_test)

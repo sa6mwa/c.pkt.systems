@@ -25,7 +25,15 @@ typedef enum cpkt_sus_result {
   /** The backend returned an error not covered by a narrower result code. */
   CPKT_SUS_ERR_UPSTREAM = 4,
   /** A caller callback reported failure. */
-  CPKT_SUS_ERR_CALLBACK = 5
+  CPKT_SUS_ERR_CALLBACK = 5,
+  /** A named cached model is not in the curated resolver table. */
+  CPKT_SUS_ERR_LOOKUP = 6,
+  /** A required local file or cache path could not be used. */
+  CPKT_SUS_ERR_IO = 7,
+  /** A model file checksum did not match the pinned or caller checksum. */
+  CPKT_SUS_ERR_CHECKSUM = 8,
+  /** A cache download failed. */
+  CPKT_SUS_ERR_NETWORK = 9
 } cpkt_sus_result;
 
 /** Speech model construction options. */
@@ -177,8 +185,11 @@ cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
 /**
  * Opens a speech model through the explicit cache-backed resolver.
  *
- * This route may perform network access in a later implementation. The current
- * implementation returns CPKT_SUS_ERR_MODEL until cache resolution is wired.
+ * A NULL or empty model name selects the default "small" multilingual model.
+ * The resolver checks an existing cache entry at cache_dir, XDG_CACHE_HOME, or
+ * HOME/.cache, verifies SHA-256 unless insecure_no_checksum is non-zero, and
+ * then loads the model. Download support is explicit to this route and returns
+ * CPKT_SUS_ERR_NETWORK until the libcurl fetcher is wired.
  */
 cpkt_sus_result cpkt_sus_model_open_cached(cpkt_sus_model **out,
                                            const cpkt_sus_cache_config *config);
