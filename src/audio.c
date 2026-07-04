@@ -101,20 +101,14 @@ struct cpkt_audio_vox_impl {
   cpkt_audio_vox_config config;
   float *frames;
   float *prebuffer_frames;
-  float *power_frames;
   size_t frame_capacity;
   size_t prebuffer_capacity;
-  size_t power_capacity;
   size_t memory_frame_count;
   size_t total_frame_count;
   size_t speech_frame_count;
   size_t read_cursor;
   size_t prebuffer_count;
   size_t prebuffer_cursor;
-  size_t power_count;
-  size_t power_cursor;
-  double power_sum;
-  double threshold_squared;
   FILE *spool_file;
   unsigned long release_silence_frames;
   unsigned long max_segment_frames;
@@ -1169,37 +1163,6 @@ cpkt_audio_vox_append_prebuffer(struct cpkt_audio_vox_impl *impl) {
   return CPKT_AUDIO_OK;
 }
 
-static int cpkt_audio_vox_power_loud(struct cpkt_audio_vox_impl *impl,
-                                     float frame) {
-  double squared;
-  size_t min_count;
-
-  if (impl == NULL || impl->power_frames == NULL ||
-      impl->power_capacity == 0U) {
-    return cpkt_audio_absf(frame) >= impl->threshold ? 1 : 0;
-  }
-
-  squared = (double)frame * (double)frame;
-  if (impl->power_count < impl->power_capacity) {
-    impl->power_frames[impl->power_count] = (float)squared;
-    impl->power_sum += squared;
-    ++impl->power_count;
-  } else {
-    impl->power_sum -= (double)impl->power_frames[impl->power_cursor];
-    impl->power_frames[impl->power_cursor] = (float)squared;
-    impl->power_sum += squared;
-    impl->power_cursor = (impl->power_cursor + 1U) % impl->power_capacity;
-  }
-
-  min_count = impl->power_capacity < 16U ? impl->power_capacity : 16U;
-  if (impl->power_count < min_count) {
-    return 0;
-  }
-  return impl->power_sum / (double)impl->power_count >= impl->threshold_squared
-             ? 1
-             : 0;
-}
-
 static void cpkt_audio_vox_note_loudness(struct cpkt_audio_vox_impl *impl,
                                          int loud) {
   if (loud) {
@@ -1253,7 +1216,7 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self, const float *frames,
   for (i = 0U; i < frame_count; ++i) {
     int loud;
 
-    loud = cpkt_audio_vox_power_loud(impl, frames[i]);
+    loud = cpkt_audio_absf(frames[i]) >= impl->threshold ? 1 : 0;
     if (!impl->open && !loud) {
       cpkt_audio_vox_prebuffer_frame(impl, frames[i]);
       continue;
@@ -1354,7 +1317,6 @@ static void cpkt_audio_vox_destroy_impl(cpkt_audio_vox *self) {
     }
     free(impl->frames);
     free(impl->prebuffer_frames);
-    free(impl->power_frames);
     free(impl);
   }
   free(self);
@@ -2862,17 +2824,14 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   unsigned long max_frames;
   unsigned long min_frames;
   unsigned long prebuffer_frames_ul;
-  unsigned long power_frames_ul;
   unsigned long release_ms;
   unsigned long min_ms;
   unsigned long prebuffer_ms;
-  unsigned long power_ms;
   unsigned long memory_spool_bytes;
   unsigned long max_spool_bytes;
   size_t memory_spool_frames;
   size_t max_spool_frames;
   size_t prebuffer_frames;
-  size_t power_frames;
 
   if (out != NULL) {
     *out = NULL;
@@ -2885,11 +2844,9 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
       config->release_silence_ms != 0UL ? config->release_silence_ms : 1500UL;
   min_ms = config->min_segment_ms != 0UL ? config->min_segment_ms : 100UL;
   prebuffer_ms = config->prebuffer_ms != 0UL ? config->prebuffer_ms : 10UL;
-  power_ms = config->power_window_ms != 0UL ? config->power_window_ms : 5UL;
   if (!cpkt_audio_ms_to_16k_frames(release_ms, &release_frames) ||
       !cpkt_audio_ms_to_16k_frames(min_ms, &min_frames) ||
       !cpkt_audio_ms_to_16k_frames(prebuffer_ms, &prebuffer_frames_ul) ||
-      !cpkt_audio_ms_to_16k_frames(power_ms, &power_frames_ul) ||
       (config->max_segment_ms != 0UL &&
        !cpkt_audio_ms_to_16k_frames(config->max_segment_ms, &max_frames))) {
     return CPKT_AUDIO_ERR_ARG;
@@ -2912,14 +2869,11 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   memory_spool_frames = (size_t)(memory_spool_bytes / sizeof(float));
   max_spool_frames = (size_t)(max_spool_bytes / sizeof(float));
   prebuffer_frames = (size_t)prebuffer_frames_ul;
-  power_frames = (size_t)power_frames_ul;
   if (memory_spool_frames == 0U || max_spool_frames == 0U ||
       memory_spool_frames > ((size_t)-1) / sizeof(float) ||
       (unsigned long)prebuffer_frames != prebuffer_frames_ul ||
       (prebuffer_frames != 0U &&
-       prebuffer_frames > ((size_t)-1) / sizeof(float)) ||
-      (unsigned long)power_frames != power_frames_ul ||
-      power_frames == 0U || power_frames > ((size_t)-1) / sizeof(float)) {
+       prebuffer_frames > ((size_t)-1) / sizeof(float))) {
     return CPKT_AUDIO_ERR_ARG;
   }
 
@@ -2948,25 +2902,14 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
       return CPKT_AUDIO_ERR_ALLOC;
     }
   }
-  impl->power_frames = (float *)calloc(power_frames, sizeof(float));
-  if (impl->power_frames == NULL) {
-    free(impl->prebuffer_frames);
-    free(impl->frames);
-    free(impl);
-    free(vox);
-    return CPKT_AUDIO_ERR_ALLOC;
-  }
-
   impl->config = *config;
   impl->release_silence_frames = release_frames;
   impl->max_segment_frames = max_frames;
   impl->min_segment_frames = min_frames;
   impl->frame_capacity = memory_spool_frames;
   impl->prebuffer_capacity = prebuffer_frames;
-  impl->power_capacity = power_frames;
   impl->max_spool_frames = max_spool_frames;
   impl->threshold = config->threshold > 0.0f ? config->threshold : 0.01f;
-  impl->threshold_squared = (double)impl->threshold * (double)impl->threshold;
 
   vox->impl = impl;
   vox->push_f32_mono_16k = cpkt_audio_vox_push_f32_mono_16k_impl;
