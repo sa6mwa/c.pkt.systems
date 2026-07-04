@@ -1214,6 +1214,63 @@ static void test_ptt_toggles_and_emits_segments(void **state) {
   ptt->destroy(ptt);
 }
 
+static void test_ptt_spills_and_hard_cuts_at_storage_budget(void **state) {
+  struct vox_capture capture;
+  cpkt_audio_ptt_config config;
+  cpkt_audio_ptt *ptt;
+  float frames[48];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.max_segment_ms = 0UL;
+  config.min_segment_ms = 1UL;
+  config.memory_spool_bytes = 64UL;
+  config.max_spool_bytes = 128UL;
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+  config.state_sink = capture_vox_state;
+  config.state_user = &capture;
+
+  for (i = 0U; i < 48U; ++i) {
+    frames[i] = 0.2f;
+  }
+
+  ptt = NULL;
+  assert_int_equal(cpkt_audio_ptt_open(&ptt, &config), CPKT_AUDIO_OK);
+  assert_non_null(ptt);
+  assert_int_equal(ptt->press(ptt), CPKT_AUDIO_OK);
+  assert_int_equal(ptt->push_f32_mono_16k(ptt, frames, 48U), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.hard_count, 1UL);
+  assert_int_equal(capture.frames[0], 32U);
+  assert_int_equal(capture.t0[0], 0);
+  assert_int_equal(capture.t1[0], 1);
+  assert_float_equal(capture.first_frame[0], 0.2f, 0.0001f);
+  assert_int_equal(capture.state_count, 3UL);
+  assert_int_equal(capture.states[0], CPKT_AUDIO_VOX_TX_ON);
+  assert_int_equal(capture.state_segments[0], 0UL);
+  assert_int_equal(capture.states[1], CPKT_AUDIO_VOX_HARD_CUT);
+  assert_int_equal(capture.state_segments[1], 0UL);
+  assert_int_equal(capture.states[2], CPKT_AUDIO_VOX_TX_ON);
+  assert_int_equal(capture.state_segments[2], 1UL);
+
+  assert_int_equal(ptt->release(ptt), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 2UL);
+  assert_int_equal(capture.final_count, 0UL);
+  assert_int_equal(capture.frames[1], 16U);
+  assert_int_equal(capture.t0[1], 0);
+  assert_int_equal(capture.t1[1], 1);
+  assert_float_equal(capture.first_frame[1], 0.2f, 0.0001f);
+  assert_int_equal(capture.state_count, 4UL);
+  assert_int_equal(capture.states[3], CPKT_AUDIO_VOX_TX_OFF);
+  assert_int_equal(capture.state_segments[3], 1UL);
+  assert_int_equal(ptt->flush(ptt), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 2UL);
+  ptt->destroy(ptt);
+}
+
 static void test_ptt_rejects_invalid_arguments(void **state) {
   struct vox_capture capture;
   cpkt_audio_ptt_config config;
@@ -1359,6 +1416,7 @@ int main(void) {
       cmocka_unit_test(test_vox_spills_and_hard_cuts_at_storage_budget),
       cmocka_unit_test(test_vox_rejects_invalid_and_reports_callback_failure),
       cmocka_unit_test(test_ptt_toggles_and_emits_segments),
+      cmocka_unit_test(test_ptt_spills_and_hard_cuts_at_storage_budget),
       cmocka_unit_test(test_ptt_rejects_invalid_arguments),
       cmocka_unit_test(test_invalid_arguments),
   };
