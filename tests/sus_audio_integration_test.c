@@ -22,6 +22,12 @@ struct cpkt_sus_test_progress {
   int last;
 };
 
+struct cpkt_sus_test_vox_shape {
+  unsigned long count;
+  unsigned long hard_count;
+  unsigned long final_count;
+};
+
 struct cpkt_sus_test_exact_step_decoder {
   cpkt_audio_decoder decoder;
   unsigned long total_frames;
@@ -64,6 +70,22 @@ static unsigned long cpkt_sus_test_env_ulong(const char *name,
     return fallback;
   }
   return parsed;
+}
+
+static float cpkt_sus_test_env_float(const char *name, float fallback) {
+  const char *value;
+  char *end;
+  double parsed;
+
+  value = cpkt_sus_test_env(name);
+  if (value == NULL) {
+    return fallback;
+  }
+  parsed = strtod(value, &end);
+  if (end == value || *end != '\0' || parsed < 0.0) {
+    return fallback;
+  }
+  return (float)parsed;
 }
 
 static int
@@ -168,19 +190,19 @@ static int cpkt_sus_test_open_audio_decoder(cpkt_audio_decoder **out,
     return 1;
   }
   *out = NULL;
-  if (audio_url != NULL) {
+  if (audio_path != NULL) {
+    audio_result = cpkt_audio_decoder_open_file(out, audio_path, NULL);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "failed to open audio file decoder: %s\n",
+              cpkt_audio_result_string(audio_result));
+      return 1;
+    }
+  } else if (audio_url != NULL) {
     memset(&audio_config, 0, sizeof(audio_config));
     audio_config.encoding = CPKT_AUDIO_ENCODING_MP3;
     audio_result = cpkt_audio_decoder_open_url(out, audio_url, &audio_config);
     if (audio_result != CPKT_AUDIO_OK) {
       fprintf(stderr, "failed to open audio URL decoder: %s\n",
-              cpkt_audio_result_string(audio_result));
-      return 1;
-    }
-  } else {
-    audio_result = cpkt_audio_decoder_open_file(out, audio_path, NULL);
-    if (audio_result != CPKT_AUDIO_OK) {
-      fprintf(stderr, "failed to open audio file decoder: %s\n",
               cpkt_audio_result_string(audio_result));
       return 1;
     }
@@ -197,7 +219,13 @@ static void cpkt_sus_test_realtime_config(cpkt_sus_realtime_config *config) {
   config->length_ms = cpkt_sus_test_env_ulong(
       "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 5000UL);
   config->keep_ms =
-      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 2000UL);
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 500UL);
+  config->vox_threshold =
+      cpkt_sus_test_env_float("CPKT_SUS_INTEGRATION_VOX_THRESHOLD", 0.03f);
+  config->memory_spool_bytes = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_MEMORY_SPOOL_BYTES", 65536UL);
+  config->max_spool_bytes = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_MAX_SPOOL_BYTES", 1024UL * 1024UL * 1024UL);
 }
 
 static void cpkt_sus_test_normalize_text(char *out, size_t out_size,
@@ -257,6 +285,137 @@ static int cpkt_sus_test_contains_expected(const char *actual_a,
   }
   return strstr(normalized_actual_a, normalized_expected) != NULL ||
          strstr(normalized_actual_b, normalized_expected) != NULL;
+}
+
+static int cpkt_sus_test_vox_shape_sink(cpkt_audio_vox_segment *segment,
+                                        void *user) {
+  struct cpkt_sus_test_vox_shape *shape;
+  float frames[512];
+  size_t frames_read;
+  cpkt_audio_result audio_result;
+
+  shape = (struct cpkt_sus_test_vox_shape *)user;
+  if (shape == NULL || segment == NULL ||
+      segment->read_f32_mono_16k == NULL) {
+    return 1;
+  }
+  ++shape->count;
+  if (segment->hard_cut) {
+    ++shape->hard_count;
+  }
+  if (segment->is_final) {
+    ++shape->final_count;
+  }
+  do {
+    frames_read = 0U;
+    audio_result =
+        segment->read_f32_mono_16k(segment, frames, 512U, &frames_read);
+    if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
+      return 1;
+    }
+  } while (audio_result != CPKT_AUDIO_AT_END);
+  return 0;
+}
+
+static int cpkt_sus_test_assert_vox_shape(
+    const char *audio_path, const char *audio_url,
+    const cpkt_sus_realtime_config *realtime_config) {
+  cpkt_audio_decoder *decoder;
+  cpkt_audio_vox *vox;
+  cpkt_audio_vox_config vox_config;
+  struct cpkt_sus_test_vox_shape shape;
+  float frames[CPKT_SUS_TEST_READ_FRAMES];
+  size_t frames_read;
+  unsigned long read_frames;
+  unsigned long expected_segments;
+  unsigned long expected_hard_cuts;
+  unsigned long expected_final_segments;
+  cpkt_audio_result audio_result;
+  int rc;
+
+  expected_segments = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_EXPECTED_VOX_SEGMENTS", 0UL);
+  expected_hard_cuts = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_EXPECTED_VOX_HARD_CUTS", 0UL);
+  expected_final_segments = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_EXPECTED_VOX_FINAL_SEGMENTS", 0UL);
+  if (expected_segments == 0UL) {
+    return 0;
+  }
+
+  decoder = NULL;
+  vox = NULL;
+  rc = 1;
+  memset(&shape, 0, sizeof(shape));
+  if (cpkt_sus_test_open_audio_decoder(&decoder, audio_path, audio_url) != 0) {
+    goto cleanup;
+  }
+  memset(&vox_config, 0, sizeof(vox_config));
+  vox_config.threshold = realtime_config->vox_threshold;
+  vox_config.release_silence_ms = realtime_config->keep_ms;
+  vox_config.max_segment_ms = realtime_config->length_ms;
+  vox_config.min_segment_ms = 100UL;
+  vox_config.memory_spool_bytes = realtime_config->memory_spool_bytes;
+  vox_config.max_spool_bytes = realtime_config->max_spool_bytes;
+  vox_config.segment_sink = cpkt_sus_test_vox_shape_sink;
+  vox_config.segment_user = &shape;
+  audio_result = cpkt_audio_vox_open(&vox, &vox_config);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "failed to open e2e VOX shape segmenter: %s\n",
+            cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+  read_frames = realtime_config->read_frames != 0UL
+                    ? realtime_config->read_frames
+                    : CPKT_SUS_TEST_READ_FRAMES;
+  if (read_frames > CPKT_SUS_TEST_READ_FRAMES) {
+    read_frames = CPKT_SUS_TEST_READ_FRAMES;
+  }
+  do {
+    frames_read = 0U;
+    audio_result =
+        decoder->read_f32_mono_16k(decoder, frames, (size_t)read_frames,
+                                   &frames_read);
+    if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
+      fprintf(stderr, "failed to decode e2e VOX shape audio: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
+    if (frames_read > 0U &&
+        vox->push_f32_mono_16k(vox, frames, frames_read) != CPKT_AUDIO_OK) {
+      fprintf(stderr, "failed to push e2e VOX shape audio\n");
+      goto cleanup;
+    }
+  } while (audio_result != CPKT_AUDIO_AT_END);
+  if (vox->flush(vox) != CPKT_AUDIO_OK) {
+    fprintf(stderr, "failed to flush e2e VOX shape audio\n");
+    goto cleanup;
+  }
+  if (shape.count != expected_segments ||
+      shape.hard_count != expected_hard_cuts ||
+      shape.final_count != expected_final_segments) {
+    fprintf(stderr,
+            "unexpected e2e VOX shape: segments=%lu hard_cuts=%lu "
+            "final_segments=%lu\n",
+            shape.count, shape.hard_count, shape.final_count);
+    fprintf(stderr,
+            "expected e2e VOX shape: segments=%lu hard_cuts=%lu "
+            "final_segments=%lu\n",
+            expected_segments, expected_hard_cuts, expected_final_segments);
+    goto cleanup;
+  }
+  printf("e2e VOX shape: segments=%lu hard_cuts=%lu final_segments=%lu\n",
+         shape.count, shape.hard_count, shape.final_count);
+  rc = 0;
+
+cleanup:
+  if (vox != NULL) {
+    vox->destroy(vox);
+  }
+  if (decoder != NULL) {
+    decoder->destroy(decoder);
+  }
+  return rc;
 }
 
 static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
@@ -504,10 +663,13 @@ int main(void) {
   cpkt_sus_model *model;
   struct cpkt_sus_test_realtime_events events;
   struct cpkt_sus_test_progress progress;
+  cpkt_sus_realtime_config shape_realtime_config;
   const char *audio_path;
   const char *audio_url;
   const char *expected;
   char *text;
+  unsigned long expected_segments;
+  unsigned long expected_final_segments;
   int open_result;
   int rc;
 
@@ -525,6 +687,13 @@ int main(void) {
     return 2;
   }
 
+  cpkt_sus_test_realtime_config(&shape_realtime_config);
+  if (cpkt_sus_test_assert_vox_shape(audio_path, audio_url,
+                                     &shape_realtime_config) != 0) {
+    fprintf(stderr, "e2e VOX shape assertion failed\n");
+    return 3;
+  }
+
   model = NULL;
   open_result = cpkt_sus_test_open_model(&model);
   if (open_result == 77) {
@@ -532,7 +701,7 @@ int main(void) {
   }
   if (open_result != 0 || model == NULL) {
     fprintf(stderr, "failed to open integration model\n");
-    return 3;
+    return 4;
   }
 
   memset(&events, 0, sizeof(events));
@@ -549,6 +718,22 @@ int main(void) {
   }
   if (events.count == 0UL || events.final_count == 0UL) {
     fprintf(stderr, "realtime transcript callback was not invoked\n");
+    goto cleanup;
+  }
+  expected_segments = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_EXPECTED_VOX_SEGMENTS", 0UL);
+  expected_final_segments = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_EXPECTED_VOX_FINAL_SEGMENTS", 0UL);
+  if (expected_segments != 0UL && events.count != expected_segments) {
+    fprintf(stderr, "unexpected realtime event count: expected=%lu actual=%lu\n",
+            expected_segments, events.count);
+    goto cleanup;
+  }
+  if (expected_final_segments != 0UL &&
+      events.final_count != expected_final_segments) {
+    fprintf(stderr,
+            "unexpected realtime final event count: expected=%lu actual=%lu\n",
+            expected_final_segments, events.final_count);
     goto cleanup;
   }
   if (progress.count == 0UL) {
