@@ -578,7 +578,8 @@ Required checks:
 - `cpkt_sus` cache resolver does not perform network access from non-cache
   constructors;
 - cache resolver rejects missing or mismatched checksums by default;
-- user checksum override works;
+- user checksum override replaces the pinned catalog checksum before model-load
+  validation;
 - insecure/no-checksum mode is explicit and test-covered;
 - atomic cache replacement does not leave corrupt final files after simulated
   failures;

@@ -210,6 +210,14 @@ static void test_cached_open_contract(void **state) {
                    CPKT_SUS_ERR_CHECKSUM);
   assert_null(model);
 
+  config.sha256 =
+      "88e9294cb41d862d3e2670fb9894c3e46f74fefdd18eadd8f47ee4611406487a";
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_MODEL);
+  assert_null(model);
+
+  config.sha256 = NULL;
   config.insecure_no_checksum = 1;
   model = (cpkt_sus_model *)1;
   assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
