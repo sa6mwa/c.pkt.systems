@@ -195,9 +195,9 @@ static void cpkt_sus_test_realtime_config(cpkt_sus_realtime_config *config) {
   config->step_ms =
       cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_STEP_MS", 1000UL);
   config->length_ms = cpkt_sus_test_env_ulong(
-      "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 1000UL);
+      "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 5000UL);
   config->keep_ms =
-      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 200UL);
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 2000UL);
 }
 
 static void cpkt_sus_test_normalize_text(char *out, size_t out_size,
@@ -519,8 +519,9 @@ int main(void) {
 
   audio_path = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_AUDIO_PATH");
   audio_url = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_AUDIO_URL");
-  if (audio_path == NULL) {
-    fprintf(stderr, "CPKT_SUS_INTEGRATION_AUDIO_PATH is required\n");
+  if (audio_path == NULL && audio_url == NULL) {
+    fprintf(stderr, "CPKT_SUS_INTEGRATION_AUDIO_PATH or "
+                    "CPKT_SUS_INTEGRATION_AUDIO_URL is required\n");
     return 2;
   }
 
@@ -547,7 +548,7 @@ int main(void) {
     goto cleanup;
   }
   if (events.count == 0UL || events.final_count == 0UL) {
-    fprintf(stderr, "realtime hypothesis callback was not invoked\n");
+    fprintf(stderr, "realtime transcript callback was not invoked\n");
     goto cleanup;
   }
   if (progress.count == 0UL) {
@@ -574,7 +575,7 @@ int main(void) {
   if (!events.matched_expected ||
       !cpkt_sus_test_contains_expected(text, NULL, expected)) {
     fprintf(stderr, "expected transcript text was not found\n");
-    fprintf(stderr, "latest realtime hypothesis: %s\n", events.text);
+    fprintf(stderr, "latest realtime transcript: %s\n", events.text);
     fprintf(stderr, "realtime text: %s\n", text);
     goto cleanup;
   }

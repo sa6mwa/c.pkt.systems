@@ -566,6 +566,9 @@ int main(void) {
   memset(&event, 0, sizeof(event));
   realtime_config.step_ms = 1000UL;
   realtime_config.length_ms = 5000UL;
+  realtime_config.keep_ms = 2000UL;
+  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
+  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   event.is_final = 1;
   if (realtime_config.step_ms != 1000UL || event.is_final == 0) {
     return 12;
@@ -643,6 +646,9 @@ int main(void) {
   memset(&event, 0, sizeof(event));
   realtime_config.step_ms = 1000UL;
   realtime_config.length_ms = 5000UL;
+  realtime_config.keep_ms = 2000UL;
+  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
+  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   event.step_index = 1UL;
   if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime) == 0 ||
       sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0 ||
@@ -1259,6 +1265,25 @@ assert_words_not_contain() {
   esac
 }
 
+assert_words_count() {
+  words=$1
+  expected_word=$2
+  expected_count=$3
+  description=$4
+  actual_count=0
+  for word in $words; do
+    if [ "$word" = "$expected_word" ]; then
+      actual_count=$((actual_count + 1))
+    fi
+  done
+  if [ "$actual_count" -ne "$expected_count" ]; then
+    printf '%s expected %s occurrence(s) of %s, got %s\n' \
+      "$description" "$expected_count" "$expected_word" "$actual_count" >&2
+    printf 'actual words: %s\n' "$words" >&2
+    exit 1
+  fi
+}
+
 cmake_link_dir="$cmake_build_dir/CMakeFiles"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_libssh2.dir/link.txt" "$prefix/lib/libcrypto.a" "Libssh2::libssh2 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_libssh2.dir/link.txt" "$prefix/lib/libz.a" "Libssh2::libssh2 link line"
@@ -1296,10 +1321,10 @@ esac
 case "$target_id" in
   *-linux-*)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libwhisper.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libstdc++.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libgcc.a" "cpkt::sus link line"
-    assert_file_not_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::sus link line"
     assert_file_not_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libminiaudio.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio+sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::audio+sus link line"
@@ -1562,7 +1587,8 @@ assert_words_contain "$sus_words" "-lggml-base" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lggml-cpu" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lcurl" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lcrypto" "cpkt-sus.pc --static output"
-assert_words_not_contain "$sus_words" "-lcpktaudio" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lcpktaudio" "cpkt-sus.pc --static output"
+assert_words_count "$sus_words" "-lcpktaudio" 1 "cpkt-sus.pc --static output"
 assert_words_not_contain "$sus_words" "-lminiaudio" "cpkt-sus.pc --static output"
 case "$target_id" in
   *-linux-*)
@@ -1841,6 +1867,16 @@ if [ "$run_consumers" -eq 0 ]; then
 fi
 
 if [ -z "$run_prefix" ]; then
+  case "$target_id" in
+    *-linux-*)
+      if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+        LD_LIBRARY_PATH="$prefix/lib:$LD_LIBRARY_PATH"
+      else
+        LD_LIBRARY_PATH="$prefix/lib"
+      fi
+      export LD_LIBRARY_PATH
+      ;;
+  esac
   "$cmake_build_dir/cpkt_cmake_zlib"
   "$cmake_build_dir/cpkt_cmake_nghttp2"
   "$cmake_build_dir/cpkt_cmake_crypto"

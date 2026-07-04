@@ -997,14 +997,6 @@ static int cpkt_sus_ul_to_int(unsigned long value, int *out) {
   return 1;
 }
 
-static int cpkt_sus_ms_to_frames(unsigned long ms, unsigned long *out) {
-  if (out == NULL || ms > ((unsigned long)-1) / 16UL) {
-    return 0;
-  }
-  *out = ms * 16UL;
-  return 1;
-}
-
 static cpkt_sus_result cpkt_sus_build_realtime_text(char **out,
                                                     struct whisper_context *context) {
   const char *segment_text;
@@ -1052,46 +1044,38 @@ static cpkt_sus_result cpkt_sus_build_realtime_text(char **out,
   return CPKT_SUS_OK;
 }
 
-static cpkt_sus_result cpkt_sus_transcriber_apply_revised_text(
-    struct cpkt_sus_transcriber_impl *impl, const char *hypothesis,
-    size_t hypothesis_len);
+static cpkt_sus_result cpkt_sus_transcriber_append_revised_text(
+    struct cpkt_sus_transcriber_impl *impl, const char *text,
+    size_t text_len);
 
 static cpkt_sus_result cpkt_sus_emit_realtime_event(
     struct cpkt_sus_transcriber_impl *impl,
-    const cpkt_sus_realtime_config *config,
-    struct whisper_context *context, unsigned long step_index, int final) {
+    const cpkt_sus_realtime_config *config, const char *text, size_t text_len,
+    unsigned long step_index, int final) {
   cpkt_sus_realtime_event event;
   cpkt_sus_result result;
-  char *text;
   int callback_result;
 
-  if (impl == NULL || context == NULL) {
+  if (impl == NULL) {
     return CPKT_SUS_OK;
   }
 
-  text = NULL;
-  result = cpkt_sus_build_realtime_text(&text, context);
-  if (result != CPKT_SUS_OK) {
-    return result;
-  }
-
-  result = cpkt_sus_transcriber_apply_revised_text(impl, text, strlen(text));
-  if (result != CPKT_SUS_OK) {
-    free(text);
-    return result;
+  if (text != NULL && text_len > 0U) {
+    result = cpkt_sus_transcriber_append_revised_text(impl, text, text_len);
+    if (result != CPKT_SUS_OK) {
+      return result;
+    }
   }
   if (config == NULL || config->realtime_sink == NULL) {
-    free(text);
     return CPKT_SUS_OK;
   }
 
   memset(&event, 0, sizeof(event));
-  event.text = text;
-  event.text_length = (unsigned long)strlen(text);
+  event.text = impl->revised_text != NULL ? impl->revised_text : "";
+  event.text_length = (unsigned long)impl->revised_length;
   event.step_index = step_index;
   event.is_final = final;
   callback_result = config->realtime_sink(&event, config->realtime_user);
-  free(text);
   if (callback_result != 0) {
     impl->callback_error = 1;
     return CPKT_SUS_ERR_CALLBACK;
@@ -1251,15 +1235,31 @@ static void cpkt_sus_transcriber_reset_revised_text(
   }
 }
 
-static cpkt_sus_result cpkt_sus_transcriber_apply_revised_text(
-    struct cpkt_sus_transcriber_impl *impl, const char *hypothesis,
-    size_t hypothesis_len) {
-  if (impl == NULL) {
+static cpkt_sus_result cpkt_sus_transcriber_append_revised_text(
+    struct cpkt_sus_transcriber_impl *impl, const char *text,
+    size_t text_len) {
+  cpkt_sus_result result;
+  size_t needed;
+
+  if (impl == NULL || text == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
-  return cpkt_sus_realtime_text_apply_storage(
-      &impl->revised_text, &impl->revised_length, &impl->revised_capacity,
-      hypothesis, hypothesis_len);
+  if (text_len == 0U) {
+    return CPKT_SUS_OK;
+  }
+  if (text_len > ((size_t)-1) - impl->revised_length - 1U) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+  needed = impl->revised_length + text_len + 1U;
+  result = cpkt_sus_text_reserve(&impl->revised_text,
+                                 &impl->revised_capacity, needed);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+  memcpy(impl->revised_text + impl->revised_length, text, text_len);
+  impl->revised_length += text_len;
+  impl->revised_text[impl->revised_length] = '\0';
+  return CPKT_SUS_OK;
 }
 
 static int cpkt_sus_realtime_text_sink(const cpkt_sus_realtime_event *event,
@@ -1333,46 +1333,203 @@ static cpkt_sus_result cpkt_sus_capture_prompt_tokens(
   return CPKT_SUS_OK;
 }
 
-static cpkt_sus_result cpkt_sus_read_decoder_step(
-    cpkt_audio_decoder *decoder, float *samples, unsigned long step_frames,
-    unsigned long read_frames, unsigned long *frames_out, int *at_end_out) {
-  cpkt_audio_result audio_result;
-  unsigned long used;
-  size_t frames_read;
+struct cpkt_sus_vox_transcribe_state {
+  struct cpkt_sus_transcriber_impl *impl;
+  struct cpkt_sus_model_impl *model_impl;
+  const cpkt_sus_realtime_config *config;
+  whisper_token *prompt_tokens;
+  size_t prompt_count;
+  size_t prompt_capacity;
+  unsigned long segment_count;
+  int final_emitted;
+  int use_prompt;
+  cpkt_sus_result result;
+};
 
-  if (decoder == NULL || decoder->read_f32_mono_16k == NULL ||
-      samples == NULL || frames_out == NULL || at_end_out == NULL) {
+static cpkt_sus_result cpkt_sus_read_vox_segment_pcm(
+    cpkt_audio_vox_segment *segment, float **samples_out,
+    unsigned long *sample_count_out) {
+  float *samples;
+  size_t offset;
+
+  if (samples_out != NULL) {
+    *samples_out = NULL;
+  }
+  if (sample_count_out != NULL) {
+    *sample_count_out = 0UL;
+  }
+  if (segment == NULL || segment->read_f32_mono_16k == NULL ||
+      samples_out == NULL || sample_count_out == NULL ||
+      segment->frame_count > (size_t)INT_MAX ||
+      segment->frame_count > ((size_t)-1) / sizeof(float)) {
     return CPKT_SUS_ERR_ARG;
   }
 
-  used = 0UL;
-  *at_end_out = 0;
-  while (used < step_frames) {
-    unsigned long requested;
+  samples = (float *)malloc(sizeof(float) * segment->frame_count);
+  if (samples == NULL && segment->frame_count != 0U) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
 
-    requested = step_frames - used;
-    if (requested > read_frames) {
-      requested = read_frames;
-    }
+  offset = 0U;
+  while (offset < segment->frame_count) {
+    cpkt_audio_result audio_result;
+    size_t frames_read;
+
     frames_read = 0U;
-    audio_result =
-        decoder->read_f32_mono_16k(decoder, samples + used,
-                                    (size_t)requested, &frames_read);
+    audio_result = segment->read_f32_mono_16k(
+        segment, samples + offset, segment->frame_count - offset,
+        &frames_read);
     if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
+      free(samples);
       return CPKT_SUS_ERR_IO;
     }
-    used += (unsigned long)frames_read;
+    offset += frames_read;
     if (audio_result == CPKT_AUDIO_AT_END) {
-      *at_end_out = 1;
       break;
     }
     if (frames_read == 0U) {
-      *at_end_out = 1;
-      break;
+      free(samples);
+      return CPKT_SUS_ERR_IO;
     }
   }
-  *frames_out = used;
+  if (offset != segment->frame_count) {
+    free(samples);
+    return CPKT_SUS_ERR_IO;
+  }
+
+  *samples_out = samples;
+  *sample_count_out = (unsigned long)segment->frame_count;
   return CPKT_SUS_OK;
+}
+
+static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
+                                     void *user) {
+  struct cpkt_sus_vox_transcribe_state *state;
+  struct cpkt_sus_transcriber_impl *impl;
+  struct whisper_full_params params;
+  float *samples;
+  char *text;
+  unsigned long sample_count;
+  const char *language;
+  int full_result;
+
+  state = (struct cpkt_sus_vox_transcribe_state *)user;
+  if (state == NULL || segment == NULL || state->impl == NULL ||
+      state->model_impl == NULL || state->model_impl->context == NULL) {
+    return 1;
+  }
+  if (state->result != CPKT_SUS_OK) {
+    return 1;
+  }
+
+  samples = NULL;
+  sample_count = 0UL;
+  state->result =
+      cpkt_sus_read_vox_segment_pcm(segment, &samples, &sample_count);
+  if (state->result != CPKT_SUS_OK) {
+    return 1;
+  }
+
+  impl = state->impl;
+  impl->aborted = 0;
+  impl->callback_error = 0;
+  params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+  if (impl->config.threads > 0) {
+    params.n_threads = impl->config.threads;
+  }
+  params.translate = impl->config.translate ? true : false;
+  params.no_timestamps = true;
+  params.print_progress = false;
+  params.print_realtime = false;
+  params.print_timestamps = false;
+  params.initial_prompt = impl->config.initial_prompt;
+  if (state->use_prompt && state->prompt_count > 0U) {
+    if (state->prompt_count > (size_t)INT_MAX) {
+      free(samples);
+      state->result = CPKT_SUS_ERR_ARG;
+      return 1;
+    }
+    params.prompt_tokens = state->prompt_tokens;
+    params.prompt_n_tokens = (int)state->prompt_count;
+  }
+  if (state->config != NULL && state->config->max_tokens != 0UL &&
+      !cpkt_sus_ul_to_int(state->config->max_tokens, &params.max_tokens)) {
+    free(samples);
+    state->result = CPKT_SUS_ERR_ARG;
+    return 1;
+  }
+  if (state->config != NULL && state->config->audio_ctx != 0UL &&
+      !cpkt_sus_ul_to_int(state->config->audio_ctx, &params.audio_ctx)) {
+    free(samples);
+    state->result = CPKT_SUS_ERR_ARG;
+    return 1;
+  }
+
+  language = impl->config.language;
+  if (language == NULL || language[0] == '\0' ||
+      strcmp(language, "auto") == 0) {
+    params.language = NULL;
+  } else {
+    params.language = language;
+  }
+
+  if (impl->config.progress_sink != NULL) {
+    params.progress_callback = cpkt_sus_whisper_progress_callback;
+    params.progress_callback_user_data = impl;
+  }
+  if (impl->config.abort != NULL || impl->config.progress_sink != NULL) {
+    params.abort_callback = cpkt_sus_whisper_abort_callback;
+    params.abort_callback_user_data = impl;
+  }
+
+  full_result = whisper_full(state->model_impl->context, params, samples,
+                             (int)sample_count);
+  free(samples);
+  if (impl->callback_error) {
+    state->result = CPKT_SUS_ERR_CALLBACK;
+    return 1;
+  }
+  if (impl->aborted) {
+    state->result = CPKT_SUS_ABORTED;
+    return 1;
+  }
+  if (full_result != 0) {
+    state->result = CPKT_SUS_ERR_UPSTREAM;
+    return 1;
+  }
+
+  text = NULL;
+  state->result =
+      cpkt_sus_build_realtime_text(&text, state->model_impl->context);
+  if (state->result != CPKT_SUS_OK) {
+    return 1;
+  }
+  state->result = cpkt_sus_emit_realtime_event(
+      impl, state->config, text, strlen(text), state->segment_count,
+      segment->is_final);
+  free(text);
+  if (state->result != CPKT_SUS_OK) {
+    return 1;
+  }
+  if (segment->is_final) {
+    state->final_emitted = 1;
+  }
+  ++state->segment_count;
+
+  if (state->use_prompt) {
+    state->result = cpkt_sus_capture_prompt_tokens(
+        state->model_impl->context, &state->prompt_tokens,
+        &state->prompt_count, &state->prompt_capacity);
+    if (state->result != CPKT_SUS_OK) {
+      return 1;
+    }
+  }
+  if (impl->config.progress_sink != NULL &&
+      impl->config.progress_sink(100, impl->config.progress_user) != 0) {
+    state->result = CPKT_SUS_ERR_CALLBACK;
+    return 1;
+  }
+  return 0;
 }
 
 static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
@@ -1380,28 +1537,15 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
     const cpkt_sus_realtime_config *config) {
   struct cpkt_sus_transcriber_impl *impl;
   struct cpkt_sus_model_impl *model_impl;
-  struct whisper_full_params params;
-  const char *language;
-  float *old_samples;
-  float *new_samples;
-  float *current_samples;
-  whisper_token *prompt_tokens;
-  size_t prompt_count;
-  size_t prompt_capacity;
+  struct cpkt_sus_vox_transcribe_state state;
+  cpkt_audio_vox_config vox_config;
+  cpkt_audio_vox *vox;
+  float *read_buffer;
   unsigned long read_frames;
-  unsigned long step_ms;
   unsigned long length_ms;
   unsigned long keep_ms;
-  unsigned long step_frames;
-  unsigned long length_frames;
-  unsigned long keep_frames;
-  unsigned long current_capacity;
-  unsigned long old_count;
-  unsigned long new_count;
-  int n_new_line;
-  int iter;
+  size_t frames_read;
   int at_end;
-  int full_result;
   cpkt_sus_result sus_result;
 
   if (self == NULL || self->impl == NULL || decoder == NULL ||
@@ -1421,205 +1565,94 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
   read_frames = config != NULL && config->read_frames != 0UL
                     ? config->read_frames
                     : 4096UL;
-  step_ms =
-      config != NULL && config->step_ms != 0UL ? config->step_ms : 3000UL;
   length_ms =
-      config != NULL && config->length_ms != 0UL ? config->length_ms : 10000UL;
+      config != NULL && config->length_ms != 0UL ? config->length_ms : 5000UL;
   keep_ms =
-      config != NULL && config->keep_ms != 0UL ? config->keep_ms : 200UL;
-  if (keep_ms > step_ms) {
-    keep_ms = step_ms;
-  }
-  if (length_ms < step_ms) {
-    length_ms = step_ms;
-  }
-  if (read_frames == 0UL ||
-      !cpkt_sus_ms_to_frames(step_ms, &step_frames) ||
-      !cpkt_sus_ms_to_frames(length_ms, &length_frames) ||
-      !cpkt_sus_ms_to_frames(keep_ms, &keep_frames) ||
-      step_frames == 0UL || length_frames == 0UL ||
-      keep_frames > ((unsigned long)-1) - length_frames ||
-      step_frames > (unsigned long)INT_MAX ||
-      length_frames + keep_frames > (unsigned long)INT_MAX ||
-      read_frames > ((unsigned long)-1) / sizeof(float) ||
-      length_frames + keep_frames > ((unsigned long)-1) / sizeof(float) ||
-      step_frames > ((unsigned long)-1) / sizeof(float)) {
+      config != NULL && config->keep_ms != 0UL ? config->keep_ms : 2000UL;
+  if (read_frames == 0UL || read_frames > ((unsigned long)-1) / sizeof(float)) {
     return CPKT_SUS_ERR_ARG;
   }
-  current_capacity = length_frames + keep_frames;
 
-  old_samples = (float *)malloc(sizeof(float) * (size_t)current_capacity);
-  new_samples = (float *)malloc(sizeof(float) * (size_t)step_frames);
-  current_samples = (float *)malloc(sizeof(float) * (size_t)current_capacity);
-  if (old_samples == NULL || new_samples == NULL || current_samples == NULL) {
-    free(old_samples);
-    free(new_samples);
-    free(current_samples);
+  read_buffer = (float *)malloc(sizeof(float) * (size_t)read_frames);
+  if (read_buffer == NULL) {
     return CPKT_SUS_ERR_ALLOC;
   }
 
-  prompt_tokens = NULL;
-  prompt_count = 0U;
-  prompt_capacity = 0U;
-  old_count = 0UL;
-  at_end = 0;
-  iter = 0;
   cpkt_sus_transcriber_reset_revised_text(impl);
-  n_new_line = (int)(length_ms / step_ms);
-  if (n_new_line > 0) {
-    --n_new_line;
-  }
-  if (n_new_line < 1) {
-    n_new_line = 1;
-  }
-  sus_result = CPKT_SUS_OK;
+  memset(&state, 0, sizeof(state));
+  state.impl = impl;
+  state.model_impl = model_impl;
+  state.config = config;
+  state.use_prompt = (config == NULL || config->keep_context >= 0) ? 1 : 0;
+  state.result = CPKT_SUS_OK;
 
+  memset(&vox_config, 0, sizeof(vox_config));
+  vox_config.threshold =
+      config != NULL && config->vox_threshold != 0.0f ? config->vox_threshold
+                                                      : 0.001f;
+  vox_config.release_silence_ms = keep_ms;
+  vox_config.max_segment_ms = length_ms;
+  vox_config.min_segment_ms = 100UL;
+  vox_config.memory_spool_bytes =
+      config != NULL ? config->memory_spool_bytes : 0UL;
+  vox_config.max_spool_bytes = config != NULL ? config->max_spool_bytes : 0UL;
+  vox_config.segment_sink = cpkt_sus_vox_segment_sink;
+  vox_config.segment_user = &state;
+
+  vox = NULL;
+  sus_result = cpkt_audio_vox_open(&vox, &vox_config) == CPKT_AUDIO_OK
+                   ? CPKT_SUS_OK
+                   : CPKT_SUS_ERR_ARG;
+  if (sus_result != CPKT_SUS_OK) {
+    goto cleanup;
+  }
+
+  at_end = 0;
   while (!at_end) {
-    unsigned long take_count;
-    unsigned long current_count;
-    int event_final;
+    cpkt_audio_result audio_result;
+    cpkt_audio_result decoder_result;
 
+    frames_read = 0U;
+    decoder_result = decoder->read_f32_mono_16k(
+        decoder, read_buffer, (size_t)read_frames, &frames_read);
+    if (decoder_result != CPKT_AUDIO_OK &&
+        decoder_result != CPKT_AUDIO_AT_END) {
+      sus_result = CPKT_SUS_ERR_IO;
+      goto cleanup;
+    }
+    if (frames_read > 0U) {
+      audio_result = vox->push_f32_mono_16k(vox, read_buffer, frames_read);
+      if (audio_result != CPKT_AUDIO_OK) {
+        sus_result =
+            state.result != CPKT_SUS_OK ? state.result : CPKT_SUS_ERR_IO;
+        goto cleanup;
+      }
+    }
+    if (decoder_result == CPKT_AUDIO_AT_END || frames_read == 0U) {
+      at_end = 1;
+    }
+  }
+
+  if (vox->flush(vox) != CPKT_AUDIO_OK) {
     sus_result =
-        cpkt_sus_read_decoder_step(decoder, new_samples, step_frames,
-                                   read_frames, &new_count, &at_end);
+        state.result != CPKT_SUS_OK ? state.result : CPKT_SUS_ERR_IO;
+    goto cleanup;
+  }
+  if (!state.final_emitted) {
+    sus_result = cpkt_sus_emit_realtime_event(
+        impl, config, NULL, 0U,
+        state.segment_count == 0UL ? 0UL : state.segment_count - 1UL, 1);
     if (sus_result != CPKT_SUS_OK) {
       goto cleanup;
-    }
-    if (new_count == 0UL) {
-      if (at_end && iter > 0) {
-        sus_result = cpkt_sus_emit_realtime_event(
-            impl, config, model_impl->context, (unsigned long)(iter - 1), 1);
-        if (sus_result != CPKT_SUS_OK) {
-          goto cleanup;
-        }
-      }
-      break;
-    }
-
-    take_count = old_count;
-    if (length_frames > new_count) {
-      unsigned long max_take;
-
-      max_take = length_frames - new_count;
-      if (keep_frames <= (unsigned long)-1 - max_take) {
-        max_take += keep_frames;
-      }
-      if (take_count > max_take) {
-        take_count = max_take;
-      }
-    } else {
-      take_count = 0UL;
-    }
-
-    if (take_count > 0UL) {
-      memcpy(current_samples, old_samples + old_count - take_count,
-             sizeof(float) * (size_t)take_count);
-    }
-    memcpy(current_samples + take_count, new_samples,
-           sizeof(float) * (size_t)new_count);
-    current_count = take_count + new_count;
-
-    impl->aborted = 0;
-    impl->callback_error = 0;
-    params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-    if (impl->config.threads > 0) {
-      params.n_threads = impl->config.threads;
-    }
-    params.translate = impl->config.translate ? true : false;
-    params.no_timestamps = true;
-    params.print_progress = false;
-    params.print_realtime = false;
-    params.print_timestamps = false;
-    params.single_segment = true;
-    if (config != NULL && config->max_tokens != 0UL &&
-        !cpkt_sus_ul_to_int(config->max_tokens, &params.max_tokens)) {
-      sus_result = CPKT_SUS_ERR_ARG;
-      goto cleanup;
-    }
-    if (config != NULL && config->audio_ctx != 0UL &&
-        !cpkt_sus_ul_to_int(config->audio_ctx, &params.audio_ctx)) {
-      sus_result = CPKT_SUS_ERR_ARG;
-      goto cleanup;
-    }
-    params.initial_prompt = impl->config.initial_prompt;
-    params.prompt_tokens =
-        config != NULL && config->keep_context && prompt_count > 0U
-            ? prompt_tokens
-            : NULL;
-    if (prompt_count > (size_t)INT_MAX) {
-      sus_result = CPKT_SUS_ERR_ARG;
-      goto cleanup;
-    }
-    params.prompt_n_tokens =
-        config != NULL && config->keep_context && prompt_count > 0U
-            ? (int)prompt_count
-            : 0;
-
-    language = impl->config.language;
-    if (language == NULL || language[0] == '\0' ||
-        strcmp(language, "auto") == 0) {
-      params.language = NULL;
-    } else {
-      params.language = language;
-    }
-
-    if (impl->config.progress_sink != NULL) {
-      params.progress_callback = cpkt_sus_whisper_progress_callback;
-      params.progress_callback_user_data = impl;
-    }
-    if (impl->config.abort != NULL || impl->config.progress_sink != NULL) {
-      params.abort_callback = cpkt_sus_whisper_abort_callback;
-      params.abort_callback_user_data = impl;
-    }
-
-    full_result = whisper_full(model_impl->context, params, current_samples,
-                               (int)current_count);
-    if (impl->callback_error) {
-      sus_result = CPKT_SUS_ERR_CALLBACK;
-      goto cleanup;
-    }
-    if (impl->aborted) {
-      sus_result = CPKT_SUS_ABORTED;
-      goto cleanup;
-    }
-    if (full_result != 0) {
-      sus_result = CPKT_SUS_ERR_UPSTREAM;
-      goto cleanup;
-    }
-
-    event_final = at_end ? 1 : 0;
-    sus_result = cpkt_sus_emit_realtime_event(impl, config, model_impl->context,
-                                              (unsigned long)iter,
-                                              event_final);
-    if (sus_result != CPKT_SUS_OK) {
-      goto cleanup;
-    }
-
-    ++iter;
-    old_count = current_count;
-    memcpy(old_samples, current_samples, sizeof(float) * (size_t)old_count);
-    if ((iter % n_new_line) == 0) {
-      if (keep_frames < old_count) {
-        memmove(old_samples, old_samples + old_count - keep_frames,
-                sizeof(float) * (size_t)keep_frames);
-        old_count = keep_frames;
-      }
-      if (config != NULL && config->keep_context) {
-        sus_result = cpkt_sus_capture_prompt_tokens(
-            model_impl->context, &prompt_tokens, &prompt_count,
-            &prompt_capacity);
-        if (sus_result != CPKT_SUS_OK) {
-          goto cleanup;
-        }
-      }
     }
   }
 
 cleanup:
-  free(prompt_tokens);
-  free(current_samples);
-  free(new_samples);
-  free(old_samples);
+  free(state.prompt_tokens);
+  if (vox != NULL) {
+    vox->destroy(vox);
+  }
+  free(read_buffer);
   return sus_result;
 }
 

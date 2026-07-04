@@ -334,6 +334,7 @@ static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder,
   float frames[64];
   size_t frames_read;
   size_t total;
+  float peak;
   cpkt_audio_result result;
 
   memset(&info, 0, sizeof(info));
@@ -343,14 +344,28 @@ static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder,
   assert_int_equal(info.output_sample_rate, 16000);
 
   total = 0;
+  peak = 0.0f;
   do {
+    size_t i;
+
     frames_read = 0;
     result = decoder->read_f32_mono_16k(decoder, frames, 64, &frames_read);
     assert_true(result == CPKT_AUDIO_OK || result == CPKT_AUDIO_AT_END);
+    for (i = 0U; i < frames_read; ++i) {
+      float sample;
+
+      sample = frames[i] < 0.0f ? -frames[i] : frames[i];
+      if (sample > peak) {
+        peak = sample;
+      }
+    }
     total += frames_read;
   } while (result != CPKT_AUDIO_AT_END);
 
   assert_true(total >= 8);
+  if (expected_source_format == CPKT_AUDIO_FORMAT_MP3) {
+    assert_true(peak > 0.000001f);
+  }
   frames_read = 1;
   assert_int_equal(decoder->read_f32_mono_16k(decoder, frames, 64,
                                               &frames_read),
@@ -615,6 +630,52 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
   cpkt_test_stop_http_server(server_pid);
 }
 
+static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
+  unsigned char mp3_fixture[1536];
+  unsigned char mp3_data[11000];
+  char url[128];
+  cpkt_audio_decoder_config config;
+  cpkt_audio_decoder *decoder;
+  unsigned short port;
+  pid_t server_pid;
+  size_t mp3_size;
+  size_t tag_payload_size;
+  size_t total_size;
+
+  (void)state;
+  memset(&config, 0, sizeof(config));
+  config.encoding = CPKT_AUDIO_ENCODING_MP3;
+  mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_fixture,
+                                   sizeof(mp3_fixture));
+  tag_payload_size = 8192U;
+  total_size = 10U + tag_payload_size + mp3_size;
+  assert_true(mp3_size > 0);
+  assert_true(total_size <= sizeof(mp3_data));
+  memset(mp3_data, 0, total_size);
+  mp3_data[0] = 'I';
+  mp3_data[1] = 'D';
+  mp3_data[2] = '3';
+  mp3_data[3] = 4U;
+  mp3_data[8] = (unsigned char)((tag_payload_size >> 7U) & 0x7fU);
+  mp3_data[9] = (unsigned char)(tag_payload_size & 0x7fU);
+  memcpy(mp3_data + 10U + tag_payload_size, mp3_fixture, mp3_size);
+
+  assert_int_equal(
+      cpkt_test_start_prefix_http_server(mp3_data, total_size, &port,
+                                         &server_pid),
+      0);
+  (void)sprintf(url, "http://127.0.0.1:%u/large-id3.mp3",
+                (unsigned int)port);
+
+  decoder = NULL;
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, &config),
+                   CPKT_AUDIO_OK);
+  assert_non_null(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_MP3);
+  decoder->destroy(decoder);
+  cpkt_test_stop_http_server(server_pid);
+}
+
 static void test_encoder_writes_wav_file(void **state) {
   const char *path;
   cpkt_audio_encoder *encoder;
@@ -715,6 +776,195 @@ static void test_encoder_callback_write_failure(void **state) {
   encoder->destroy(encoder);
 }
 
+struct vox_capture {
+  unsigned long count;
+  unsigned long hard_count;
+  unsigned long final_count;
+  size_t frames[8];
+  int fail;
+};
+
+static int capture_vox_segment(cpkt_audio_vox_segment *segment, void *user) {
+  struct vox_capture *capture;
+  float frames[256];
+  size_t frames_read;
+  size_t total;
+  cpkt_audio_result result;
+
+  capture = (struct vox_capture *)user;
+  assert_non_null(segment);
+  assert_non_null(segment->read_f32_mono_16k);
+  if (capture->fail) {
+    return 1;
+  }
+  assert_true(capture->count < 8UL);
+  capture->frames[capture->count] = segment->frame_count;
+  if (segment->hard_cut) {
+    ++capture->hard_count;
+  }
+  if (segment->is_final) {
+    ++capture->final_count;
+  }
+  assert_int_equal(segment->segment_index, capture->count);
+  total = 0U;
+  do {
+    frames_read = 99U;
+    result =
+        segment->read_f32_mono_16k(segment, frames, 256U, &frames_read);
+    assert_true(result == CPKT_AUDIO_OK || result == CPKT_AUDIO_AT_END);
+    total += frames_read;
+  } while (result != CPKT_AUDIO_AT_END);
+  assert_int_equal(total, segment->frame_count);
+  ++capture->count;
+  return 0;
+}
+
+static void test_vox_releases_on_silence(void **state) {
+  struct vox_capture capture;
+  cpkt_audio_vox_config config;
+  cpkt_audio_vox *vox;
+  float frames[1600];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.threshold = 0.1f;
+  config.release_silence_ms = 10UL;
+  config.max_segment_ms = 100UL;
+  config.min_segment_ms = 1UL;
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+
+  for (i = 0U; i < 160U; ++i) {
+    frames[i] = 0.2f;
+  }
+  for (; i < 320U; ++i) {
+    frames[i] = 0.0f;
+  }
+
+  vox = NULL;
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
+  assert_non_null(vox);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 320U),
+                   CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.hard_count, 0UL);
+  assert_int_equal(capture.final_count, 0UL);
+  assert_int_equal(capture.frames[0], 320U);
+  assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  vox->destroy(vox);
+}
+
+static void test_vox_hard_cuts_at_segment_budget(void **state) {
+  struct vox_capture capture;
+  cpkt_audio_vox_config config;
+  cpkt_audio_vox *vox;
+  float frames[2000];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.threshold = 0.1f;
+  config.release_silence_ms = 100UL;
+  config.max_segment_ms = 50UL;
+  config.min_segment_ms = 1UL;
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+
+  for (i = 0U; i < 1000U; ++i) {
+    frames[i] = 0.2f;
+  }
+
+  vox = NULL;
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
+  assert_non_null(vox);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1000U),
+                   CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.hard_count, 1UL);
+  assert_int_equal(capture.frames[0], 800U);
+  assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 2UL);
+  assert_int_equal(capture.final_count, 1UL);
+  assert_int_equal(capture.frames[1], 200U);
+  vox->destroy(vox);
+}
+
+static void test_vox_spills_and_hard_cuts_at_storage_budget(void **state) {
+  struct vox_capture capture;
+  cpkt_audio_vox_config config;
+  cpkt_audio_vox *vox;
+  float frames[48];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.threshold = 0.1f;
+  config.release_silence_ms = 100UL;
+  config.max_segment_ms = 0UL;
+  config.min_segment_ms = 1UL;
+  config.memory_spool_bytes = 64UL;
+  config.max_spool_bytes = 128UL;
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+
+  for (i = 0U; i < 48U; ++i) {
+    frames[i] = 0.2f;
+  }
+
+  vox = NULL;
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
+  assert_non_null(vox);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 48U),
+                   CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.hard_count, 1UL);
+  assert_int_equal(capture.frames[0], 32U);
+  assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 2UL);
+  assert_int_equal(capture.final_count, 1UL);
+  assert_int_equal(capture.frames[1], 16U);
+  vox->destroy(vox);
+}
+
+static void test_vox_rejects_invalid_and_reports_callback_failure(
+    void **state) {
+  struct vox_capture capture;
+  cpkt_audio_vox_config config;
+  cpkt_audio_vox *vox;
+  float frames[16];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  vox = (cpkt_audio_vox *)1;
+  assert_int_equal(cpkt_audio_vox_open(NULL, &config), CPKT_AUDIO_ERR_ARG);
+  assert_int_equal(cpkt_audio_vox_open(&vox, NULL), CPKT_AUDIO_ERR_ARG);
+  assert_null(vox);
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_ERR_ARG);
+  assert_null(vox);
+
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+  config.max_segment_ms = 1UL;
+  config.min_segment_ms = 1UL;
+  capture.fail = 1;
+  for (i = 0U; i < 16U; ++i) {
+    frames[i] = 1.0f;
+  }
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
+  assert_non_null(vox);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 16U),
+                   CPKT_AUDIO_ERR_IO);
+  assert_int_equal(vox->flush(vox), CPKT_AUDIO_ERR_IO);
+  vox->destroy(vox);
+}
+
 static void test_invalid_arguments(void **state) {
   cpkt_audio_decoder *decoder;
   cpkt_audio_encoder *encoder;
@@ -794,9 +1044,14 @@ int main(void) {
       cmocka_unit_test(test_decoder_reads_mp3_file_when_supported),
       cmocka_unit_test(test_decoder_reads_mp3_file_url_when_supported),
       cmocka_unit_test(test_decoder_http_url_streams_before_full_response),
+      cmocka_unit_test(test_decoder_http_url_waits_for_large_id3_tag),
       cmocka_unit_test(test_encoder_writes_wav_file),
       cmocka_unit_test(test_encoder_writes_wav_callback_writer),
       cmocka_unit_test(test_encoder_callback_write_failure),
+      cmocka_unit_test(test_vox_releases_on_silence),
+      cmocka_unit_test(test_vox_hard_cuts_at_segment_budget),
+      cmocka_unit_test(test_vox_spills_and_hard_cuts_at_storage_budget),
+      cmocka_unit_test(test_vox_rejects_invalid_and_reports_callback_failure),
       cmocka_unit_test(test_invalid_arguments),
   };
   return cmocka_run_group_tests(tests, NULL, NULL);

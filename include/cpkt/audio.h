@@ -14,6 +14,8 @@ typedef struct cpkt_audio_decoder cpkt_audio_decoder;
 #endif
 /** Handle for a single audio encoder instance. */
 typedef struct cpkt_audio_encoder cpkt_audio_encoder;
+/** Handle for a float32 mono 16 kHz voice-operated segmenter. */
+typedef struct cpkt_audio_vox cpkt_audio_vox;
 
 /** Result codes returned by the audio facade. */
 typedef enum cpkt_audio_result {
@@ -145,6 +147,68 @@ typedef struct cpkt_audio_encoder_config {
   unsigned long channels;
 } cpkt_audio_encoder_config;
 
+/** Pullable VOX segment delivered when speech releases or a budget is reached. */
+typedef struct cpkt_audio_vox_segment cpkt_audio_vox_segment;
+
+/** Pullable VOX speech segment receiver shell. */
+struct cpkt_audio_vox_segment {
+  /** Private implementation pointer. Callers must not inspect or modify it. */
+  void *impl;
+  /** Number of mono 16000 Hz PCM frames in frames. */
+  size_t frame_count;
+  /** Zero-based segment number emitted by this VOX instance. */
+  unsigned long segment_index;
+  /** Non-zero when the segment was closed by max_segment_ms, not silence. */
+  int hard_cut;
+  /** Non-zero when this segment was emitted during flush/end-of-stream. */
+  int is_final;
+  /**
+   * Reads segment PCM as float32 mono 16000 Hz frames.
+   *
+   * The segment is valid only during the VOX callback. frames_read is set
+   * before return when arguments are valid. CPKT_AUDIO_AT_END means the
+   * segment source has been fully consumed.
+   */
+  cpkt_audio_result (*read_f32_mono_16k)(cpkt_audio_vox_segment *self,
+                                         float *frames, size_t frame_capacity,
+                                         size_t *frames_read);
+};
+
+/**
+ * Receives a bounded VOX speech segment.
+ *
+ * Return zero to continue. Returning non-zero makes the active push or flush
+ * call return CPKT_AUDIO_ERR_IO.
+ */
+typedef int (*cpkt_audio_vox_segment_sink)(
+    cpkt_audio_vox_segment *segment, void *user);
+
+/** VOX construction options. Zero initializes to speech-friendly defaults. */
+typedef struct cpkt_audio_vox_config {
+  /** RMS power threshold that opens or keeps VOX active. Zero selects 0.01. */
+  float threshold;
+  /** Silence duration that releases VOX. Zero selects 2000 ms. */
+  unsigned long release_silence_ms;
+  /** Maximum segment duration before a hard cut. Zero disables the time cap. */
+  unsigned long max_segment_ms;
+  /** Minimum segment duration to emit. Zero selects 100 ms. */
+  unsigned long min_segment_ms;
+  /**
+   * Bytes kept in memory before spilling an open segment to an anonymous
+   * temporary file. Zero selects 1 MiB.
+   */
+  unsigned long memory_spool_bytes;
+  /**
+   * Maximum bytes for one open VOX segment before forced hard cut. Zero
+   * selects 1 GiB. The cap applies to RAM plus disk-backed spool bytes.
+   */
+  unsigned long max_spool_bytes;
+  /** Required sink for emitted speech segments. */
+  cpkt_audio_vox_segment_sink segment_sink;
+  /** User value passed to segment_sink. */
+  void *segment_user;
+} cpkt_audio_vox_config;
+
 /** Receiver shell for decoder operations. */
 struct cpkt_audio_decoder {
   /** Private implementation pointer. Callers must not inspect or modify it. */
@@ -183,6 +247,27 @@ struct cpkt_audio_encoder {
   /** Finalizes and releases the encoder and all resources owned by the handle.
    */
   void (*destroy)(cpkt_audio_encoder *self);
+};
+
+/** Receiver shell for float32 mono 16 kHz VOX segmenting. */
+struct cpkt_audio_vox {
+  /** Private implementation pointer. Callers must not inspect or modify it. */
+  void *impl;
+  /**
+   * Pushes decoded mono 16 kHz PCM through VOX.
+   *
+   * The facade may synchronously invoke segment_sink zero or more times before
+   * returning. Input frames are not retained after closed segments are emitted.
+   */
+  cpkt_audio_result (*push_f32_mono_16k)(cpkt_audio_vox *self,
+                                         const float *frames,
+                                         size_t frame_count);
+  /**
+   * Ends the stream and emits any open speech segment as a final segment.
+   */
+  cpkt_audio_result (*flush)(cpkt_audio_vox *self);
+  /** Releases the VOX handle and its bounded in-memory segment buffer. */
+  void (*destroy)(cpkt_audio_vox *self);
 };
 
 /**
@@ -239,6 +324,16 @@ cpkt_audio_result
 cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
                                const cpkt_audio_writer *writer,
                                const cpkt_audio_encoder_config *config);
+
+/**
+ * Opens a float32 mono 16 kHz voice-operated segmenter.
+ *
+ * The VOX handle never materializes a whole stream. It retains at most the
+ * configured memory_spool_bytes in RAM before spilling to disk, and emits a
+ * hard-cut segment when max_segment_ms or max_spool_bytes is reached.
+ */
+cpkt_audio_result cpkt_audio_vox_open(cpkt_audio_vox **out,
+                                      const cpkt_audio_vox_config *config);
 
 /**
  * Returns non-zero when format is supported for decoding by this facade build.

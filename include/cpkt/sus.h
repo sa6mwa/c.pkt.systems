@@ -96,15 +96,15 @@ typedef struct cpkt_sus_segment {
   long t1;
 } cpkt_sus_segment;
 
-/** Live realtime transcription hypothesis delivered during rolling inference. */
+/** Committed streaming transcript state delivered after a VOX segment closes. */
 typedef struct cpkt_sus_realtime_event {
-  /** Current hypothesis text owned by the facade during the callback. */
+  /** Current session transcript owned by the facade during the callback. */
   const char *text;
-  /** Hypothesis text length in bytes, excluding the terminating NUL. */
+  /** Transcript text length in bytes, excluding the terminating NUL. */
   unsigned long text_length;
-  /** Number of realtime inference steps completed before this event. */
+  /** Number of committed speech segments completed before this event. */
   unsigned long step_index;
-  /** Non-zero only when the event is the final end-of-stream hypothesis. */
+  /** Non-zero only when the event is the final end-of-stream event. */
   int is_final;
 } cpkt_sus_realtime_event;
 
@@ -140,7 +140,7 @@ typedef int (*cpkt_sus_segment_sink)(const cpkt_sus_segment *segment,
                                      void *user);
 
 /**
- * Receives realtime rolling transcription hypotheses.
+ * Receives committed streaming transcript updates.
  *
  * Return zero to continue. Returning non-zero requests CPKT_SUS_ERR_CALLBACK
  * after the active backend call completes.
@@ -148,7 +148,7 @@ typedef int (*cpkt_sus_segment_sink)(const cpkt_sus_segment *segment,
 typedef int (*cpkt_sus_realtime_sink)(const cpkt_sus_realtime_event *event,
                                       void *user);
 
-/** Receives backend progress in percent. Return non-zero to report failure. */
+/** Receives backend or facade progress in percent. Return non-zero to fail. */
 typedef int (*cpkt_sus_progress_sink)(int progress, void *user);
 
 /** Return non-zero to request aborting the active transcription. */
@@ -182,39 +182,51 @@ typedef struct cpkt_sus_transcriber_config {
   void *abort_user;
 } cpkt_sus_transcriber_config;
 
-/** Realtime audio-decoder transcription options. Zero initializes defaults. */
+/** VOX-segmented audio-decoder transcription options. Zero initializes defaults. */
 typedef struct cpkt_sus_realtime_config {
   /**
    * Frames pulled from the audio decoder per read. Zero selects 4096 frames.
    */
   unsigned long read_frames;
   /**
-   * New decoded audio accumulated before each inference call, in
-   * milliseconds. Zero selects the backend realtime default.
+   * Deprecated compatibility field. The VOX path does not run fixed-step
+   * inference.
    */
   unsigned long step_ms;
   /**
-   * Maximum rolling audio context passed to each inference call, in
-   * milliseconds. Zero selects the backend realtime default and values
-   * below step_ms are raised to step_ms.
+   * Maximum VOX speech segment passed to one inference call, in milliseconds.
+   * Zero selects 5000 ms. A continuous speech run beyond this budget is hard
+   * cut and continued with prior prompt tokens, not prior audio.
    */
   unsigned long length_ms;
   /**
-   * Audio retained after each committed step to reduce word-boundary cuts, in
-   * milliseconds. Zero selects the backend realtime default and values
-   * above step_ms are capped to step_ms.
+   * Silence duration that releases VOX, in milliseconds. Zero selects 2000 ms.
    */
   unsigned long keep_ms;
   /**
-   * Non-zero carries prompt tokens between committed realtime steps. Zero
-   * selects the backend realtime default.
+   * Prompt-token carry policy. Zero selects the default enabled behavior.
+   * Negative disables prompt carry. Positive enables prompt carry.
    */
   int keep_context;
+  /** VOX threshold for mono f32 16 kHz PCM. Zero selects 0.001. */
+  float vox_threshold;
+  /**
+   * Bytes kept in memory for one open VOX speech segment before spilling to an
+   * anonymous temporary file. Zero selects the audio VOX default, currently
+   * 1 MiB.
+   */
+  unsigned long memory_spool_bytes;
+  /**
+   * Maximum RAM plus disk-backed spool bytes for one open VOX speech segment
+   * before a forced hard cut. Zero selects the audio VOX default, currently
+   * 1 GiB.
+   */
+  unsigned long max_spool_bytes;
   /** Backend audio context override. Zero keeps the backend default. */
   unsigned long audio_ctx;
   /** Maximum tokens per inference call. Zero keeps the backend default. */
   unsigned long max_tokens;
-  /** Optional sink for rolling realtime hypotheses. */
+  /** Optional sink for committed VOX-segment transcript updates. */
   cpkt_sus_realtime_sink realtime_sink;
   /** User value passed to realtime_sink. */
   void *realtime_user;
@@ -239,7 +251,7 @@ struct cpkt_sus_transcriber {
   /** Private implementation pointer. Callers must not inspect or modify it. */
   void *impl;
   /**
-   * Runs chunked/windowed inference over float32 mono 16000 Hz PCM samples.
+   * Runs inference over a caller-provided float32 mono 16000 Hz PCM buffer.
    *
    * Segment and progress callbacks from the transcriber configuration are
    * invoked during the call when the backend reports them.
@@ -257,33 +269,32 @@ struct cpkt_sus_transcriber {
                                                   unsigned long sample_count,
                                                   char **text_out);
   /**
-   * Runs backend realtime transcription over decoded audio.
+   * Runs VOX-segmented streaming transcription over decoded audio.
    *
    * The decoder must produce float32 mono 16000 Hz PCM, as cpkt_audio_decoder
-   * does. The transcriber reads until end-of-stream and repeatedly runs
-   * inference over step_ms of new audio plus retained rolling context. The full
-   * decoded stream is never materialized. realtime_sink receives rolling
-   * hypotheses; ordinary segment callbacks are reserved for append-oriented
-   * transcription calls.
+   * does. The transcriber reads until end-of-stream, uses audio VOX to cut
+   * bounded speech segments, and runs inference once per emitted segment.
+   * Previous audio is never retranscribed; prompt tokens from the previous
+   * segment are used for continuity when prompt carry is enabled.
    */
   cpkt_sus_result (*transcribe_audio_decoder_realtime)(
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
       const cpkt_sus_realtime_config *config);
   /**
-   * Runs realtime decoder transcription and returns revised session text.
+   * Runs VOX-segmented decoder transcription and returns session text.
    *
    * Audio remains streaming and bounded as with transcribe_audio_decoder_realtime.
-   * The returned text is assembled from rolling realtime hypotheses and must be
+   * The returned text is assembled from committed segment updates and must be
    * released with cpkt_sus_string_free.
    */
   cpkt_sus_result (*transcribe_audio_decoder_realtime_text)(
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
       const cpkt_sus_realtime_config *config, char **text_out);
   /**
-   * Copies the latest revised realtime transcript from this transcriber.
+   * Copies the latest committed streaming transcript from this transcriber.
    *
-   * The text is produced by the most recent realtime decoder transcription
-   * call. It is empty before any realtime call that produced text. The caller
+   * The text is produced by the most recent streaming decoder transcription
+   * call. It is empty before any streaming call that produced text. The caller
    * must release *text_out with cpkt_sus_string_free.
    */
   cpkt_sus_result (*revised_text)(cpkt_sus_transcriber *self,

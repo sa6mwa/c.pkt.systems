@@ -86,8 +86,10 @@ int main(void) {
   realtime_config.read_frames = 4096UL;
   realtime_config.step_ms = 1000UL;
   realtime_config.length_ms = 5000UL;
-  realtime_config.keep_ms = 200UL;
+  realtime_config.keep_ms = 2000UL;
   realtime_config.keep_context = 1;
+  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
+  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   realtime_config.audio_ctx = 0UL;
   realtime_config.max_tokens = 0UL;
   realtime_config.realtime_sink = 0;
@@ -164,7 +166,10 @@ int main() {
   encoder_config.channels = 1UL;
   realtime_config.step_ms = 1000UL;
   realtime_config.length_ms = 5000UL;
+  realtime_config.keep_ms = 2000UL;
   realtime_config.keep_context = 1;
+  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
+  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   return encoder_config.format + realtime_config.keep_context;
 }
 EOF

@@ -49,7 +49,7 @@ struct cpkt_audio_decoder_impl {
   ma_data_converter converter;
   cpkt_audio_reader reader;
   struct cpkt_audio_url_source *url_source;
-  float *mp3_input;
+  ma_int16 *mp3_input;
   unsigned char *mp3_bytes;
   size_t mp3_byte_size;
   size_t mp3_byte_cursor;
@@ -71,6 +71,25 @@ struct cpkt_audio_encoder_impl {
   ma_encoder encoder;
   cpkt_audio_writer writer;
   int closed;
+  int callback_error;
+};
+
+struct cpkt_audio_vox_impl {
+  cpkt_audio_vox_config config;
+  float *frames;
+  size_t frame_capacity;
+  size_t memory_frame_count;
+  size_t total_frame_count;
+  size_t read_cursor;
+  FILE *spool_file;
+  unsigned long release_silence_frames;
+  unsigned long max_segment_frames;
+  unsigned long min_segment_frames;
+  size_t max_spool_frames;
+  unsigned long silence_frames;
+  unsigned long segment_index;
+  float threshold;
+  int open;
   int callback_error;
 };
 
@@ -474,9 +493,12 @@ cpkt_audio_mp3_buffer_compact(struct cpkt_audio_decoder_impl *impl) {
 static int cpkt_audio_mp3_skip_id3v2(struct cpkt_audio_decoder_impl *impl) {
   size_t tag_size;
 
-  if (impl == NULL || impl->mp3_byte_size < 10U ||
+  if (impl == NULL || impl->mp3_byte_size < 3U ||
       memcmp(impl->mp3_bytes, "ID3", 3U) != 0) {
     return 0;
+  }
+  if (impl->mp3_byte_size < 10U) {
+    return 2;
   }
   if ((impl->mp3_bytes[6] & 0x80U) != 0U ||
       (impl->mp3_bytes[7] & 0x80U) != 0U ||
@@ -493,7 +515,7 @@ static int cpkt_audio_mp3_skip_id3v2(struct cpkt_audio_decoder_impl *impl) {
     tag_size += 10U;
   }
   if (tag_size > impl->mp3_byte_size) {
-    return 0;
+    return 2;
   }
   impl->mp3_byte_cursor = tag_size;
   cpkt_audio_mp3_buffer_compact(impl);
@@ -518,6 +540,7 @@ cpkt_audio_mp3_decode_next_frame(struct cpkt_audio_decoder_impl *impl) {
   int frame_count;
   size_t bytes_read;
   size_t available;
+  int id3_status;
 
   if (impl == NULL || impl->url_source == NULL || impl->mp3_input == NULL) {
     return CPKT_AUDIO_ERR_ARG;
@@ -526,31 +549,34 @@ cpkt_audio_mp3_decode_next_frame(struct cpkt_audio_decoder_impl *impl) {
   impl->mp3_input_frames = 0;
 
   for (;;) {
-    if (cpkt_audio_mp3_skip_id3v2(impl) != 0) {
+    id3_status = cpkt_audio_mp3_skip_id3v2(impl);
+    if (id3_status == 1) {
       return CPKT_AUDIO_ERR_FORMAT;
     }
-    cpkt_audio_mp3_skip_to_sync(impl);
-    available = impl->mp3_byte_size - impl->mp3_byte_cursor;
-    if (available > 0U) {
-      if (available > (size_t)INT_MAX) {
-        available = (size_t)INT_MAX;
-      }
-      memset(&frame_info, 0, sizeof(frame_info));
-      frame_count = ma_dr_mp3dec_decode_frame(
-          &impl->mp3, impl->mp3_bytes + impl->mp3_byte_cursor, (int)available,
+    if (id3_status == 0) {
+      cpkt_audio_mp3_skip_to_sync(impl);
+      available = impl->mp3_byte_size - impl->mp3_byte_cursor;
+      if (available > 0U) {
+        if (available > (size_t)INT_MAX) {
+          available = (size_t)INT_MAX;
+        }
+        memset(&frame_info, 0, sizeof(frame_info));
+        frame_count = ma_dr_mp3dec_decode_frame(
+            &impl->mp3, impl->mp3_bytes + impl->mp3_byte_cursor, (int)available,
           impl->mp3_input, &frame_info);
-      if (frame_info.frame_bytes > 0) {
-        impl->mp3_byte_cursor += (size_t)frame_info.frame_bytes;
-        cpkt_audio_mp3_buffer_compact(impl);
-      }
-      if (frame_count > 0) {
-        impl->mp3_channels = (ma_uint32)frame_info.channels;
-        impl->mp3_sample_rate = (ma_uint32)frame_info.sample_rate;
-        impl->mp3_input_frames = (ma_uint64)frame_count;
-        return CPKT_AUDIO_OK;
-      }
-      if (frame_info.frame_bytes == 0 && impl->url_source->done) {
-        return CPKT_AUDIO_AT_END;
+        if (frame_info.frame_bytes > 0) {
+          impl->mp3_byte_cursor += (size_t)frame_info.frame_bytes;
+          cpkt_audio_mp3_buffer_compact(impl);
+        }
+        if (frame_count > 0) {
+          impl->mp3_channels = (ma_uint32)frame_info.channels;
+          impl->mp3_sample_rate = (ma_uint32)frame_info.sample_rate;
+          impl->mp3_input_frames = (ma_uint64)frame_count;
+          return CPKT_AUDIO_OK;
+        }
+        if (frame_info.frame_bytes == 0 && impl->url_source->done) {
+          return CPKT_AUDIO_AT_END;
+        }
       }
     }
 
@@ -709,6 +735,267 @@ static cpkt_audio_result cpkt_audio_from_ma_result(ma_result result) {
     return CPKT_AUDIO_ERR_IO;
   }
   return CPKT_AUDIO_ERR_UPSTREAM;
+}
+
+static int cpkt_audio_ms_to_16k_frames(unsigned long ms, unsigned long *out) {
+  if (out == NULL || ms > ((unsigned long)-1) / 16UL) {
+    return 0;
+  }
+  *out = ms * 16UL;
+  return 1;
+}
+
+static float cpkt_audio_absf(float value) {
+  return value < 0.0f ? -value : value;
+}
+
+static void cpkt_audio_vox_reset_segment(struct cpkt_audio_vox_impl *impl) {
+  if (impl == NULL) {
+    return;
+  }
+  if (impl->spool_file != NULL) {
+    fclose(impl->spool_file);
+    impl->spool_file = NULL;
+  }
+  impl->memory_frame_count = 0U;
+  impl->total_frame_count = 0U;
+  impl->read_cursor = 0U;
+  impl->silence_frames = 0UL;
+  impl->open = 0;
+}
+
+static cpkt_audio_result cpkt_audio_vox_spill_to_file(
+    struct cpkt_audio_vox_impl *impl) {
+  if (impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (impl->spool_file != NULL) {
+    return CPKT_AUDIO_OK;
+  }
+  impl->spool_file = tmpfile();
+  if (impl->spool_file == NULL) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  if (impl->memory_frame_count > 0U &&
+      fwrite(impl->frames, sizeof(float), impl->memory_frame_count,
+             impl->spool_file) != impl->memory_frame_count) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  impl->memory_frame_count = 0U;
+  return CPKT_AUDIO_OK;
+}
+
+static cpkt_audio_result
+cpkt_audio_vox_segment_read_impl(cpkt_audio_vox_segment *self, float *frames,
+                                 size_t frame_capacity,
+                                 size_t *frames_read) {
+  struct cpkt_audio_vox_impl *impl;
+  size_t remaining;
+  size_t to_read;
+  size_t read_count;
+
+  if (frames_read != NULL) {
+    *frames_read = 0U;
+  }
+  if (self == NULL || self->impl == NULL || frames_read == NULL ||
+      (frames == NULL && frame_capacity != 0U)) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl->read_cursor >= impl->total_frame_count) {
+    return CPKT_AUDIO_AT_END;
+  }
+  remaining = impl->total_frame_count - impl->read_cursor;
+  to_read = frame_capacity < remaining ? frame_capacity : remaining;
+  if (to_read == 0U) {
+    return CPKT_AUDIO_OK;
+  }
+
+  if (impl->spool_file != NULL) {
+    read_count = fread(frames, sizeof(float), to_read, impl->spool_file);
+    if (read_count != to_read && ferror(impl->spool_file)) {
+      return CPKT_AUDIO_ERR_IO;
+    }
+  } else {
+    memcpy(frames, impl->frames + impl->read_cursor,
+           sizeof(float) * to_read);
+    read_count = to_read;
+  }
+  impl->read_cursor += read_count;
+  *frames_read = read_count;
+  return impl->read_cursor >= impl->total_frame_count ? CPKT_AUDIO_AT_END
+                                                      : CPKT_AUDIO_OK;
+}
+
+static cpkt_audio_result cpkt_audio_vox_emit(struct cpkt_audio_vox_impl *impl,
+                                             int hard_cut, int is_final) {
+  cpkt_audio_vox_segment segment;
+  int callback_result;
+
+  if (impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (impl->total_frame_count < impl->min_segment_frames) {
+    cpkt_audio_vox_reset_segment(impl);
+    return CPKT_AUDIO_OK;
+  }
+  if (impl->spool_file != NULL) {
+    if (fflush(impl->spool_file) != 0 ||
+        fseek(impl->spool_file, 0L, SEEK_SET) != 0) {
+      return CPKT_AUDIO_ERR_IO;
+    }
+  }
+  impl->read_cursor = 0U;
+
+  memset(&segment, 0, sizeof(segment));
+  segment.impl = impl;
+  segment.frame_count = impl->total_frame_count;
+  segment.segment_index = impl->segment_index;
+  segment.hard_cut = hard_cut;
+  segment.is_final = is_final;
+  segment.read_f32_mono_16k = cpkt_audio_vox_segment_read_impl;
+  callback_result =
+      impl->config.segment_sink(&segment, impl->config.segment_user);
+  if (callback_result != 0) {
+    impl->callback_error = 1;
+    return CPKT_AUDIO_ERR_IO;
+  }
+
+  ++impl->segment_index;
+  cpkt_audio_vox_reset_segment(impl);
+  return CPKT_AUDIO_OK;
+}
+
+static cpkt_audio_result cpkt_audio_vox_append_frame(
+    struct cpkt_audio_vox_impl *impl, float frame) {
+  if (impl == NULL || impl->frames == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (impl->total_frame_count >= impl->max_spool_frames) {
+    return CPKT_AUDIO_AT_END;
+  }
+  if (impl->spool_file != NULL) {
+    if (fwrite(&frame, sizeof(frame), 1U, impl->spool_file) != 1U) {
+      return CPKT_AUDIO_ERR_IO;
+    }
+  } else if (impl->memory_frame_count < impl->frame_capacity) {
+    impl->frames[impl->memory_frame_count] = frame;
+    ++impl->memory_frame_count;
+  } else {
+    cpkt_audio_result result;
+
+    result = cpkt_audio_vox_spill_to_file(impl);
+    if (result != CPKT_AUDIO_OK) {
+      return result;
+    }
+    if (fwrite(&frame, sizeof(frame), 1U, impl->spool_file) != 1U) {
+      return CPKT_AUDIO_ERR_IO;
+    }
+  }
+  ++impl->total_frame_count;
+  return CPKT_AUDIO_OK;
+}
+
+static cpkt_audio_result
+cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self,
+                                      const float *frames,
+                                      size_t frame_count) {
+  struct cpkt_audio_vox_impl *impl;
+  size_t i;
+  cpkt_audio_result result;
+
+  if (self == NULL || self->impl == NULL ||
+      (frames == NULL && frame_count != 0U)) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+
+  for (i = 0U; i < frame_count; ++i) {
+    int loud;
+
+    loud = cpkt_audio_absf(frames[i]) >= impl->threshold ? 1 : 0;
+    if (!impl->open && !loud) {
+      continue;
+    }
+    if (!impl->open) {
+      impl->open = 1;
+      impl->silence_frames = 0UL;
+      impl->memory_frame_count = 0U;
+      impl->total_frame_count = 0U;
+      impl->read_cursor = 0U;
+    }
+
+    result = cpkt_audio_vox_append_frame(impl, frames[i]);
+    if (result == CPKT_AUDIO_AT_END) {
+      result = cpkt_audio_vox_emit(impl, 1, 0);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+      --i;
+      continue;
+    }
+    if (result != CPKT_AUDIO_OK) {
+      return result;
+    }
+
+    if (loud) {
+      impl->silence_frames = 0UL;
+    } else if (impl->silence_frames < (unsigned long)-1) {
+      ++impl->silence_frames;
+    }
+
+    if (impl->release_silence_frames != 0UL &&
+        impl->silence_frames >= impl->release_silence_frames) {
+      result = cpkt_audio_vox_emit(impl, 0, 0);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+    } else if (impl->max_segment_frames != 0UL &&
+               impl->total_frame_count >= impl->max_segment_frames) {
+      result = cpkt_audio_vox_emit(impl, 1, 0);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+    }
+  }
+
+  return CPKT_AUDIO_OK;
+}
+
+static cpkt_audio_result cpkt_audio_vox_flush_impl(cpkt_audio_vox *self) {
+  struct cpkt_audio_vox_impl *impl;
+
+  if (self == NULL || self->impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl->callback_error) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  if (!impl->open || impl->total_frame_count == 0U) {
+    return CPKT_AUDIO_OK;
+  }
+  return cpkt_audio_vox_emit(impl, 0, 1);
+}
+
+static void cpkt_audio_vox_destroy_impl(cpkt_audio_vox *self) {
+  struct cpkt_audio_vox_impl *impl;
+
+  if (self == NULL) {
+    return;
+  }
+  impl = (struct cpkt_audio_vox_impl *)self->impl;
+  if (impl != NULL) {
+    if (impl->spool_file != NULL) {
+      fclose(impl->spool_file);
+    }
+    free(impl->frames);
+    free(impl);
+  }
+  free(self);
 }
 
 static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
@@ -1258,8 +1545,8 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
   if (impl->source_format == CPKT_AUDIO_FORMAT_MP3) {
     impl->mode = CPKT_AUDIO_DECODER_MODE_DRMP3;
     ma_dr_mp3dec_init(&impl->mp3);
-    impl->mp3_input =
-        (float *)malloc(sizeof(float) * MA_DR_MP3_MAX_SAMPLES_PER_FRAME);
+    impl->mp3_input = (ma_int16 *)malloc(sizeof(ma_int16) *
+                                         MA_DR_MP3_MAX_SAMPLES_PER_FRAME);
     if (impl->mp3_input == NULL) {
       decoder->impl = NULL;
       cpkt_audio_url_source_destroy(source);
@@ -1279,7 +1566,7 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
       return result == CPKT_AUDIO_OK ? CPKT_AUDIO_ERR_FORMAT : result;
     }
     converter_config = ma_data_converter_config_init(
-        ma_format_f32, ma_format_f32, impl->mp3_channels, 1,
+        ma_format_s16, ma_format_f32, impl->mp3_channels, 1,
         impl->mp3_sample_rate, 16000);
     ma_status = ma_data_converter_init(&converter_config, NULL,
                                        &impl->converter);
@@ -1447,6 +1734,95 @@ cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
   }
 
   *out = encoder;
+  return CPKT_AUDIO_OK;
+}
+
+/** Opens a receiver-shell VOX segmenter for float32 mono 16000 Hz PCM. */
+CPKT_AUDIO_EXPORT cpkt_audio_result
+cpkt_audio_vox_open(cpkt_audio_vox **out,
+                    const cpkt_audio_vox_config *config) {
+  cpkt_audio_vox *vox;
+  struct cpkt_audio_vox_impl *impl;
+  unsigned long release_frames;
+  unsigned long max_frames;
+  unsigned long min_frames;
+  unsigned long release_ms;
+  unsigned long min_ms;
+  unsigned long memory_spool_bytes;
+  unsigned long max_spool_bytes;
+  size_t memory_spool_frames;
+  size_t max_spool_frames;
+
+  if (out != NULL) {
+    *out = NULL;
+  }
+  if (out == NULL || config == NULL || config->segment_sink == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+
+  release_ms = config->release_silence_ms != 0UL
+                   ? config->release_silence_ms
+                   : 2000UL;
+  min_ms = config->min_segment_ms != 0UL ? config->min_segment_ms : 100UL;
+  if (!cpkt_audio_ms_to_16k_frames(release_ms, &release_frames) ||
+      !cpkt_audio_ms_to_16k_frames(min_ms, &min_frames) ||
+      (config->max_segment_ms != 0UL &&
+       !cpkt_audio_ms_to_16k_frames(config->max_segment_ms, &max_frames))) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (config->max_segment_ms == 0UL) {
+    max_frames = 0UL;
+  }
+  if (max_frames != 0UL && min_frames > max_frames) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  memory_spool_bytes = config->memory_spool_bytes != 0UL
+                           ? config->memory_spool_bytes
+                           : 1048576UL;
+  max_spool_bytes = config->max_spool_bytes != 0UL
+                        ? config->max_spool_bytes
+                        : 1073741824UL;
+  if (memory_spool_bytes < sizeof(float) ||
+      max_spool_bytes < sizeof(float) ||
+      memory_spool_bytes > max_spool_bytes) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  memory_spool_frames = (size_t)(memory_spool_bytes / sizeof(float));
+  max_spool_frames = (size_t)(max_spool_bytes / sizeof(float));
+  if (memory_spool_frames == 0U || max_spool_frames == 0U ||
+      memory_spool_frames > ((size_t)-1) / sizeof(float)) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+
+  vox = (cpkt_audio_vox *)calloc(1, sizeof(*vox));
+  if (vox == NULL) {
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+  impl = (struct cpkt_audio_vox_impl *)calloc(1, sizeof(*impl));
+  if (impl == NULL) {
+    free(vox);
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+  impl->frames = (float *)malloc(sizeof(float) * memory_spool_frames);
+  if (impl->frames == NULL) {
+    free(impl);
+    free(vox);
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+
+  impl->config = *config;
+  impl->release_silence_frames = release_frames;
+  impl->max_segment_frames = max_frames;
+  impl->min_segment_frames = min_frames;
+  impl->frame_capacity = memory_spool_frames;
+  impl->max_spool_frames = max_spool_frames;
+  impl->threshold = config->threshold > 0.0f ? config->threshold : 0.01f;
+
+  vox->impl = impl;
+  vox->push_f32_mono_16k = cpkt_audio_vox_push_f32_mono_16k_impl;
+  vox->flush = cpkt_audio_vox_flush_impl;
+  vox->destroy = cpkt_audio_vox_destroy_impl;
+  *out = vox;
   return CPKT_AUDIO_OK;
 }
 

@@ -397,6 +397,7 @@ target_include_directories(cpkt_sus_static
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
 target_link_libraries(cpkt_sus_static PUBLIC
+  cpkt_audio_static
   cpkt::whisper_static
   cpkt::curl_static
   cpkt::openssl_crypto_static
@@ -417,6 +418,7 @@ target_include_directories(cpkt_sus_shared
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
 target_link_libraries(cpkt_sus_shared PUBLIC
+  cpkt_audio_shared
   cpkt::whisper_shared
   cpkt::curl_shared
   cpkt::openssl_crypto_shared

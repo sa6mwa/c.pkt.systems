@@ -405,8 +405,7 @@ re-use across processes.
 The first transcription tier must support:
 
 - transcribe `float32` mono 16000 Hz PCM buffers;
-- transcribe realtime rolling buffers from a `cpkt_audio_decoder` integration
-  path;
+- transcribe VOX-segmented audio from a `cpkt_audio_decoder` integration path;
 - segment callback output using whisper.cpp's new-segment callback and segment
   accessors;
 - progress callback;
@@ -418,24 +417,38 @@ The first transcription tier must support:
 - project-owned free function for materialized strings.
 
 Whisper.cpp realtime transcription is not a separate incremental decoder API.
-Its own `examples/stream` path repeatedly calls `whisper_full` over a rolling
-PCM buffer built from `step_ms` of new audio, up to `length_ms` of retained audio
-context, and `keep_ms` of boundary audio after committed steps. The facade
-should expose those upstream concepts directly for decoder integration and
-describe the behavior as realtime rolling-buffer inference with streaming
-segment callbacks. Do not hide full-audio materialization behind a
-streaming-looking API, and do not invent a separate seconds/window contract that
-does not match upstream semantics.
+The facade must not simulate realtime by repeatedly calling `whisper_full` over
+the same rolling audio context. CPU-first builds make repeated retranscription
+unacceptable, and it creates a misleading streaming surface.
 
-`step_ms` is the realtime cadence, not the whole inference context. Realtime
-output is a rolling hypothesis surface: later audio can revise earlier text while
-that audio remains inside the retained `length_ms` context. The facade must not
-append every rolling hypothesis as final transcript text. It should support both
-streaming hypothesis callbacks and an after-the-fact revised text result for the
-session. A caller must be able to run the streaming realtime method with a live
-hypothesis sink and then retrieve the latest revised transcript from the same
-transcriber after completion. The revised text path may materialize text, but it
-must not materialize decoded audio.
+The decoder realtime path therefore uses `cpkt_audio` VOX segmentation:
+
+- audio is decoded and pushed through VOX as float32 mono 16000 Hz PCM;
+- silence release closes a segment after `keep_ms` milliseconds;
+- continuous speech is hard-cut after `length_ms` milliseconds, defaulting to
+  5000 ms for `cpkt_sus`;
+- sus zero-config VOX uses a lower speech-oriented threshold than generic audio
+  VOX, currently 0.001;
+- previous audio is never sent through Whisper again;
+- prompt tokens captured from the previous committed segment are supplied to the
+  next `whisper_full` call when prompt carry is enabled;
+- `step_ms` is retained only as a compatibility field and does not schedule
+  fixed-step inference.
+
+The `cpkt_audio` VOX segment source is pullable and may be backed by memory or
+by an anonymous temporary file. It keeps only `memory_spool_bytes` in RAM before
+spilling an open segment to disk, and it must hard-cut at `max_spool_bytes`
+even when `max_segment_ms` is zero. This allows generic open-ended VOX without
+unbounded memory use. The `cpkt_sus` realtime path keeps the default time cap
+bounded because whisper.cpp requires one materialized PCM segment per
+`whisper_full` call; it does not materialize a whole decoded stream.
+
+Realtime output is committed segment text appended to session text, not an
+editable rolling audio hypothesis. A caller can stream committed text updates
+through the realtime sink and then retrieve the latest materialized transcript
+from the same transcriber after completion. The revised text path may
+materialize text, but it must not materialize decoded audio beyond the current
+bounded Whisper segment.
 
 Initial transcription options should expose only stable, high-value knobs:
 
@@ -448,10 +461,11 @@ Initial transcription options should expose only stable, high-value knobs:
 - language (`NULL`, empty string, or `"auto"` means auto-detect);
 - translate vs transcribe;
 - timestamps on/off;
-- realtime decoder options named after upstream `whisper-stream`: `step_ms`,
-  `length_ms`, `keep_ms`, optional prompt-token context carryover, audio context,
-  and max tokens;
-- realtime hypothesis callbacks, a materialized revised-text helper, and a
+- realtime decoder options: compatibility `step_ms`, VOX segment budget
+  `length_ms`, VOX release silence `keep_ms`, VOX threshold, VOX memory/disk
+  spool budgets, optional prompt-token context carryover, audio context, and max
+  tokens;
+- realtime transcript callbacks, a materialized revised-text helper, and a
   transcriber receiver method for copying the latest revised transcript after a
   streaming realtime call, all without buffering decoded audio;
 - initial prompt;
@@ -468,24 +482,23 @@ package metadata keep library dependencies clear.
 
 Current implementation status:
 
-- `libcpktsus` does not link `libcpktaudio`;
-- realtime integration accepts the public `cpkt_audio_decoder` receiver shell
-  and calls its decoder method, so the two libraries remain independently
-  consumable;
-- examples and integration tests link both libraries when demonstrating the
-  end-to-end audio-to-text workflow.
+- `libcpktaudio` is independently consumable;
+- `libcpktsus` has a public dependency on `libcpktaudio` for decoder and VOX
+  integration, while keeping Whisper and model-cache APIs behind the sus facade;
+- static and shared package metadata must express this dependency once so a
+  downstream can link `cpktaudio`, `cpktsus`, or both without duplicate libcurl
+  symbols.
 
 The desired workflow is:
 
 1. Open audio through `cpkt_audio_decoder`.
 2. Decode as `float32` mono 16000 Hz.
-3. Feed bounded rolling PCM slices into `cpkt_sus_transcriber` using the
-   whisper.cpp realtime stream loop (`step_ms`, `length_ms`, `keep_ms`).
-4. Emit realtime transcript hypotheses through a callback sink.
-
-If the dependency direction causes undesirable coupling, put cross-library
-helpers in examples or an optional integration target instead of making
-`libcpktsus` require `libcpktaudio`.
+3. Feed decoded PCM into the audio VOX segmenter using `length_ms`, `keep_ms`,
+   VOX threshold, and spool caps from the sus realtime config.
+4. Run Whisper once per closed VOX segment with prompt-token carryover from the
+   previous segment.
+5. Emit committed transcript updates through a callback sink and make the final
+   session text available through the materialized revised-text helper.
 
 ## Model Cache Table
 
