@@ -19,6 +19,7 @@ struct cpkt_sus_live_options {
   int smoke;
   int backend;
   int cpu_only;
+  int offline;
   unsigned long seconds;
   unsigned long threshold_milli;
   unsigned long hang_ms;
@@ -281,7 +282,11 @@ cpkt_sus_live_print_startup(const struct cpkt_sus_live_options *opts) {
   }
 
   if (cache_path != NULL) {
-    cache_state = cpkt_sus_live_file_exists(cache_path) ? "cached" : "download";
+    if (cpkt_sus_live_file_exists(cache_path)) {
+      cache_state = "cached";
+    } else {
+      cache_state = opts->offline ? "missing-offline" : "download";
+    }
     fprintf(stderr,
             "status mode=%s model=%s cache=%s cache_state=%s language=%s "
             "threshold=%.3f hang_ms=%lu prebuffer_ms=%lu\n",
@@ -486,6 +491,7 @@ static int cpkt_sus_live_open_model(cpkt_sus_model **out,
     cache_config.model = opts->model;
     cache_config.cache_dir = opts->cache_dir;
     cache_config.cpu_only = opts->cpu_only;
+    cache_config.offline = opts->offline;
     cache_config.status_sink = cpkt_sus_live_cache_status_sink;
     result = cpkt_sus_model_open_cached(out, &cache_config);
   }
@@ -705,6 +711,7 @@ static void cpkt_sus_live_usage(FILE *out) {
           "  --model NAME                Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH           Load an explicit model file.\n");
   fprintf(out, "  --cache-dir DIR             Model cache directory.\n");
+  fprintf(out, "  --offline                   Do not download missing cached models.\n");
   fprintf(out, "  --language CODE             Language code; default en.\n");
   fprintf(
       out,
@@ -765,6 +772,8 @@ static int cpkt_sus_live_parse_options(int argc, char **argv,
       opts->model_path = argv[++i];
     } else if (strcmp(argv[i], "--cache-dir") == 0 && i + 1 < argc) {
       opts->cache_dir = argv[++i];
+    } else if (strcmp(argv[i], "--offline") == 0) {
+      opts->offline = 1;
     } else if (strcmp(argv[i], "--language") == 0 && i + 1 < argc) {
       opts->language = argv[++i];
     } else if (strcmp(argv[i], "--cpu-only") == 0 && i + 1 < argc) {
