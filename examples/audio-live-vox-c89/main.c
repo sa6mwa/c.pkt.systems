@@ -1,0 +1,489 @@
+#include <cpkt/audio.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
+#include <sys/stat.h>
+#include <time.h>
+
+#define CPKT_LIVE_VOX_READ_FRAMES 512U
+#define CPKT_LIVE_VOX_PATH_MAX 4096
+
+struct cpkt_live_vox_options {
+  int live;
+  int replay;
+  int backend;
+  unsigned long seconds;
+  unsigned long threshold_milli;
+  unsigned long hang_ms;
+  unsigned long max_segment_ms;
+  unsigned long buffer_ms;
+  unsigned long period_ms;
+  const char *dump_dir;
+};
+
+struct cpkt_live_vox_run {
+  const struct cpkt_live_vox_options *options;
+  cpkt_audio_playback *playback;
+  unsigned long segment_count;
+  unsigned long hard_count;
+  unsigned long final_count;
+  FILE *summary;
+};
+
+static float cpkt_live_vox_threshold(const struct cpkt_live_vox_options *opts) {
+  return opts->threshold_milli != 0UL
+             ? (float)opts->threshold_milli / 1000.0f
+             : 0.03f;
+}
+
+static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
+  memset(opts, 0, sizeof(*opts));
+  opts->seconds = 30UL;
+  opts->threshold_milli = 30UL;
+  opts->hang_ms = 1500UL;
+  opts->max_segment_ms = 7000UL;
+  opts->buffer_ms = 2000UL;
+  opts->period_ms = 20UL;
+  opts->dump_dir = "build/live-vox-dump";
+}
+
+static void cpkt_live_vox_sleep_ms(unsigned long ms) {
+  struct timeval tv;
+
+  tv.tv_sec = (long)(ms / 1000UL);
+  tv.tv_usec = (long)((ms % 1000UL) * 1000UL);
+  (void)select(0, NULL, NULL, NULL, &tv);
+}
+
+static int cpkt_live_vox_parse_ulong(const char *text, unsigned long *out) {
+  char *end;
+  unsigned long value;
+
+  if (text == NULL || out == NULL || text[0] == '\0') {
+    return 0;
+  }
+  end = NULL;
+  value = strtoul(text, &end, 10);
+  if (end == text || end == NULL || end[0] != '\0') {
+    return 0;
+  }
+  *out = value;
+  return 1;
+}
+
+static int cpkt_live_vox_parse_backend(const char *text, int *out) {
+  if (text == NULL || out == NULL) {
+    return 0;
+  }
+  if (strcmp(text, "auto") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_AUTO;
+  } else if (strcmp(text, "alsa") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_ALSA;
+  } else if (strcmp(text, "pulseaudio") == 0 || strcmp(text, "pulse") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO;
+  } else if (strcmp(text, "jack") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_JACK;
+  } else {
+    return 0;
+  }
+  return 1;
+}
+
+static int cpkt_live_vox_join_path(char *out, size_t out_size, const char *dir,
+                                   const char *name) {
+  size_t dir_len;
+  size_t name_len;
+  int needs_slash;
+
+  if (out == NULL || out_size == 0U || dir == NULL || name == NULL) {
+    return 0;
+  }
+  dir_len = strlen(dir);
+  name_len = strlen(name);
+  needs_slash = dir_len > 0U && dir[dir_len - 1U] != '/';
+  if (dir_len + (needs_slash ? 1U : 0U) + name_len + 1U > out_size) {
+    return 0;
+  }
+  memcpy(out, dir, dir_len);
+  if (needs_slash) {
+    out[dir_len] = '/';
+  }
+  memcpy(out + dir_len + (needs_slash ? 1U : 0U), name, name_len);
+  out[dir_len + (needs_slash ? 1U : 0U) + name_len] = '\0';
+  return 1;
+}
+
+static void cpkt_live_vox_emit(struct cpkt_live_vox_run *run,
+                               const char *text) {
+  fputs(text, stdout);
+  fflush(stdout);
+  if (run != NULL && run->summary != NULL) {
+    fputs(text, run->summary);
+    fflush(run->summary);
+  }
+}
+
+static int cpkt_live_vox_state_sink(const cpkt_audio_vox_state_event *event,
+                                    void *user) {
+  struct cpkt_live_vox_run *run;
+  char line[160];
+
+  run = (struct cpkt_live_vox_run *)user;
+  if (run == NULL || event == NULL) {
+    return 1;
+  }
+  if (event->state == CPKT_AUDIO_VOX_TX_ON) {
+    sprintf(line, "TX on segment=%lu threshold=%.3f\n", event->segment_index,
+            (double)event->threshold);
+  } else if (event->state == CPKT_AUDIO_VOX_TX_OFF) {
+    sprintf(line, "RX segment=%lu hang_ms=%lu\n", event->segment_index,
+            run->options->hang_ms);
+  } else if (event->state == CPKT_AUDIO_VOX_HARD_CUT) {
+    sprintf(line, "TX hard-cut segment=%lu max_segment_ms=%lu\n",
+            event->segment_index, run->options->max_segment_ms);
+  } else {
+    sprintf(line, "VOX state=%d segment=%lu\n", event->state,
+            event->segment_index);
+  }
+  cpkt_live_vox_emit(run, line);
+  return 0;
+}
+
+static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
+                                       void *user) {
+  struct cpkt_live_vox_run *run;
+  cpkt_audio_encoder *encoder;
+  cpkt_audio_encoder_config encoder_config;
+  char name[64];
+  char path[CPKT_LIVE_VOX_PATH_MAX];
+  float frames[CPKT_LIVE_VOX_READ_FRAMES];
+  size_t frames_read;
+  size_t frames_written;
+  size_t total_frames;
+  cpkt_audio_result result;
+
+  run = (struct cpkt_live_vox_run *)user;
+  if (run == NULL || segment == NULL) {
+    return 1;
+  }
+
+  sprintf(name, "segment-%04lu.wav", segment->segment_index);
+  if (!cpkt_live_vox_join_path(path, sizeof(path), run->options->dump_dir,
+                               name)) {
+    return 1;
+  }
+
+  memset(&encoder_config, 0, sizeof(encoder_config));
+  encoder_config.format = CPKT_AUDIO_FORMAT_WAV;
+  encoder_config.sample_rate = 16000UL;
+  encoder_config.channels = 1UL;
+  encoder = NULL;
+  if (cpkt_audio_encoder_open_file(&encoder, path, &encoder_config) !=
+      CPKT_AUDIO_OK) {
+    return 1;
+  }
+
+  total_frames = 0U;
+  do {
+    frames_read = 0U;
+    result = segment->read_f32_mono_16k(segment, frames,
+                                        CPKT_LIVE_VOX_READ_FRAMES,
+                                        &frames_read);
+    if (result != CPKT_AUDIO_OK && result != CPKT_AUDIO_AT_END) {
+      encoder->destroy(encoder);
+      return 1;
+    }
+    if (frames_read > 0U) {
+      frames_written = 0U;
+      if (encoder->write_f32(encoder, frames, frames_read, &frames_written) !=
+              CPKT_AUDIO_OK ||
+          frames_written != frames_read) {
+        encoder->destroy(encoder);
+        return 1;
+      }
+      if (run->playback != NULL) {
+        frames_written = 0U;
+        if (run->playback->write_f32_mono_16k(run->playback, frames,
+                                              frames_read,
+                                              &frames_written) !=
+                CPKT_AUDIO_OK ||
+            frames_written != frames_read) {
+          encoder->destroy(encoder);
+          return 1;
+        }
+      }
+      total_frames += frames_read;
+    }
+  } while (result != CPKT_AUDIO_AT_END);
+
+  if (encoder->close(encoder) != CPKT_AUDIO_OK) {
+    encoder->destroy(encoder);
+    return 1;
+  }
+  encoder->destroy(encoder);
+
+  ++run->segment_count;
+  if (segment->hard_cut) {
+    ++run->hard_count;
+  }
+  if (segment->is_final) {
+    ++run->final_count;
+  }
+  fprintf(stdout,
+          "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d wav=%s\n",
+          segment->segment_index, (unsigned long)total_frames,
+          (double)total_frames / 16000.0, segment->hard_cut,
+          segment->is_final, path);
+  fflush(stdout);
+  if (run->summary != NULL) {
+    fprintf(run->summary,
+            "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d "
+            "wav=%s\n",
+            segment->segment_index, (unsigned long)total_frames,
+            (double)total_frames / 16000.0, segment->hard_cut,
+            segment->is_final, path);
+    fflush(run->summary);
+  }
+  return 0;
+}
+
+static void cpkt_live_vox_usage(FILE *out) {
+  fprintf(out, "usage: cpkt_audio_live_vox_c89_example --live [options]\n\n");
+  fprintf(out, "No arguments run a no-device smoke test.\n\n");
+  fprintf(out, "Options:\n");
+  fprintf(out, "  --live                      Open the default capture device.\n");
+  fprintf(out, "  --replay N                  Replay segments to default output; default 0.\n");
+  fprintf(out, "  --seconds N                 Capture duration; default 30.\n");
+  fprintf(out, "  --threshold-milli N         VOX threshold * 1000; default 30.\n");
+  fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
+  fprintf(out, "  --max-segment-ms N          Hard cut budget; default 7000.\n");
+  fprintf(out, "  --buffer-ms N               Device ring buffer; default 2000.\n");
+  fprintf(out, "  --period-ms N               Device callback period; default 20.\n");
+  fprintf(out, "  --backend NAME              auto, alsa, pulseaudio, jack.\n");
+  fprintf(out, "  --dump-dir DIR              WAV dump directory; default build/live-vox-dump.\n");
+}
+
+static int cpkt_live_vox_parse_options(int argc, char **argv,
+                                       struct cpkt_live_vox_options *opts) {
+  int i;
+  unsigned long parsed;
+
+  for (i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--help") == 0) {
+      cpkt_live_vox_usage(stdout);
+      exit(0);
+    } else if (strcmp(argv[i], "--live") == 0) {
+      opts->live = 1;
+    } else if (strcmp(argv[i], "--replay") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_ulong(argv[++i], &parsed)) {
+        return 0;
+      }
+      opts->replay = parsed != 0UL ? 1 : 0;
+    } else if (strcmp(argv[i], "--seconds") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_ulong(argv[++i], &opts->seconds)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--threshold-milli") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_ulong(argv[++i], &opts->threshold_milli)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--hang-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_ulong(argv[++i], &opts->hang_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--max-segment-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_ulong(argv[++i], &opts->max_segment_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--buffer-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_ulong(argv[++i], &opts->buffer_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--period-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_ulong(argv[++i], &opts->period_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+      if (!cpkt_live_vox_parse_backend(argv[++i], &opts->backend)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--dump-dir") == 0 && i + 1 < argc) {
+      opts->dump_dir = argv[++i];
+    } else {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
+  cpkt_audio_capture *capture;
+  cpkt_audio_playback *playback;
+  cpkt_audio_vox *vox;
+  cpkt_audio_capture_config capture_config;
+  cpkt_audio_playback_config playback_config;
+  cpkt_audio_vox_config vox_config;
+  struct cpkt_live_vox_run run;
+  char summary_path[CPKT_LIVE_VOX_PATH_MAX];
+  float frames[CPKT_LIVE_VOX_READ_FRAMES];
+  size_t frames_read;
+  unsigned long captured_frames;
+  time_t end_time;
+  cpkt_audio_result result;
+  int rc;
+
+  capture = NULL;
+  playback = NULL;
+  vox = NULL;
+  rc = 1;
+  memset(&run, 0, sizeof(run));
+  run.options = opts;
+
+  (void)mkdir(opts->dump_dir, 0700);
+  if (!cpkt_live_vox_join_path(summary_path, sizeof(summary_path),
+                               opts->dump_dir, "summary.txt")) {
+    fprintf(stderr, "dump path is too long\n");
+    goto cleanup;
+  }
+  run.summary = fopen(summary_path, "wb");
+  if (run.summary == NULL) {
+    fprintf(stderr, "failed to open summary: %s\n", summary_path);
+    goto cleanup;
+  }
+
+  memset(&capture_config, 0, sizeof(capture_config));
+  capture_config.backend = opts->backend;
+  capture_config.buffer_ms = opts->buffer_ms;
+  capture_config.period_ms = opts->period_ms;
+  result = cpkt_audio_capture_open_default(&capture, &capture_config);
+  if (result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "capture open failed: %s\n",
+            cpkt_audio_result_string(result));
+    goto cleanup;
+  }
+
+  if (opts->replay) {
+    memset(&playback_config, 0, sizeof(playback_config));
+    playback_config.backend = opts->backend;
+    playback_config.buffer_ms = opts->buffer_ms;
+    playback_config.period_ms = opts->period_ms;
+    result = cpkt_audio_playback_open_default(&playback, &playback_config);
+    if (result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "playback open failed: %s\n",
+              cpkt_audio_result_string(result));
+      goto cleanup;
+    }
+    result = playback->start(playback);
+    if (result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "playback start failed: %s\n",
+              cpkt_audio_result_string(result));
+      goto cleanup;
+    }
+    run.playback = playback;
+  }
+
+  memset(&vox_config, 0, sizeof(vox_config));
+  vox_config.threshold = cpkt_live_vox_threshold(opts);
+  vox_config.release_silence_ms = opts->hang_ms;
+  vox_config.max_segment_ms = opts->max_segment_ms;
+  vox_config.min_segment_ms = 100UL;
+  vox_config.segment_sink = cpkt_live_vox_write_segment;
+  vox_config.segment_user = &run;
+  vox_config.state_sink = cpkt_live_vox_state_sink;
+  vox_config.state_user = &run;
+  result = cpkt_audio_vox_open(&vox, &vox_config);
+  if (result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "vox open failed: %s\n", cpkt_audio_result_string(result));
+    goto cleanup;
+  }
+
+  cpkt_live_vox_emit(&run, "RX\n");
+  result = capture->start(capture);
+  if (result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "capture start failed: %s\n",
+            cpkt_audio_result_string(result));
+    goto cleanup;
+  }
+
+  captured_frames = 0UL;
+  end_time = time(NULL) + (time_t)opts->seconds;
+  while (time(NULL) < end_time) {
+    frames_read = 0U;
+    result = capture->read_f32_mono_16k(capture, frames,
+                                        CPKT_LIVE_VOX_READ_FRAMES,
+                                        &frames_read);
+    if (result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "capture read failed: %s\n",
+              cpkt_audio_result_string(result));
+      goto cleanup;
+    }
+    if (frames_read == 0U) {
+      cpkt_live_vox_sleep_ms(5UL);
+      continue;
+    }
+    captured_frames += (unsigned long)frames_read;
+    result = vox->push_f32_mono_16k(vox, frames, frames_read);
+    if (result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "vox push failed: %s\n", cpkt_audio_result_string(result));
+      goto cleanup;
+    }
+  }
+
+  result = capture->stop(capture);
+  if (result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "capture stop failed: %s\n",
+            cpkt_audio_result_string(result));
+    goto cleanup;
+  }
+  result = vox->flush(vox);
+  if (result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "vox flush failed: %s\n", cpkt_audio_result_string(result));
+    goto cleanup;
+  }
+  if (playback != NULL) {
+    (void)playback->drain(playback);
+  }
+  fprintf(stdout, "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
+          run.segment_count, run.hard_count, run.final_count, opts->dump_dir);
+  if (run.summary != NULL) {
+    fprintf(run.summary, "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
+            run.segment_count, run.hard_count, run.final_count,
+            opts->dump_dir);
+  }
+  rc = 0;
+
+cleanup:
+  if (playback != NULL) {
+    (void)playback->stop(playback);
+    playback->destroy(playback);
+  }
+  if (vox != NULL) {
+    vox->destroy(vox);
+  }
+  if (capture != NULL) {
+    (void)capture->stop(capture);
+    capture->destroy(capture);
+  }
+  if (run.summary != NULL) {
+    fclose(run.summary);
+  }
+  return rc;
+}
+
+int main(int argc, char **argv) {
+  struct cpkt_live_vox_options opts;
+
+  cpkt_live_vox_defaults(&opts);
+  if (!cpkt_live_vox_parse_options(argc, argv, &opts)) {
+    cpkt_live_vox_usage(stderr);
+    return 2;
+  }
+  if (!opts.live) {
+    printf("cpkt_audio_live_vox_c89_example smoke ok; pass --live to open the "
+           "default capture device\n");
+    return 0;
+  }
+  return cpkt_live_vox_run(&opts);
+}

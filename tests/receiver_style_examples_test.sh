@@ -13,6 +13,7 @@ paths = [
     source_dir / "docs" / "audio-sus-facade-spec.md",
     source_dir / "examples" / "audio-sus-c89" / "main.c",
     source_dir / "examples" / "audio-vox-intro-c89" / "main.c",
+    source_dir / "examples" / "audio-live-vox-c89" / "main.c",
     source_dir / "examples" / "sus-vox-intro-c89" / "main.c",
 ]
 
@@ -32,6 +33,14 @@ patterns = [
     (
         re.compile(r"\bcpkt_audio_vox_(?:push_f32_mono_16k|flush|destroy)\s*\("),
         "VOX handle operations in docs/examples must use vox->method",
+    ),
+    (
+        re.compile(r"\bcpkt_audio_capture_(?:start|read_f32_mono_16k|stop|destroy)\s*\("),
+        "capture handle operations in docs/examples must use capture->method",
+    ),
+    (
+        re.compile(r"\bcpkt_audio_playback_(?:start|write_f32_mono_16k|drain|stop|destroy)\s*\("),
+        "playback handle operations in docs/examples must use playback->method",
     ),
     (
         re.compile(r"\bcpkt_sus_model_(?:info|create_transcriber|destroy)\s*\("),

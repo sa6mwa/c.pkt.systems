@@ -767,9 +767,25 @@ struct vox_capture {
   unsigned long count;
   unsigned long hard_count;
   unsigned long final_count;
+  unsigned long state_count;
+  int states[16];
+  unsigned long state_segments[16];
   size_t frames[8];
   int fail;
 };
+
+static int capture_vox_state(const cpkt_audio_vox_state_event *event,
+                             void *user) {
+  struct vox_capture *capture;
+
+  capture = (struct vox_capture *)user;
+  assert_non_null(event);
+  assert_true(capture->state_count < 16UL);
+  capture->states[capture->state_count] = event->state;
+  capture->state_segments[capture->state_count] = event->segment_index;
+  ++capture->state_count;
+  return capture->fail ? 1 : 0;
+}
 
 static int capture_vox_segment(cpkt_audio_vox_segment *segment, void *user) {
   struct vox_capture *capture;
@@ -822,6 +838,8 @@ static void test_vox_releases_on_silence(void **state) {
   config.min_segment_ms = 1UL;
   config.segment_sink = capture_vox_segment;
   config.segment_user = &capture;
+  config.state_sink = capture_vox_state;
+  config.state_user = &capture;
 
   for (i = 0U; i < 160U; ++i) {
     frames[i] = 0.2f;
@@ -839,6 +857,11 @@ static void test_vox_releases_on_silence(void **state) {
   assert_int_equal(capture.hard_count, 0UL);
   assert_int_equal(capture.final_count, 0UL);
   assert_int_equal(capture.frames[0], 320U);
+  assert_int_equal(capture.state_count, 2UL);
+  assert_int_equal(capture.states[0], CPKT_AUDIO_VOX_TX_ON);
+  assert_int_equal(capture.state_segments[0], 0UL);
+  assert_int_equal(capture.states[1], CPKT_AUDIO_VOX_TX_OFF);
+  assert_int_equal(capture.state_segments[1], 0UL);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   vox->destroy(vox);
@@ -860,6 +883,8 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   config.min_segment_ms = 1UL;
   config.segment_sink = capture_vox_segment;
   config.segment_user = &capture;
+  config.state_sink = capture_vox_state;
+  config.state_user = &capture;
 
   for (i = 0U; i < 1000U; ++i) {
     frames[i] = 0.2f;
@@ -873,10 +898,20 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 1UL);
   assert_int_equal(capture.frames[0], 800U);
+  assert_int_equal(capture.state_count, 3UL);
+  assert_int_equal(capture.states[0], CPKT_AUDIO_VOX_TX_ON);
+  assert_int_equal(capture.state_segments[0], 0UL);
+  assert_int_equal(capture.states[1], CPKT_AUDIO_VOX_HARD_CUT);
+  assert_int_equal(capture.state_segments[1], 0UL);
+  assert_int_equal(capture.states[2], CPKT_AUDIO_VOX_TX_ON);
+  assert_int_equal(capture.state_segments[2], 1UL);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 2UL);
   assert_int_equal(capture.final_count, 1UL);
   assert_int_equal(capture.frames[1], 200U);
+  assert_int_equal(capture.state_count, 4UL);
+  assert_int_equal(capture.states[3], CPKT_AUDIO_VOX_TX_OFF);
+  assert_int_equal(capture.state_segments[3], 1UL);
   vox->destroy(vox);
 }
 
@@ -1039,6 +1074,8 @@ static void test_vox_rejects_invalid_and_reports_callback_failure(
 static void test_invalid_arguments(void **state) {
   cpkt_audio_decoder *decoder;
   cpkt_audio_encoder *encoder;
+  cpkt_audio_capture *capture;
+  cpkt_audio_playback *playback;
   cpkt_audio_reader reader;
   cpkt_audio_writer writer;
   cpkt_audio_encoder_config encoder_config;
@@ -1090,6 +1127,16 @@ static void test_invalid_arguments(void **state) {
       cpkt_audio_encoder_open_file(&encoder, "x.mp3", &encoder_config),
       CPKT_AUDIO_ERR_FORMAT);
   assert_null(encoder);
+
+  capture = (cpkt_audio_capture *)1;
+  assert_int_equal(cpkt_audio_capture_open_default(NULL, NULL),
+                   CPKT_AUDIO_ERR_ARG);
+  (void)capture;
+
+  playback = (cpkt_audio_playback *)1;
+  assert_int_equal(cpkt_audio_playback_open_default(NULL, NULL),
+                   CPKT_AUDIO_ERR_ARG);
+  (void)playback;
 
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_WAV));
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_FLAC));

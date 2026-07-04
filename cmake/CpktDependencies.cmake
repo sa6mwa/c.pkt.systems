@@ -1257,15 +1257,16 @@ function(cpkt_add_miniaudio)
   separate_arguments(miniaudio_compile_flags NATIVE_COMMAND "${miniaudio_external_cflags}")
   list(APPEND miniaudio_compile_flags
     -fPIC
-    -DMA_NO_DEVICE_IO
     -DMA_NO_RESOURCE_MANAGER
     -DMA_NO_NODE_GRAPH
     -DMA_NO_ENGINE
     -DMA_NO_GENERATION
-    -DMA_NO_RUNTIME_LINKING
   )
   set(miniaudio_object "${build_dir}/miniaudio.c.o")
   set(miniaudio_link_libraries -lm -pthread)
+  if(CMAKE_DL_LIBS)
+    list(APPEND miniaudio_link_libraries "-l${CMAKE_DL_LIBS}")
+  endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
     ExternalProject_Add(${project_name}

@@ -339,6 +339,7 @@ target_include_directories(cpkt_audio_static
 target_link_libraries(cpkt_audio_static PUBLIC
   cpkt::curl_static
   m
+  ${CMAKE_DL_LIBS}
   Threads::Threads
 )
 set_target_properties(cpkt_audio_static PROPERTIES
@@ -361,6 +362,7 @@ target_include_directories(cpkt_audio_shared
 target_link_libraries(cpkt_audio_shared PUBLIC
   cpkt::curl_shared
   m
+  ${CMAKE_DL_LIBS}
   Threads::Threads
 )
 set_target_properties(cpkt_audio_shared PROPERTIES
@@ -585,6 +587,16 @@ if(CPKT_BUILD_TESTS)
     add_dependencies(cpkt_audio_vox_intro_c89_example cpkt_deps)
   endif()
 
+  add_executable(cpkt_audio_live_vox_c89_example
+    examples/audio-live-vox-c89/main.c)
+  target_compile_options(cpkt_audio_live_vox_c89_example PRIVATE -std=c89)
+  cpkt_add_repo_warning_errors(cpkt_audio_live_vox_c89_example)
+  target_link_libraries(cpkt_audio_live_vox_c89_example PRIVATE
+    cpkt_audio_static)
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt_audio_live_vox_c89_example cpkt_deps)
+  endif()
+
   add_executable(cpkt_sus_vox_intro_c89_example
     examples/sus-vox-intro-c89/main.c)
   target_compile_options(cpkt_sus_vox_intro_c89_example PRIVATE -std=c89)
@@ -758,6 +770,8 @@ if(CPKT_BUILD_TESTS)
     add_test(NAME audio_sus_c89_example COMMAND cpkt_audio_sus_c89_example)
     add_test(NAME audio_vox_intro_c89_example
       COMMAND cpkt_audio_vox_intro_c89_example)
+    add_test(NAME audio_live_vox_c89_example
+      COMMAND cpkt_audio_live_vox_c89_example)
     add_test(NAME sus_vox_intro_c89_example
       COMMAND cpkt_sus_vox_intro_c89_example)
     set_tests_properties(audio_sus_c89_example PROPERTIES

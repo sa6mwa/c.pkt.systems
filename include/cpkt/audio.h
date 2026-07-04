@@ -14,6 +14,10 @@ typedef struct cpkt_audio_decoder cpkt_audio_decoder;
 #endif
 /** Handle for a single audio encoder instance. */
 typedef struct cpkt_audio_encoder cpkt_audio_encoder;
+/** Handle for a default-device or selected-backend audio capture instance. */
+typedef struct cpkt_audio_capture cpkt_audio_capture;
+/** Handle for a default-device or selected-backend audio playback instance. */
+typedef struct cpkt_audio_playback cpkt_audio_playback;
 /** Handle for a float32 mono 16 kHz voice-operated segmenter. */
 typedef struct cpkt_audio_vox cpkt_audio_vox;
 
@@ -68,6 +72,28 @@ typedef enum cpkt_audio_format {
   /** MPEG audio format. Decoding is supported in this build. */
   CPKT_AUDIO_FORMAT_MP3 = 3
 } cpkt_audio_format;
+
+/** Optional device backend selection for capture and playback. */
+typedef enum cpkt_audio_device_backend {
+  /** Let the facade select the best available backend for the platform. */
+  CPKT_AUDIO_DEVICE_BACKEND_AUTO = 0,
+  /** Linux ALSA backend. Requires libasound at runtime. */
+  CPKT_AUDIO_DEVICE_BACKEND_ALSA = 1,
+  /** PulseAudio or PipeWire-Pulse backend. Requires libpulse at runtime. */
+  CPKT_AUDIO_DEVICE_BACKEND_PULSEAUDIO = 2,
+  /** JACK backend. Requires libjack at runtime. */
+  CPKT_AUDIO_DEVICE_BACKEND_JACK = 3
+} cpkt_audio_device_backend;
+
+/** VOX state transition identifiers delivered to cpkt_audio_vox_state_sink. */
+typedef enum cpkt_audio_vox_state {
+  /** VOX opened because input crossed threshold. */
+  CPKT_AUDIO_VOX_TX_ON = 1,
+  /** VOX released because hang-time expired or the stream was flushed. */
+  CPKT_AUDIO_VOX_TX_OFF = 2,
+  /** VOX emitted a hard budget/spool cut without releasing TX. */
+  CPKT_AUDIO_VOX_HARD_CUT = 3
+} cpkt_audio_vox_state;
 
 /** Stream description for an opened decoder. */
 typedef struct cpkt_audio_stream_info {
@@ -147,8 +173,38 @@ typedef struct cpkt_audio_encoder_config {
   unsigned long channels;
 } cpkt_audio_encoder_config;
 
+/** Capture construction options. Zero initializes to default mic, mono 16 kHz. */
+typedef struct cpkt_audio_capture_config {
+  /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
+  int backend;
+  /** Internal ring buffer duration. Zero selects 2000 ms. */
+  unsigned long buffer_ms;
+  /** Requested device callback period. Zero selects 20 ms. */
+  unsigned long period_ms;
+} cpkt_audio_capture_config;
+
+/** Playback construction options. Zero initializes to default output, mono 16 kHz. */
+typedef struct cpkt_audio_playback_config {
+  /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
+  int backend;
+  /** Internal ring buffer duration. Zero selects 2000 ms. */
+  unsigned long buffer_ms;
+  /** Requested device callback period. Zero selects 20 ms. */
+  unsigned long period_ms;
+} cpkt_audio_playback_config;
+
 /** Pullable VOX segment delivered when speech releases or a budget is reached. */
 typedef struct cpkt_audio_vox_segment cpkt_audio_vox_segment;
+
+/** VOX state event delivered when TX/RX state changes or a hard cut occurs. */
+typedef struct cpkt_audio_vox_state_event {
+  /** cpkt_audio_vox_state value. */
+  int state;
+  /** Segment index active at the transition. */
+  unsigned long segment_index;
+  /** Configured threshold used for this VOX instance. */
+  float threshold;
+} cpkt_audio_vox_state_event;
 
 /** Pullable VOX speech segment receiver shell. */
 struct cpkt_audio_vox_segment {
@@ -183,6 +239,15 @@ struct cpkt_audio_vox_segment {
 typedef int (*cpkt_audio_vox_segment_sink)(
     cpkt_audio_vox_segment *segment, void *user);
 
+/**
+ * Receives VOX TX/RX state events.
+ *
+ * Return zero to continue. Returning non-zero makes the active push or flush
+ * call return CPKT_AUDIO_ERR_IO.
+ */
+typedef int (*cpkt_audio_vox_state_sink)(
+    const cpkt_audio_vox_state_event *event, void *user);
+
 /** VOX construction options. Zero initializes to speech-friendly defaults. */
 typedef struct cpkt_audio_vox_config {
   /** RMS power threshold that opens or keeps VOX active. Zero selects 0.01. */
@@ -207,6 +272,10 @@ typedef struct cpkt_audio_vox_config {
   cpkt_audio_vox_segment_sink segment_sink;
   /** User value passed to segment_sink. */
   void *segment_user;
+  /** Optional sink for TX/RX state transitions and hard cuts. */
+  cpkt_audio_vox_state_sink state_sink;
+  /** User value passed to state_sink. */
+  void *state_user;
 } cpkt_audio_vox_config;
 
 /** Receiver shell for decoder operations. */
@@ -247,6 +316,53 @@ struct cpkt_audio_encoder {
   /** Finalizes and releases the encoder and all resources owned by the handle.
    */
   void (*destroy)(cpkt_audio_encoder *self);
+};
+
+/** Receiver shell for default-device audio capture. */
+struct cpkt_audio_capture {
+  /** Private implementation pointer. Callers must not inspect or modify it. */
+  void *impl;
+  /** Starts capture from the configured input device. */
+  cpkt_audio_result (*start)(cpkt_audio_capture *self);
+  /**
+   * Reads captured audio as 32-bit float, mono, 16000 Hz PCM frames.
+   *
+   * frames_read is set before return when arguments are valid. If no frames are
+   * currently buffered, the call returns CPKT_AUDIO_OK with frames_read set to
+   * zero. The handle uses a bounded ring buffer and may drop oldest frames when
+   * a live producer outruns the consumer.
+   */
+  cpkt_audio_result (*read_f32_mono_16k)(cpkt_audio_capture *self,
+                                         float *frames, size_t frame_capacity,
+                                         size_t *frames_read);
+  /** Stops capture. Repeated calls are OK. */
+  cpkt_audio_result (*stop)(cpkt_audio_capture *self);
+  /** Releases the capture handle and all resources owned by it. */
+  void (*destroy)(cpkt_audio_capture *self);
+};
+
+/** Receiver shell for default-device audio playback. */
+struct cpkt_audio_playback {
+  /** Private implementation pointer. Callers must not inspect or modify it. */
+  void *impl;
+  /** Starts playback to the configured output device. */
+  cpkt_audio_result (*start)(cpkt_audio_playback *self);
+  /**
+   * Queues 32-bit float, mono, 16000 Hz PCM frames for playback.
+   *
+   * frames_written is set before return when arguments are valid. The call waits
+   * for bounded ring-buffer space instead of materializing the full stream.
+   */
+  cpkt_audio_result (*write_f32_mono_16k)(cpkt_audio_playback *self,
+                                          const float *frames,
+                                          size_t frame_count,
+                                          size_t *frames_written);
+  /** Waits until queued playback frames have been consumed. */
+  cpkt_audio_result (*drain)(cpkt_audio_playback *self);
+  /** Stops playback. Repeated calls are OK. */
+  cpkt_audio_result (*stop)(cpkt_audio_playback *self);
+  /** Releases the playback handle and all resources owned by it. */
+  void (*destroy)(cpkt_audio_playback *self);
 };
 
 /** Receiver shell for float32 mono 16 kHz VOX segmenting. */
@@ -326,6 +442,28 @@ cpkt_audio_result
 cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
                                const cpkt_audio_writer *writer,
                                const cpkt_audio_encoder_config *config);
+
+/**
+ * Opens capture from the platform default input device.
+ *
+ * The handle captures normalized float32 mono 16 kHz PCM. Device backends are
+ * loaded by the facade at runtime; missing host audio libraries cause open or
+ * start to fail without adding link requirements for ordinary decoder users.
+ */
+cpkt_audio_result
+cpkt_audio_capture_open_default(cpkt_audio_capture **out,
+                                const cpkt_audio_capture_config *config);
+
+/**
+ * Opens playback to the platform default output device.
+ *
+ * The handle plays normalized float32 mono 16 kHz PCM. Device backends are
+ * loaded by the facade at runtime; missing host audio libraries cause open or
+ * start to fail without adding link requirements for ordinary decoder users.
+ */
+cpkt_audio_result
+cpkt_audio_playback_open_default(cpkt_audio_playback **out,
+                                 const cpkt_audio_playback_config *config);
 
 /**
  * Opens a float32 mono 16 kHz voice-operated segmenter.

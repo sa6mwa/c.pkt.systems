@@ -378,6 +378,9 @@ assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/main.c"
 assert_package_file "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/build-pkg-config.sh"
 assert_package_file "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-live-vox-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-live-vox-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-live-vox-c89/main.c"
 assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/build-pkg-config.sh"
 assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/main.c"
@@ -1506,6 +1509,25 @@ fi
 cpkt_run_checked "audio vox intro cmake example configure" cmake "${audio_vox_example_cmake_args[@]}"
 cpkt_run_checked "audio vox intro cmake example build" cmake --build "$audio_vox_example_cmake_build_dir"
 
+audio_live_vox_example_cmake_build_dir="$work_root/example-audio-live-vox-c89-cmake-build"
+audio_live_vox_example_cmake_args=(
+  -G "$cmake_generator" \
+  -S "$installed_examples_dir/audio-live-vox-c89" \
+  -B "$audio_live_vox_example_cmake_build_dir" \
+  -DCMAKE_C_COMPILER="$cc" \
+  "-DCMAKE_C_FLAGS=-Werror" \
+  -DCMAKE_PREFIX_PATH="$prefix" \
+  -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+)
+if [ -n "$cmake_toolchain_file" ]; then
+  audio_live_vox_example_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
+  audio_live_vox_example_cmake_args+=("${cmake_toolchain_args[@]}")
+  audio_live_vox_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+fi
+cpkt_run_checked "audio live vox cmake example configure" cmake "${audio_live_vox_example_cmake_args[@]}"
+cpkt_run_checked "audio live vox cmake example build" cmake --build "$audio_live_vox_example_cmake_build_dir"
+
 sus_vox_example_cmake_build_dir="$work_root/example-sus-vox-intro-c89-cmake-build"
 sus_vox_example_cmake_args=(
   -G "$cmake_generator" \
@@ -1902,6 +1924,14 @@ CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $
   cpkt_run_checked "audio vox intro pkg-config example build" \
     "$installed_examples_dir/audio-vox-intro-c89/build-pkg-config.sh" "$audio_vox_example_pkg_config_output"
 
+audio_live_vox_example_pkg_config_output="$work_root/bin/cpkt_audio_live_vox_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "audio live vox pkg-config example build" \
+    "$installed_examples_dir/audio-live-vox-c89/build-pkg-config.sh" "$audio_live_vox_example_pkg_config_output"
+
 sus_vox_example_pkg_config_output="$work_root/bin/cpkt_sus_vox_intro_c89_pkg_example"
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
@@ -1976,6 +2006,8 @@ if [ -z "$run_prefix" ]; then
   "$audio_sus_example_pkg_config_output"
   "$audio_vox_example_cmake_build_dir/cpkt_audio_vox_intro_c89_example"
   "$audio_vox_example_pkg_config_output"
+  "$audio_live_vox_example_cmake_build_dir/cpkt_audio_live_vox_c89_example"
+  "$audio_live_vox_example_pkg_config_output"
   "$sus_vox_example_cmake_build_dir/cpkt_sus_vox_intro_c89_example"
   "$sus_vox_example_pkg_config_output"
 else
@@ -2055,6 +2087,10 @@ else
   $run_prefix "$audio_vox_example_cmake_build_dir/cpkt_audio_vox_intro_c89_example"
   # shellcheck disable=SC2086
   $run_prefix "$audio_vox_example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$audio_live_vox_example_cmake_build_dir/cpkt_audio_live_vox_c89_example"
+  # shellcheck disable=SC2086
+  $run_prefix "$audio_live_vox_example_pkg_config_output"
   # shellcheck disable=SC2086
   $run_prefix "$sus_vox_example_cmake_build_dir/cpkt_sus_vox_intro_c89_example"
   # shellcheck disable=SC2086

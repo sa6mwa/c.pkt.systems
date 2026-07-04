@@ -8,7 +8,7 @@ CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 E2E_SUS_PRESET ?= release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-sus-vox-intro cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-sus-vox-intro cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
@@ -29,6 +29,7 @@ help:
 	@printf '  %-30s %s\n' 'e2e-sus' 'Run opt-in sus audio e2e with cached remote MP3 and tiny model.'
 	@printf '  %-30s %s\n' 'e2e-cpktxscribe' 'Run opt-in cpktxscribe URL e2e with remote MP3 and tiny model.'
 	@printf '  %-30s %s\n' 'example-audio-vox-intro' 'Run cached intro.mp3 VOX calibration and dump WAV segments.'
+	@printf '  %-30s %s\n' 'example-audio-live-vox' 'Run live microphone VOX capture and dump WAV segments.'
 	@printf '  %-30s %s\n' 'example-sus-vox-intro' 'Run cached intro.mp3 VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'asan' 'Build and test the facade-only AddressSanitizer/UBSan preset.'
 	@printf '  %-30s %s\n' 'tsan' 'Build and test the facade-only ThreadSanitizer preset.'
@@ -101,7 +102,7 @@ debug:
 
 examples:
 	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpkt_lua_runtime_c89_example cpkt_opcua_c89_example cpkt_audio_sus_c89_example cpkt_audio_vox_intro_c89_example cpkt_sus_vox_intro_c89_example cpkt_abi_smoke_shared cpkt_abi_smoke_static cpkt_mqttc_smoke_shared cpkt_mqttc_smoke_static cpkt_whisper_smoke_shared
+	$(CMAKE) --build --preset debug --target cpkt_lua_runtime_c89_example cpkt_opcua_c89_example cpkt_audio_sus_c89_example cpkt_audio_vox_intro_c89_example cpkt_audio_live_vox_c89_example cpkt_sus_vox_intro_c89_example cpkt_abi_smoke_shared cpkt_abi_smoke_static cpkt_mqttc_smoke_shared cpkt_mqttc_smoke_static cpkt_whisper_smoke_shared
 	$(CTEST) --preset debug -R 'example' --output-on-failure
 
 clangd-surface:
@@ -123,6 +124,11 @@ example-audio-vox-intro:
 	$(CMAKE) --preset debug
 	$(CMAKE) --build --preset debug --target cpkt_audio_vox_intro_c89_example
 	bash ./scripts/run-audio-vox-intro.sh "$$(pwd)/build/debug/cpkt_audio_vox_intro_c89_example"
+
+example-audio-live-vox:
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug --target cpkt_audio_live_vox_c89_example
+	"$$(pwd)/build/debug/cpkt_audio_live_vox_c89_example" --live --dump-dir "$$(pwd)/build/live-vox-dump"
 
 example-sus-vox-intro:
 	$(CMAKE) --preset debug

@@ -110,8 +110,15 @@ Initial miniaudio build intent:
 - Keep WAV, FLAC, and MP3 decoding enabled when available from miniaudio's
   built-in codecs.
 - Keep encoding enabled where miniaudio supports it.
-- Disable device I/O, engine, resource manager, node graph, generation, and
-  other playback/capture surfaces unless a future facade explicitly needs them.
+- Enable miniaudio device I/O for the `cpkt_audio` capture/playback facade.
+  Device backends must use miniaudio runtime loading so ALSA, PulseAudio,
+  PipeWire-Pulse, JACK, and similar host audio libraries remain runtime
+  optional instead of downstream link requirements.
+  Fully static glibc consumers may see the standard linker warning for `dlopen`
+  in static binaries; this is preferable to making every audio consumer link
+  host device backend libraries.
+- Disable engine, resource manager, node graph, generation, and other playback
+  surfaces unless a future facade explicitly needs them.
 - Avoid optional external Vorbis/Opus extras in the first release unless their
   dependency and license closure is deliberately added and verified.
 
