@@ -103,4 +103,23 @@ archive_file_url_leak="$work_root/archive-file-url-leak.tar.gz"
 expect_privacy_failure "$archive_file_url_leak" \
   "release artifact contains private trace CPKT_ROOT_FILE_URL"
 
+nested_archive_stage="$work_root/nested-archive-stage"
+nested_inner_stage="$work_root/nested-inner-stage"
+mkdir -p "$nested_archive_stage/c.pkt.systems-privacy-fixture"
+mkdir -p "$nested_inner_stage/private-inner"
+printf 'deep private source path: %s\n' "$repo_root" \
+  > "$nested_inner_stage/private-inner/deep-leak.txt"
+nested_inner_archive="$nested_archive_stage/c.pkt.systems-privacy-fixture/inner.tar.gz"
+(
+  cd "$nested_inner_stage"
+  tar -czf "$nested_inner_archive" -- private-inner
+)
+nested_archive_leak="$work_root/nested-archive-leak.tar.gz"
+(
+  cd "$nested_archive_stage"
+  tar -czf "$nested_archive_leak" -- c.pkt.systems-privacy-fixture
+)
+expect_privacy_failure "$nested_archive_leak" \
+  "release artifact contains private trace CPKT_ROOT"
+
 printf '[test] privacy scan failure modes passed\n'
