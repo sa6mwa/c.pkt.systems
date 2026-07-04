@@ -38,25 +38,17 @@ def declaration_requires_comment(text):
     stripped = text.lstrip()
     if stripped.startswith(("typedef struct cpkt_", "typedef enum cpkt_")):
         return True
-    if stripped.startswith("typedef ") and "(*cpkt_" in stripped:
+    if stripped.startswith("typedef ") and "cpkt_" in stripped:
         return True
-    return stripped.startswith((
-        "cpkt_",
-        "const char *cpkt_",
-        "void *cpkt_",
-        "void cpkt_",
-        "int cpkt_",
-        "unsigned long cpkt_",
-    ))
+    compact = " ".join(stripped.split())
+    return re.match(r"^[A-Za-z_][A-Za-z0-9_\s\*]*\bcpkt_[A-Za-z0-9_]+\s*\(", compact) is not None
 
 
 def function_name_from_definition(text):
     compact = " ".join(text.split())
-    match = re.match(
-        r"^(?:const\s+char\s+\*|void\s+\*|void|int|unsigned\s+long|cpkt_[A-Za-z0-9_]+)\s+"
-        r"(cpkt_[A-Za-z0-9_]+)\s*\(",
-        compact,
-    )
+    if compact.startswith("static "):
+        return None
+    match = re.match(r"^[A-Za-z_][A-Za-z0-9_\s\*]*\b(cpkt_[A-Za-z0-9_]+)\s*\(", compact)
     if match:
         return match.group(1)
     return None
@@ -89,14 +81,9 @@ def verify_source(path):
     for i, line in enumerate(lines):
         stripped = line.strip()
         if depth == 0 and start is None:
-            if stripped.startswith((
-                "cpkt_",
-                "const char *cpkt_",
-                "void *cpkt_",
-                "void cpkt_",
-                "int cpkt_",
-                "unsigned long cpkt_",
-            )):
+            if stripped.startswith("static "):
+                start = None
+            elif re.match(r"^[A-Za-z_][A-Za-z0-9_\s\*]*\bcpkt_[A-Za-z0-9_]+\s*\(", stripped):
                 start = i
             elif re.match(r"^cpkt_[A-Za-z0-9_]+$", stripped):
                 start = i
@@ -112,11 +99,21 @@ def verify_source(path):
     return failures
 
 
+public_headers = sorted((source_dir / "include" / "cpkt").glob("*.h"))
+facade_sources = sorted((source_dir / "src").glob("*.c"))
+
+if not public_headers:
+    print("no public facade headers found under include/cpkt", file=sys.stderr)
+    sys.exit(1)
+if not facade_sources:
+    print("no facade source translations found under src", file=sys.stderr)
+    sys.exit(1)
+
 all_failures = []
-for header in sorted((source_dir / "include" / "cpkt").glob("*.h")):
+for header in public_headers:
     for line, symbol in verify_header(header):
         all_failures.append((header, line, symbol))
-for source in sorted((source_dir / "src").glob("*.c")):
+for source in facade_sources:
     for line, symbol in verify_source(source):
         all_failures.append((source, line, symbol))
 

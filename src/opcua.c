@@ -3393,14 +3393,18 @@ static UA_StatusCode cpkt_method_callback(
   return UA_STATUSCODE_GOOD;
 }
 
+/** Returns the linked open62541 version string. */
 const char *cpkt_opcua_open62541_version(void) { return UA_OPEN62541_VERSION; }
 
+/** Returns the public OPC UA facade ABI version string. */
 const char *cpkt_opcua_facade_version(void) { return CPKT_OPCUA_FACADE_VERSION; }
 
+/** Converts an upstream status code into its stable diagnostic name. */
 const char *cpkt_opcua_status_name(cpkt_opcua_status status) {
   return UA_StatusCode_name((UA_StatusCode)status);
 }
 
+/** Converts an OPC UA facade result code into a stable diagnostic string. */
 const char *cpkt_opcua_result_string(cpkt_opcua_result result) {
   switch (result) {
     case CPKT_OPCUA_OK:
