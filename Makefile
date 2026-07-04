@@ -8,41 +8,47 @@ CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 E2E_SUS_PRESET ?= release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug clangd-surface e2e-sus example-audio-vox-intro asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus example-audio-vox-intro asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
 
 help:
-	@printf '%s\n' \
-		'make deps-debug Configure the host debug dependency/build graph.' \
-		'make deps-release Configure all shipped Linux release dependency/build graphs.' \
-		'make deps-cross Configure cross release dependency/build graphs.' \
-		'make build     Configure and build all shipped Linux dependency bundles.' \
-		'make build-debug Build the host debug preset.' \
-		'make build-release Build all shipped Linux release bundles.' \
-		'make test      Run ABI/link smoke tests for built Linux bundles.' \
-		'make test-debug Run the host debug tests.' \
-		'make test-all  Run the full local confidence gate.' \
-		'make debug     Build and test the host debug preset.' \
-		'make clangd-surface Verify compile_commands and public hover comments for examples.' \
-		'make e2e-sus   Run opt-in sus audio e2e with cached remote MP3 and tiny model.' \
-		'make example-audio-vox-intro Run cached intro.mp3 VOX calibration and dump WAV segments.' \
-		'make asan      Build and test the facade-only AddressSanitizer/UBSan preset.' \
-		'make tsan      Build and test the facade-only ThreadSanitizer preset.' \
-		'make msan      Build and test the facade-only MemorySanitizer preset with clang.' \
-		'make fuzz-smoke Build and run bounded facade fuzz smoke tests.' \
-		'make fuzz      Build and run bounded facade fuzz tests.' \
-		'make package   Build package artifacts for all supported release targets.' \
-		'make package-source Build the source release archive.' \
-		'make package-source-smoke Verify the source release archive.' \
-		'make package-checksums Verify the checksum manifest covers release artifacts.' \
-		'make package-verify Verify package layout, checksums, privacy, and install-tree consumers.' \
-		'make verify-release-archives Alias for package-verify.' \
-		'make verify-release-privacy Alias for package-verify; privacy is part of the package gate.' \
-		'make prerelease Run deterministic local pre-release confidence.' \
-		'make prerelease-hardening Run expensive local pre-release confidence.' \
-		'make release-matrix Build, package, checksum, and verify all release artifacts.' \
-		'make release   Clean, build, package, and verify the final local release gate.' \
-		'make clean     Remove generated build, cache, and dist output.' \
-		'make clean-dist Remove only release artifacts under dist/.'
+	@printf 'Usage: make <target>\n\n'
+	@printf 'Core:\n'
+	@printf '  %-30s %s\n' 'deps-debug' 'Configure the host debug dependency/build graph.'
+	@printf '  %-30s %s\n' 'deps-release' 'Configure all shipped Linux release dependency/build graphs.'
+	@printf '  %-30s %s\n' 'deps-cross' 'Configure cross release dependency/build graphs.'
+	@printf '  %-30s %s\n' 'build' 'Configure and build all shipped Linux dependency bundles.'
+	@printf '  %-30s %s\n' 'build-debug' 'Build the host debug preset.'
+	@printf '  %-30s %s\n' 'build-release' 'Build all shipped Linux release bundles.'
+	@printf '  %-30s %s\n' 'debug' 'Build and test the host debug preset.'
+	@printf '\nTests:\n'
+	@printf '  %-30s %s\n' 'test' 'Run ABI/link smoke tests for built Linux bundles.'
+	@printf '  %-30s %s\n' 'test-debug' 'Run the host debug tests.'
+	@printf '  %-30s %s\n' 'test-all' 'Run the full local confidence gate.'
+	@printf '  %-30s %s\n' 'examples' 'Build and smoke-test source-tree examples.'
+	@printf '  %-30s %s\n' 'clangd-surface' 'Verify compile_commands and public hover comments for examples.'
+	@printf '  %-30s %s\n' 'e2e-sus' 'Run opt-in sus audio e2e with cached remote MP3 and tiny model.'
+	@printf '  %-30s %s\n' 'example-audio-vox-intro' 'Run cached intro.mp3 VOX calibration and dump WAV segments.'
+	@printf '  %-30s %s\n' 'asan' 'Build and test the facade-only AddressSanitizer/UBSan preset.'
+	@printf '  %-30s %s\n' 'tsan' 'Build and test the facade-only ThreadSanitizer preset.'
+	@printf '  %-30s %s\n' 'msan' 'Build and test the facade-only MemorySanitizer preset with clang.'
+	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded facade fuzz smoke tests.'
+	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded facade fuzz tests.'
+	@printf '\nPackaging:\n'
+	@printf '  %-30s %s\n' 'package' 'Build package artifacts for all supported release targets.'
+	@printf '  %-30s %s\n' 'package-source' 'Build the source release archive.'
+	@printf '  %-30s %s\n' 'package-source-smoke' 'Verify the source release archive.'
+	@printf '  %-30s %s\n' 'package-checksums' 'Verify the checksum manifest covers release artifacts.'
+	@printf '  %-30s %s\n' 'package-verify' 'Verify package layout, checksums, privacy, and install-tree consumers.'
+	@printf '  %-30s %s\n' 'verify-release-archives' 'Alias for package-verify.'
+	@printf '  %-30s %s\n' 'verify-release-privacy' 'Alias for package-verify; privacy is part of the package gate.'
+	@printf '\nRelease:\n'
+	@printf '  %-30s %s\n' 'prerelease' 'Run deterministic local pre-release confidence.'
+	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run expensive local pre-release confidence.'
+	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, checksum, and verify all release artifacts.'
+	@printf '  %-30s %s\n' 'release' 'Clean, build, package, and verify the final local release gate.'
+	@printf '\nCleanup:\n'
+	@printf '  %-30s %s\n' 'clean' 'Remove generated build, cache, and dist output.'
+	@printf '  %-30s %s\n' 'clean-dist' 'Remove only release artifacts under dist/.'
 
 deps-debug:
 	$(CMAKE) --preset debug
@@ -88,6 +94,11 @@ debug:
 	$(CMAKE) --preset debug
 	$(CMAKE) --build --preset debug
 	$(CTEST) --preset debug
+
+examples:
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug --target cpkt_lua_runtime_c89_example cpkt_opcua_c89_example cpkt_audio_sus_c89_example cpkt_audio_vox_intro_c89_example cpkt_abi_smoke_shared cpkt_abi_smoke_static cpkt_mqttc_smoke_shared cpkt_mqttc_smoke_static cpkt_whisper_smoke_shared
+	$(CTEST) --preset debug -R 'example' --output-on-failure
 
 clangd-surface:
 	$(CMAKE) --preset debug
