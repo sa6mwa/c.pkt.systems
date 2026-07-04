@@ -1,8 +1,11 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <limits.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -58,6 +61,63 @@ struct cpkt_test_cache_status_capture {
   char last_source_url[512];
   int fail_on_phase;
 };
+
+struct cpkt_test_env_guard {
+  char *xdg_cache_home;
+  char *home;
+  int had_xdg_cache_home;
+  int had_home;
+};
+
+static char *cpkt_test_strdup(const char *value) {
+  char *copy;
+  size_t len;
+
+  if (value == NULL) {
+    return NULL;
+  }
+  len = strlen(value);
+  copy = (char *)malloc(len + 1U);
+  if (copy == NULL) {
+    return NULL;
+  }
+  memcpy(copy, value, len + 1U);
+  return copy;
+}
+
+static void cpkt_test_env_guard_save(struct cpkt_test_env_guard *guard) {
+  const char *value;
+
+  memset(guard, 0, sizeof(*guard));
+  value = getenv("XDG_CACHE_HOME");
+  if (value != NULL) {
+    guard->xdg_cache_home = cpkt_test_strdup(value);
+    assert_non_null(guard->xdg_cache_home);
+    guard->had_xdg_cache_home = 1;
+  }
+  value = getenv("HOME");
+  if (value != NULL) {
+    guard->home = cpkt_test_strdup(value);
+    assert_non_null(guard->home);
+    guard->had_home = 1;
+  }
+}
+
+static void cpkt_test_env_guard_restore(struct cpkt_test_env_guard *guard) {
+  if (guard->had_xdg_cache_home) {
+    assert_int_equal(setenv("XDG_CACHE_HOME", guard->xdg_cache_home, 1), 0);
+  } else {
+    assert_int_equal(unsetenv("XDG_CACHE_HOME"), 0);
+  }
+  if (guard->had_home) {
+    assert_int_equal(setenv("HOME", guard->home, 1), 0);
+  } else {
+    assert_int_equal(unsetenv("HOME"), 0);
+  }
+  free(guard->xdg_cache_home);
+  free(guard->home);
+  memset(guard, 0, sizeof(*guard));
+}
 
 static void cpkt_test_log_sink(const cpkt_sus_log_event *event, void *user) {
   struct cpkt_test_log_capture *capture;
@@ -359,6 +419,55 @@ static void test_cached_open_contract(void **state) {
   (void)remove("cpkt-sus-test-cache/ggml-small.bin");
 }
 
+static void test_cached_open_default_cache_dir_precedence(void **state) {
+  cpkt_sus_cache_config config;
+  cpkt_sus_model *model;
+  struct cpkt_test_cache_status_capture status;
+  struct cpkt_test_env_guard env;
+
+  (void)state;
+  cpkt_test_env_guard_save(&env);
+
+  memset(&config, 0, sizeof(config));
+  memset(&status, 0, sizeof(status));
+  config.model = "tiny";
+  config.offline = 1;
+  config.status_sink = cpkt_test_cache_status_sink;
+  config.status_user = &status;
+
+  assert_int_equal(setenv("XDG_CACHE_HOME", "cpkt-sus-xdg-cache", 1), 0);
+  assert_int_equal(setenv("HOME", "cpkt-sus-home", 1), 0);
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_IO);
+  assert_null(model);
+  assert_int_equal(status.count, 2);
+  assert_string_equal(
+      status.last_cache_path,
+      "cpkt-sus-xdg-cache/cpkt/susurro/models/ggml-tiny.bin");
+
+  memset(&status, 0, sizeof(status));
+  assert_int_equal(unsetenv("XDG_CACHE_HOME"), 0);
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_IO);
+  assert_null(model);
+  assert_int_equal(status.count, 2);
+  assert_string_equal(
+      status.last_cache_path,
+      "cpkt-sus-home/.cache/cpkt/susurro/models/ggml-tiny.bin");
+
+  memset(&status, 0, sizeof(status));
+  assert_int_equal(unsetenv("HOME"), 0);
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_IO);
+  assert_null(model);
+  assert_int_equal(status.count, 0);
+
+  cpkt_test_env_guard_restore(&env);
+}
+
 static void test_cached_open_downloads_to_temp_before_rename(void **state) {
   cpkt_sus_cache_config config;
   cpkt_sus_model *model;
@@ -516,6 +625,7 @@ int main(void) {
       cmocka_unit_test(test_model_helpers_reject_invalid_arguments),
       cmocka_unit_test(test_model_catalog_queries),
       cmocka_unit_test(test_cached_open_contract),
+      cmocka_unit_test(test_cached_open_default_cache_dir_precedence),
       cmocka_unit_test(test_cached_open_downloads_to_temp_before_rename),
       cmocka_unit_test(test_cached_open_status_callback_can_abort),
       cmocka_unit_test(test_cached_open_retries_invalid_existing_cache),
