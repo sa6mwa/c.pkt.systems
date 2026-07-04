@@ -31,7 +31,7 @@ if [ "$rc" -eq 0 ]; then
   exit 1
 fi
 
-if ! grep -F -- "startup mode=vox model_path=$missing_model model_cache=path language=en threshold=0.060 hang_ms=1500 prebuffer_ms=50" "$output" >/dev/null 2>&1; then
+if ! grep -F -- "status source=default-capture mode=vox model_path=$missing_model language=en threshold=0.060 hang_ms=1500 prebuffer_ms=50" "$output" >/dev/null 2>&1; then
   printf 'sus live example did not print the startup status line before model load\n' >&2
   cat "$output" >&2
   exit 1
@@ -61,7 +61,7 @@ if [ "$rc" -eq 0 ]; then
   exit 1
 fi
 
-if ! grep -F -- "startup mode=vox model=tiny model_cache=missing-offline cache=$cache_dir/ggml-tiny.bin language=en threshold=0.060 hang_ms=1500 prebuffer_ms=50" "$cache_output" >/dev/null 2>&1; then
+if ! grep -F -- "status source=default-capture mode=vox model=tiny cache=$cache_dir/ggml-tiny.bin cache_state=missing-offline language=en threshold=0.060 hang_ms=1500 prebuffer_ms=50" "$cache_output" >/dev/null 2>&1; then
   printf 'sus live example did not print the initial cached-model status line\n' >&2
   cat "$cache_output" >&2
   exit 1
