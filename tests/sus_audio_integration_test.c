@@ -35,6 +35,12 @@ struct cpkt_sus_test_exact_step_decoder {
   float sample_value;
 };
 
+struct cpkt_sus_test_direct_vox_state {
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_result result;
+};
+
 static int cpkt_sus_test_contains_expected(const char *actual_a,
                                            const char *actual_b,
                                            const char *expected);
@@ -520,6 +526,137 @@ cleanup:
   return rc;
 }
 
+static int
+cpkt_sus_test_direct_vox_transcribe_sink(cpkt_audio_vox_segment *segment,
+                                         void *user) {
+  struct cpkt_sus_test_direct_vox_state *state;
+
+  state = (struct cpkt_sus_test_direct_vox_state *)user;
+  if (state == NULL || state->transcriber == NULL || segment == NULL) {
+    return 1;
+  }
+  state->result = state->transcriber->transcribe_audio_vox_segment(
+      state->transcriber, segment, &state->segmented_config);
+  return state->result == CPKT_SUS_OK ? 0 : 1;
+}
+
+static int cpkt_sus_test_run_direct_vox_segmented(
+    cpkt_sus_model *model, const char *audio_path, const char *audio_url,
+    struct cpkt_sus_test_segmented_events *events, char **text_out) {
+  cpkt_audio_decoder *decoder;
+  cpkt_audio_vox *vox;
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config transcriber_config;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_audio_vox_config vox_config;
+  struct cpkt_sus_test_direct_vox_state state;
+  float frames[CPKT_SUS_TEST_READ_FRAMES];
+  size_t frames_read;
+  unsigned long read_frames;
+  cpkt_audio_result audio_result;
+  cpkt_sus_result sus_result;
+  int rc;
+
+  decoder = NULL;
+  vox = NULL;
+  transcriber = NULL;
+  *text_out = NULL;
+  rc = 1;
+
+  if (cpkt_sus_test_open_audio_decoder(&decoder, audio_path, audio_url) != 0) {
+    goto cleanup;
+  }
+
+  memset(&transcriber_config, 0, sizeof(transcriber_config));
+  transcriber_config.language =
+      cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
+  if (model->create_transcriber(model, &transcriber, &transcriber_config) !=
+      CPKT_SUS_OK) {
+    fprintf(stderr, "failed to create direct VOX transcriber\n");
+    goto cleanup;
+  }
+
+  cpkt_sus_test_segmented_config(&segmented_config);
+  segmented_config.segmented_sink = cpkt_sus_test_segmented_sink;
+  segmented_config.segmented_user = events;
+
+  memset(&state, 0, sizeof(state));
+  state.transcriber = transcriber;
+  state.segmented_config = segmented_config;
+  state.result = CPKT_SUS_OK;
+
+  memset(&vox_config, 0, sizeof(vox_config));
+  vox_config.threshold = segmented_config.vox_threshold;
+  vox_config.release_silence_ms = segmented_config.keep_ms;
+  vox_config.max_segment_ms = segmented_config.length_ms;
+  vox_config.min_segment_ms = 100UL;
+  vox_config.prebuffer_ms = segmented_config.prebuffer_ms;
+  vox_config.memory_spool_bytes = segmented_config.memory_spool_bytes;
+  vox_config.max_spool_bytes = segmented_config.max_spool_bytes;
+  vox_config.segment_sink = cpkt_sus_test_direct_vox_transcribe_sink;
+  vox_config.segment_user = &state;
+  audio_result = cpkt_audio_vox_open(&vox, &vox_config);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "failed to open direct VOX segmenter: %s\n",
+            cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+
+  read_frames = segmented_config.read_frames != 0UL
+                    ? segmented_config.read_frames
+                    : CPKT_SUS_TEST_READ_FRAMES;
+  if (read_frames > CPKT_SUS_TEST_READ_FRAMES) {
+    read_frames = CPKT_SUS_TEST_READ_FRAMES;
+  }
+  do {
+    frames_read = 0U;
+    audio_result =
+        decoder->read_f32_mono_16k(decoder, frames, (size_t)read_frames,
+                                   &frames_read);
+    if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
+      fprintf(stderr, "failed to decode direct VOX audio: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
+    if (frames_read > 0U &&
+        vox->push_f32_mono_16k(vox, frames, frames_read) != CPKT_AUDIO_OK) {
+      fprintf(stderr, "failed to push direct VOX audio: %s\n",
+              cpkt_sus_result_string(state.result));
+      goto cleanup;
+    }
+  } while (audio_result != CPKT_AUDIO_AT_END);
+
+  audio_result = vox->flush(vox);
+  if (audio_result != CPKT_AUDIO_OK) {
+    fprintf(stderr, "failed to flush direct VOX audio: %s\n",
+            state.result != CPKT_SUS_OK
+                ? cpkt_sus_result_string(state.result)
+                : cpkt_audio_result_string(audio_result));
+    goto cleanup;
+  }
+
+  sus_result = transcriber->revised_text(transcriber, text_out);
+  if (sus_result != CPKT_SUS_OK || *text_out == NULL) {
+    fprintf(stderr, "failed to retrieve direct VOX revised text: %s\n",
+            cpkt_sus_result_string(sus_result));
+    goto cleanup;
+  }
+
+  rc = 0;
+
+cleanup:
+  if (vox != NULL) {
+    vox->destroy(vox);
+  }
+  if (transcriber != NULL) {
+    transcriber->destroy(transcriber);
+  }
+  if (decoder != NULL) {
+    decoder->destroy(decoder);
+  }
+  return rc;
+}
+
 static int cpkt_sus_test_run_segmented_exact_step_final_event(
     cpkt_sus_model *model) {
   struct cpkt_sus_test_exact_step_decoder decoder_state;
@@ -667,6 +804,7 @@ cleanup:
 int main(void) {
   cpkt_sus_model *model;
   struct cpkt_sus_test_segmented_events events;
+  struct cpkt_sus_test_segmented_events direct_events;
   struct cpkt_sus_test_progress progress;
   cpkt_sus_segmented_config shape_segmented_config;
   const char *audio_path;
@@ -745,6 +883,47 @@ int main(void) {
     fprintf(stderr, "progress callback was not invoked\n");
     goto cleanup;
   }
+  if (!events.matched_expected ||
+      !cpkt_sus_test_contains_expected(text, NULL, expected)) {
+    fprintf(stderr, "expected transcript text was not found\n");
+    fprintf(stderr, "latest segmented transcript: %s\n", events.text);
+    fprintf(stderr, "segmented text: %s\n", text);
+    goto cleanup;
+  }
+
+  cpkt_sus_string_free(text);
+  text = NULL;
+  memset(&direct_events, 0, sizeof(direct_events));
+  direct_events.expected = expected;
+  if (cpkt_sus_test_run_direct_vox_segmented(model, audio_path, audio_url,
+                                             &direct_events, &text) != 0) {
+    fprintf(stderr, "direct VOX segment transcription failed\n");
+    goto cleanup;
+  }
+  if (direct_events.count == 0UL || direct_events.final_count == 0UL) {
+    fprintf(stderr, "direct VOX segment callback was not invoked\n");
+    goto cleanup;
+  }
+  if (expected_segments != 0UL && direct_events.count != expected_segments) {
+    fprintf(stderr,
+            "unexpected direct VOX event count: expected=%lu actual=%lu\n",
+            expected_segments, direct_events.count);
+    goto cleanup;
+  }
+  if (expected_final_segments != 0UL &&
+      direct_events.final_count != expected_final_segments) {
+    fprintf(stderr,
+            "unexpected direct VOX final event count: expected=%lu actual=%lu\n",
+            expected_final_segments, direct_events.final_count);
+    goto cleanup;
+  }
+  if (!direct_events.matched_expected ||
+      !cpkt_sus_test_contains_expected(text, NULL, expected)) {
+    fprintf(stderr, "expected direct VOX transcript text was not found\n");
+    fprintf(stderr, "latest direct VOX transcript: %s\n", direct_events.text);
+    fprintf(stderr, "direct VOX text: %s\n", text);
+    goto cleanup;
+  }
 
   if (cpkt_sus_test_run_segmented_callback_failure(model, audio_path,
                                                   audio_url) != 0) {
@@ -759,14 +938,6 @@ int main(void) {
 
   if (cpkt_sus_test_run_segmented_exact_step_final_event(model) != 0) {
     fprintf(stderr, "exact-step segmented final event test failed\n");
-    goto cleanup;
-  }
-
-  if (!events.matched_expected ||
-      !cpkt_sus_test_contains_expected(text, NULL, expected)) {
-    fprintf(stderr, "expected transcript text was not found\n");
-    fprintf(stderr, "latest segmented transcript: %s\n", events.text);
-    fprintf(stderr, "segmented text: %s\n", text);
     goto cleanup;
   }
 
