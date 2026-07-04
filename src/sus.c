@@ -667,6 +667,24 @@ cpkt_sus_verify_model_file(const char *path,
 }
 
 static cpkt_sus_result
+cpkt_sus_open_validated_cached_file(cpkt_sus_model **out, const char *path,
+                                    const struct cpkt_sus_catalog_entry *entry,
+                                    const cpkt_sus_cache_config *config) {
+  cpkt_sus_model_config model_config;
+  cpkt_sus_result result;
+
+  result = cpkt_sus_validate_cached_file(path, entry, config);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+
+  memset(&model_config, 0, sizeof(model_config));
+  model_config.model_path = path;
+  model_config.cpu_only = config->cpu_only;
+  return cpkt_sus_model_open_path(out, &model_config);
+}
+
+static cpkt_sus_result
 cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
                            const struct cpkt_sus_catalog_entry *entry,
                            const cpkt_sus_cache_config *config) {
@@ -1071,7 +1089,6 @@ cpkt_sus_result
 cpkt_sus_model_open_cached(cpkt_sus_model **out,
                            const cpkt_sus_cache_config *config) {
   const struct cpkt_sus_catalog_entry *entry;
-  cpkt_sus_model_config model_config;
   cpkt_sus_result result;
   char *cache_dir;
   char *model_path;
@@ -1112,15 +1129,26 @@ cpkt_sus_model_open_cached(cpkt_sus_model **out,
       free(model_path);
       return result;
     }
+  } else {
+    result = cpkt_sus_open_validated_cached_file(out, model_path, entry, config);
+    if ((result == CPKT_SUS_ERR_CHECKSUM || result == CPKT_SUS_ERR_MODEL) &&
+        !config->offline) {
+      result = cpkt_sus_fetch_cached_file(model_path, cache_dir, entry, config);
+      if (result != CPKT_SUS_OK) {
+        free(cache_dir);
+        free(model_path);
+        return result;
+      }
+    } else if (result != CPKT_SUS_OK) {
+      free(cache_dir);
+      free(model_path);
+      return result;
+    }
   }
   free(cache_dir);
 
-  result = cpkt_sus_validate_cached_file(model_path, entry, config);
-  if (result == CPKT_SUS_OK) {
-    memset(&model_config, 0, sizeof(model_config));
-    model_config.model_path = model_path;
-    model_config.cpu_only = config->cpu_only;
-    result = cpkt_sus_model_open_path(out, &model_config);
+  if (*out == NULL) {
+    result = cpkt_sus_open_validated_cached_file(out, model_path, entry, config);
   }
   free(model_path);
   return result;

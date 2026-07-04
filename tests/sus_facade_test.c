@@ -271,6 +271,51 @@ static void test_cached_open_downloads_to_temp_before_rename(void **state) {
   (void)rmdir("cpkt-sus-fetch-cache");
 }
 
+static void test_cached_open_retries_invalid_existing_cache(void **state) {
+  cpkt_sus_cache_config config;
+  cpkt_sus_model *model;
+  char cwd[4096];
+  char source_url[4608];
+  FILE *file;
+
+  (void)state;
+  assert_non_null(getcwd(cwd, sizeof(cwd)));
+  assert_true(snprintf(source_url, sizeof(source_url),
+                       "file://%s/cpkt-sus-replacement-model.bin",
+                       cwd) < (int)sizeof(source_url));
+
+  (void)mkdir("cpkt-sus-retry-cache", 0700);
+  (void)remove("cpkt-sus-retry-cache/ggml-small.bin");
+  (void)remove("cpkt-sus-replacement-model.bin");
+
+  file = fopen("cpkt-sus-retry-cache/ggml-small.bin", "wb");
+  assert_non_null(file);
+  assert_int_equal(fwrite("stale corrupt cache", 1, 19, file), 19);
+  assert_int_equal(fclose(file), 0);
+
+  file = fopen("cpkt-sus-replacement-model.bin", "wb");
+  assert_non_null(file);
+  assert_int_equal(fwrite("not a whisper model", 1, 19, file), 19);
+  assert_int_equal(fclose(file), 0);
+
+  memset(&config, 0, sizeof(config));
+  config.model = "small";
+  config.cache_dir = "cpkt-sus-retry-cache";
+  config.source_url = source_url;
+  config.sha256 =
+      "88e9294cb41d862d3e2670fb9894c3e46f74fefdd18eadd8f47ee4611406487a";
+  config.cpu_only = 1;
+
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_MODEL);
+  assert_null(model);
+
+  (void)remove("cpkt-sus-retry-cache/ggml-small.bin");
+  (void)remove("cpkt-sus-replacement-model.bin");
+  (void)rmdir("cpkt-sus-retry-cache");
+}
+
 static void test_result_strings(void **state) {
   (void)state;
 
@@ -293,6 +338,7 @@ int main(void) {
       cmocka_unit_test(test_model_catalog_queries),
       cmocka_unit_test(test_cached_open_contract),
       cmocka_unit_test(test_cached_open_downloads_to_temp_before_rename),
+      cmocka_unit_test(test_cached_open_retries_invalid_existing_cache),
       cmocka_unit_test(test_result_strings),
   };
 
