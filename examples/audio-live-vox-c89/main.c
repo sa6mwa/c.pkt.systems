@@ -43,7 +43,7 @@ static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
   opts->seconds = 30UL;
   opts->threshold_milli = 30UL;
   opts->hang_ms = 1500UL;
-  opts->max_segment_ms = 7000UL;
+  opts->max_segment_ms = 180000UL;
   opts->buffer_ms = 2000UL;
   opts->period_ms = 20UL;
   opts->dump_dir = "build/live-vox-dump";
@@ -258,7 +258,7 @@ static void cpkt_live_vox_usage(FILE *out) {
   fprintf(out, "  --seconds N                 Capture duration; default 30.\n");
   fprintf(out, "  --threshold-milli N         VOX threshold * 1000; default 30.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
-  fprintf(out, "  --max-segment-ms N          Hard cut budget; default 7000.\n");
+  fprintf(out, "  --max-segment-ms N          Hard cut budget; default 180000.\n");
   fprintf(out, "  --buffer-ms N               Device ring buffer; default 2000.\n");
   fprintf(out, "  --period-ms N               Device callback period; default 20.\n");
   fprintf(out, "  --backend NAME              auto, alsa, pulseaudio, jack.\n");

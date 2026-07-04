@@ -47,7 +47,7 @@ static void cpkt_sus_vox_defaults(struct cpkt_sus_vox_options *options) {
   options->language = "en";
   options->threshold = 0.03f;
   options->hang_ms = 1500UL;
-  options->budget_ms = 7000UL;
+  options->budget_ms = 0UL;
   options->read_frames = CPKT_SUS_VOX_READ_FRAMES;
   options->memory_spool_bytes = CPKT_SUS_VOX_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKT_SUS_VOX_MAX_SPOOL_BYTES;
@@ -448,7 +448,7 @@ static void cpkt_sus_vox_usage(FILE *out) {
   fprintf(out, "  --language CODE              Language code; default en.\n");
   fprintf(out, "  --threshold VALUE            VOX threshold; default 0.03.\n");
   fprintf(out, "  --hang-ms N                  VOX hang-time; default 1500.\n");
-  fprintf(out, "  --budget-ms N                VOX segment budget; default 7000.\n");
+  fprintf(out, "  --budget-ms N                VOX segment budget; default 0.\n");
   fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
   fprintf(out, "  --cpu-only N                 1 for CPU-only, 0 for backend default.\n");
 }

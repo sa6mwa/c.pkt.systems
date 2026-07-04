@@ -447,9 +447,12 @@ The `cpkt_audio` VOX segment source is pullable and may be backed by memory or
 by an anonymous temporary file. It keeps only `memory_spool_bytes` in RAM before
 spilling an open segment to disk, and it must hard-cut at `max_spool_bytes`
 even when `max_segment_ms` is zero. This allows generic open-ended VOX without
-unbounded memory use. The `cpkt_sus` realtime path keeps the default time cap
-bounded because whisper.cpp requires one materialized PCM segment per
-`whisper_full` call; it does not materialize a whole decoded stream.
+unbounded memory use. Live capture examples should default the max open VOX gate
+to 180000 ms so a stuck-open microphone does not defer output indefinitely.
+Finite file-based examples may set `max_segment_ms`/`length_ms` to zero when
+they deliberately want no time cap. The `cpkt_sus` realtime library path keeps
+the default time cap bounded because whisper.cpp requires one materialized PCM
+segment per `whisper_full` call; it does not materialize a whole decoded stream.
 
 Realtime output is committed segment text appended to session text, not an
 editable rolling audio hypothesis. A caller can stream committed text updates
