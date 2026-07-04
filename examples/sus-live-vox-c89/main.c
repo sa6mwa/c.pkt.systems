@@ -89,7 +89,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
   opts->max_segment_ms = 7000UL;
   opts->buffer_ms = 2000UL;
   opts->period_ms = 20UL;
-  opts->dump_dir = "build/live-sus-vox-dump";
+  opts->dump_dir = NULL;
   opts->model = "tiny";
   opts->language = "en";
 }
@@ -340,16 +340,18 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   run.options = opts;
 
   cpkt_sus_log_set(NULL, NULL);
-  (void)mkdir(opts->dump_dir, 0700);
-  if (!cpkt_sus_live_join_path(summary_path, sizeof(summary_path),
-                               opts->dump_dir, "summary.txt")) {
-    fprintf(stderr, "dump path is too long\n");
-    goto cleanup;
-  }
-  run.summary = fopen(summary_path, "wb");
-  if (run.summary == NULL) {
-    fprintf(stderr, "failed to open summary: %s\n", summary_path);
-    goto cleanup;
+  if (opts->dump_dir != NULL) {
+    (void)mkdir(opts->dump_dir, 0700);
+    if (!cpkt_sus_live_join_path(summary_path, sizeof(summary_path),
+                                 opts->dump_dir, "summary.txt")) {
+      fprintf(stderr, "dump path is too long\n");
+      goto cleanup;
+    }
+    run.summary = fopen(summary_path, "wb");
+    if (run.summary == NULL) {
+      fprintf(stderr, "failed to open summary: %s\n", summary_path);
+      goto cleanup;
+    }
   }
 
   if (!cpkt_sus_live_open_model(&model, opts)) {
@@ -490,8 +492,14 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
     cpkt_sus_string_free(final_text);
   }
   cpkt_sus_live_emit(&run, "\n");
-  sprintf(summary_path, "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
-          run.segment_count, run.hard_count, run.final_count, opts->dump_dir);
+  if (opts->dump_dir != NULL) {
+    sprintf(summary_path,
+            "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
+            run.segment_count, run.hard_count, run.final_count, opts->dump_dir);
+  } else {
+    sprintf(summary_path, "summary segments=%lu hard=%lu final=%lu\n",
+            run.segment_count, run.hard_count, run.final_count);
+  }
   cpkt_sus_live_emit(&run, summary_path);
   rc = 0;
 
@@ -548,8 +556,8 @@ static void cpkt_sus_live_usage(FILE *out) {
   fprintf(
       out,
       "  --cpu-only N                1 for CPU-only, 0 for backend default.\n");
-  fprintf(out, "  --dump-dir DIR              Dump directory; default "
-               "build/live-sus-vox-dump.\n");
+  fprintf(out,
+          "  --dump-dir DIR              Optional summary dump directory.\n");
 }
 
 static int cpkt_sus_live_parse_options(int argc, char **argv,

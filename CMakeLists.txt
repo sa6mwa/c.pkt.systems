@@ -612,9 +612,11 @@ if(CPKT_BUILD_TESTS)
     examples/sus-live-vox-c89/main.c)
   target_compile_options(cpkt_sus_live_vox_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_sus_live_vox_c89_example)
+  set_target_properties(cpkt_sus_live_vox_c89_example PROPERTIES
+    LINKER_LANGUAGE CXX)
   target_link_libraries(cpkt_sus_live_vox_c89_example PRIVATE
     cpkt_audio_static
-    cpkt_sus_shared)
+    cpkt_sus_static)
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpkt_sus_live_vox_c89_example cpkt_deps)
   endif()

@@ -87,7 +87,7 @@ static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
   opts->max_segment_ms = 180000UL;
   opts->buffer_ms = 2000UL;
   opts->period_ms = 20UL;
-  opts->dump_dir = "build/live-vox-dump";
+  opts->dump_dir = NULL;
 }
 
 static void cpkt_live_vox_sleep_ms(unsigned long ms) {
@@ -209,19 +209,21 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   }
 
   sprintf(name, "segment-%04lu.wav", segment->segment_index);
-  if (!cpkt_live_vox_join_path(path, sizeof(path), run->options->dump_dir,
-                               name)) {
-    return 1;
-  }
-
-  memset(&encoder_config, 0, sizeof(encoder_config));
-  encoder_config.format = CPKT_AUDIO_FORMAT_WAV;
-  encoder_config.sample_rate = 16000UL;
-  encoder_config.channels = 1UL;
   encoder = NULL;
-  if (cpkt_audio_encoder_open_file(&encoder, path, &encoder_config) !=
-      CPKT_AUDIO_OK) {
-    return 1;
+  path[0] = '\0';
+  if (run->options->dump_dir != NULL) {
+    if (!cpkt_live_vox_join_path(path, sizeof(path), run->options->dump_dir,
+                                 name)) {
+      return 1;
+    }
+    memset(&encoder_config, 0, sizeof(encoder_config));
+    encoder_config.format = CPKT_AUDIO_FORMAT_WAV;
+    encoder_config.sample_rate = 16000UL;
+    encoder_config.channels = 1UL;
+    if (cpkt_audio_encoder_open_file(&encoder, path, &encoder_config) !=
+        CPKT_AUDIO_OK) {
+      return 1;
+    }
   }
 
   total_frames = 0U;
@@ -235,11 +237,13 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
     }
     if (frames_read > 0U) {
       frames_written = 0U;
-      if (encoder->write_f32(encoder, frames, frames_read, &frames_written) !=
-              CPKT_AUDIO_OK ||
-          frames_written != frames_read) {
-        encoder->destroy(encoder);
-        return 1;
+      if (encoder != NULL) {
+        if (encoder->write_f32(encoder, frames, frames_read, &frames_written) !=
+                CPKT_AUDIO_OK ||
+            frames_written != frames_read) {
+          encoder->destroy(encoder);
+          return 1;
+        }
       }
       if (run->playback != NULL) {
         frames_written = 0U;
@@ -247,7 +251,9 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
                                               frames_read, &frames_written) !=
                 CPKT_AUDIO_OK ||
             frames_written != frames_read) {
-          encoder->destroy(encoder);
+          if (encoder != NULL) {
+            encoder->destroy(encoder);
+          }
           return 1;
         }
       }
@@ -255,11 +261,13 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
     }
   } while (result != CPKT_AUDIO_AT_END);
 
-  if (encoder->close(encoder) != CPKT_AUDIO_OK) {
+  if (encoder != NULL && encoder->close(encoder) != CPKT_AUDIO_OK) {
     encoder->destroy(encoder);
     return 1;
   }
-  encoder->destroy(encoder);
+  if (encoder != NULL) {
+    encoder->destroy(encoder);
+  }
 
   ++run->segment_count;
   if (segment->hard_cut) {
@@ -268,11 +276,21 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   if (segment->is_final) {
     ++run->final_count;
   }
-  fprintf(stdout,
-          "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d wav=%s\n",
-          segment->segment_index, (unsigned long)total_frames,
-          (double)total_frames / 16000.0, segment->hard_cut, segment->is_final,
-          path);
+  if (path[0] != '\0') {
+    fprintf(stdout,
+            "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d "
+            "wav=%s\n",
+            segment->segment_index, (unsigned long)total_frames,
+            (double)total_frames / 16000.0, segment->hard_cut,
+            segment->is_final, path);
+  } else {
+    fprintf(stdout,
+            "segment index=%lu frames=%lu seconds=%.3f hard=%d "
+            "final=%d\n",
+            segment->segment_index, (unsigned long)total_frames,
+            (double)total_frames / 16000.0, segment->hard_cut,
+            segment->is_final);
+  }
   fflush(stdout);
   if (run->summary != NULL) {
     fprintf(run->summary,
@@ -345,8 +363,7 @@ static void cpkt_live_vox_usage(FILE *out) {
       out,
       "  --period-ms N               Device callback period; default 20.\n");
   fprintf(out, "  --backend NAME              auto, alsa, coreaudio.\n");
-  fprintf(out, "  --dump-dir DIR              WAV dump directory; default "
-               "build/live-vox-dump.\n");
+  fprintf(out, "  --dump-dir DIR              Optional WAV dump directory.\n");
 }
 
 static int cpkt_live_vox_parse_options(int argc, char **argv,
@@ -432,16 +449,18 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
   memset(&run, 0, sizeof(run));
   run.options = opts;
 
-  (void)mkdir(opts->dump_dir, 0700);
-  if (!cpkt_live_vox_join_path(summary_path, sizeof(summary_path),
-                               opts->dump_dir, "summary.txt")) {
-    fprintf(stderr, "dump path is too long\n");
-    goto cleanup;
-  }
-  run.summary = fopen(summary_path, "wb");
-  if (run.summary == NULL) {
-    fprintf(stderr, "failed to open summary: %s\n", summary_path);
-    goto cleanup;
+  if (opts->dump_dir != NULL) {
+    (void)mkdir(opts->dump_dir, 0700);
+    if (!cpkt_live_vox_join_path(summary_path, sizeof(summary_path),
+                                 opts->dump_dir, "summary.txt")) {
+      fprintf(stderr, "dump path is too long\n");
+      goto cleanup;
+    }
+    run.summary = fopen(summary_path, "wb");
+    if (run.summary == NULL) {
+      fprintf(stderr, "failed to open summary: %s\n", summary_path);
+      goto cleanup;
+    }
   }
 
   memset(&capture_config, 0, sizeof(capture_config));
@@ -571,8 +590,12 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
   if (playback != NULL) {
     (void)playback->drain(playback);
   }
-  fprintf(stdout, "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
-          run.segment_count, run.hard_count, run.final_count, opts->dump_dir);
+  fprintf(stdout, "summary segments=%lu hard=%lu final=%lu", run.segment_count,
+          run.hard_count, run.final_count);
+  if (opts->dump_dir != NULL) {
+    fprintf(stdout, " dump_dir=%s", opts->dump_dir);
+  }
+  fputc('\n', stdout);
   if (run.summary != NULL) {
     fprintf(run.summary,
             "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
