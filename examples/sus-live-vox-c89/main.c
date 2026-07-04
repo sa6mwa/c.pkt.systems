@@ -34,8 +34,8 @@ struct cpkt_sus_live_options {
 
 struct cpkt_sus_live_run {
   const struct cpkt_sus_live_options *options;
-  cpkt_sus_transcriber *transcriber;
-  cpkt_sus_realtime_config *realtime_config;
+  cpkt_sus_model *model;
+  unsigned long current_segment_index;
   unsigned long segment_count;
   unsigned long hard_count;
   unsigned long final_count;
@@ -86,7 +86,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
   opts->seconds = 0UL;
   opts->threshold_milli = 60UL;
   opts->hang_ms = 1500UL;
-  opts->max_segment_ms = 7000UL;
+  opts->max_segment_ms = 0UL;
   opts->buffer_ms = 2000UL;
   opts->period_ms = 20UL;
   opts->dump_dir = NULL;
@@ -207,8 +207,8 @@ static int cpkt_sus_live_realtime_sink(const cpkt_sus_realtime_event *event,
   if (run == NULL || event == NULL || event->text == NULL) {
     return 1;
   }
-  sprintf(line, "TXT segment=%lu final=%d chars=%lu: ", event->step_index,
-          event->is_final, event->text_length);
+  sprintf(line, "TXT segment=%lu final=%d chars=%lu: ",
+          run->current_segment_index, event->is_final, event->text_length);
   cpkt_sus_live_emit(run, line);
   cpkt_sus_live_emit(run, event->text);
   cpkt_sus_live_emit(run, "\n");
@@ -219,10 +219,13 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
                                       void *user) {
   struct cpkt_sus_live_run *run;
   char line[256];
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config transcriber_config;
+  cpkt_sus_realtime_config realtime_config;
   cpkt_sus_result result;
 
   run = (struct cpkt_sus_live_run *)user;
-  if (run == NULL || segment == NULL) {
+  if (run == NULL || run->model == NULL || segment == NULL) {
     return 1;
   }
   sprintf(line, "segment index=%lu frames=%lu seconds=%.3f hard=%d final=%d\n",
@@ -230,8 +233,25 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
           (double)segment->frame_count / 16000.0, segment->hard_cut,
           segment->is_final);
   cpkt_sus_live_emit(run, line);
-  result = run->transcriber->transcribe_audio_vox_segment(
-      run->transcriber, segment, run->realtime_config);
+
+  transcriber = NULL;
+  memset(&transcriber_config, 0, sizeof(transcriber_config));
+  transcriber_config.language = run->options->language;
+  transcriber_config.cpu_only = run->options->cpu_only;
+  result = run->model->create_transcriber(run->model, &transcriber,
+                                          &transcriber_config);
+  if (result != CPKT_SUS_OK) {
+    return 1;
+  }
+
+  memset(&realtime_config, 0, sizeof(realtime_config));
+  realtime_config.keep_context = -1;
+  realtime_config.realtime_sink = cpkt_sus_live_realtime_sink;
+  realtime_config.realtime_user = run;
+  run->current_segment_index = segment->segment_index;
+  result = transcriber->transcribe_audio_vox_segment(transcriber, segment,
+                                                     &realtime_config);
+  transcriber->destroy(transcriber);
   if (result != CPKT_SUS_OK) {
     return 1;
   }
@@ -315,19 +335,15 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   cpkt_audio_vox *vox;
   cpkt_audio_ptt *ptt;
   cpkt_sus_model *model;
-  cpkt_sus_transcriber *transcriber;
   cpkt_audio_capture_config capture_config;
   cpkt_audio_vox_config vox_config;
   cpkt_audio_ptt_config ptt_config;
-  cpkt_sus_transcriber_config transcriber_config;
-  cpkt_sus_realtime_config realtime_config;
   struct cpkt_sus_live_run run;
   char summary_path[CPKT_SUS_LIVE_PATH_MAX];
   float frames[CPKT_SUS_LIVE_READ_FRAMES];
   size_t frames_read;
   time_t end_time;
   cpkt_audio_result audio_result;
-  cpkt_sus_result sus_result;
   int rc;
   int ptt_tx;
 
@@ -335,7 +351,6 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   vox = NULL;
   ptt = NULL;
   model = NULL;
-  transcriber = NULL;
   rc = 1;
   ptt_tx = 0;
   memset(&run, 0, sizeof(run));
@@ -359,22 +374,7 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   if (!cpkt_sus_live_open_model(&model, opts)) {
     goto cleanup;
   }
-  memset(&transcriber_config, 0, sizeof(transcriber_config));
-  transcriber_config.language = opts->language;
-  transcriber_config.cpu_only = opts->cpu_only;
-  sus_result =
-      model->create_transcriber(model, &transcriber, &transcriber_config);
-  if (sus_result != CPKT_SUS_OK) {
-    fprintf(stderr, "transcriber create failed: %s\n",
-            cpkt_sus_result_string(sus_result));
-    goto cleanup;
-  }
-  run.transcriber = transcriber;
-  memset(&realtime_config, 0, sizeof(realtime_config));
-  realtime_config.keep_context = 1;
-  realtime_config.realtime_sink = cpkt_sus_live_realtime_sink;
-  realtime_config.realtime_user = &run;
-  run.realtime_config = &realtime_config;
+  run.model = model;
 
   memset(&capture_config, 0, sizeof(capture_config));
   capture_config.backend = opts->backend;
@@ -479,21 +479,6 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
     goto cleanup;
   }
 
-  {
-    char *final_text;
-
-    final_text = NULL;
-    sus_result = transcriber->revised_text(transcriber, &final_text);
-    if (sus_result != CPKT_SUS_OK) {
-      fprintf(stderr, "final text failed: %s\n",
-              cpkt_sus_result_string(sus_result));
-      goto cleanup;
-    }
-    cpkt_sus_live_emit(&run, "TXT final: ");
-    cpkt_sus_live_emit(&run, final_text != NULL ? final_text : "");
-    cpkt_sus_string_free(final_text);
-  }
-  cpkt_sus_live_emit(&run, "\n");
   if (opts->dump_dir != NULL) {
     sprintf(summary_path,
             "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
@@ -517,9 +502,6 @@ cleanup:
     (void)capture->stop(capture);
     capture->destroy(capture);
   }
-  if (transcriber != NULL) {
-    transcriber->destroy(transcriber);
-  }
   if (model != NULL) {
     model->destroy(model);
   }
@@ -542,7 +524,7 @@ static void cpkt_sus_live_usage(FILE *out) {
           "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
-          "  --max-segment-ms N          Hard cut budget; default 7000.\n");
+          "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
   fprintf(out,
           "  --buffer-ms N               Device ring buffer; default 2000.\n");
   fprintf(
