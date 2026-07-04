@@ -451,6 +451,34 @@ if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_sus_shared cpkt_deps)
 endif()
 
+if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+  add_executable(cpktxscribe tools/cpktxscribe.c)
+  target_compile_options(cpktxscribe PRIVATE -std=c89)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(cpktxscribe PRIVATE
+      -Wall
+      -Wextra
+      -Wpedantic
+      -Werror
+      "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=src"
+      "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build"
+      "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=src"
+      "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=build")
+  elseif(MSVC)
+    target_compile_options(cpktxscribe PRIVATE /W4 /WX)
+  endif()
+  target_link_libraries(cpktxscribe PRIVATE cpkt_sus_static)
+  set_target_properties(cpktxscribe PROPERTIES
+    LINKER_LANGUAGE CXX
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_options(cpktxscribe PRIVATE -static)
+  endif()
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpktxscribe cpkt_deps)
+  endif()
+endif()
+
 add_library(cpkt_opcua_static STATIC src/opcua.c)
 target_compile_features(cpkt_opcua_static PRIVATE c_std_99)
 cpkt_add_repo_warning_errors(cpkt_opcua_static)

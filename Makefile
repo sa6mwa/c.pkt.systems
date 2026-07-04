@@ -8,7 +8,7 @@ CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 E2E_SUS_PRESET ?= release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus example-audio-vox-intro example-sus-vox-intro asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus example-audio-vox-intro example-sus-vox-intro cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
@@ -34,6 +34,8 @@ help:
 	@printf '  %-30s %s\n' 'msan' 'Build and test the facade-only MemorySanitizer preset with clang.'
 	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded facade fuzz smoke tests.'
 	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded facade fuzz tests.'
+	@printf '\nTools:\n'
+	@printf '  %-30s %s\n' 'cpktxscribe' 'Build static host WAV transcription CLI under build/debug/tools/.'
 	@printf '\nPackaging:\n'
 	@printf '  %-30s %s\n' 'package' 'Build package artifacts for all supported release targets.'
 	@printf '  %-30s %s\n' 'package-source' 'Build the source release archive.'
@@ -120,6 +122,11 @@ example-sus-vox-intro:
 	$(CMAKE) --preset debug
 	$(CMAKE) --build --preset debug --target cpkt_sus_vox_intro_c89_example
 	bash ./scripts/run-sus-vox-intro.sh "$$(pwd)/build/debug/cpkt_sus_vox_intro_c89_example" "$$(pwd)/build/debug"
+
+cpktxscribe:
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug --target cpktxscribe
+	@printf 'built: %s\n' "$$(pwd)/build/debug/tools/cpktxscribe"
 
 asan:
 	$(CMAKE) --preset asan
