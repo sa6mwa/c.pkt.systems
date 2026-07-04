@@ -110,16 +110,17 @@ Initial miniaudio build intent:
 - Keep WAV, FLAC, and MP3 decoding enabled when available from miniaudio's
   built-in codecs.
 - Keep encoding enabled where miniaudio supports it.
-- Enable miniaudio device I/O for the `cpkt_audio` capture/playback facade only
-  where the backend distribution contract is acceptable for cpkt. Darwin builds
-  support auto and Core Audio backend selection. Linux host audio backends are
-  intentionally not exposed in the first facade because ALSA/libasound is LGPL
-  and fully static binaries cannot reliably use miniaudio runtime loading as an
-  adaptive backend path. Linux capture/playback support remains deferred until a
-  license-compatible, static-friendly backend strategy is selected and proven.
-  A future Darwin notarized-app mode may deliberately disable runtime loading
-  and link CoreFoundation/CoreAudio/AudioToolbox frameworks, but the default SDK
-  should keep runtime backend loading enabled.
+- Enable device I/O for the `cpkt_audio` capture/playback facade only where the
+  backend distribution contract is acceptable for cpkt. Darwin builds support
+  auto and Core Audio backend selection. Linux shared builds may use miniaudio
+  native runtime loading first, without link-time `libasound`, PulseAudio, or
+  JACK requirements, and fall back to the process backend when native open
+  fails. Linux static builds default `auto` to the process backend, which spawns
+  platform audio commands with explicit argv and streams raw PCM over pipes.
+  `process` is an explicit backend selection for debugging and static-path
+  verification. A future Darwin notarized-app mode may deliberately disable
+  runtime loading and link CoreFoundation/CoreAudio/AudioToolbox frameworks, but
+  the default SDK should keep runtime backend loading enabled.
 - Disable engine, resource manager, node graph, generation, and other playback
   surfaces unless a future facade explicitly needs them.
 - Avoid optional external Vorbis/Opus extras in the first release unless their

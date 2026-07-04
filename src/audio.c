@@ -5,17 +5,25 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 #include <curl/curl.h>
 #define MA_API static
 #define MA_NO_RESOURCE_MANAGER
 #define MA_NO_NODE_GRAPH
 #define MA_NO_ENGINE
 #define MA_NO_GENERATION
+#ifndef CPKT_AUDIO_NATIVE_RUNTIME_DEVICE_IO
 #define MA_NO_ALSA
 #define MA_NO_PULSEAUDIO
 #define MA_NO_JACK
-#ifdef CPKT_AUDIO_NO_DEVICE_IO
-#define MA_NO_DEVICE_IO
 #define MA_NO_RUNTIME_LINKING
 #endif
 #define MINIAUDIO_IMPLEMENTATION
@@ -33,6 +41,9 @@
 #define CPKT_AUDIO_DECODER_MODE_DRMP3 1
 #define CPKT_AUDIO_MP3_INPUT_FRAMES MA_DR_MP3_MAX_PCM_FRAMES_PER_MP3_FRAME
 #define CPKT_AUDIO_MP3_BYTE_CHUNK 4096U
+#define CPKT_AUDIO_DEVICE_MODE_NATIVE 0
+#define CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD 1
+#define CPKT_AUDIO_PROCESS_FRAME_CHUNK 1024U
 
 struct cpkt_audio_url_source {
   CURLM *multi;
@@ -80,25 +91,35 @@ struct cpkt_audio_encoder_impl {
   int callback_error;
 };
 
-#ifndef CPKT_AUDIO_NO_DEVICE_IO
 struct cpkt_audio_capture_impl {
   ma_device device;
   ma_pcm_rb rb;
+#if defined(__unix__) || defined(__APPLE__)
+  pid_t process_pid;
+  int process_fd;
+#endif
+  unsigned char pending_byte;
+  int mode;
   int device_initialized;
   int rb_initialized;
   int started;
   int overrun;
+  int has_pending_byte;
 };
 
 struct cpkt_audio_playback_impl {
   ma_device device;
   ma_pcm_rb rb;
+#if defined(__unix__) || defined(__APPLE__)
+  pid_t process_pid;
+  int process_fd;
+#endif
+  int mode;
   int device_initialized;
   int rb_initialized;
   int started;
   int underrun;
 };
-#endif
 
 struct cpkt_audio_vox_impl {
   cpkt_audio_vox_config config;
@@ -1893,7 +1914,6 @@ static void cpkt_audio_encoder_destroy_impl(cpkt_audio_encoder *self) {
   free(self);
 }
 
-#ifndef CPKT_AUDIO_NO_DEVICE_IO
 static ma_backend cpkt_audio_to_ma_backend(int backend) {
   switch (backend) {
   case CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO:
@@ -1927,6 +1947,32 @@ static cpkt_audio_result cpkt_audio_resolve_device_backend(int requested,
   return CPKT_AUDIO_OK;
 }
 
+static int cpkt_audio_backend_is_process(int requested) {
+#if defined(__linux__)
+  if (requested == CPKT_AUDIO_DEVICE_BACKEND_PROCESS) {
+    return 1;
+  }
+#ifndef CPKT_AUDIO_NATIVE_RUNTIME_DEVICE_IO
+  if (requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO) {
+    return 1;
+  }
+#endif
+#else
+  (void)requested;
+#endif
+  return 0;
+}
+
+static int cpkt_audio_backend_can_process(int requested) {
+#if defined(__linux__)
+  return requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO ||
+         requested == CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
+#else
+  (void)requested;
+  return 0;
+#endif
+}
+
 static ma_uint32 cpkt_audio_device_buffer_frames(unsigned long buffer_ms) {
   unsigned long ms;
 
@@ -1946,9 +1992,172 @@ static ma_uint32 cpkt_audio_device_period_ms(unsigned long period_ms) {
   }
   return (ma_uint32)ms;
 }
+
+#if defined(__unix__) || defined(__APPLE__)
+static int cpkt_audio_process_command_exists(const char *name) {
+  const char *path;
+  const char *cursor;
+  const char *end;
+  const char *dir;
+  char candidate[PATH_MAX];
+  size_t dir_len;
+  size_t name_len;
+
+  if (name == NULL || name[0] == '\0') {
+    return 0;
+  }
+  if (strchr(name, '/') != NULL) {
+    return access(name, X_OK) == 0;
+  }
+  path = getenv("PATH");
+  if (path == NULL || path[0] == '\0') {
+    path = "/usr/local/bin:/usr/bin:/bin";
+  }
+  name_len = strlen(name);
+  cursor = path;
+  while (*cursor != '\0') {
+    end = strchr(cursor, ':');
+    if (end == NULL) {
+      end = cursor + strlen(cursor);
+    }
+    dir = cursor;
+    dir_len = (size_t)(end - cursor);
+    if (dir_len == 0U) {
+      dir_len = 1U;
+      dir = ".";
+    }
+    if (dir_len + 1U + name_len + 1U <= sizeof(candidate)) {
+      memcpy(candidate, dir, dir_len);
+      candidate[dir_len] = '/';
+      memcpy(candidate + dir_len + 1U, name, name_len + 1U);
+      if (access(candidate, X_OK) == 0) {
+        return 1;
+      }
+    }
+    cursor = *end == ':' ? end + 1 : end;
+  }
+  return 0;
+}
+
+static void cpkt_audio_process_close_fd(int *fd) {
+  if (fd != NULL && *fd >= 0) {
+    (void)close(*fd);
+    *fd = -1;
+  }
+}
+
+static void cpkt_audio_process_stop(pid_t *pid, int *fd) {
+  int status;
+
+  cpkt_audio_process_close_fd(fd);
+  if (pid != NULL && *pid > 0) {
+    (void)kill(*pid, SIGTERM);
+    if (waitpid(*pid, &status, 0) < 0 && errno == EINTR) {
+      (void)waitpid(*pid, &status, 0);
+    }
+    *pid = (pid_t)-1;
+  }
+}
+
+static cpkt_audio_result cpkt_audio_process_spawn(const char *const argv[],
+                                                  int pipe_to_child,
+                                                  int nonblock_parent,
+                                                  pid_t *pid_out,
+                                                  int *fd_out) {
+  int pipe_fds[2];
+  int devnull;
+  pid_t pid;
+  int flags;
+
+  if (argv == NULL || argv[0] == NULL || pid_out == NULL || fd_out == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  *pid_out = (pid_t)-1;
+  *fd_out = -1;
+  if (!cpkt_audio_process_command_exists(argv[0])) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  if (pipe(pipe_fds) != 0) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  pid = fork();
+  if (pid < 0) {
+    (void)close(pipe_fds[0]);
+    (void)close(pipe_fds[1]);
+    return CPKT_AUDIO_ERR_IO;
+  }
+  if (pid == 0) {
+    devnull = open("/dev/null", O_RDWR);
+    if (pipe_to_child) {
+      (void)dup2(pipe_fds[0], STDIN_FILENO);
+      if (devnull >= 0) {
+        (void)dup2(devnull, STDOUT_FILENO);
+      }
+    } else {
+      if (devnull >= 0) {
+        (void)dup2(devnull, STDIN_FILENO);
+      }
+      (void)dup2(pipe_fds[1], STDOUT_FILENO);
+    }
+    if (devnull >= 0) {
+      (void)dup2(devnull, STDERR_FILENO);
+      if (devnull > STDERR_FILENO) {
+        (void)close(devnull);
+      }
+    }
+    (void)close(pipe_fds[0]);
+    (void)close(pipe_fds[1]);
+    execvp(argv[0], (char *const *)argv);
+    _exit(127);
+  }
+  if (pipe_to_child) {
+    (void)close(pipe_fds[0]);
+    *fd_out = pipe_fds[1];
+  } else {
+    (void)close(pipe_fds[1]);
+    *fd_out = pipe_fds[0];
+  }
+  if (nonblock_parent) {
+    flags = fcntl(*fd_out, F_GETFL, 0);
+    if (flags >= 0) {
+      (void)fcntl(*fd_out, F_SETFL, flags | O_NONBLOCK);
+    }
+  }
+  *pid_out = pid;
+  return CPKT_AUDIO_OK;
+}
+
+static short cpkt_audio_s16le_to_short(const unsigned char *bytes) {
+  unsigned int value;
+
+  value = (unsigned int)bytes[0] | ((unsigned int)bytes[1] << 8);
+  if (value >= 0x8000U) {
+    return (short)((int)value - 0x10000);
+  }
+  return (short)value;
+}
+
+static void cpkt_audio_short_to_s16le(short sample, unsigned char *bytes) {
+  unsigned int value;
+
+  value = (unsigned int)((int)sample & 0xffff);
+  bytes[0] = (unsigned char)(value & 0xffU);
+  bytes[1] = (unsigned char)((value >> 8) & 0xffU);
+}
+
+static short cpkt_audio_float_to_s16(float sample) {
+  if (sample > 1.0f) {
+    sample = 1.0f;
+  } else if (sample < -1.0f) {
+    sample = -1.0f;
+  }
+  if (sample >= 0.0f) {
+    return (short)(sample * 32767.0f);
+  }
+  return (short)(sample * 32768.0f);
+}
 #endif
 
-#ifndef CPKT_AUDIO_NO_DEVICE_IO
 static void cpkt_audio_capture_callback(ma_device *device, void *output,
                                         const void *input,
                                         ma_uint32 frame_count) {
@@ -2041,6 +2250,12 @@ static cpkt_audio_result
 cpkt_audio_capture_start_impl(cpkt_audio_capture *self) {
   struct cpkt_audio_capture_impl *impl;
   ma_result result;
+#if defined(__linux__)
+  cpkt_audio_result process_result;
+  const char *const arecord_argv[] = {"arecord", "-q", "-t", "raw", "-f",
+                                      "S16_LE",  "-c", "1",  "-r", "16000",
+                                      NULL};
+#endif
 
   if (self == NULL || self->impl == NULL) {
     return CPKT_AUDIO_ERR_ARG;
@@ -2048,6 +2263,19 @@ cpkt_audio_capture_start_impl(cpkt_audio_capture *self) {
   impl = (struct cpkt_audio_capture_impl *)self->impl;
   if (impl->started) {
     return CPKT_AUDIO_OK;
+  }
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__linux__)
+    process_result = cpkt_audio_process_spawn(
+        arecord_argv, 0, 1, &impl->process_pid, &impl->process_fd);
+    if (process_result != CPKT_AUDIO_OK) {
+      return process_result;
+    }
+    impl->started = 1;
+    return CPKT_AUDIO_OK;
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
   }
   result = ma_device_start(&impl->device);
   if (result != MA_SUCCESS) {
@@ -2063,6 +2291,14 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
                                           size_t *frames_read) {
   struct cpkt_audio_capture_impl *impl;
   size_t total_read;
+#if defined(__unix__) || defined(__APPLE__)
+  unsigned char bytes[CPKT_AUDIO_PROCESS_FRAME_CHUNK * 2U];
+  unsigned char pair[2];
+  size_t byte_count;
+  size_t byte_index;
+  size_t frame_index;
+  ssize_t got;
+#endif
 
   if (frames_read != NULL) {
     *frames_read = 0U;
@@ -2076,6 +2312,67 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
   }
 
   impl = (struct cpkt_audio_capture_impl *)self->impl;
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__unix__) || defined(__APPLE__)
+    if (!impl->started || impl->process_fd < 0) {
+      return CPKT_AUDIO_OK;
+    }
+    total_read = 0U;
+    while (total_read < frame_capacity) {
+      byte_count = (frame_capacity - total_read) * 2U;
+      if (byte_count > sizeof(bytes)) {
+        byte_count = sizeof(bytes);
+      }
+      if (impl->has_pending_byte) {
+        if (byte_count < 1U) {
+          break;
+        }
+        pair[0] = impl->pending_byte;
+        got = read(impl->process_fd, pair + 1, 1U);
+        if (got < 0) {
+          if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            break;
+          }
+          return CPKT_AUDIO_ERR_IO;
+        }
+        if (got == 0) {
+          break;
+        }
+        frames[total_read++] =
+            (float)cpkt_audio_s16le_to_short(pair) / 32768.0f;
+        impl->has_pending_byte = 0;
+        continue;
+      }
+      got = read(impl->process_fd, bytes, byte_count);
+      if (got < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+          break;
+        }
+        return CPKT_AUDIO_ERR_IO;
+      }
+      if (got == 0) {
+        break;
+      }
+      byte_count = (size_t)got;
+      byte_index = 0U;
+      frame_index = total_read;
+      while (byte_index + 1U < byte_count && frame_index < frame_capacity) {
+        frames[frame_index++] =
+            (float)cpkt_audio_s16le_to_short(bytes + byte_index) / 32768.0f;
+        byte_index += 2U;
+      }
+      if (byte_index < byte_count) {
+        impl->pending_byte = bytes[byte_index];
+        impl->has_pending_byte = 1;
+      }
+      total_read = frame_index;
+    }
+    *frames_read = total_read;
+    return CPKT_AUDIO_OK;
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
+  }
   total_read = 0U;
   while (total_read < frame_capacity) {
     void *src;
@@ -2106,6 +2403,15 @@ cpkt_audio_capture_stop_impl(cpkt_audio_capture *self) {
     return CPKT_AUDIO_ERR_ARG;
   }
   impl = (struct cpkt_audio_capture_impl *)self->impl;
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__unix__) || defined(__APPLE__)
+    cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
+    impl->started = 0;
+    return CPKT_AUDIO_OK;
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
+  }
   if (impl->started) {
     ma_device_stop(&impl->device);
     impl->started = 0;
@@ -2121,6 +2427,11 @@ static void cpkt_audio_capture_destroy_impl(cpkt_audio_capture *self) {
   }
   impl = (struct cpkt_audio_capture_impl *)self->impl;
   if (impl != NULL) {
+    if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__unix__) || defined(__APPLE__)
+      cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
+#endif
+    }
     if (impl->device_initialized) {
       ma_device_uninit(&impl->device);
     }
@@ -2136,6 +2447,12 @@ static cpkt_audio_result
 cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
   struct cpkt_audio_playback_impl *impl;
   ma_result result;
+#if defined(__linux__)
+  cpkt_audio_result process_result;
+  const char *const aplay_argv[] = {"aplay", "-q", "-t", "raw", "-f",
+                                    "S16_LE", "-c", "1",  "-r", "16000",
+                                    NULL};
+#endif
 
   if (self == NULL || self->impl == NULL) {
     return CPKT_AUDIO_ERR_ARG;
@@ -2143,6 +2460,19 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
   impl = (struct cpkt_audio_playback_impl *)self->impl;
   if (impl->started) {
     return CPKT_AUDIO_OK;
+  }
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__linux__)
+    process_result = cpkt_audio_process_spawn(
+        aplay_argv, 1, 0, &impl->process_pid, &impl->process_fd);
+    if (process_result != CPKT_AUDIO_OK) {
+      return process_result;
+    }
+    impl->started = 1;
+    return CPKT_AUDIO_OK;
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
   }
   result = ma_device_start(&impl->device);
   if (result != MA_SUCCESS) {
@@ -2157,6 +2487,14 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
     size_t *frames_written) {
   struct cpkt_audio_playback_impl *impl;
   size_t total_written;
+#if defined(__unix__) || defined(__APPLE__)
+  unsigned char bytes[CPKT_AUDIO_PROCESS_FRAME_CHUNK * 2U];
+  size_t frames_now;
+  size_t frame_index;
+  size_t byte_count;
+  size_t byte_offset;
+  ssize_t wrote;
+#endif
 
   if (frames_written != NULL) {
     *frames_written = 0U;
@@ -2170,6 +2508,46 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
   }
 
   impl = (struct cpkt_audio_playback_impl *)self->impl;
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__unix__) || defined(__APPLE__)
+    if (!impl->started || impl->process_fd < 0) {
+      return CPKT_AUDIO_ERR_IO;
+    }
+    total_written = 0U;
+    while (total_written < frame_count) {
+      frames_now = frame_count - total_written;
+      if (frames_now > CPKT_AUDIO_PROCESS_FRAME_CHUNK) {
+        frames_now = CPKT_AUDIO_PROCESS_FRAME_CHUNK;
+      }
+      for (frame_index = 0U; frame_index < frames_now; ++frame_index) {
+        cpkt_audio_short_to_s16le(
+            cpkt_audio_float_to_s16(frames[total_written + frame_index]),
+            bytes + (frame_index * 2U));
+      }
+      byte_count = frames_now * 2U;
+      byte_offset = 0U;
+      while (byte_offset < byte_count) {
+        wrote = write(impl->process_fd, bytes + byte_offset,
+                      byte_count - byte_offset);
+        if (wrote < 0) {
+          if (errno == EINTR) {
+            continue;
+          }
+          return CPKT_AUDIO_ERR_IO;
+        }
+        if (wrote == 0) {
+          return CPKT_AUDIO_ERR_IO;
+        }
+        byte_offset += (size_t)wrote;
+      }
+      total_written += frames_now;
+    }
+    *frames_written = total_written;
+    return CPKT_AUDIO_OK;
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
+  }
   total_written = 0U;
   while (total_written < frame_count) {
     void *dst;
@@ -2201,6 +2579,9 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
     return CPKT_AUDIO_ERR_ARG;
   }
   impl = (struct cpkt_audio_playback_impl *)self->impl;
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+    return CPKT_AUDIO_OK;
+  }
   while (ma_pcm_rb_available_read(&impl->rb) > 0U) {
     ma_sleep(10);
   }
@@ -2215,6 +2596,15 @@ cpkt_audio_playback_stop_impl(cpkt_audio_playback *self) {
     return CPKT_AUDIO_ERR_ARG;
   }
   impl = (struct cpkt_audio_playback_impl *)self->impl;
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__unix__) || defined(__APPLE__)
+    cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
+    impl->started = 0;
+    return CPKT_AUDIO_OK;
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
+  }
   if (impl->started) {
     ma_device_stop(&impl->device);
     impl->started = 0;
@@ -2230,6 +2620,11 @@ static void cpkt_audio_playback_destroy_impl(cpkt_audio_playback *self) {
   }
   impl = (struct cpkt_audio_playback_impl *)self->impl;
   if (impl != NULL) {
+    if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__unix__) || defined(__APPLE__)
+      cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
+#endif
+    }
     if (impl->device_initialized) {
       ma_device_uninit(&impl->device);
     }
@@ -2240,7 +2635,6 @@ static void cpkt_audio_playback_destroy_impl(cpkt_audio_playback *self) {
   }
   free(self);
 }
-#endif
 
 static cpkt_audio_result
 cpkt_audio_decoder_alloc(cpkt_audio_decoder **out,
@@ -2300,7 +2694,6 @@ cpkt_audio_encoder_alloc(cpkt_audio_encoder **out,
   return CPKT_AUDIO_OK;
 }
 
-#ifndef CPKT_AUDIO_NO_DEVICE_IO
 static cpkt_audio_result
 cpkt_audio_capture_alloc(cpkt_audio_capture **out,
                          cpkt_audio_capture **capture_out,
@@ -2322,6 +2715,10 @@ cpkt_audio_capture_alloc(cpkt_audio_capture **out,
     return CPKT_AUDIO_ERR_ALLOC;
   }
   capture->impl = impl;
+#if defined(__unix__) || defined(__APPLE__)
+  impl->process_pid = (pid_t)-1;
+  impl->process_fd = -1;
+#endif
   capture->start = cpkt_audio_capture_start_impl;
   capture->read_f32_mono_16k = cpkt_audio_capture_read_f32_mono_16k_impl;
   capture->stop = cpkt_audio_capture_stop_impl;
@@ -2352,6 +2749,10 @@ cpkt_audio_playback_alloc(cpkt_audio_playback **out,
     return CPKT_AUDIO_ERR_ALLOC;
   }
   playback->impl = impl;
+#if defined(__unix__) || defined(__APPLE__)
+  impl->process_pid = (pid_t)-1;
+  impl->process_fd = -1;
+#endif
   playback->start = cpkt_audio_playback_start_impl;
   playback->write_f32_mono_16k = cpkt_audio_playback_write_f32_mono_16k_impl;
   playback->drain = cpkt_audio_playback_drain_impl;
@@ -2361,7 +2762,6 @@ cpkt_audio_playback_alloc(cpkt_audio_playback **out,
   *impl_out = impl;
   return CPKT_AUDIO_OK;
 }
-#endif
 
 static ma_decoder_config
 cpkt_audio_ma_decoder_config(const cpkt_audio_decoder_config *config) {
@@ -2699,7 +3099,6 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_encoder_open_writer(
   return CPKT_AUDIO_OK;
 }
 
-#ifndef CPKT_AUDIO_NO_DEVICE_IO
 /** Opens receiver-shell capture from the platform default input device. */
 CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
     cpkt_audio_capture **out, const cpkt_audio_capture_config *config) {
@@ -2710,6 +3109,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
   ma_result ma_status;
   cpkt_audio_result result;
   ma_uint32 buffer_frames;
+  int requested_backend;
 
   if (out != NULL) {
     *out = NULL;
@@ -2717,6 +3117,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
   if (out == NULL) {
     return CPKT_AUDIO_ERR_ARG;
   }
+  requested_backend = config != NULL ? config->backend : 0;
 
   buffer_frames =
       cpkt_audio_device_buffer_frames(config != NULL ? config->buffer_ms : 0UL);
@@ -2727,6 +3128,24 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
   result = cpkt_audio_capture_alloc(out, &capture, &impl);
   if (result != CPKT_AUDIO_OK) {
     return result;
+  }
+  if (cpkt_audio_backend_is_process(requested_backend)) {
+#if defined(__linux__)
+    if (!cpkt_audio_process_command_exists("arecord")) {
+      capture->impl = NULL;
+      free(impl);
+      free(capture);
+      return CPKT_AUDIO_ERR_IO;
+    }
+    impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+    *out = capture;
+    return CPKT_AUDIO_OK;
+#else
+    capture->impl = NULL;
+    free(impl);
+    free(capture);
+    return CPKT_AUDIO_ERR_ARG;
+#endif
   }
   ma_status =
       ma_pcm_rb_init(ma_format_f32, 1, buffer_frames, NULL, NULL, &impl->rb);
@@ -2747,8 +3166,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
   ma_config.dataCallback = cpkt_audio_capture_callback;
   ma_config.pUserData = impl;
 
-  result = cpkt_audio_resolve_device_backend(
-      config != NULL ? config->backend : 0, &backend);
+  result = cpkt_audio_resolve_device_backend(requested_backend, &backend);
   if (result != CPKT_AUDIO_OK) {
     capture->impl = NULL;
     ma_pcm_rb_uninit(&impl->rb);
@@ -2762,6 +3180,16 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
     ma_status = ma_device_init_ex(&backend, 1, NULL, &ma_config, &impl->device);
   }
   if (ma_status != MA_SUCCESS) {
+#if defined(__linux__) && defined(CPKT_AUDIO_NATIVE_RUNTIME_DEVICE_IO)
+    if (cpkt_audio_backend_can_process(requested_backend) &&
+        cpkt_audio_process_command_exists("arecord")) {
+      ma_pcm_rb_uninit(&impl->rb);
+      impl->rb_initialized = 0;
+      impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+      *out = capture;
+      return CPKT_AUDIO_OK;
+    }
+#endif
     capture->impl = NULL;
     ma_pcm_rb_uninit(&impl->rb);
     free(impl);
@@ -2783,6 +3211,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
   ma_result ma_status;
   cpkt_audio_result result;
   ma_uint32 buffer_frames;
+  int requested_backend;
 
   if (out != NULL) {
     *out = NULL;
@@ -2790,6 +3219,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
   if (out == NULL) {
     return CPKT_AUDIO_ERR_ARG;
   }
+  requested_backend = config != NULL ? config->backend : 0;
 
   buffer_frames =
       cpkt_audio_device_buffer_frames(config != NULL ? config->buffer_ms : 0UL);
@@ -2800,6 +3230,24 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
   result = cpkt_audio_playback_alloc(out, &playback, &impl);
   if (result != CPKT_AUDIO_OK) {
     return result;
+  }
+  if (cpkt_audio_backend_is_process(requested_backend)) {
+#if defined(__linux__)
+    if (!cpkt_audio_process_command_exists("aplay")) {
+      playback->impl = NULL;
+      free(impl);
+      free(playback);
+      return CPKT_AUDIO_ERR_IO;
+    }
+    impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+    *out = playback;
+    return CPKT_AUDIO_OK;
+#else
+    playback->impl = NULL;
+    free(impl);
+    free(playback);
+    return CPKT_AUDIO_ERR_ARG;
+#endif
   }
   ma_status =
       ma_pcm_rb_init(ma_format_f32, 1, buffer_frames, NULL, NULL, &impl->rb);
@@ -2820,8 +3268,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
   ma_config.dataCallback = cpkt_audio_playback_callback;
   ma_config.pUserData = impl;
 
-  result = cpkt_audio_resolve_device_backend(
-      config != NULL ? config->backend : 0, &backend);
+  result = cpkt_audio_resolve_device_backend(requested_backend, &backend);
   if (result != CPKT_AUDIO_OK) {
     playback->impl = NULL;
     ma_pcm_rb_uninit(&impl->rb);
@@ -2835,6 +3282,16 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
     ma_status = ma_device_init_ex(&backend, 1, NULL, &ma_config, &impl->device);
   }
   if (ma_status != MA_SUCCESS) {
+#if defined(__linux__) && defined(CPKT_AUDIO_NATIVE_RUNTIME_DEVICE_IO)
+    if (cpkt_audio_backend_can_process(requested_backend) &&
+        cpkt_audio_process_command_exists("aplay")) {
+      ma_pcm_rb_uninit(&impl->rb);
+      impl->rb_initialized = 0;
+      impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+      *out = playback;
+      return CPKT_AUDIO_OK;
+    }
+#endif
     playback->impl = NULL;
     ma_pcm_rb_uninit(&impl->rb);
     free(impl);
@@ -2845,29 +3302,6 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
   *out = playback;
   return CPKT_AUDIO_OK;
 }
-#else
-/** Opens receiver-shell capture from the platform default input device. */
-CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
-    cpkt_audio_capture **out, const cpkt_audio_capture_config *config) {
-  (void)config;
-  if (out == NULL) {
-    return CPKT_AUDIO_ERR_ARG;
-  }
-  *out = NULL;
-  return CPKT_AUDIO_ERR_IO;
-}
-
-/** Opens receiver-shell playback to the platform default output device. */
-CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
-    cpkt_audio_playback **out, const cpkt_audio_playback_config *config) {
-  (void)config;
-  if (out == NULL) {
-    return CPKT_AUDIO_ERR_ARG;
-  }
-  *out = NULL;
-  return CPKT_AUDIO_ERR_IO;
-}
-#endif
 
 /** Opens a receiver-shell VOX segmenter for float32 mono 16000 Hz PCM. */
 CPKT_AUDIO_EXPORT cpkt_audio_result

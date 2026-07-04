@@ -328,7 +328,10 @@ add_library(cpkt_audio_static STATIC src/audio.c)
 target_compile_features(cpkt_audio_static PRIVATE c_std_99)
 cpkt_add_repo_warning_errors(cpkt_audio_static)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-  target_compile_options(cpkt_audio_static PRIVATE -Wno-unused-function)
+  target_compile_options(cpkt_audio_static PRIVATE
+    -Wno-unused-function
+    -ffunction-sections
+    -fdata-sections)
 endif()
 target_include_directories(cpkt_audio_static
   PUBLIC
@@ -347,33 +350,6 @@ set_target_properties(cpkt_audio_static PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 
-add_library(cpkt_audio_nodevice_static STATIC src/audio.c)
-target_compile_features(cpkt_audio_nodevice_static PRIVATE c_std_99)
-cpkt_add_repo_warning_errors(cpkt_audio_nodevice_static)
-if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-  target_compile_options(cpkt_audio_nodevice_static PRIVATE
-    -Wno-unused-function
-    -ffunction-sections
-    -fdata-sections)
-endif()
-target_compile_definitions(cpkt_audio_nodevice_static PRIVATE
-  CPKT_AUDIO_NO_DEVICE_IO)
-target_include_directories(cpkt_audio_nodevice_static
-  PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
-  PRIVATE
-    "$<TARGET_PROPERTY:cpkt::miniaudio_static,INTERFACE_INCLUDE_DIRECTORIES>"
-)
-target_link_libraries(cpkt_audio_nodevice_static PUBLIC
-  cpkt::curl_static
-  m
-  Threads::Threads
-)
-set_target_properties(cpkt_audio_nodevice_static PROPERTIES
-  OUTPUT_NAME cpktaudio-nodevice
-  POSITION_INDEPENDENT_CODE ON
-)
-
 add_library(cpkt_audio_shared SHARED src/audio.c)
 target_compile_features(cpkt_audio_shared PRIVATE c_std_99)
 cpkt_add_repo_warning_errors(cpkt_audio_shared)
@@ -386,6 +362,8 @@ target_include_directories(cpkt_audio_shared
   PRIVATE
     "$<TARGET_PROPERTY:cpkt::miniaudio_shared,INTERFACE_INCLUDE_DIRECTORIES>"
 )
+target_compile_definitions(cpkt_audio_shared PRIVATE
+  CPKT_AUDIO_NATIVE_RUNTIME_DEVICE_IO)
 target_link_libraries(cpkt_audio_shared PUBLIC
   cpkt::curl_shared
   m
@@ -415,7 +393,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_audio_static cpkt_deps)
-  add_dependencies(cpkt_audio_nodevice_static cpkt_deps)
   add_dependencies(cpkt_audio_shared cpkt_deps)
 endif()
 
@@ -437,27 +414,6 @@ target_compile_definitions(cpkt_sus_static PRIVATE
   CPKT_SUS_BACKEND_CAPABILITIES="${CPKT_SUS_BACKEND_CAPABILITIES}")
 set_target_properties(cpkt_sus_static PROPERTIES
   OUTPUT_NAME cpktsus
-  POSITION_INDEPENDENT_CODE ON
-)
-
-add_library(cpkt_sus_nodevice_static STATIC src/sus.c)
-target_compile_features(cpkt_sus_nodevice_static PRIVATE c_std_99)
-cpkt_add_repo_warning_errors(cpkt_sus_nodevice_static)
-target_include_directories(cpkt_sus_nodevice_static
-  PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
-)
-target_link_libraries(cpkt_sus_nodevice_static PUBLIC
-  cpkt_audio_nodevice_static
-  cpkt::whisper_static
-  cpkt::curl_static
-  cpkt::openssl_crypto_static
-)
-target_compile_definitions(cpkt_sus_nodevice_static PRIVATE
-  CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}"
-  CPKT_SUS_BACKEND_CAPABILITIES="${CPKT_SUS_BACKEND_CAPABILITIES}")
-set_target_properties(cpkt_sus_nodevice_static PROPERTIES
-  OUTPUT_NAME cpktsus-nodevice
   POSITION_INDEPENDENT_CODE ON
 )
 
@@ -499,7 +455,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_sus_static cpkt_deps)
-  add_dependencies(cpkt_sus_nodevice_static cpkt_deps)
   add_dependencies(cpkt_sus_shared cpkt_deps)
 endif()
 
@@ -519,7 +474,7 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
   elseif(MSVC)
     target_compile_options(cpktxscribe PRIVATE /W4 /WX)
   endif()
-  target_link_libraries(cpktxscribe PRIVATE cpkt_sus_nodevice_static)
+  target_link_libraries(cpktxscribe PRIVATE cpkt_sus_static)
   set_target_properties(cpktxscribe PROPERTIES
     LINKER_LANGUAGE CXX
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
@@ -530,14 +485,6 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
     add_dependencies(cpktxscribe cpkt_deps)
   endif()
   if(CPKT_BUILD_TESTS)
-    add_test(NAME cpktxscribe_no_device_backend_strings
-      COMMAND ${CMAKE_COMMAND}
-        -DCPKT_BINARY=$<TARGET_FILE:cpktxscribe>
-        -P ${CMAKE_SOURCE_DIR}/cmake/check_binary_absent_strings.cmake)
-    add_test(
-      NAME cpktxscribe_nodevice_policy
-      COMMAND ${CMAKE_SOURCE_DIR}/tests/cpktxscribe_nodevice_policy_test.sh
-        ${CMAKE_SOURCE_DIR})
     add_test(
       NAME cpktxscribe_cache_status
       COMMAND ${CMAKE_SOURCE_DIR}/tests/cpktxscribe_cache_status_test.sh
@@ -656,9 +603,20 @@ if(CPKT_BUILD_TESTS)
   target_compile_options(cpkt_audio_live_vox_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_audio_live_vox_c89_example)
   target_link_libraries(cpkt_audio_live_vox_c89_example PRIVATE
-    cpkt_audio_static)
+    cpkt_audio_shared)
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpkt_audio_live_vox_c89_example cpkt_deps)
+  endif()
+
+  add_executable(cpkt_audio_live_vox_static_c89_example
+    examples/audio-live-vox-c89/main.c)
+  target_compile_options(cpkt_audio_live_vox_static_c89_example PRIVATE
+    -std=c89)
+  cpkt_add_repo_warning_errors(cpkt_audio_live_vox_static_c89_example)
+  target_link_libraries(cpkt_audio_live_vox_static_c89_example PRIVATE
+    cpkt_audio_static)
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt_audio_live_vox_static_c89_example cpkt_deps)
   endif()
 
   add_executable(cpkt_sus_vox_intro_c89_example
@@ -679,10 +637,24 @@ if(CPKT_BUILD_TESTS)
   set_target_properties(cpkt_sus_live_vox_c89_example PROPERTIES
     LINKER_LANGUAGE CXX)
   target_link_libraries(cpkt_sus_live_vox_c89_example PRIVATE
+    cpkt_audio_shared
+    cpkt_sus_shared)
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt_sus_live_vox_c89_example cpkt_deps)
+  endif()
+
+  add_executable(cpkt_sus_live_vox_static_c89_example
+    examples/sus-live-vox-c89/main.c)
+  target_compile_options(cpkt_sus_live_vox_static_c89_example PRIVATE
+    -std=c89)
+  cpkt_add_repo_warning_errors(cpkt_sus_live_vox_static_c89_example)
+  set_target_properties(cpkt_sus_live_vox_static_c89_example PROPERTIES
+    LINKER_LANGUAGE CXX)
+  target_link_libraries(cpkt_sus_live_vox_static_c89_example PRIVATE
     cpkt_audio_static
     cpkt_sus_static)
   if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_sus_live_vox_c89_example cpkt_deps)
+    add_dependencies(cpkt_sus_live_vox_static_c89_example cpkt_deps)
   endif()
 
   add_executable(cpkt_abi_smoke_shared examples/abi_smoke.c)
@@ -849,10 +821,14 @@ if(CPKT_BUILD_TESTS)
       COMMAND cpkt_audio_vox_intro_c89_example)
     add_test(NAME audio_live_vox_c89_example
       COMMAND cpkt_audio_live_vox_c89_example --smoke)
+    add_test(NAME audio_live_vox_static_c89_example
+      COMMAND cpkt_audio_live_vox_static_c89_example --smoke)
     add_test(NAME sus_vox_intro_c89_example
       COMMAND cpkt_sus_vox_intro_c89_example)
     add_test(NAME sus_live_vox_c89_example
       COMMAND cpkt_sus_live_vox_c89_example --smoke)
+    add_test(NAME sus_live_vox_static_c89_example
+      COMMAND cpkt_sus_live_vox_static_c89_example --smoke)
     add_test(
       NAME sus_live_startup_status
       COMMAND
@@ -863,6 +839,10 @@ if(CPKT_BUILD_TESTS)
     set_tests_properties(sus_vox_intro_c89_example PROPERTIES
       ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     set_tests_properties(sus_live_vox_c89_example PROPERTIES
+      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+    set_tests_properties(sus_live_startup_status PROPERTIES
+      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+    set_tests_properties(sus_live_vox_static_c89_example PROPERTIES
       ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     add_test(
       NAME opcua_word_portability

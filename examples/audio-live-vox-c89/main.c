@@ -123,6 +123,8 @@ static int cpkt_live_vox_parse_backend(const char *text, int *out) {
   }
   if (strcmp(text, "auto") == 0) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_AUTO;
+  } else if (strcmp(text, "process") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
   } else if (strcmp(text, "coreaudio") == 0) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO;
   } else {
@@ -392,7 +394,7 @@ static void cpkt_live_vox_usage(FILE *out) {
   fprintf(
       out,
       "  --period-ms N               Device callback period; default 20.\n");
-  fprintf(out, "  --backend NAME              auto, coreaudio.\n");
+  fprintf(out, "  --backend NAME              auto, process, coreaudio.\n");
   fprintf(out, "  --dump-dir DIR              Optional WAV dump directory.\n");
   fprintf(out, "  --smoke                     Run no-device smoke check.\n");
 }
