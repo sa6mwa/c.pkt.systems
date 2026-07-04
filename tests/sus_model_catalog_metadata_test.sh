@@ -101,6 +101,11 @@ if defaults != ["small"]:
 for row in metadata_rows:
     if not row["source_url"].startswith("https://huggingface.co/"):
         raise SystemExit(f"model source URL is not a logical Hugging Face URL: {row}")
+    if row["provider"].startswith("KBLab/") and row["filename"] in {
+        "ggml-model.bin",
+        "ggml-model-q5_0.bin",
+    }:
+        raise SystemExit(f"KBLab cache filename is not facade-owned: {row}")
     if not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]):
         raise SystemExit(f"model SHA-256 is not lowercase hex: {row}")
     if not row["size_bytes"].isdigit() or int(row["size_bytes"]) <= 0:
