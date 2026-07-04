@@ -8,10 +8,14 @@
 #include <curl/curl.h>
 #include <miniaudio.h>
 
+#define CPKT_AUDIO_URL_REWIND_BYTES 1048576U
+#define CPKT_AUDIO_URL_BUFFER_CHUNK 16384U
+
 struct cpkt_audio_url_source {
   CURLM *multi;
   CURL *easy;
   unsigned char *buffer;
+  size_t buffer_base;
   size_t buffer_size;
   size_t buffer_cursor;
   size_t buffer_capacity;
@@ -139,6 +143,52 @@ static void cpkt_audio_url_source_destroy(struct cpkt_audio_url_source *source) 
   free(source);
 }
 
+static int cpkt_audio_size_add(size_t left, size_t right, size_t *out) {
+  if (out == NULL || left > ((size_t)-1) - right) {
+    return 0;
+  }
+  *out = left + right;
+  return 1;
+}
+
+static size_t cpkt_audio_url_buffer_end(
+    const struct cpkt_audio_url_source *source) {
+  size_t end;
+
+  if (source == NULL ||
+      !cpkt_audio_size_add(source->buffer_base, source->buffer_size, &end)) {
+    return (size_t)-1;
+  }
+  return end;
+}
+
+static void
+cpkt_audio_url_source_discard_consumed(struct cpkt_audio_url_source *source) {
+  size_t keep_from;
+  size_t discard;
+
+  if (source == NULL || source->buffer_cursor <= source->buffer_base) {
+    return;
+  }
+  keep_from = source->buffer_cursor > CPKT_AUDIO_URL_REWIND_BYTES
+                  ? source->buffer_cursor - CPKT_AUDIO_URL_REWIND_BYTES
+                  : 0U;
+  if (keep_from <= source->buffer_base) {
+    return;
+  }
+  discard = keep_from - source->buffer_base;
+  if (discard > source->buffer_size) {
+    source->failed = 1;
+    return;
+  }
+  if (discard < source->buffer_size) {
+    memmove(source->buffer, source->buffer + discard,
+            source->buffer_size - discard);
+  }
+  source->buffer_base += discard;
+  source->buffer_size -= discard;
+}
+
 static size_t cpkt_audio_url_write(void *buffer, size_t size, size_t nmemb,
                                    void *user) {
   struct cpkt_audio_url_source *source;
@@ -158,6 +208,10 @@ static size_t cpkt_audio_url_write(void *buffer, size_t size, size_t nmemb,
   if (byte_count == 0U) {
     return 0U;
   }
+  cpkt_audio_url_source_discard_consumed(source);
+  if (source->failed) {
+    return 0U;
+  }
   if (source->buffer_size > ((size_t)-1) - byte_count) {
     source->failed = 1;
     return 0U;
@@ -166,8 +220,9 @@ static size_t cpkt_audio_url_write(void *buffer, size_t size, size_t nmemb,
   if (needed > source->buffer_capacity) {
     size_t next_capacity;
 
-    next_capacity = source->buffer_capacity == 0U ? 16384U
-                                                  : source->buffer_capacity;
+    next_capacity = source->buffer_capacity == 0U
+                        ? CPKT_AUDIO_URL_BUFFER_CHUNK
+                        : source->buffer_capacity;
     while (next_capacity < needed) {
       if (next_capacity > ((size_t)-1) / 2U) {
         source->failed = 1;
@@ -233,18 +288,18 @@ static int cpkt_audio_url_source_progress(struct cpkt_audio_url_source *source) 
 }
 
 static int cpkt_audio_url_source_download_until(
-    struct cpkt_audio_url_source *source, size_t target_size) {
+    struct cpkt_audio_url_source *source, size_t target_offset) {
   int queued;
 
   if (source == NULL) {
     return 1;
   }
-  while (source->buffer_size < target_size && !source->done &&
+  while (cpkt_audio_url_buffer_end(source) < target_offset && !source->done &&
          !source->failed) {
     if (cpkt_audio_url_source_progress(source) != 0) {
       break;
     }
-    if (source->buffer_size < target_size && !source->done &&
+    if (cpkt_audio_url_buffer_end(source) < target_offset && !source->done &&
         !source->failed) {
       queued = 0;
       if (curl_multi_poll(source->multi, NULL, 0U, 1000, &queued) != CURLM_OK) {
@@ -259,7 +314,9 @@ static int cpkt_audio_url_source_download_until(
 static size_t cpkt_audio_url_read(void *user, void *buffer,
                                   size_t bytes_to_read) {
   struct cpkt_audio_url_source *source;
-  size_t target_size;
+  size_t target_offset;
+  size_t buffer_end;
+  size_t buffer_offset;
   size_t available;
   size_t to_copy;
 
@@ -272,15 +329,21 @@ static size_t cpkt_audio_url_read(void *user, void *buffer,
     return 0U;
   }
 
-  target_size = source->buffer_cursor + bytes_to_read;
-  if (cpkt_audio_url_source_download_until(source, target_size) != 0 ||
-      source->buffer_size <= source->buffer_cursor) {
+  target_offset = source->buffer_cursor + bytes_to_read;
+  if (cpkt_audio_url_source_download_until(source, target_offset) != 0) {
     return 0U;
   }
-  available = source->buffer_size - source->buffer_cursor;
+  buffer_end = cpkt_audio_url_buffer_end(source);
+  if (source->buffer_cursor < source->buffer_base ||
+      source->buffer_cursor >= buffer_end) {
+    return 0U;
+  }
+  buffer_offset = source->buffer_cursor - source->buffer_base;
+  available = buffer_end - source->buffer_cursor;
   to_copy = available < bytes_to_read ? available : bytes_to_read;
-  memcpy(buffer, source->buffer + source->buffer_cursor, to_copy);
+  memcpy(buffer, source->buffer + buffer_offset, to_copy);
   source->buffer_cursor += to_copy;
+  cpkt_audio_url_source_discard_consumed(source);
   return to_copy;
 }
 
@@ -289,6 +352,7 @@ static int cpkt_audio_url_seek(void *user, long offset, int origin) {
   long base;
   long target_long;
   size_t target;
+  size_t buffer_end;
 
   source = (struct cpkt_audio_url_source *)user;
   if (source == NULL) {
@@ -316,7 +380,8 @@ static int cpkt_audio_url_seek(void *user, long offset, int origin) {
   if (cpkt_audio_url_source_download_until(source, target) != 0) {
     return -1;
   }
-  if (target > source->buffer_size) {
+  buffer_end = cpkt_audio_url_buffer_end(source);
+  if (target < source->buffer_base || target > buffer_end) {
     return -1;
   }
   source->buffer_cursor = target;
