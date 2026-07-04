@@ -402,7 +402,8 @@ re-use across processes.
 The first transcription tier must support:
 
 - transcribe `float32` mono 16000 Hz PCM buffers;
-- transcribe chunks/windows from a `cpkt_audio_decoder` integration path;
+- transcribe realtime rolling buffers from a `cpkt_audio_decoder` integration
+  path;
 - segment callback output using whisper.cpp's new-segment callback and segment
   accessors;
 - progress callback;
@@ -412,10 +413,15 @@ The first transcription tier must support:
 - explicit materialized-text helper that allocates a final transcript string;
 - project-owned free function for materialized strings.
 
-Whisper.cpp is not truly continuous sample-by-sample streaming. The facade
-should describe its behavior as chunked/windowed inference with streaming
+Whisper.cpp realtime transcription is not a separate incremental decoder API.
+Its own `examples/stream` path repeatedly calls `whisper_full` over a rolling
+PCM buffer built from `step_ms` of new audio, up to `length_ms` of retained audio
+context, and `keep_ms` of boundary audio after committed steps. The facade
+should expose those upstream concepts directly for decoder integration and
+describe the behavior as realtime rolling-buffer inference with streaming
 segment callbacks. Do not hide full-audio materialization behind a
-streaming-looking API.
+streaming-looking API, and do not invent a separate seconds/window contract that
+does not match upstream semantics.
 
 Initial transcription options should expose only stable, high-value knobs:
 
@@ -428,8 +434,9 @@ Initial transcription options should expose only stable, high-value knobs:
 - language (`NULL`, empty string, or `"auto"` means auto-detect);
 - translate vs transcribe;
 - timestamps on/off;
-- max segment length or single-segment mode only if needed for usable streaming
-  behavior;
+- realtime decoder options named after upstream `whisper-stream`: `step_ms`,
+  `length_ms`, `keep_ms`, optional prompt-token context carryover, audio context,
+  and max tokens;
 - initial prompt;
 - progress and abort callbacks.
 
@@ -446,8 +453,9 @@ The desired workflow is:
 
 1. Open audio through `cpkt_audio_decoder`.
 2. Decode as `float32` mono 16000 Hz.
-3. Feed bounded PCM chunks/windows into `cpkt_sus_transcriber`.
-4. Emit transcript segments through a callback sink.
+3. Feed bounded rolling PCM slices into `cpkt_sus_transcriber` using the
+   whisper.cpp realtime stream loop (`step_ms`, `length_ms`, `keep_ms`).
+4. Emit realtime transcript hypotheses through a callback sink.
 
 If the dependency direction causes undesirable coupling, put cross-library
 helpers in examples or an optional integration target instead of making

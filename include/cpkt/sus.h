@@ -9,6 +9,11 @@ extern "C" {
 typedef struct cpkt_sus_model cpkt_sus_model;
 /** Handle for a transcription instance bound to a loaded model. */
 typedef struct cpkt_sus_transcriber cpkt_sus_transcriber;
+/** Opaque audio decoder handle accepted by audio streaming helpers. */
+#ifndef CPKT_AUDIO_DECODER_TYPEDEF
+#define CPKT_AUDIO_DECODER_TYPEDEF
+typedef struct cpkt_audio_decoder cpkt_audio_decoder;
+#endif
 /** Compatibility alias for the initial combined model handle name. */
 typedef cpkt_sus_model cpkt_sus;
 
@@ -156,6 +161,40 @@ typedef struct cpkt_sus_transcriber_config {
   void *abort_user;
 } cpkt_sus_transcriber_config;
 
+/** Realtime audio-decoder transcription options. Zero initializes defaults. */
+typedef struct cpkt_sus_realtime_config {
+  /**
+   * Frames pulled from the audio decoder per read. Zero selects 4096 frames.
+   */
+  unsigned long read_frames;
+  /**
+   * New decoded audio accumulated before each inference call, in
+   * milliseconds. Zero selects the backend realtime default.
+   */
+  unsigned long step_ms;
+  /**
+   * Maximum rolling audio context passed to each inference call, in
+   * milliseconds. Zero selects the backend realtime default and values
+   * below step_ms are raised to step_ms.
+   */
+  unsigned long length_ms;
+  /**
+   * Audio retained after each committed step to reduce word-boundary cuts, in
+   * milliseconds. Zero selects the backend realtime default and values
+   * above step_ms are capped to step_ms.
+   */
+  unsigned long keep_ms;
+  /**
+   * Non-zero carries prompt tokens between committed realtime steps. Zero
+   * selects the backend realtime default.
+   */
+  int keep_context;
+  /** Backend audio context override. Zero keeps the backend default. */
+  unsigned long audio_ctx;
+  /** Maximum tokens per inference call. Zero keeps the backend default. */
+  unsigned long max_tokens;
+} cpkt_sus_realtime_config;
+
 /** Receiver shell for loaded model operations. */
 struct cpkt_sus_model {
   /** Private implementation pointer. Callers must not inspect or modify it. */
@@ -192,6 +231,18 @@ struct cpkt_sus_transcriber {
                                                   const float *samples,
                                                   unsigned long sample_count,
                                                   char **text_out);
+  /**
+   * Runs backend realtime transcription over decoded audio.
+   *
+   * The decoder must produce float32 mono 16000 Hz PCM, as cpkt_audio_decoder
+   * does. The transcriber reads until end-of-stream and repeatedly runs
+   * inference over step_ms of new audio plus retained rolling context. The full
+   * decoded stream is never materialized. Segment callbacks receive each
+   * realtime hypothesis.
+   */
+  cpkt_sus_result (*transcribe_audio_decoder_realtime)(
+      cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
+      const cpkt_sus_realtime_config *config);
   /** Releases the transcriber. The loaded model remains owned by its model
    * handle. */
   void (*destroy)(cpkt_sus_transcriber *self);

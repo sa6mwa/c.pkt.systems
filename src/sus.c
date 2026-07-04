@@ -1,5 +1,7 @@
 #include <cpkt/sus.h>
 
+#include <cpkt/audio.h>
+
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -803,7 +805,6 @@ cpkt_sus_whisper_new_segment_callback(struct whisper_context *context,
         cpkt_sus_i64_to_long(whisper_full_get_segment_t0_from_state(state, i));
     segment.t1 =
         cpkt_sus_i64_to_long(whisper_full_get_segment_t1_from_state(state, i));
-
     sink_result =
         impl->config.segment_sink(&segment, impl->config.segment_user);
     if (sink_result != 0) {
@@ -985,6 +986,378 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_f32_mono_16k_text_impl(
   return CPKT_SUS_OK;
 }
 
+static int cpkt_sus_ul_to_int(unsigned long value, int *out) {
+  if (out == NULL || value > (unsigned long)INT_MAX) {
+    return 0;
+  }
+  *out = (int)value;
+  return 1;
+}
+
+static int cpkt_sus_ms_to_frames(unsigned long ms, unsigned long *out) {
+  if (out == NULL || ms > ((unsigned long)-1) / 16UL) {
+    return 0;
+  }
+  *out = ms * 16UL;
+  return 1;
+}
+
+static cpkt_sus_result cpkt_sus_emit_realtime_segments(
+    struct cpkt_sus_transcriber_impl *impl,
+    struct whisper_context *context) {
+  cpkt_sus_segment segment;
+  const char *text;
+  int count;
+  int i;
+
+  if (impl == NULL || context == NULL || impl->config.segment_sink == NULL) {
+    return CPKT_SUS_OK;
+  }
+
+  count = whisper_full_n_segments(context);
+  for (i = 0; i < count; ++i) {
+    text = whisper_full_get_segment_text(context, i);
+    memset(&segment, 0, sizeof(segment));
+    segment.text = text;
+    segment.text_length = text == NULL ? 0UL : (unsigned long)strlen(text);
+    segment.t0 = cpkt_sus_i64_to_long(whisper_full_get_segment_t0(context, i));
+    segment.t1 = cpkt_sus_i64_to_long(whisper_full_get_segment_t1(context, i));
+    if (impl->config.segment_sink(&segment, impl->config.segment_user) != 0) {
+      impl->callback_error = 1;
+      return CPKT_SUS_ERR_CALLBACK;
+    }
+  }
+  return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result cpkt_sus_capture_prompt_tokens(
+    struct whisper_context *context, whisper_token **tokens, size_t *count,
+    size_t *capacity) {
+  whisper_token *grown;
+  int segment_count;
+  int token_count;
+  int i;
+  int j;
+
+  if (context == NULL || tokens == NULL || count == NULL ||
+      capacity == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  *count = 0U;
+  segment_count = whisper_full_n_segments(context);
+  for (i = 0; i < segment_count; ++i) {
+    token_count = whisper_full_n_tokens(context, i);
+    if (token_count < 0) {
+      return CPKT_SUS_ERR_UPSTREAM;
+    }
+    if ((size_t)token_count > ((size_t)-1) - *count) {
+      return CPKT_SUS_ERR_ALLOC;
+    }
+    if (*count + (size_t)token_count > *capacity) {
+      size_t next_capacity;
+
+      next_capacity = *capacity == 0U ? 64U : *capacity;
+      while (next_capacity < *count + (size_t)token_count) {
+        if (next_capacity > ((size_t)-1) / 2U) {
+          return CPKT_SUS_ERR_ALLOC;
+        }
+        next_capacity *= 2U;
+      }
+      grown = (whisper_token *)realloc(
+          *tokens, sizeof(**tokens) * next_capacity);
+      if (grown == NULL) {
+        return CPKT_SUS_ERR_ALLOC;
+      }
+      *tokens = grown;
+      *capacity = next_capacity;
+    }
+    for (j = 0; j < token_count; ++j) {
+      (*tokens)[*count] = whisper_full_get_token_id(context, i, j);
+      ++*count;
+    }
+  }
+  return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result cpkt_sus_read_decoder_step(
+    cpkt_audio_decoder *decoder, float *samples, unsigned long step_frames,
+    unsigned long read_frames, unsigned long *frames_out, int *at_end_out) {
+  cpkt_audio_result audio_result;
+  unsigned long used;
+  size_t frames_read;
+
+  if (decoder == NULL || decoder->read_f32_mono_16k == NULL ||
+      samples == NULL || frames_out == NULL || at_end_out == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  used = 0UL;
+  *at_end_out = 0;
+  while (used < step_frames) {
+    unsigned long requested;
+
+    requested = step_frames - used;
+    if (requested > read_frames) {
+      requested = read_frames;
+    }
+    frames_read = 0U;
+    audio_result =
+        decoder->read_f32_mono_16k(decoder, samples + used,
+                                    (size_t)requested, &frames_read);
+    if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
+      return CPKT_SUS_ERR_IO;
+    }
+    used += (unsigned long)frames_read;
+    if (audio_result == CPKT_AUDIO_AT_END) {
+      *at_end_out = 1;
+      break;
+    }
+    if (frames_read == 0U) {
+      *at_end_out = 1;
+      break;
+    }
+  }
+  *frames_out = used;
+  return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
+    cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
+    const cpkt_sus_realtime_config *config) {
+  struct cpkt_sus_transcriber_impl *impl;
+  struct cpkt_sus_model_impl *model_impl;
+  struct whisper_full_params params;
+  const char *language;
+  float *old_samples;
+  float *new_samples;
+  float *current_samples;
+  whisper_token *prompt_tokens;
+  size_t prompt_count;
+  size_t prompt_capacity;
+  unsigned long read_frames;
+  unsigned long step_ms;
+  unsigned long length_ms;
+  unsigned long keep_ms;
+  unsigned long step_frames;
+  unsigned long length_frames;
+  unsigned long keep_frames;
+  unsigned long current_capacity;
+  unsigned long old_count;
+  unsigned long new_count;
+  int n_new_line;
+  int iter;
+  int at_end;
+  int full_result;
+  cpkt_sus_result sus_result;
+
+  if (self == NULL || self->impl == NULL || decoder == NULL ||
+      decoder->read_f32_mono_16k == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  impl = (struct cpkt_sus_transcriber_impl *)self->impl;
+  if (impl->model == NULL || impl->model->impl == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  model_impl = (struct cpkt_sus_model_impl *)impl->model->impl;
+  if (model_impl->context == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  read_frames = config != NULL && config->read_frames != 0UL
+                    ? config->read_frames
+                    : 4096UL;
+  step_ms =
+      config != NULL && config->step_ms != 0UL ? config->step_ms : 3000UL;
+  length_ms =
+      config != NULL && config->length_ms != 0UL ? config->length_ms : 10000UL;
+  keep_ms =
+      config != NULL && config->keep_ms != 0UL ? config->keep_ms : 200UL;
+  if (keep_ms > step_ms) {
+    keep_ms = step_ms;
+  }
+  if (length_ms < step_ms) {
+    length_ms = step_ms;
+  }
+  if (read_frames == 0UL ||
+      !cpkt_sus_ms_to_frames(step_ms, &step_frames) ||
+      !cpkt_sus_ms_to_frames(length_ms, &length_frames) ||
+      !cpkt_sus_ms_to_frames(keep_ms, &keep_frames) ||
+      step_frames == 0UL || length_frames == 0UL ||
+      keep_frames > ((unsigned long)-1) - length_frames ||
+      step_frames > (unsigned long)INT_MAX ||
+      length_frames + keep_frames > (unsigned long)INT_MAX ||
+      read_frames > ((unsigned long)-1) / sizeof(float) ||
+      length_frames + keep_frames > ((unsigned long)-1) / sizeof(float) ||
+      step_frames > ((unsigned long)-1) / sizeof(float)) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  current_capacity = length_frames + keep_frames;
+
+  old_samples = (float *)malloc(sizeof(float) * (size_t)current_capacity);
+  new_samples = (float *)malloc(sizeof(float) * (size_t)step_frames);
+  current_samples = (float *)malloc(sizeof(float) * (size_t)current_capacity);
+  if (old_samples == NULL || new_samples == NULL || current_samples == NULL) {
+    free(old_samples);
+    free(new_samples);
+    free(current_samples);
+    return CPKT_SUS_ERR_ALLOC;
+  }
+
+  prompt_tokens = NULL;
+  prompt_count = 0U;
+  prompt_capacity = 0U;
+  old_count = 0UL;
+  at_end = 0;
+  iter = 0;
+  n_new_line = (int)(length_ms / step_ms);
+  if (n_new_line > 0) {
+    --n_new_line;
+  }
+  if (n_new_line < 1) {
+    n_new_line = 1;
+  }
+  sus_result = CPKT_SUS_OK;
+
+  while (!at_end) {
+    unsigned long take_count;
+    unsigned long current_count;
+
+    sus_result =
+        cpkt_sus_read_decoder_step(decoder, new_samples, step_frames,
+                                   read_frames, &new_count, &at_end);
+    if (sus_result != CPKT_SUS_OK) {
+      goto cleanup;
+    }
+    if (new_count == 0UL) {
+      break;
+    }
+
+    take_count = old_count;
+    if (length_frames > new_count) {
+      unsigned long max_take;
+
+      max_take = length_frames - new_count;
+      if (keep_frames <= (unsigned long)-1 - max_take) {
+        max_take += keep_frames;
+      }
+      if (take_count > max_take) {
+        take_count = max_take;
+      }
+    } else {
+      take_count = 0UL;
+    }
+
+    if (take_count > 0UL) {
+      memcpy(current_samples, old_samples + old_count - take_count,
+             sizeof(float) * (size_t)take_count);
+    }
+    memcpy(current_samples + take_count, new_samples,
+           sizeof(float) * (size_t)new_count);
+    current_count = take_count + new_count;
+
+    impl->aborted = 0;
+    impl->callback_error = 0;
+    params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    if (impl->config.threads > 0) {
+      params.n_threads = impl->config.threads;
+    }
+    params.translate = impl->config.translate ? true : false;
+    params.no_timestamps = true;
+    params.print_progress = false;
+    params.print_realtime = false;
+    params.print_timestamps = false;
+    params.single_segment = true;
+    if (config != NULL && config->max_tokens != 0UL &&
+        !cpkt_sus_ul_to_int(config->max_tokens, &params.max_tokens)) {
+      sus_result = CPKT_SUS_ERR_ARG;
+      goto cleanup;
+    }
+    if (config != NULL && config->audio_ctx != 0UL &&
+        !cpkt_sus_ul_to_int(config->audio_ctx, &params.audio_ctx)) {
+      sus_result = CPKT_SUS_ERR_ARG;
+      goto cleanup;
+    }
+    params.initial_prompt = impl->config.initial_prompt;
+    params.prompt_tokens =
+        config != NULL && config->keep_context && prompt_count > 0U
+            ? prompt_tokens
+            : NULL;
+    if (prompt_count > (size_t)INT_MAX) {
+      sus_result = CPKT_SUS_ERR_ARG;
+      goto cleanup;
+    }
+    params.prompt_n_tokens =
+        config != NULL && config->keep_context && prompt_count > 0U
+            ? (int)prompt_count
+            : 0;
+
+    language = impl->config.language;
+    if (language == NULL || language[0] == '\0' ||
+        strcmp(language, "auto") == 0) {
+      params.language = NULL;
+    } else {
+      params.language = language;
+    }
+
+    if (impl->config.progress_sink != NULL) {
+      params.progress_callback = cpkt_sus_whisper_progress_callback;
+      params.progress_callback_user_data = impl;
+    }
+    if (impl->config.abort != NULL || impl->config.progress_sink != NULL) {
+      params.abort_callback = cpkt_sus_whisper_abort_callback;
+      params.abort_callback_user_data = impl;
+    }
+
+    full_result = whisper_full(model_impl->context, params, current_samples,
+                               (int)current_count);
+    if (impl->callback_error) {
+      sus_result = CPKT_SUS_ERR_CALLBACK;
+      goto cleanup;
+    }
+    if (impl->aborted) {
+      sus_result = CPKT_SUS_ABORTED;
+      goto cleanup;
+    }
+    if (full_result != 0) {
+      sus_result = CPKT_SUS_ERR_UPSTREAM;
+      goto cleanup;
+    }
+
+    sus_result = cpkt_sus_emit_realtime_segments(impl, model_impl->context);
+    if (sus_result != CPKT_SUS_OK) {
+      goto cleanup;
+    }
+
+    ++iter;
+    old_count = current_count;
+    memcpy(old_samples, current_samples, sizeof(float) * (size_t)old_count);
+    if ((iter % n_new_line) == 0) {
+      if (keep_frames < old_count) {
+        memmove(old_samples, old_samples + old_count - keep_frames,
+                sizeof(float) * (size_t)keep_frames);
+        old_count = keep_frames;
+      }
+      if (config != NULL && config->keep_context) {
+        sus_result = cpkt_sus_capture_prompt_tokens(
+            model_impl->context, &prompt_tokens, &prompt_count,
+            &prompt_capacity);
+        if (sus_result != CPKT_SUS_OK) {
+          goto cleanup;
+        }
+      }
+    }
+  }
+
+cleanup:
+  free(prompt_tokens);
+  free(current_samples);
+  free(new_samples);
+  free(old_samples);
+  return sus_result;
+}
+
 static void cpkt_sus_transcriber_destroy_impl(cpkt_sus_transcriber *self) {
   if (self == NULL) {
     return;
@@ -1026,6 +1399,8 @@ static cpkt_sus_result cpkt_sus_model_create_transcriber_impl(
       cpkt_sus_transcriber_transcribe_f32_mono_16k_impl;
   transcriber->transcribe_f32_mono_16k_text =
       cpkt_sus_transcriber_transcribe_f32_mono_16k_text_impl;
+  transcriber->transcribe_audio_decoder_realtime =
+      cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl;
   transcriber->destroy = cpkt_sus_transcriber_destroy_impl;
   *out = transcriber;
   return CPKT_SUS_OK;

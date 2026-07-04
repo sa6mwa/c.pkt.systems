@@ -8,7 +8,10 @@ extern "C" {
 #endif
 
 /** Handle for a single audio decoder instance. */
+#ifndef CPKT_AUDIO_DECODER_TYPEDEF
+#define CPKT_AUDIO_DECODER_TYPEDEF
 typedef struct cpkt_audio_decoder cpkt_audio_decoder;
+#endif
 /** Handle for a single audio encoder instance. */
 typedef struct cpkt_audio_encoder cpkt_audio_encoder;
 

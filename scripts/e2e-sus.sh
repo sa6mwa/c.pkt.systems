@@ -81,6 +81,9 @@ fi
 printf '[e2e-sus] audio=%s\n' "$audio_path"
 printf '[e2e-sus] model-cache=%s\n' "$model_cache"
 printf '[e2e-sus] expected=%s\n' "$expected"
+printf '[e2e-sus] realtime-step-ms=%s\n' "${CPKT_SUS_E2E_REALTIME_STEP_MS:-1000}"
+printf '[e2e-sus] realtime-length-ms=%s\n' "${CPKT_SUS_E2E_REALTIME_LENGTH_MS:-1000}"
+printf '[e2e-sus] realtime-keep-ms=%s\n' "${CPKT_SUS_E2E_REALTIME_KEEP_MS:-200}"
 
 CPKT_SUS_INTEGRATION_ENABLE=1 \
 CPKT_SUS_INTEGRATION_OPEN_CACHED=1 \
@@ -90,5 +93,8 @@ CPKT_SUS_INTEGRATION_AUDIO_PATH="$audio_path" \
 CPKT_SUS_INTEGRATION_AUDIO_URL="$audio_url" \
 CPKT_SUS_INTEGRATION_EXPECTED_TEXT="$expected" \
 CPKT_SUS_INTEGRATION_LANGUAGE="${CPKT_SUS_E2E_LANGUAGE:-en}" \
+CPKT_SUS_INTEGRATION_REALTIME_STEP_MS="${CPKT_SUS_E2E_REALTIME_STEP_MS:-1000}" \
+CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS="${CPKT_SUS_E2E_REALTIME_LENGTH_MS:-1000}" \
+CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS="${CPKT_SUS_E2E_REALTIME_KEEP_MS:-200}" \
 CPKT_SUS_INTEGRATION_CPU_ONLY=1 \
   "$test_bin"
