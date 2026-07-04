@@ -331,7 +331,10 @@ target_include_directories(cpkt_audio_static
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
-target_link_libraries(cpkt_audio_static PUBLIC cpkt::miniaudio_static)
+target_link_libraries(cpkt_audio_static PUBLIC
+  cpkt::miniaudio_static
+  cpkt::curl_static
+)
 set_target_properties(cpkt_audio_static PROPERTIES
   OUTPUT_NAME cpktaudio
   POSITION_INDEPENDENT_CODE ON
@@ -344,7 +347,10 @@ target_include_directories(cpkt_audio_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
-target_link_libraries(cpkt_audio_shared PUBLIC cpkt::miniaudio_shared)
+target_link_libraries(cpkt_audio_shared PUBLIC
+  cpkt::miniaudio_shared
+  cpkt::curl_shared
+)
 set_target_properties(cpkt_audio_shared PROPERTIES
   OUTPUT_NAME cpktaudio
   POSITION_INDEPENDENT_CODE ON

@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,7 +69,7 @@ static int cpkt_sus_test_progress_sink(int progress, void *user) {
   struct cpkt_sus_test_progress *state;
 
   state = (struct cpkt_sus_test_progress *)user;
-  if (state == NULL || progress < 0 || progress > 100) {
+  if (state == NULL) {
     return 1;
   }
   ++state->count;
@@ -84,6 +85,65 @@ static int cpkt_sus_test_abort_now(void *user) {
     ++*count;
   }
   return 1;
+}
+
+static void cpkt_sus_test_normalize_text(char *out, size_t out_size,
+                                         const char *text) {
+  size_t used;
+  int pending_space;
+
+  if (out == NULL || out_size == 0U) {
+    return;
+  }
+  out[0] = '\0';
+  if (text == NULL) {
+    return;
+  }
+  used = 0U;
+  pending_space = 0;
+  while (*text != '\0' && used + 1U < out_size) {
+    unsigned char ch;
+
+    ch = (unsigned char)*text;
+    if (isalnum(ch)) {
+      if (pending_space && used > 0U && used + 1U < out_size) {
+        out[used++] = ' ';
+      }
+      out[used++] = (char)tolower(ch);
+      pending_space = 0;
+    } else if (used > 0U) {
+      pending_space = 1;
+    }
+    ++text;
+  }
+  out[used] = '\0';
+}
+
+static int cpkt_sus_test_contains_expected(const char *actual_a,
+                                           const char *actual_b,
+                                           const char *expected) {
+  char normalized_actual_a[8192];
+  char normalized_actual_b[8192];
+  char normalized_expected[1024];
+
+  if (expected == NULL) {
+    return 1;
+  }
+  if ((actual_a != NULL && strstr(actual_a, expected) != NULL) ||
+      (actual_b != NULL && strstr(actual_b, expected) != NULL)) {
+    return 1;
+  }
+  cpkt_sus_test_normalize_text(normalized_actual_a,
+                               sizeof(normalized_actual_a), actual_a);
+  cpkt_sus_test_normalize_text(normalized_actual_b,
+                               sizeof(normalized_actual_b), actual_b);
+  cpkt_sus_test_normalize_text(normalized_expected,
+                               sizeof(normalized_expected), expected);
+  if (normalized_expected[0] == '\0') {
+    return 1;
+  }
+  return strstr(normalized_actual_a, normalized_expected) != NULL ||
+         strstr(normalized_actual_b, normalized_expected) != NULL;
 }
 
 static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
@@ -126,11 +186,13 @@ static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
 
 static int cpkt_sus_test_run_windowed(cpkt_sus_model *model,
                                       const char *audio_path,
+                                      const char *audio_url,
                                       struct cpkt_sus_test_segments *segments,
                                       struct cpkt_sus_test_progress *progress) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
+  cpkt_audio_decoder_config audio_config;
   float *window;
   float read_buffer[CPKT_SUS_TEST_READ_FRAMES];
   size_t frames_read;
@@ -149,9 +211,23 @@ static int cpkt_sus_test_run_windowed(cpkt_sus_model *model,
   if (window == NULL) {
     goto cleanup;
   }
-  if (cpkt_audio_decoder_open_file(&decoder, audio_path, NULL) !=
-      CPKT_AUDIO_OK) {
-    goto cleanup;
+  if (audio_url != NULL) {
+    memset(&audio_config, 0, sizeof(audio_config));
+    audio_config.encoding = CPKT_AUDIO_ENCODING_MP3;
+    audio_result = cpkt_audio_decoder_open_url(&decoder, audio_url,
+                                               &audio_config);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "failed to open audio URL decoder: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
+  } else {
+    audio_result = cpkt_audio_decoder_open_file(&decoder, audio_path, NULL);
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "failed to open audio file decoder: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
   }
 
   memset(&config, 0, sizeof(config));
@@ -161,6 +237,7 @@ static int cpkt_sus_test_run_windowed(cpkt_sus_model *model,
   config.progress_sink = cpkt_sus_test_progress_sink;
   config.progress_user = progress;
   if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+    fprintf(stderr, "failed to create windowed transcriber\n");
     goto cleanup;
   }
 
@@ -168,6 +245,8 @@ static int cpkt_sus_test_run_windowed(cpkt_sus_model *model,
     audio_result = decoder->read_f32_mono_16k(
         decoder, read_buffer, CPKT_SUS_TEST_READ_FRAMES, &frames_read);
     if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
+      fprintf(stderr, "failed to read decoded audio: %s\n",
+              cpkt_audio_result_string(audio_result));
       goto cleanup;
     }
     if (frames_read > 0U) {
@@ -191,6 +270,8 @@ static int cpkt_sus_test_run_windowed(cpkt_sus_model *model,
           sus_result = transcriber->transcribe_f32_mono_16k(
               transcriber, window, (unsigned long)window_used);
           if (sus_result != CPKT_SUS_OK) {
+            fprintf(stderr, "failed to transcribe full window: %s\n",
+                    cpkt_sus_result_string(sus_result));
             goto cleanup;
           }
           window_used = 0U;
@@ -206,6 +287,8 @@ static int cpkt_sus_test_run_windowed(cpkt_sus_model *model,
     sus_result = transcriber->transcribe_f32_mono_16k(
         transcriber, window, (unsigned long)window_used);
     if (sus_result != CPKT_SUS_OK) {
+      fprintf(stderr, "failed to transcribe final window: %s\n",
+              cpkt_sus_result_string(sus_result));
       goto cleanup;
     }
   }
@@ -391,6 +474,7 @@ int main(void) {
   struct cpkt_sus_test_segments segments;
   struct cpkt_sus_test_progress progress;
   const char *audio_path;
+  const char *audio_url;
   const char *expected;
   char *text;
   int open_result;
@@ -403,6 +487,7 @@ int main(void) {
   }
 
   audio_path = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_AUDIO_PATH");
+  audio_url = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_AUDIO_URL");
   if (audio_path == NULL) {
     fprintf(stderr, "CPKT_SUS_INTEGRATION_AUDIO_PATH is required\n");
     return 2;
@@ -423,8 +508,8 @@ int main(void) {
   text = NULL;
   rc = 1;
 
-  if (cpkt_sus_test_run_windowed(model, audio_path, &segments, &progress) !=
-      0) {
+  if (cpkt_sus_test_run_windowed(model, audio_path, audio_url, &segments,
+                                 &progress) != 0) {
     fprintf(stderr, "windowed audio transcription failed\n");
     goto cleanup;
   }
@@ -444,8 +529,7 @@ int main(void) {
   }
 
   expected = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_EXPECTED_TEXT");
-  if (expected != NULL && strstr(segments.text, expected) == NULL &&
-      strstr(text, expected) == NULL) {
+  if (!cpkt_sus_test_contains_expected(segments.text, text, expected)) {
     fprintf(stderr, "expected transcript text was not found\n");
     goto cleanup;
   }

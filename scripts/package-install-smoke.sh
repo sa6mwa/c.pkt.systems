@@ -155,27 +155,6 @@ case "$target_id" in
     ;;
 esac
 
-if [ -z "${cxx:-}" ]; then
-  if [ -n "${CXX:-}" ]; then
-    cxx=$CXX
-  else
-    case "$cc" in
-      *gcc)
-        cxx=${cc%gcc}g++
-        ;;
-      *clang)
-        cxx=${cc%clang}clang++
-        ;;
-      */cc)
-        cxx=${cc%cc}c++
-        ;;
-      *)
-        cxx=c++
-        ;;
-    esac
-  fi
-fi
-
 if [ ! -x "$cc" ]; then
   printf 'compiler for %s is not executable: %s\n' "$target_id" "$cc" >&2
   exit 1
@@ -553,34 +532,66 @@ int main(void) {
   return 0;
 }
 EOF
-cat > "$cmake_source_dir/cpkt_sus_mixed_main.c" <<'EOF'
-#include <cpkt/sus.h>
-
-#include <string.h>
-
-int cpkt_sus_cpp_probe(void);
+cat > "$cmake_source_dir/cpkt_audio_facade_strict.c" <<'EOF'
+#include <cpkt/audio.h>
 
 int main(void) {
-  cpkt_sus_model_entry entry;
+  cpkt_audio_decoder *decoder;
 
-  if (cpkt_sus_cpp_probe() != 0) {
+  if (cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3) == 0) {
     return 1;
   }
-  if (cpkt_sus_model_catalog_find("kb-whisper-small", &entry) != CPKT_SUS_OK) {
+  if (cpkt_audio_format_can_encode(CPKT_AUDIO_FORMAT_WAV) == 0) {
     return 2;
   }
-  if (entry.provider == 0 || strcmp(entry.provider, "KBLab/kb-whisper-small") != 0) {
+  decoder = (cpkt_audio_decoder *)1;
+  if (cpkt_audio_decoder_open_url(&decoder, "", 0) != CPKT_AUDIO_ERR_ARG) {
     return 3;
+  }
+  if (decoder != 0) {
+    return 4;
   }
   return 0;
 }
 EOF
-cat > "$cmake_source_dir/cpkt_sus_mixed_cpp.cpp" <<'EOF'
-#include <string>
+cat > "$cmake_source_dir/cpkt_audio_sus_facade_strict.c" <<'EOF'
+#include <cpkt/audio.h>
+#include <cpkt/sus.h>
 
-extern "C" int cpkt_sus_cpp_probe(void) {
-  std::string model("kb-whisper-small");
-  return model.find("whisper") == std::string::npos ? 1 : 0;
+#include <string.h>
+
+int main(void) {
+  cpkt_audio_decoder *decoder;
+  cpkt_sus_model *model;
+  cpkt_sus_model_config model_config;
+
+  if (cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3) == 0) {
+    return 1;
+  }
+  decoder = (cpkt_audio_decoder *)1;
+  if (cpkt_audio_decoder_open_url(&decoder, "", 0) != CPKT_AUDIO_ERR_ARG) {
+    return 2;
+  }
+  if (decoder != 0) {
+    return 3;
+  }
+  if (cpkt_sus_backend_version() == 0 ||
+      cpkt_sus_backend_capabilities() == 0) {
+    return 4;
+  }
+  if (strcmp(cpkt_sus_backend_capabilities(), "cpu") != 0) {
+    return 5;
+  }
+  memset(&model_config, 0, sizeof(model_config));
+  model_config.model_path = "";
+  model = (cpkt_sus_model *)1;
+  if (cpkt_sus_model_open_path(&model, &model_config) != CPKT_SUS_ERR_ARG) {
+    return 6;
+  }
+  if (model != 0) {
+    return 7;
+  }
+  return 0;
 }
 EOF
 cat > "$cmake_source_dir/cpkt_opcua_facade_strict.c" <<'EOF'
@@ -1057,6 +1068,7 @@ find_package(Lua CONFIG REQUIRED)
 find_package(miniaudio CONFIG REQUIRED)
 find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
+find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
 find_package(open62541 CONFIG REQUIRED)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -1079,12 +1091,19 @@ cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
 cpkt_add_static_smoke(cpkt_cmake_lua cpkt_lua.c Lua::Lua)
 cpkt_add_static_smoke(cpkt_cmake_mqttc cpkt_mqttc.c MQTT-C::mqttc)
 cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541)
+cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+set_source_files_properties(cpkt_audio_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   cpkt_add_static_smoke(cpkt_cmake_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
+  add_executable(cpkt_cmake_audio_sus_facade cpkt_audio_sus_facade_strict.c)
+  target_link_libraries(cpkt_cmake_audio_sus_facade PRIVATE cpkt::audio cpkt::sus)
   set_source_files_properties(cpkt_sus_facade_strict.c PROPERTIES
+    COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+  set_source_files_properties(cpkt_audio_sus_facade_strict.c PROPERTIES
     COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 endif()
 add_executable(cpkt_cmake_all cpkt_all.c)
@@ -1183,6 +1202,8 @@ assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "$prefix/
 assert_file_contains "$cmake_link_dir/cpkt_cmake_mqttc.dir/link.txt" "$prefix/lib/libmqttc.a" "MQTT-C::mqttc link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libssl.a" "open62541::open62541 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libcrypto.a" "open62541::open62541 link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcurl.a" "cpkt::audio link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libcpkt_opcua.a" "cpkt::opcua link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libopen62541.a" "cpkt::opcua link line"
 case "$target_id" in
@@ -1205,6 +1226,10 @@ case "$target_id" in
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libwhisper.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libstdc++.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libgcc.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio+sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::audio+sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcurl.a" "cpkt::audio+sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libstdc++.a" "cpkt::audio+sus link line"
     ;;
 esac
 
@@ -1435,6 +1460,12 @@ assert_words_contain "$lua_runtime_words" "-llua" "cpkt-lua-runtime.pc --static 
 assert_words_contain "$lua_runtime_words" "-lm" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$audio_words" "-lcpktaudio" "cpkt-audio.pc --static output"
 assert_words_contain "$audio_words" "-lminiaudio" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lcurl" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lssh2" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lnghttp2" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lssl" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lcrypto" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lz" "cpkt-audio.pc --static output"
 assert_words_contain "$mqttc_words" "-lmqttc" "mqtt-c.pc --static output"
 assert_words_contain "$open62541_words" "-lssl" "open62541.pc --static output"
 assert_words_contain "$open62541_words" "-lcrypto" "open62541.pc --static output"
@@ -1507,14 +1538,18 @@ cpkt_pkg_config_static_smoke() {
     $static_extra_libs"
 }
 
-cpkt_pkg_config_sus_mixed_cpp_smoke() {
-  output_path="$work_root/bin/cpkt_pkg_cpkt-sus_mixed_cpp"
-  cpp_object="$work_root/bin/cpkt_sus_mixed_cpp.o"
-  pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs cpkt-sus)
+cpkt_pkg_config_static_multi_smoke() {
+  output_name=$1
+  source_name=$2
+  shift 2
+  output_path="$work_root/bin/$output_name"
+  pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs "$@")
   case "$target_id" in
     *-linux-gnu)
       pkg_config_link_words=$(printf '%s\n' "$pkg_config_link_words" | awk '
         BEGIN {
+          bundled["-lcpktaudio"] = 1
+          bundled["-lminiaudio"] = 1
           bundled["-lcrypto"] = 1
           bundled["-lssl"] = 1
           bundled["-lz"] = 1
@@ -1541,15 +1576,8 @@ cpkt_pkg_config_sus_mixed_cpp_smoke() {
         }')
       ;;
   esac
-  if [ ! -x "$cxx" ]; then
-    printf 'C++ compiler for %s is not executable: %s\n' "$target_id" "$cxx" >&2
-    exit 1
-  fi
-  cpkt_run_shell_checked "pkg-config cpkt-sus mixed C++ object compile" \
-    "\"$cxx\" -std=c++11 -Wall -Wextra -Wpedantic -Werror -c \"$cmake_source_dir/cpkt_sus_mixed_cpp.cpp\" -o \"$cpp_object\""
-  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C/C++ final cc link" \
-    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/cpkt_sus_mixed_main.c\" \
-    \"$cpp_object\" \
+  cpkt_run_shell_checked "pkg-config static $output_name C-only build" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/$source_name\" \
     -o \"$output_path\" \
     $pkg_config_link_toolchain_flags \
     $pkg_config_link_words \
@@ -1570,8 +1598,9 @@ cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
 cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
 case "$target_id" in
   *-linux-*)
+    cpkt_pkg_config_static_smoke cpkt-audio cpkt_audio_facade_strict.c
     cpkt_pkg_config_static_smoke cpkt-sus cpkt_sus_facade_strict.c
-    cpkt_pkg_config_sus_mixed_cpp_smoke
+    cpkt_pkg_config_static_multi_smoke cpkt_pkg_audio_sus_facade cpkt_audio_sus_facade_strict.c cpkt-audio cpkt-sus
     ;;
 esac
 

@@ -7,7 +7,7 @@ CMAKE := cmake
 CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug clangd-surface asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug clangd-surface e2e-sus asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf '%s\n' \
@@ -22,6 +22,7 @@ help:
 		'make test-all  Run the full local confidence gate.' \
 		'make debug     Build and test the host debug preset.' \
 		'make clangd-surface Verify compile_commands and public hover comments for examples.' \
+		'make e2e-sus   Run opt-in sus audio e2e with cached remote MP3 and tiny model.' \
 		'make asan      Build and test the facade-only AddressSanitizer/UBSan preset.' \
 		'make tsan      Build and test the facade-only ThreadSanitizer preset.' \
 		'make msan      Build and test the facade-only MemorySanitizer preset with clang.' \
@@ -90,6 +91,11 @@ clangd-surface:
 	$(CMAKE) --preset debug
 	$(CMAKE) --build --preset debug
 	bash ./scripts/verify-clangd-surface.sh "$$(pwd)" "$$(pwd)/build/debug"
+
+e2e-sus:
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug --target cpkt_sus_audio_integration_test
+	bash ./scripts/e2e-sus.sh "$$(pwd)/build/debug/cpkt_sus_audio_integration_test" "$$(pwd)/build/debug"
 
 asan:
 	$(CMAKE) --preset asan

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 
@@ -412,6 +413,41 @@ static void test_decoder_reads_mp3_file_when_supported(void **state) {
                                     CPKT_AUDIO_FORMAT_MP3);
 }
 
+static void test_decoder_reads_mp3_file_url_when_supported(void **state) {
+  unsigned char mp3_data[1536];
+  char cwd[1024];
+  char url[1200];
+  const char *path;
+  cpkt_audio_decoder_config config;
+  cpkt_audio_decoder *decoder;
+  FILE *file;
+  size_t mp3_size;
+
+  (void)state;
+  path = "cpkt_audio_facade_test_url.mp3";
+  (void)remove(path);
+  memset(&config, 0, sizeof(config));
+  config.encoding = CPKT_AUDIO_ENCODING_MP3;
+  mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_data,
+                                   sizeof(mp3_data));
+  assert_true(mp3_size > 0);
+  file = fopen(path, "wb");
+  assert_non_null(file);
+  assert_int_equal(fwrite(mp3_data, 1, mp3_size, file), mp3_size);
+  assert_int_equal(fclose(file), 0);
+  assert_non_null(getcwd(cwd, sizeof(cwd)));
+  assert_true(strlen(cwd) + strlen(path) + 9U < sizeof(url));
+  (void)sprintf(url, "file://%s/%s", cwd, path);
+
+  decoder = NULL;
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, &config),
+                   CPKT_AUDIO_OK);
+  assert_non_null(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_MP3);
+  decoder->destroy(decoder);
+  assert_int_equal(remove(path), 0);
+}
+
 static void test_encoder_writes_wav_file(void **state) {
   const char *path;
   cpkt_audio_encoder *encoder;
@@ -528,6 +564,13 @@ static void test_invalid_arguments(void **state) {
   assert_int_equal(cpkt_audio_decoder_open_file(&decoder, NULL, NULL),
                    CPKT_AUDIO_ERR_ARG);
   assert_null(decoder);
+  decoder = (cpkt_audio_decoder *)1;
+  assert_int_equal(cpkt_audio_decoder_open_url(NULL, "https://example.invalid",
+                                               NULL),
+                   CPKT_AUDIO_ERR_ARG);
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, "", NULL),
+                   CPKT_AUDIO_ERR_ARG);
+  assert_null(decoder);
 
   memset(&reader, 0, sizeof(reader));
   decoder = (cpkt_audio_decoder *)1;
@@ -582,6 +625,7 @@ int main(void) {
       cmocka_unit_test(test_decoder_reads_from_file),
       cmocka_unit_test(test_decoder_reads_flac_file_when_supported),
       cmocka_unit_test(test_decoder_reads_mp3_file_when_supported),
+      cmocka_unit_test(test_decoder_reads_mp3_file_url_when_supported),
       cmocka_unit_test(test_encoder_writes_wav_file),
       cmocka_unit_test(test_encoder_writes_wav_callback_writer),
       cmocka_unit_test(test_encoder_callback_write_failure),

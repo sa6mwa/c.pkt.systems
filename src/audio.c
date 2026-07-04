@@ -5,11 +5,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <curl/curl.h>
 #include <miniaudio.h>
+
+struct cpkt_audio_url_source {
+  CURLM *multi;
+  CURL *easy;
+  unsigned char *buffer;
+  size_t buffer_size;
+  size_t buffer_cursor;
+  size_t buffer_capacity;
+  int running;
+  int done;
+  int failed;
+  char error[CURL_ERROR_SIZE];
+};
 
 struct cpkt_audio_decoder_impl {
   ma_decoder decoder;
   cpkt_audio_reader reader;
+  struct cpkt_audio_url_source *url_source;
   int source_format;
   int owns_reader;
   int callback_error;
@@ -105,6 +120,255 @@ cpkt_audio_source_format_from_config(const cpkt_audio_decoder_config *config) {
     return CPKT_AUDIO_FORMAT_UNKNOWN;
   }
   return cpkt_audio_format_from_encoding(config->encoding);
+}
+
+static void cpkt_audio_url_source_destroy(struct cpkt_audio_url_source *source) {
+  if (source == NULL) {
+    return;
+  }
+  if (source->multi != NULL && source->easy != NULL) {
+    (void)curl_multi_remove_handle(source->multi, source->easy);
+  }
+  if (source->easy != NULL) {
+    curl_easy_cleanup(source->easy);
+  }
+  if (source->multi != NULL) {
+    curl_multi_cleanup(source->multi);
+  }
+  free(source->buffer);
+  free(source);
+}
+
+static size_t cpkt_audio_url_write(void *buffer, size_t size, size_t nmemb,
+                                   void *user) {
+  struct cpkt_audio_url_source *source;
+  size_t byte_count;
+  size_t needed;
+  unsigned char *grown;
+
+  source = (struct cpkt_audio_url_source *)user;
+  if (source == NULL || size == 0U) {
+    return 0U;
+  }
+  if (nmemb > ((size_t)-1) / size) {
+    source->failed = 1;
+    return 0U;
+  }
+  byte_count = size * nmemb;
+  if (byte_count == 0U) {
+    return 0U;
+  }
+  if (source->buffer_size > ((size_t)-1) - byte_count) {
+    source->failed = 1;
+    return 0U;
+  }
+  needed = source->buffer_size + byte_count;
+  if (needed > source->buffer_capacity) {
+    size_t next_capacity;
+
+    next_capacity = source->buffer_capacity == 0U ? 16384U
+                                                  : source->buffer_capacity;
+    while (next_capacity < needed) {
+      if (next_capacity > ((size_t)-1) / 2U) {
+        source->failed = 1;
+        return 0U;
+      }
+      next_capacity *= 2U;
+    }
+    grown = (unsigned char *)realloc(source->buffer, next_capacity);
+    if (grown == NULL) {
+      source->failed = 1;
+      return 0U;
+    }
+    source->buffer = grown;
+    source->buffer_capacity = next_capacity;
+  }
+  memcpy(source->buffer + source->buffer_size, buffer, byte_count);
+  source->buffer_size += byte_count;
+  return byte_count;
+}
+
+static void
+cpkt_audio_url_source_collect_done(struct cpkt_audio_url_source *source) {
+  CURLMsg *message;
+  int queued;
+  long status;
+
+  if (source == NULL || source->multi == NULL) {
+    return;
+  }
+  queued = 0;
+  while ((message = curl_multi_info_read(source->multi, &queued)) != NULL) {
+    if (message->msg == CURLMSG_DONE && message->easy_handle == source->easy) {
+      source->done = 1;
+      source->running = 0;
+      if (message->data.result != CURLE_OK) {
+        source->failed = 1;
+      }
+      status = 0L;
+      if (curl_easy_getinfo(source->easy, CURLINFO_RESPONSE_CODE, &status) ==
+              CURLE_OK &&
+          status >= 400L) {
+        source->failed = 1;
+      }
+    }
+  }
+}
+
+static int cpkt_audio_url_source_progress(struct cpkt_audio_url_source *source) {
+  CURLMcode code;
+
+  if (source == NULL || source->multi == NULL || source->failed) {
+    return 1;
+  }
+  do {
+    code = curl_multi_perform(source->multi, &source->running);
+  } while (code == CURLM_CALL_MULTI_PERFORM);
+  if (code != CURLM_OK) {
+    source->failed = 1;
+    return 1;
+  }
+  cpkt_audio_url_source_collect_done(source);
+  return source->failed ? 1 : 0;
+}
+
+static int cpkt_audio_url_source_download_until(
+    struct cpkt_audio_url_source *source, size_t target_size) {
+  int queued;
+
+  if (source == NULL) {
+    return 1;
+  }
+  while (source->buffer_size < target_size && !source->done &&
+         !source->failed) {
+    if (cpkt_audio_url_source_progress(source) != 0) {
+      break;
+    }
+    if (source->buffer_size < target_size && !source->done &&
+        !source->failed) {
+      queued = 0;
+      if (curl_multi_poll(source->multi, NULL, 0U, 1000, &queued) != CURLM_OK) {
+        source->failed = 1;
+        break;
+      }
+    }
+  }
+  return source->failed ? 1 : 0;
+}
+
+static size_t cpkt_audio_url_read(void *user, void *buffer,
+                                  size_t bytes_to_read) {
+  struct cpkt_audio_url_source *source;
+  size_t target_size;
+  size_t available;
+  size_t to_copy;
+
+  source = (struct cpkt_audio_url_source *)user;
+  if (source == NULL || buffer == NULL || bytes_to_read == 0U) {
+    return 0U;
+  }
+  if (source->buffer_cursor > ((size_t)-1) - bytes_to_read) {
+    source->failed = 1;
+    return 0U;
+  }
+
+  target_size = source->buffer_cursor + bytes_to_read;
+  if (cpkt_audio_url_source_download_until(source, target_size) != 0 ||
+      source->buffer_size <= source->buffer_cursor) {
+    return 0U;
+  }
+  available = source->buffer_size - source->buffer_cursor;
+  to_copy = available < bytes_to_read ? available : bytes_to_read;
+  memcpy(buffer, source->buffer + source->buffer_cursor, to_copy);
+  source->buffer_cursor += to_copy;
+  return to_copy;
+}
+
+static int cpkt_audio_url_seek(void *user, long offset, int origin) {
+  struct cpkt_audio_url_source *source;
+  long base;
+  long target_long;
+  size_t target;
+
+  source = (struct cpkt_audio_url_source *)user;
+  if (source == NULL) {
+    return -1;
+  }
+  if (origin == CPKT_AUDIO_SEEK_SET) {
+    base = 0L;
+  } else if (origin == CPKT_AUDIO_SEEK_CUR) {
+    if (source->buffer_cursor > (size_t)LONG_MAX) {
+      return -1;
+    }
+    base = (long)source->buffer_cursor;
+  } else {
+    return -1;
+  }
+  if ((offset > 0 && base > LONG_MAX - offset) ||
+      (offset < 0 && base < LONG_MIN - offset)) {
+    return -1;
+  }
+  target_long = base + offset;
+  if (target_long < 0) {
+    return -1;
+  }
+  target = (size_t)target_long;
+  if (cpkt_audio_url_source_download_until(source, target) != 0) {
+    return -1;
+  }
+  if (target > source->buffer_size) {
+    return -1;
+  }
+  source->buffer_cursor = target;
+  return 0;
+}
+
+static cpkt_audio_result
+cpkt_audio_url_source_create(struct cpkt_audio_url_source **out,
+                             const char *url) {
+  struct cpkt_audio_url_source *source;
+  CURLMcode multi_code;
+
+  if (out == NULL || url == NULL || url[0] == '\0') {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  *out = NULL;
+  if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+    return CPKT_AUDIO_ERR_UPSTREAM;
+  }
+
+  source = (struct cpkt_audio_url_source *)calloc(1, sizeof(*source));
+  if (source == NULL) {
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+  source->easy = curl_easy_init();
+  source->multi = curl_multi_init();
+  if (source->easy == NULL || source->multi == NULL) {
+    cpkt_audio_url_source_destroy(source);
+    return CPKT_AUDIO_ERR_ALLOC;
+  }
+
+  (void)curl_easy_setopt(source->easy, CURLOPT_URL, url);
+  (void)curl_easy_setopt(source->easy, CURLOPT_FOLLOWLOCATION, 1L);
+  (void)curl_easy_setopt(source->easy, CURLOPT_FAILONERROR, 1L);
+  (void)curl_easy_setopt(source->easy, CURLOPT_WRITEFUNCTION,
+                         cpkt_audio_url_write);
+  (void)curl_easy_setopt(source->easy, CURLOPT_WRITEDATA, source);
+  (void)curl_easy_setopt(source->easy, CURLOPT_ERRORBUFFER, source->error);
+  (void)curl_easy_setopt(source->easy, CURLOPT_CONNECTTIMEOUT, 30L);
+  (void)curl_easy_setopt(source->easy, CURLOPT_LOW_SPEED_LIMIT, 1L);
+  (void)curl_easy_setopt(source->easy, CURLOPT_LOW_SPEED_TIME, 60L);
+  (void)curl_easy_setopt(source->easy, CURLOPT_USERAGENT,
+                         "c.pkt.systems-cpkt-audio/0");
+
+  multi_code = curl_multi_add_handle(source->multi, source->easy);
+  if (multi_code != CURLM_OK) {
+    cpkt_audio_url_source_destroy(source);
+    return CPKT_AUDIO_ERR_UPSTREAM;
+  }
+  source->running = 1;
+  *out = source;
+  return CPKT_AUDIO_OK;
 }
 
 static cpkt_audio_result cpkt_audio_detect_reader_format(
@@ -369,6 +633,7 @@ static void cpkt_audio_decoder_destroy_impl(cpkt_audio_decoder *self) {
   impl = (struct cpkt_audio_decoder_impl *)self->impl;
   if (impl != NULL) {
     ma_decoder_uninit(&impl->decoder);
+    cpkt_audio_url_source_destroy(impl->url_source);
     free(impl);
   }
   free(self);
@@ -580,6 +845,63 @@ cpkt_audio_decoder_open_file(cpkt_audio_decoder **out, const char *path,
     free(impl);
     free(decoder);
     return cpkt_audio_from_ma_result(ma_status);
+  }
+
+  *out = decoder;
+  return CPKT_AUDIO_OK;
+}
+
+/** Opens a receiver-shell decoder for streaming URL input. */
+cpkt_audio_result
+cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
+                            const cpkt_audio_decoder_config *config) {
+  cpkt_audio_decoder *decoder;
+  struct cpkt_audio_decoder_impl *impl;
+  struct cpkt_audio_url_source *source;
+  cpkt_audio_reader reader;
+  ma_decoder_config ma_config;
+  ma_result ma_status;
+  cpkt_audio_result result;
+
+  if (out == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  *out = NULL;
+  if (url == NULL || url[0] == '\0') {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+
+  source = NULL;
+  result = cpkt_audio_url_source_create(&source, url);
+  if (result != CPKT_AUDIO_OK) {
+    return result;
+  }
+
+  result = cpkt_audio_decoder_alloc(out, &decoder, &impl);
+  if (result != CPKT_AUDIO_OK) {
+    cpkt_audio_url_source_destroy(source);
+    return result;
+  }
+
+  memset(&reader, 0, sizeof(reader));
+  reader.user = source;
+  reader.read = cpkt_audio_url_read;
+  reader.seek = cpkt_audio_url_seek;
+  impl->reader = reader;
+  impl->url_source = source;
+  impl->source_format = cpkt_audio_source_format_from_config(config);
+
+  ma_config = cpkt_audio_ma_decoder_config(config);
+  ma_status = ma_decoder_init(cpkt_audio_reader_read, cpkt_audio_reader_seek,
+                              impl, &ma_config, &impl->decoder);
+  if (ma_status != MA_SUCCESS) {
+    result = impl->callback_error ? CPKT_AUDIO_ERR_IO
+                                  : cpkt_audio_from_ma_result(ma_status);
+    decoder->impl = NULL;
+    cpkt_audio_url_source_destroy(source);
+    free(impl);
+    free(decoder);
+    return result;
   }
 
   *out = decoder;
