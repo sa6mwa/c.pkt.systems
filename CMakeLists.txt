@@ -178,6 +178,22 @@ if(CPKT_CXX_STDLIB_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES 
       "Static C++ standard library archive used by C-facing static SDK metadata." FORCE)
   endif()
 endif()
+set(CPKT_CXX_LIBGCC_STATIC_LIBRARY "" CACHE FILEPATH "Static GCC runtime archive used by C-facing static SDK metadata.")
+if(CPKT_CXX_LIBGCC_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+  execute_process(
+    COMMAND "${CMAKE_CXX_COMPILER}" -print-libgcc-file-name
+    RESULT_VARIABLE _cpkt_cxx_libgcc_result
+    OUTPUT_VARIABLE _cpkt_cxx_libgcc_output
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(_cpkt_cxx_libgcc_result EQUAL 0 AND
+      NOT _cpkt_cxx_libgcc_output STREQUAL "" AND
+      NOT _cpkt_cxx_libgcc_output STREQUAL "libgcc.a" AND
+      EXISTS "${_cpkt_cxx_libgcc_output}")
+    set(CPKT_CXX_LIBGCC_STATIC_LIBRARY "${_cpkt_cxx_libgcc_output}" CACHE FILEPATH
+      "Static GCC runtime archive used by C-facing static SDK metadata." FORCE)
+  endif()
+endif()
 set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Shared source archive download root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
 set(CPKT_TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Artifact architecture name.")
@@ -789,6 +805,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_SUS_STATIC_LIBRARY=$<TARGET_FILE:cpkt_sus_static>
         -DCPKT_SUS_SHARED_LIBRARY=$<TARGET_FILE:cpkt_sus_shared>
         -DCPKT_CXX_STDLIB_STATIC_LIBRARY=${CPKT_CXX_STDLIB_STATIC_LIBRARY}
+        -DCPKT_CXX_LIBGCC_STATIC_LIBRARY=${CPKT_CXX_LIBGCC_STATIC_LIBRARY}
         -DCPKT_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/package_bundle.cmake
     DEPENDS

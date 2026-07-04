@@ -714,6 +714,15 @@ foreach(_path
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
 endforeach()
 
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/lib/cpkt-cxx/libstdc\\+\\+\\.a(\n|$)"
+    "lib/cpkt-cxx/libstdc++.a")
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/lib/cpkt-cxx/libgcc\\.a(\n|$)"
+    "lib/cpkt-cxx/libgcc.a")
+endif()
+
 cpkt_extract_archive_for_assertions(_symbol_extract_root)
 set(_symbol_root "${_symbol_extract_root}/${_archive_stem}")
 if(CPKT_TARGET_ID MATCHES "linux")
@@ -758,6 +767,24 @@ foreach(_metadata_file IN LISTS _metadata_files)
     message(FATAL_ERROR "package metadata contains local build/cache path material: ${_metadata_file}")
   endif()
 endforeach()
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  set(_whisper_pc "${_metadata_extract_root}/${_archive_stem}/lib/pkgconfig/whisper.pc")
+  set(_whisper_cmake "${_metadata_extract_root}/${_archive_stem}/lib/cmake/whisper/whisperConfig.cmake")
+  foreach(_metadata_runtime_file "${_whisper_pc}" "${_whisper_cmake}")
+    if(NOT EXISTS "${_metadata_runtime_file}")
+      message(FATAL_ERROR "missing whisper runtime metadata file: ${_metadata_runtime_file}")
+    endif()
+    file(READ "${_metadata_runtime_file}" _metadata_runtime_text)
+    string(FIND "${_metadata_runtime_text}" "cpkt-cxx/libstdc++.a" _metadata_libstdcxx_offset)
+    if(_metadata_libstdcxx_offset EQUAL -1)
+      message(FATAL_ERROR "whisper metadata does not reference packaged libstdc++.a: ${_metadata_runtime_file}")
+    endif()
+    string(FIND "${_metadata_runtime_text}" "cpkt-cxx/libgcc.a" _metadata_libgcc_offset)
+    if(_metadata_libgcc_offset EQUAL -1)
+      message(FATAL_ERROR "whisper metadata does not reference packaged libgcc.a: ${_metadata_runtime_file}")
+    endif()
+  endforeach()
+endif()
 file(REMOVE_RECURSE "${_metadata_extract_root}")
 
 cpkt_extract_archive_for_assertions(_facade_header_extract_root)

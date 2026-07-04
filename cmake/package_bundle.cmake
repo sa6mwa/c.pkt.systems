@@ -196,6 +196,15 @@ cpkt_stage_facade_library(
   "${_cpkt_opcua_shared_library_abi_name}"
   "${_cpkt_opcua_shared_library_link_name}")
 
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  if(NOT DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY OR "${CPKT_CXX_STDLIB_STATIC_LIBRARY}" STREQUAL "")
+    message(FATAL_ERROR "Linux cpkt_sus packages require CPKT_CXX_STDLIB_STATIC_LIBRARY")
+  endif()
+  if(NOT DEFINED CPKT_CXX_LIBGCC_STATIC_LIBRARY OR "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}" STREQUAL "")
+    message(FATAL_ERROR "Linux cpkt_sus packages require CPKT_CXX_LIBGCC_STATIC_LIBRARY")
+  endif()
+endif()
+
 if(DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY AND NOT "${CPKT_CXX_STDLIB_STATIC_LIBRARY}" STREQUAL "")
   if(NOT EXISTS "${CPKT_CXX_STDLIB_STATIC_LIBRARY}")
     message(FATAL_ERROR "configured static C++ standard library does not exist: ${CPKT_CXX_STDLIB_STATIC_LIBRARY}")
@@ -205,9 +214,22 @@ if(DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY AND NOT "${CPKT_CXX_STDLIB_STATIC_LIBR
     "${CPKT_CXX_STDLIB_STATIC_LIBRARY}"
     "${_stage_root}/lib/cpkt-cxx/libstdc++.a")
 endif()
+if(DEFINED CPKT_CXX_LIBGCC_STATIC_LIBRARY AND NOT "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}" STREQUAL "")
+  if(NOT EXISTS "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}")
+    message(FATAL_ERROR "configured static GCC runtime library does not exist: ${CPKT_CXX_LIBGCC_STATIC_LIBRARY}")
+  endif()
+  file(MAKE_DIRECTORY "${_stage_root}/lib/cpkt-cxx")
+  file(COPY_FILE
+    "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}"
+    "${_stage_root}/lib/cpkt-cxx/libgcc.a")
+endif()
 set(_cpkt_cxx_stdlib_static_pc_lib "")
 if(EXISTS "${_stage_root}/lib/cpkt-cxx/libstdc++.a")
   set(_cpkt_cxx_stdlib_static_pc_lib "\${libdir}/cpkt-cxx/libstdc++.a")
+endif()
+set(_cpkt_cxx_libgcc_static_pc_lib "")
+if(EXISTS "${_stage_root}/lib/cpkt-cxx/libgcc.a")
+  set(_cpkt_cxx_libgcc_static_pc_lib "\${libdir}/cpkt-cxx/libgcc.a")
 endif()
 
 function(cpkt_write_config_version package_dir config_stem package_version)
@@ -592,6 +614,10 @@ file(WRITE "${_stage_root}/lib/cmake/whisper/whisperConfig.cmake"
   "if(NOT EXISTS \"\${_cpkt_cxx_stdlib_static}\")\n"
   "  set(_cpkt_cxx_stdlib_static \"\")\n"
   "endif()\n"
+  "set(_cpkt_cxx_libgcc_static \"\${_cpkt_whisper_prefix}/lib/cpkt-cxx/libgcc.a\")\n"
+  "if(NOT EXISTS \"\${_cpkt_cxx_libgcc_static}\")\n"
+  "  set(_cpkt_cxx_libgcc_static \"\")\n"
+  "endif()\n"
   "if(NOT TARGET ggml::ggml)\n"
   "  add_library(ggml::ggml STATIC IMPORTED)\n"
   "  set_target_properties(ggml::ggml PROPERTIES\n"
@@ -618,7 +644,7 @@ file(WRITE "${_stage_root}/lib/cmake/whisper/whisperConfig.cmake"
   "  set_target_properties(whisper::whisper PROPERTIES\n"
   "    IMPORTED_LOCATION \"\${_cpkt_whisper_prefix}/lib/libwhisper${_cpkt_static_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_whisper_prefix}/include\"\n"
-  "    INTERFACE_LINK_LIBRARIES \"ggml::ggml;ggml::base;ggml::cpu;Threads::Threads;m;\${_cpkt_cxx_stdlib_static}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"ggml::ggml;ggml::base;ggml::cpu;Threads::Threads;m;\${_cpkt_cxx_stdlib_static};\${_cpkt_cxx_libgcc_static}\"\n"
   "  )\n"
   "endif()\n"
   "if(NOT TARGET cpkt::whisper_shared)\n"
@@ -925,7 +951,7 @@ file(WRITE "${_stage_root}/lib/pkgconfig/whisper.pc"
   "Description: whisper.cpp from c.pkt.systems\n"
   "Version: ${CPKT_WHISPER_VERSION}\n"
   "Libs: -L\${libdir} -lwhisper\n"
-  "Libs.private: -lggml -lggml-base -lggml-cpu ${_cpkt_cxx_stdlib_static_pc_lib} -lm -pthread\n"
+  "Libs.private: -lggml -lggml-base -lggml-cpu ${_cpkt_cxx_stdlib_static_pc_lib} ${_cpkt_cxx_libgcc_static_pc_lib} -lm -pthread\n"
   "Cflags: -I\${includedir}\n"
 )
 file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-sus.pc"
