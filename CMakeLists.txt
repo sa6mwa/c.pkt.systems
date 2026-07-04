@@ -883,6 +883,14 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
       set_tests_properties(sus_facade_unit PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      add_test(
+        NAME audio_sus_shared_abi
+        COMMAND
+          bash "${CMAKE_SOURCE_DIR}/tests/audio_sus_shared_abi_test.sh"
+          "$<TARGET_FILE:cpkt_audio_shared>"
+          "$<TARGET_FILE:cpkt_sus_shared>"
+          "${CPKT_AUDIO_ABI_VERSION}"
+          "${CPKT_SUS_ABI_VERSION}")
       add_test(NAME sus_audio_integration COMMAND cpkt_sus_audio_integration_test)
       set_tests_properties(sus_audio_integration PROPERTIES
         LABELS "integration;opt-in;sus"
