@@ -103,7 +103,7 @@ typedef struct cpkt_sus_segment {
 
 /** Committed streaming transcript state delivered after a VOX segment closes.
  */
-typedef struct cpkt_sus_realtime_event {
+typedef struct cpkt_sus_segmented_event {
   /** Current session transcript owned by the facade during the callback. */
   const char *text;
   /** Transcript text length in bytes, excluding the terminating NUL. */
@@ -112,7 +112,7 @@ typedef struct cpkt_sus_realtime_event {
   unsigned long step_index;
   /** Non-zero only when the event is the final end-of-stream event. */
   int is_final;
-} cpkt_sus_realtime_event;
+} cpkt_sus_segmented_event;
 
 /** Backend log levels exposed through the speech facade. */
 typedef enum cpkt_sus_log_level {
@@ -175,7 +175,7 @@ typedef int (*cpkt_sus_segment_sink)(const cpkt_sus_segment *segment,
  * Return zero to continue. Returning non-zero requests CPKT_SUS_ERR_CALLBACK
  * after the active backend call completes.
  */
-typedef int (*cpkt_sus_realtime_sink)(const cpkt_sus_realtime_event *event,
+typedef int (*cpkt_sus_segmented_sink)(const cpkt_sus_segmented_event *event,
                                       void *user);
 
 /** Receives backend or facade progress in percent. Return non-zero to fail. */
@@ -183,6 +183,22 @@ typedef int (*cpkt_sus_progress_sink)(int progress, void *user);
 
 /** Return non-zero to request aborting the active transcription. */
 typedef int (*cpkt_sus_abort_fn)(void *user);
+
+/** Segmentation policy for VOX-driven transcription. */
+typedef enum cpkt_sus_segment_mode {
+  /**
+   * Simplex turn mode. Zero-initialized configs select this mode. A zero
+   * length_ms disables the time cap and relies on VOX release or
+   * max_spool_bytes for a forced segment boundary.
+   */
+  CPKT_SUS_SEGMENT_MODE_SIMPLEX = 0,
+  /**
+   * Continuous segmented transcription mode. Input may come from a file, URL,
+   * stream, or capture device. A zero length_ms selects the library continuous
+   * default segment budget, currently 7000 ms.
+   */
+  CPKT_SUS_SEGMENT_MODE_CONTINUOUS = 1
+} cpkt_sus_segment_mode;
 
 /** Transcriber construction options. */
 typedef struct cpkt_sus_transcriber_config {
@@ -214,7 +230,11 @@ typedef struct cpkt_sus_transcriber_config {
 
 /** VOX-segmented audio-decoder transcription options. Zero initializes
  * defaults. */
-typedef struct cpkt_sus_realtime_config {
+typedef struct cpkt_sus_segmented_config {
+  /**
+   * Segmentation policy. Zero selects CPKT_SUS_SEGMENT_MODE_SIMPLEX.
+   */
+  cpkt_sus_segment_mode mode;
   /**
    * Frames pulled from the audio decoder per read. Zero selects 4096 frames.
    */
@@ -226,8 +246,10 @@ typedef struct cpkt_sus_realtime_config {
   unsigned long step_ms;
   /**
    * Maximum VOX speech segment passed to one inference call, in milliseconds.
-   * Zero selects 7000 ms. A continuous speech run beyond this budget is hard
-   * cut and continued with prior prompt tokens, not prior audio.
+   * In CPKT_SUS_SEGMENT_MODE_SIMPLEX, zero disables the time cap. In
+   * CPKT_SUS_SEGMENT_MODE_CONTINUOUS, zero selects 7000 ms. A continuous speech
+   * run beyond a non-zero budget is hard cut and continued with prior prompt
+   * tokens, not prior audio.
    */
   unsigned long length_ms;
   /**
@@ -258,10 +280,10 @@ typedef struct cpkt_sus_realtime_config {
   /** Maximum tokens per inference call. Zero keeps the backend default. */
   unsigned long max_tokens;
   /** Optional sink for committed VOX-segment transcript updates. */
-  cpkt_sus_realtime_sink realtime_sink;
-  /** User value passed to realtime_sink. */
-  void *realtime_user;
-} cpkt_sus_realtime_config;
+  cpkt_sus_segmented_sink segmented_sink;
+  /** User value passed to segmented_sink. */
+  void *segmented_user;
+} cpkt_sus_segmented_config;
 
 /** Receiver shell for loaded model operations. */
 struct cpkt_sus_model {
@@ -308,31 +330,31 @@ struct cpkt_sus_transcriber {
    * Previous audio is never retranscribed; prompt tokens from the previous
    * segment are used for continuity when prompt carry is enabled.
    */
-  cpkt_sus_result (*transcribe_audio_decoder_realtime)(
+  cpkt_sus_result (*transcribe_audio_decoder_segmented)(
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
-      const cpkt_sus_realtime_config *config);
+      const cpkt_sus_segmented_config *config);
   /**
    * Transcribes one cpktaudio VOX segment into this streaming session.
    *
    * The segment is consumed during the call. Previous audio is not
    * retranscribed; prompt tokens captured from prior calls on this transcriber
    * are used for continuity unless disabled by config->keep_context. The
-   * session transcript is updated and delivered through config->realtime_sink
+   * session transcript is updated and delivered through config->segmented_sink
    * when provided.
    */
   cpkt_sus_result (*transcribe_audio_vox_segment)(
       cpkt_sus_transcriber *self, cpkt_audio_vox_segment *segment,
-      const cpkt_sus_realtime_config *config);
+      const cpkt_sus_segmented_config *config);
   /**
    * Runs VOX-segmented decoder transcription and returns session text.
    *
    * Audio remains streaming and bounded as with
-   * transcribe_audio_decoder_realtime. The returned text is assembled from
+   * transcribe_audio_decoder_segmented. The returned text is assembled from
    * committed segment updates and must be released with cpkt_sus_string_free.
    */
-  cpkt_sus_result (*transcribe_audio_decoder_realtime_text)(
+  cpkt_sus_result (*transcribe_audio_decoder_segmented_text)(
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
-      const cpkt_sus_realtime_config *config, char **text_out);
+      const cpkt_sus_segmented_config *config, char **text_out);
   /**
    * Copies the latest committed streaming transcript from this transcriber.
    *

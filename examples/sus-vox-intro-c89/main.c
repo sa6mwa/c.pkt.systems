@@ -29,6 +29,7 @@ struct cpkt_sus_vox_options {
   unsigned long memory_spool_bytes;
   unsigned long max_spool_bytes;
   int cpu_only;
+  cpkt_sus_segment_mode segment_mode;
 };
 
 struct cpkt_sus_vox_events {
@@ -52,6 +53,7 @@ static void cpkt_sus_vox_defaults(struct cpkt_sus_vox_options *options) {
   options->memory_spool_bytes = CPKT_SUS_VOX_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKT_SUS_VOX_MAX_SPOOL_BYTES;
   options->cpu_only = 1;
+  options->segment_mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
 }
 
 static int cpkt_sus_vox_parse_ulong(const char *text, unsigned long *out) {
@@ -194,7 +196,7 @@ static unsigned long cpkt_sus_vox_elapsed_ms(clock_t started) {
                          (double)CLOCKS_PER_SEC);
 }
 
-static int cpkt_sus_vox_realtime_sink(const cpkt_sus_realtime_event *event,
+static int cpkt_sus_vox_segmented_sink(const cpkt_sus_segmented_event *event,
                                       void *user) {
   struct cpkt_sus_vox_events *events;
   unsigned long delta_offset;
@@ -292,7 +294,7 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
   cpkt_sus_model *model;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config transcriber_config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   struct cpkt_sus_vox_events events;
   cpkt_sus_result result;
   char *final_text;
@@ -341,15 +343,16 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
     goto cleanup;
   }
 
-  memset(&realtime_config, 0, sizeof(realtime_config));
-  realtime_config.read_frames = options->read_frames;
-  realtime_config.length_ms = options->budget_ms;
-  realtime_config.keep_ms = options->hang_ms;
-  realtime_config.vox_threshold = options->threshold;
-  realtime_config.memory_spool_bytes = options->memory_spool_bytes;
-  realtime_config.max_spool_bytes = options->max_spool_bytes;
-  realtime_config.realtime_sink = cpkt_sus_vox_realtime_sink;
-  realtime_config.realtime_user = &events;
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  segmented_config.mode = options->segment_mode;
+  segmented_config.read_frames = options->read_frames;
+  segmented_config.length_ms = options->budget_ms;
+  segmented_config.keep_ms = options->hang_ms;
+  segmented_config.vox_threshold = options->threshold;
+  segmented_config.memory_spool_bytes = options->memory_spool_bytes;
+  segmented_config.max_spool_bytes = options->max_spool_bytes;
+  segmented_config.segmented_sink = cpkt_sus_vox_segmented_sink;
+  segmented_config.segmented_user = &events;
 
   printf("source=%s model=%s cache_dir=%s language=%s threshold=%g hang_ms=%lu "
          "budget_ms=%lu read_frames=%lu memory_spool_bytes=%lu "
@@ -378,8 +381,8 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
             options->dump_dir != NULL ? options->dump_dir : "(none)");
   }
 
-  result = transcriber->transcribe_audio_decoder_realtime(transcriber, decoder,
-                                                          &realtime_config);
+  result = transcriber->transcribe_audio_decoder_segmented(transcriber, decoder,
+                                                          &segmented_config);
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "streaming transcription failed: %s\n",
             cpkt_sus_result_string(result));
@@ -448,7 +451,8 @@ static void cpkt_sus_vox_usage(FILE *out) {
   fprintf(out, "  --language CODE              Language code; default en.\n");
   fprintf(out, "  --threshold VALUE            VOX threshold; default 0.03.\n");
   fprintf(out, "  --hang-ms N                  VOX hang-time; default 1500.\n");
-  fprintf(out, "  --budget-ms N                VOX segment budget; default 0.\n");
+  fprintf(out, "  --budget-ms N                VOX segment budget; default 0, mode default.\n");
+  fprintf(out, "  --simplex                    Use simplex turn mode instead of continuous.\n");
   fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
   fprintf(out, "  --cpu-only N                 1 for CPU-only, 0 for backend default.\n");
 }
@@ -488,6 +492,8 @@ static int cpkt_sus_vox_parse_options(int argc, char **argv,
       if (!cpkt_sus_vox_parse_ulong(argv[++i], &options->budget_ms)) {
         return 0;
       }
+    } else if (strcmp(argv[i], "--simplex") == 0) {
+      options->segment_mode = CPKT_SUS_SEGMENT_MODE_SIMPLEX;
     } else if (strcmp(argv[i], "--read-frames") == 0 && i + 1 < argc) {
       if (!cpkt_sus_vox_parse_ulong(argv[++i], &options->read_frames)) {
         return 0;

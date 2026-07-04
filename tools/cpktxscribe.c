@@ -32,6 +32,7 @@ struct cpktxscribe_options {
   int progress;
   int final_newline;
   int list_models;
+  cpkt_sus_segment_mode segment_mode;
   int verbose;
   unsigned long threads;
   unsigned long read_frames;
@@ -61,8 +62,9 @@ static void cpktxscribe_defaults(struct cpktxscribe_options *options) {
   options->cpu_only = 1;
   options->keep_context = 1;
   options->final_newline = 1;
+  options->segment_mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
   options->read_frames = CPKTXSCRIBE_DEFAULT_READ_FRAMES;
-  options->length_ms = 7000UL;
+  options->length_ms = 0UL;
   options->hang_ms = 1500UL;
   options->memory_spool_bytes = CPKTXSCRIBE_DEFAULT_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKTXSCRIBE_DEFAULT_MAX_SPOOL_BYTES;
@@ -292,7 +294,8 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "\nVOX:\n");
   fprintf(out, "  --vox-threshold VALUE        RMS threshold; default 0.03.\n");
   fprintf(out, "  --hang-ms N                  Silence release time; default 1500.\n");
-  fprintf(out, "  --segment-ms N               Segment budget; default 7000.\n");
+  fprintf(out, "  --segment-ms N               Segment budget; default 0, mode default.\n");
+  fprintf(out, "  --simplex                    Use simplex turn mode instead of continuous.\n");
   fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
   fprintf(out, "  --memory-spool-bytes N       RAM before spool; default 65536.\n");
   fprintf(out, "  --max-spool-bytes N          Max open VOX segment; default 1 GiB.\n");
@@ -403,6 +406,8 @@ static int cpktxscribe_parse_options(int argc, char **argv,
       if (!cpktxscribe_parse_ulong(argv[++i], &options->length_ms)) {
         return 0;
       }
+    } else if (strcmp(argv[i], "--simplex") == 0) {
+      options->segment_mode = CPKT_SUS_SEGMENT_MODE_SIMPLEX;
     } else if (strcmp(argv[i], "--read-frames") == 0 && i + 1 < argc) {
       if (!cpktxscribe_parse_ulong(argv[++i], &options->read_frames)) {
         return 0;
@@ -453,7 +458,7 @@ static int cpktxscribe_parse_options(int argc, char **argv,
   return 1;
 }
 
-static int cpktxscribe_realtime_sink(const cpkt_sus_realtime_event *event,
+static int cpktxscribe_segmented_sink(const cpkt_sus_segmented_event *event,
                                      void *user) {
   struct cpktxscribe_stream *stream;
   unsigned long offset;
@@ -562,7 +567,7 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
   cpkt_sus_model *model;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config transcriber_config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   struct cpktxscribe_stream stream;
   cpkt_sus_result result;
   int rc;
@@ -612,21 +617,22 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
     goto cleanup;
   }
 
-  memset(&realtime_config, 0, sizeof(realtime_config));
-  realtime_config.read_frames = options->read_frames;
-  realtime_config.length_ms = options->length_ms;
-  realtime_config.keep_ms = options->hang_ms;
-  realtime_config.keep_context = options->keep_context;
-  realtime_config.vox_threshold = options->vox_threshold;
-  realtime_config.memory_spool_bytes = options->memory_spool_bytes;
-  realtime_config.max_spool_bytes = options->max_spool_bytes;
-  realtime_config.audio_ctx = options->audio_ctx;
-  realtime_config.max_tokens = options->max_tokens;
-  realtime_config.realtime_sink = cpktxscribe_realtime_sink;
-  realtime_config.realtime_user = &stream;
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  segmented_config.mode = options->segment_mode;
+  segmented_config.read_frames = options->read_frames;
+  segmented_config.length_ms = options->length_ms;
+  segmented_config.keep_ms = options->hang_ms;
+  segmented_config.keep_context = options->keep_context;
+  segmented_config.vox_threshold = options->vox_threshold;
+  segmented_config.memory_spool_bytes = options->memory_spool_bytes;
+  segmented_config.max_spool_bytes = options->max_spool_bytes;
+  segmented_config.audio_ctx = options->audio_ctx;
+  segmented_config.max_tokens = options->max_tokens;
+  segmented_config.segmented_sink = cpktxscribe_segmented_sink;
+  segmented_config.segmented_user = &stream;
 
-  result = transcriber->transcribe_audio_decoder_realtime(transcriber, decoder,
-                                                          &realtime_config);
+  result = transcriber->transcribe_audio_decoder_segmented(transcriber, decoder,
+                                                           &segmented_config);
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "streaming transcription failed: %s\n",
             cpkt_sus_result_string(result));

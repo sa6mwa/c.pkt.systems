@@ -66,8 +66,8 @@ cat > "$work_root/sus_header_c89.c" <<'EOF'
 
 int main(void) {
   cpkt_sus_transcriber_config transcriber_config;
-  cpkt_sus_realtime_config realtime_config;
-  cpkt_sus_realtime_event event;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_segmented_event event;
   cpkt_sus_model_entry entry;
 
   transcriber_config.threads = 1;
@@ -83,17 +83,19 @@ int main(void) {
   transcriber_config.abort = 0;
   transcriber_config.abort_user = 0;
 
-  realtime_config.read_frames = 4096UL;
-  realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 1500UL;
-  realtime_config.keep_context = 1;
-  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
-  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
-  realtime_config.audio_ctx = 0UL;
-  realtime_config.max_tokens = 0UL;
-  realtime_config.realtime_sink = 0;
-  realtime_config.realtime_user = 0;
+  segmented_config.mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
+  segmented_config.read_frames = 4096UL;
+  segmented_config.mode = CPKT_SUS_SEGMENT_MODE_SIMPLEX;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.length_ms = 7000UL;
+  segmented_config.keep_ms = 1500UL;
+  segmented_config.keep_context = 1;
+  segmented_config.memory_spool_bytes = 1024UL * 1024UL;
+  segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
+  segmented_config.audio_ctx = 0UL;
+  segmented_config.max_tokens = 0UL;
+  segmented_config.segmented_sink = 0;
+  segmented_config.segmented_user = 0;
 
   event.text = "";
   event.text_length = 0UL;
@@ -114,7 +116,7 @@ int main(void) {
     return 1;
   }
 
-  return transcriber_config.threads + realtime_config.keep_context +
+  return transcriber_config.threads + segmented_config.keep_context +
          event.is_final + entry.is_default;
 }
 EOF
@@ -160,17 +162,17 @@ cat > "$work_root/audio_sus_header_cpp98.cpp" <<'EOF'
 
 int main() {
   cpkt_audio_encoder_config encoder_config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   encoder_config.format = CPKT_AUDIO_FORMAT_WAV;
   encoder_config.sample_rate = 16000UL;
   encoder_config.channels = 1UL;
-  realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 1500UL;
-  realtime_config.keep_context = 1;
-  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
-  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
-  return encoder_config.format + realtime_config.keep_context;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.length_ms = 7000UL;
+  segmented_config.keep_ms = 1500UL;
+  segmented_config.keep_context = 1;
+  segmented_config.memory_spool_bytes = 1024UL * 1024UL;
+  segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
+  return encoder_config.format + segmented_config.keep_context;
 }
 EOF
 

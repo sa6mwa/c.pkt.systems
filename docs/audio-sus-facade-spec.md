@@ -430,18 +430,23 @@ The first transcription tier must support:
   strings;
 - project-owned free function for materialized strings.
 
-Whisper.cpp realtime transcription is not a separate incremental decoder API.
-The facade must not simulate realtime by repeatedly calling `whisper_full` over
-the same rolling audio context. CPU-first builds make repeated retranscription
+Whisper.cpp does not provide a separate incremental transcription API. The
+facade must not simulate streaming by repeatedly calling `whisper_full` over the
+same rolling audio context. CPU-first builds make repeated retranscription
 unacceptable, and it creates a misleading streaming surface.
 
-The decoder realtime path therefore uses `cpkt_audio` VOX segmentation:
+The decoder segmented path therefore uses `cpkt_audio` VOX segmentation and an
+explicit library-side segment mode:
 
 - audio is decoded and pushed through VOX as float32 mono 16000 Hz PCM;
 - silence release closes a segment after `keep_ms` milliseconds, defaulting to
   1500 ms;
-- continuous speech is hard-cut after `length_ms` milliseconds, defaulting to
-  7000 ms for `cpkt_sus`;
+- `CPKT_SUS_SEGMENT_MODE_SIMPLEX` is the zero-initialized default for
+  turn-style capture or PTT; zero `length_ms` disables the time cap and relies
+  on VOX release or `max_spool_bytes` for a forced boundary;
+- `CPKT_SUS_SEGMENT_MODE_CONTINUOUS` is for continuous input streams from any
+  medium, including file, URL, decoder stream, or capture; zero `length_ms`
+  selects the library continuous segment budget, currently 7000 ms;
 - sus zero-config VOX uses a lower speech-oriented threshold than generic audio
   VOX, currently 0.001;
 - previous audio is never sent through Whisper again;
@@ -458,16 +463,14 @@ The `cpkt_audio` VOX segment source is pullable and may be backed by memory or
 by an anonymous temporary file. It keeps only `memory_spool_bytes` in RAM before
 spilling an open segment to disk, and it must hard-cut at `max_spool_bytes`
 even when `max_segment_ms` is zero. This allows generic open-ended VOX without
-unbounded memory use. Live capture examples should default the max open VOX gate
-to 180000 ms so a stuck-open microphone does not defer output indefinitely.
-Finite file-based examples may set `max_segment_ms`/`length_ms` to zero when
-they deliberately want no time cap. The `cpkt_sus` realtime library path keeps
-the default time cap bounded because whisper.cpp requires one materialized PCM
-segment per `whisper_full` call; it does not materialize a whole decoded stream.
+unbounded memory use. Live simplex examples should default to no time cap and
+rely on the spool cap. Continuous examples should select
+`CPKT_SUS_SEGMENT_MODE_CONTINUOUS` and may leave `length_ms` at zero to use the
+library's continuous-mode segment budget.
 
-Realtime output is committed segment text appended to session text, not an
+Segmented output is committed segment text appended to session text, not an
 editable rolling audio hypothesis. A caller can stream committed text updates
-through the realtime sink and then retrieve the latest materialized transcript
+through the segmented sink and then retrieve the latest materialized transcript
 from the same transcriber after completion. The revised text path may
 materialize text, but it must not materialize decoded audio beyond the current
 bounded Whisper segment.
@@ -494,13 +497,13 @@ Initial transcription options should expose only stable, high-value knobs:
 - language (`NULL`, empty string, or `"auto"` means auto-detect);
 - translate vs transcribe;
 - timestamps on/off;
-- realtime decoder options: compatibility `step_ms`, VOX segment budget
+- segmented decoder options: compatibility `step_ms`, VOX segment budget
   `length_ms`, VOX release silence `keep_ms`, VOX threshold, VOX memory/disk
   spool budgets, optional prompt-token context carryover, audio context, and max
   tokens;
-- realtime transcript callbacks, a materialized revised-text helper, and a
+- segmented transcript callbacks, a materialized revised-text helper, and a
   transcriber receiver method for copying the latest revised transcript after a
-  streaming realtime call, all without buffering decoded audio;
+  streaming segmented call, all without buffering decoded audio;
 - initial prompt;
 - progress and abort callbacks.
 
@@ -527,7 +530,7 @@ The desired workflow is:
 1. Open audio through `cpkt_audio_decoder`.
 2. Decode as `float32` mono 16000 Hz.
 3. Feed decoded PCM into the audio VOX segmenter using `length_ms`, `keep_ms`,
-   VOX threshold, and spool caps from the sus realtime config.
+   VOX threshold, and spool caps from the sus segmented config.
 4. Run Whisper once per closed VOX segment with prompt-token carryover from the
    previous segment.
 5. Emit committed transcript updates through a callback sink and make the final

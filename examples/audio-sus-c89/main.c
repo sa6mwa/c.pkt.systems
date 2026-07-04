@@ -6,7 +6,7 @@
 
 #define CPKT_EXAMPLE_READ_FRAMES 4096UL
 
-static int cpkt_example_realtime_sink(const cpkt_sus_realtime_event *event,
+static int cpkt_example_segmented_sink(const cpkt_sus_segmented_event *event,
                                       void *user) {
   FILE *out;
 
@@ -25,13 +25,14 @@ static int cpkt_example_realtime_sink(const cpkt_sus_realtime_event *event,
 }
 
 static int cpkt_example_transcribe_file(const char *model_path,
-                                        const char *audio_path) {
+                                        const char *audio_path,
+                                        cpkt_sus_segment_mode segment_mode) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_model *model;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_model_config model_config;
   cpkt_sus_transcriber_config transcriber_config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   char *text;
   int rc;
 
@@ -44,13 +45,13 @@ static int cpkt_example_transcribe_file(const char *model_path,
   memset(&model_config, 0, sizeof(model_config));
   model_config.model_path = model_path;
   memset(&transcriber_config, 0, sizeof(transcriber_config));
-  memset(&realtime_config, 0, sizeof(realtime_config));
-  realtime_config.read_frames = CPKT_EXAMPLE_READ_FRAMES;
-  realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 1500UL;
-  realtime_config.realtime_sink = cpkt_example_realtime_sink;
-  realtime_config.realtime_user = stdout;
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  segmented_config.mode = segment_mode;
+  segmented_config.read_frames = CPKT_EXAMPLE_READ_FRAMES;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.keep_ms = 1500UL;
+  segmented_config.segmented_sink = cpkt_example_segmented_sink;
+  segmented_config.segmented_user = stdout;
 
   if (cpkt_audio_decoder_open_file(&decoder, audio_path, NULL) !=
       CPKT_AUDIO_OK) {
@@ -63,8 +64,8 @@ static int cpkt_example_transcribe_file(const char *model_path,
       CPKT_SUS_OK) {
     goto cleanup;
   }
-  if (transcriber->transcribe_audio_decoder_realtime(
-          transcriber, decoder, &realtime_config) != CPKT_SUS_OK) {
+  if (transcriber->transcribe_audio_decoder_segmented(
+          transcriber, decoder, &segmented_config) != CPKT_SUS_OK) {
     goto cleanup;
   }
   if (transcriber->revised_text(transcriber, &text) != CPKT_SUS_OK) {
@@ -108,11 +109,18 @@ static int cpkt_example_smoke(void) {
 }
 
 int main(int argc, char **argv) {
+  cpkt_sus_segment_mode segment_mode;
+
   if (argc == 1) {
     return cpkt_example_smoke();
+  }
+  segment_mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
+  if (argc == 4 && strcmp(argv[1], "--simplex") == 0) {
+    segment_mode = CPKT_SUS_SEGMENT_MODE_SIMPLEX;
+    return cpkt_example_transcribe_file(argv[2], argv[3], segment_mode);
   }
   if (argc != 3) {
     return 64;
   }
-  return cpkt_example_transcribe_file(argv[1], argv[2]);
+  return cpkt_example_transcribe_file(argv[1], argv[2], segment_mode);
 }

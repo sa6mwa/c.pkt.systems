@@ -9,7 +9,7 @@
 
 #define CPKT_SUS_TEST_READ_FRAMES 4096UL
 
-struct cpkt_sus_test_realtime_events {
+struct cpkt_sus_test_segmented_events {
   char text[8192];
   const char *expected;
   unsigned long count;
@@ -90,11 +90,11 @@ static float cpkt_sus_test_env_float(const char *name, float fallback) {
 }
 
 static int
-cpkt_sus_test_realtime_sink(const cpkt_sus_realtime_event *event, void *user) {
-  struct cpkt_sus_test_realtime_events *events;
+cpkt_sus_test_segmented_sink(const cpkt_sus_segmented_event *event, void *user) {
+  struct cpkt_sus_test_segmented_events *events;
   size_t copy_size;
 
-  events = (struct cpkt_sus_test_realtime_events *)user;
+  events = (struct cpkt_sus_test_segmented_events *)user;
   if (events == NULL || event == NULL || event->text == NULL) {
     return 1;
   }
@@ -117,7 +117,7 @@ cpkt_sus_test_realtime_sink(const cpkt_sus_realtime_event *event, void *user) {
 }
 
 static int
-cpkt_sus_test_failing_realtime_sink(const cpkt_sus_realtime_event *event,
+cpkt_sus_test_failing_segmented_sink(const cpkt_sus_segmented_event *event,
                                     void *user) {
   unsigned long *count;
 
@@ -211,16 +211,16 @@ static int cpkt_sus_test_open_audio_decoder(cpkt_audio_decoder **out,
   return 0;
 }
 
-static void cpkt_sus_test_realtime_config(cpkt_sus_realtime_config *config) {
+static void cpkt_sus_test_segmented_config(cpkt_sus_segmented_config *config) {
   memset(config, 0, sizeof(*config));
   config->read_frames = cpkt_sus_test_env_ulong(
-      "CPKT_SUS_INTEGRATION_REALTIME_READ_FRAMES", CPKT_SUS_TEST_READ_FRAMES);
+      "CPKT_SUS_INTEGRATION_SEGMENTED_READ_FRAMES", CPKT_SUS_TEST_READ_FRAMES);
   config->step_ms =
-      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_STEP_MS", 1000UL);
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_SEGMENTED_STEP_MS", 1000UL);
   config->length_ms = cpkt_sus_test_env_ulong(
-      "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 7000UL);
+      "CPKT_SUS_INTEGRATION_SEGMENTED_LENGTH_MS", 7000UL);
   config->keep_ms =
-      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 1500UL);
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_SEGMENTED_KEEP_MS", 1500UL);
   config->vox_threshold =
       cpkt_sus_test_env_float("CPKT_SUS_INTEGRATION_VOX_THRESHOLD", 0.03f);
   config->memory_spool_bytes = cpkt_sus_test_env_ulong(
@@ -320,7 +320,7 @@ static int cpkt_sus_test_vox_shape_sink(cpkt_audio_vox_segment *segment,
 
 static int cpkt_sus_test_assert_vox_shape(
     const char *audio_path, const char *audio_url,
-    const cpkt_sus_realtime_config *realtime_config) {
+    const cpkt_sus_segmented_config *segmented_config) {
   cpkt_audio_decoder *decoder;
   cpkt_audio_vox *vox;
   cpkt_audio_vox_config vox_config;
@@ -352,12 +352,12 @@ static int cpkt_sus_test_assert_vox_shape(
     goto cleanup;
   }
   memset(&vox_config, 0, sizeof(vox_config));
-  vox_config.threshold = realtime_config->vox_threshold;
-  vox_config.release_silence_ms = realtime_config->keep_ms;
-  vox_config.max_segment_ms = realtime_config->length_ms;
+  vox_config.threshold = segmented_config->vox_threshold;
+  vox_config.release_silence_ms = segmented_config->keep_ms;
+  vox_config.max_segment_ms = segmented_config->length_ms;
   vox_config.min_segment_ms = 100UL;
-  vox_config.memory_spool_bytes = realtime_config->memory_spool_bytes;
-  vox_config.max_spool_bytes = realtime_config->max_spool_bytes;
+  vox_config.memory_spool_bytes = segmented_config->memory_spool_bytes;
+  vox_config.max_spool_bytes = segmented_config->max_spool_bytes;
   vox_config.segment_sink = cpkt_sus_test_vox_shape_sink;
   vox_config.segment_user = &shape;
   audio_result = cpkt_audio_vox_open(&vox, &vox_config);
@@ -366,8 +366,8 @@ static int cpkt_sus_test_assert_vox_shape(
             cpkt_audio_result_string(audio_result));
     goto cleanup;
   }
-  read_frames = realtime_config->read_frames != 0UL
-                    ? realtime_config->read_frames
+  read_frames = segmented_config->read_frames != 0UL
+                    ? segmented_config->read_frames
                     : CPKT_SUS_TEST_READ_FRAMES;
   if (read_frames > CPKT_SUS_TEST_READ_FRAMES) {
     read_frames = CPKT_SUS_TEST_READ_FRAMES;
@@ -457,16 +457,16 @@ static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
   return cpkt_sus_model_open_cached(out, &cache_config) == CPKT_SUS_OK ? 0 : 1;
 }
 
-static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
+static int cpkt_sus_test_run_segmented(cpkt_sus_model *model,
                                       const char *audio_path,
                                       const char *audio_url,
-                                      struct cpkt_sus_test_realtime_events *events,
+                                      struct cpkt_sus_test_segmented_events *events,
                                       struct cpkt_sus_test_progress *progress,
                                       char **text_out) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   cpkt_sus_result sus_result;
   int rc;
 
@@ -484,23 +484,23 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
   config.progress_sink = cpkt_sus_test_progress_sink;
   config.progress_user = progress;
   if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
-    fprintf(stderr, "failed to create realtime transcriber\n");
+    fprintf(stderr, "failed to create segmented transcriber\n");
     goto cleanup;
   }
 
-  cpkt_sus_test_realtime_config(&realtime_config);
-  realtime_config.realtime_sink = cpkt_sus_test_realtime_sink;
-  realtime_config.realtime_user = events;
-  sus_result = transcriber->transcribe_audio_decoder_realtime(
-      transcriber, decoder, &realtime_config);
+  cpkt_sus_test_segmented_config(&segmented_config);
+  segmented_config.segmented_sink = cpkt_sus_test_segmented_sink;
+  segmented_config.segmented_user = events;
+  sus_result = transcriber->transcribe_audio_decoder_segmented(
+      transcriber, decoder, &segmented_config);
   if (sus_result != CPKT_SUS_OK) {
-    fprintf(stderr, "failed to transcribe realtime audio: %s\n",
+    fprintf(stderr, "failed to transcribe segmented audio: %s\n",
             cpkt_sus_result_string(sus_result));
     goto cleanup;
   }
   sus_result = transcriber->revised_text(transcriber, text_out);
   if (sus_result != CPKT_SUS_OK || *text_out == NULL) {
-    fprintf(stderr, "failed to retrieve realtime revised text: %s\n",
+    fprintf(stderr, "failed to retrieve segmented revised text: %s\n",
             cpkt_sus_result_string(sus_result));
     goto cleanup;
   }
@@ -517,13 +517,13 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_run_realtime_exact_step_final_event(
+static int cpkt_sus_test_run_segmented_exact_step_final_event(
     cpkt_sus_model *model) {
   struct cpkt_sus_test_exact_step_decoder decoder_state;
-  struct cpkt_sus_test_realtime_events events;
+  struct cpkt_sus_test_segmented_events events;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   cpkt_sus_result result;
   int rc;
 
@@ -543,19 +543,19 @@ static int cpkt_sus_test_run_realtime_exact_step_final_event(
     goto cleanup;
   }
 
-  memset(&realtime_config, 0, sizeof(realtime_config));
-  realtime_config.read_frames = CPKT_SUS_TEST_READ_FRAMES;
-  realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 1000UL;
-  realtime_config.keep_ms = 0UL;
-  realtime_config.realtime_sink = cpkt_sus_test_realtime_sink;
-  realtime_config.realtime_user = &events;
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  segmented_config.read_frames = CPKT_SUS_TEST_READ_FRAMES;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.length_ms = 1000UL;
+  segmented_config.keep_ms = 0UL;
+  segmented_config.segmented_sink = cpkt_sus_test_segmented_sink;
+  segmented_config.segmented_user = &events;
 
-  result = transcriber->transcribe_audio_decoder_realtime(
-      transcriber, &decoder_state.decoder, &realtime_config);
+  result = transcriber->transcribe_audio_decoder_segmented(
+      transcriber, &decoder_state.decoder, &segmented_config);
   if (result != CPKT_SUS_OK || events.count == 0UL ||
       events.final_count == 0UL) {
-    fprintf(stderr, "exact-step realtime EOF did not emit a final event\n");
+    fprintf(stderr, "exact-step segmented EOF did not emit a final event\n");
     goto cleanup;
   }
 
@@ -568,12 +568,12 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_run_realtime_callback_failure(
+static int cpkt_sus_test_run_segmented_callback_failure(
     cpkt_sus_model *model, const char *audio_path, const char *audio_url) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   unsigned long callback_count;
   cpkt_sus_result result;
   int rc;
@@ -593,13 +593,13 @@ static int cpkt_sus_test_run_realtime_callback_failure(
     goto cleanup;
   }
 
-  cpkt_sus_test_realtime_config(&realtime_config);
-  realtime_config.realtime_sink = cpkt_sus_test_failing_realtime_sink;
-  realtime_config.realtime_user = &callback_count;
-  result = transcriber->transcribe_audio_decoder_realtime(
-      transcriber, decoder, &realtime_config);
+  cpkt_sus_test_segmented_config(&segmented_config);
+  segmented_config.segmented_sink = cpkt_sus_test_failing_segmented_sink;
+  segmented_config.segmented_user = &callback_count;
+  result = transcriber->transcribe_audio_decoder_segmented(
+      transcriber, decoder, &segmented_config);
   if (result != CPKT_SUS_ERR_CALLBACK || callback_count == 0UL) {
-    fprintf(stderr, "realtime callback failure was not reported\n");
+    fprintf(stderr, "segmented callback failure was not reported\n");
     goto cleanup;
   }
   rc = 0;
@@ -614,13 +614,13 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_run_realtime_abort(cpkt_sus_model *model,
+static int cpkt_sus_test_run_segmented_abort(cpkt_sus_model *model,
                                             const char *audio_path,
                                             const char *audio_url) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   unsigned long abort_count;
   cpkt_sus_result result;
   int rc;
@@ -642,11 +642,11 @@ static int cpkt_sus_test_run_realtime_abort(cpkt_sus_model *model,
     goto cleanup;
   }
 
-  cpkt_sus_test_realtime_config(&realtime_config);
-  result = transcriber->transcribe_audio_decoder_realtime(
-      transcriber, decoder, &realtime_config);
+  cpkt_sus_test_segmented_config(&segmented_config);
+  result = transcriber->transcribe_audio_decoder_segmented(
+      transcriber, decoder, &segmented_config);
   if (result != CPKT_SUS_ABORTED || abort_count == 0UL) {
-    fprintf(stderr, "realtime abort was not reported\n");
+    fprintf(stderr, "segmented abort was not reported\n");
     goto cleanup;
   }
   rc = 0;
@@ -663,9 +663,9 @@ cleanup:
 
 int main(void) {
   cpkt_sus_model *model;
-  struct cpkt_sus_test_realtime_events events;
+  struct cpkt_sus_test_segmented_events events;
   struct cpkt_sus_test_progress progress;
-  cpkt_sus_realtime_config shape_realtime_config;
+  cpkt_sus_segmented_config shape_segmented_config;
   const char *audio_path;
   const char *audio_url;
   const char *expected;
@@ -689,9 +689,9 @@ int main(void) {
     return 2;
   }
 
-  cpkt_sus_test_realtime_config(&shape_realtime_config);
+  cpkt_sus_test_segmented_config(&shape_segmented_config);
   if (cpkt_sus_test_assert_vox_shape(audio_path, audio_url,
-                                     &shape_realtime_config) != 0) {
+                                     &shape_segmented_config) != 0) {
     fprintf(stderr, "e2e VOX shape assertion failed\n");
     return 3;
   }
@@ -713,13 +713,13 @@ int main(void) {
   text = NULL;
   rc = 1;
 
-  if (cpkt_sus_test_run_realtime(model, audio_path, audio_url, &events,
+  if (cpkt_sus_test_run_segmented(model, audio_path, audio_url, &events,
                                  &progress, &text) != 0) {
-    fprintf(stderr, "realtime audio transcription failed\n");
+    fprintf(stderr, "segmented audio transcription failed\n");
     goto cleanup;
   }
   if (events.count == 0UL || events.final_count == 0UL) {
-    fprintf(stderr, "realtime transcript callback was not invoked\n");
+    fprintf(stderr, "segmented transcript callback was not invoked\n");
     goto cleanup;
   }
   expected_segments = cpkt_sus_test_env_ulong(
@@ -727,14 +727,14 @@ int main(void) {
   expected_final_segments = cpkt_sus_test_env_ulong(
       "CPKT_SUS_INTEGRATION_EXPECTED_VOX_FINAL_SEGMENTS", 0UL);
   if (expected_segments != 0UL && events.count != expected_segments) {
-    fprintf(stderr, "unexpected realtime event count: expected=%lu actual=%lu\n",
+    fprintf(stderr, "unexpected segmented event count: expected=%lu actual=%lu\n",
             expected_segments, events.count);
     goto cleanup;
   }
   if (expected_final_segments != 0UL &&
       events.final_count != expected_final_segments) {
     fprintf(stderr,
-            "unexpected realtime final event count: expected=%lu actual=%lu\n",
+            "unexpected segmented final event count: expected=%lu actual=%lu\n",
             expected_final_segments, events.final_count);
     goto cleanup;
   }
@@ -743,27 +743,27 @@ int main(void) {
     goto cleanup;
   }
 
-  if (cpkt_sus_test_run_realtime_callback_failure(model, audio_path,
+  if (cpkt_sus_test_run_segmented_callback_failure(model, audio_path,
                                                   audio_url) != 0) {
-    fprintf(stderr, "realtime callback failure transcription failed\n");
+    fprintf(stderr, "segmented callback failure transcription failed\n");
     goto cleanup;
   }
 
-  if (cpkt_sus_test_run_realtime_abort(model, audio_path, audio_url) != 0) {
-    fprintf(stderr, "realtime abort transcription failed\n");
+  if (cpkt_sus_test_run_segmented_abort(model, audio_path, audio_url) != 0) {
+    fprintf(stderr, "segmented abort transcription failed\n");
     goto cleanup;
   }
 
-  if (cpkt_sus_test_run_realtime_exact_step_final_event(model) != 0) {
-    fprintf(stderr, "exact-step realtime final event test failed\n");
+  if (cpkt_sus_test_run_segmented_exact_step_final_event(model) != 0) {
+    fprintf(stderr, "exact-step segmented final event test failed\n");
     goto cleanup;
   }
 
   if (!events.matched_expected ||
       !cpkt_sus_test_contains_expected(text, NULL, expected)) {
     fprintf(stderr, "expected transcript text was not found\n");
-    fprintf(stderr, "latest realtime transcript: %s\n", events.text);
-    fprintf(stderr, "realtime text: %s\n", text);
+    fprintf(stderr, "latest segmented transcript: %s\n", events.text);
+    fprintf(stderr, "segmented text: %s\n", text);
     goto cleanup;
   }
 

@@ -50,8 +50,8 @@ patterns = [
     (
         re.compile(
             r"\bcpkt_sus_transcriber_(?:transcribe_f32_mono_16k|"
-            r"transcribe_f32_mono_16k_text|transcribe_audio_decoder_realtime|"
-            r"transcribe_audio_decoder_realtime_text|revised_text|destroy)\s*\("
+            r"transcribe_f32_mono_16k_text|transcribe_audio_decoder_segmented|"
+            r"transcribe_audio_decoder_segmented_text|revised_text|destroy)\s*\("
         ),
         "transcriber handle operations in docs/examples must use transcriber->method",
     ),

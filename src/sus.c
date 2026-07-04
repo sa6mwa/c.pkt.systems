@@ -34,7 +34,7 @@ struct cpkt_sus_transcriber_impl {
   whisper_token *prompt_tokens;
   size_t prompt_count;
   size_t prompt_capacity;
-  unsigned long realtime_segment_count;
+  unsigned long segmented_segment_count;
   char *revised_text;
   size_t revised_length;
   size_t revised_capacity;
@@ -1097,7 +1097,7 @@ static int cpkt_sus_ul_to_int(unsigned long value, int *out) {
 }
 
 static cpkt_sus_result
-cpkt_sus_build_realtime_text(char **out, struct whisper_context *context) {
+cpkt_sus_build_segmented_text(char **out, struct whisper_context *context) {
   const char *segment_text;
   char *text;
   size_t length;
@@ -1148,11 +1148,11 @@ cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
                                          const char *text, size_t text_len);
 
 static cpkt_sus_result
-cpkt_sus_emit_realtime_event(struct cpkt_sus_transcriber_impl *impl,
-                             const cpkt_sus_realtime_config *config,
+cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
+                             const cpkt_sus_segmented_config *config,
                              const char *text, size_t text_len,
                              unsigned long step_index, int final) {
-  cpkt_sus_realtime_event event;
+  cpkt_sus_segmented_event event;
   cpkt_sus_result result;
   int callback_result;
 
@@ -1166,7 +1166,7 @@ cpkt_sus_emit_realtime_event(struct cpkt_sus_transcriber_impl *impl,
       return result;
     }
   }
-  if (config == NULL || config->realtime_sink == NULL) {
+  if (config == NULL || config->segmented_sink == NULL) {
     return CPKT_SUS_OK;
   }
 
@@ -1175,7 +1175,7 @@ cpkt_sus_emit_realtime_event(struct cpkt_sus_transcriber_impl *impl,
   event.text_length = (unsigned long)impl->revised_length;
   event.step_index = step_index;
   event.is_final = final;
-  callback_result = config->realtime_sink(&event, config->realtime_user);
+  callback_result = config->segmented_sink(&event, config->segmented_user);
   if (callback_result != 0) {
     impl->callback_error = 1;
     return CPKT_SUS_ERR_CALLBACK;
@@ -1183,8 +1183,8 @@ cpkt_sus_emit_realtime_event(struct cpkt_sus_transcriber_impl *impl,
   return CPKT_SUS_OK;
 }
 
-struct cpkt_sus_realtime_text_state {
-  cpkt_sus_realtime_sink forward_sink;
+struct cpkt_sus_segmented_text_state {
+  cpkt_sus_segmented_sink forward_sink;
   void *forward_user;
   char *text;
   size_t length;
@@ -1244,7 +1244,7 @@ static cpkt_sus_result cpkt_sus_text_reserve(char **text, size_t *capacity,
 }
 
 static cpkt_sus_result
-cpkt_sus_realtime_text_apply_storage(char **text, size_t *length,
+cpkt_sus_segmented_text_apply_storage(char **text, size_t *length,
                                      size_t *capacity, const char *hypothesis,
                                      size_t hypothesis_len) {
   size_t best_start;
@@ -1313,12 +1313,12 @@ cpkt_sus_realtime_text_apply_storage(char **text, size_t *length,
 }
 
 static cpkt_sus_result
-cpkt_sus_realtime_text_apply(struct cpkt_sus_realtime_text_state *state,
+cpkt_sus_segmented_text_apply(struct cpkt_sus_segmented_text_state *state,
                              const char *hypothesis, size_t hypothesis_len) {
   if (state == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
-  return cpkt_sus_realtime_text_apply_storage(&state->text, &state->length,
+  return cpkt_sus_segmented_text_apply_storage(&state->text, &state->length,
                                               &state->capacity, hypothesis,
                                               hypothesis_len);
 }
@@ -1361,16 +1361,16 @@ cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
   return CPKT_SUS_OK;
 }
 
-static int cpkt_sus_realtime_text_sink(const cpkt_sus_realtime_event *event,
+static int cpkt_sus_segmented_text_sink(const cpkt_sus_segmented_event *event,
                                        void *user) {
-  struct cpkt_sus_realtime_text_state *state;
+  struct cpkt_sus_segmented_text_state *state;
   cpkt_sus_result result;
 
-  state = (struct cpkt_sus_realtime_text_state *)user;
+  state = (struct cpkt_sus_segmented_text_state *)user;
   if (state == NULL || event == NULL || event->text == NULL) {
     return 1;
   }
-  result = cpkt_sus_realtime_text_apply(state, event->text,
+  result = cpkt_sus_segmented_text_apply(state, event->text,
                                         (size_t)event->text_length);
   if (result != CPKT_SUS_OK) {
     state->result = result;
@@ -1435,7 +1435,7 @@ cpkt_sus_capture_prompt_tokens(struct whisper_context *context,
 struct cpkt_sus_vox_transcribe_state {
   struct cpkt_sus_transcriber_impl *impl;
   struct cpkt_sus_model_impl *model_impl;
-  const cpkt_sus_realtime_config *config;
+  const cpkt_sus_segmented_config *config;
   whisper_token *prompt_tokens;
   size_t prompt_count;
   size_t prompt_capacity;
@@ -1600,12 +1600,12 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
 
   text = NULL;
   state->result =
-      cpkt_sus_build_realtime_text(&text, state->model_impl->context);
+      cpkt_sus_build_segmented_text(&text, state->model_impl->context);
   if (state->result != CPKT_SUS_OK) {
     return 1;
   }
   state->result =
-      cpkt_sus_emit_realtime_event(impl, state->config, text, strlen(text),
+      cpkt_sus_emit_segmented_event(impl, state->config, text, strlen(text),
                                    state->segment_count, segment->is_final);
   free(text);
   if (state->result != CPKT_SUS_OK) {
@@ -1633,9 +1633,9 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
 }
 
 static cpkt_sus_result
-cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
+cpkt_sus_transcriber_transcribe_audio_decoder_segmented_impl(
     cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
-    const cpkt_sus_realtime_config *config) {
+    const cpkt_sus_segmented_config *config) {
   struct cpkt_sus_transcriber_impl *impl;
   struct cpkt_sus_model_impl *model_impl;
   struct cpkt_sus_vox_transcribe_state state;
@@ -1666,8 +1666,14 @@ cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
   read_frames = config != NULL && config->read_frames != 0UL
                     ? config->read_frames
                     : 4096UL;
-  length_ms =
-      config != NULL && config->length_ms != 0UL ? config->length_ms : 7000UL;
+  if (config != NULL && config->length_ms != 0UL) {
+    length_ms = config->length_ms;
+  } else if (config != NULL &&
+             config->mode == CPKT_SUS_SEGMENT_MODE_CONTINUOUS) {
+    length_ms = 7000UL;
+  } else {
+    length_ms = 0UL;
+  }
   keep_ms = config != NULL && config->keep_ms != 0UL ? config->keep_ms : 1500UL;
   if (read_frames == 0UL || read_frames > ((unsigned long)-1) / sizeof(float)) {
     return CPKT_SUS_ERR_ARG;
@@ -1738,7 +1744,7 @@ cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
     goto cleanup;
   }
   if (!state.final_emitted) {
-    sus_result = cpkt_sus_emit_realtime_event(
+    sus_result = cpkt_sus_emit_segmented_event(
         impl, config, NULL, 0U,
         state.segment_count == 0UL ? 0UL : state.segment_count - 1UL, 1);
     if (sus_result != CPKT_SUS_OK) {
@@ -1757,7 +1763,7 @@ cleanup:
 
 static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_vox_segment_impl(
     cpkt_sus_transcriber *self, cpkt_audio_vox_segment *segment,
-    const cpkt_sus_realtime_config *config) {
+    const cpkt_sus_segmented_config *config) {
   struct cpkt_sus_transcriber_impl *impl;
   struct cpkt_sus_model_impl *model_impl;
   struct cpkt_sus_vox_transcribe_state state;
@@ -1783,7 +1789,7 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_vox_segment_impl(
   state.prompt_tokens = impl->prompt_tokens;
   state.prompt_count = impl->prompt_count;
   state.prompt_capacity = impl->prompt_capacity;
-  state.segment_count = impl->realtime_segment_count;
+  state.segment_count = impl->segmented_segment_count;
   state.use_prompt = (config == NULL || config->keep_context >= 0) ? 1 : 0;
   state.result = CPKT_SUS_OK;
 
@@ -1803,16 +1809,16 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_vox_segment_impl(
   impl->prompt_tokens = state.prompt_tokens;
   impl->prompt_count = state.prompt_count;
   impl->prompt_capacity = state.prompt_capacity;
-  impl->realtime_segment_count = state.segment_count;
+  impl->segmented_segment_count = state.segment_count;
   return result;
 }
 
 static cpkt_sus_result
-cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl(
+cpkt_sus_transcriber_transcribe_audio_decoder_segmented_text_impl(
     cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
-    const cpkt_sus_realtime_config *config, char **text_out) {
-  struct cpkt_sus_realtime_text_state state;
-  cpkt_sus_realtime_config wrapped_config;
+    const cpkt_sus_segmented_config *config, char **text_out) {
+  struct cpkt_sus_segmented_text_state state;
+  cpkt_sus_segmented_config wrapped_config;
   cpkt_sus_result result;
 
   if (text_out != NULL) {
@@ -1828,12 +1834,12 @@ cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl(
   if (config != NULL) {
     wrapped_config = *config;
   }
-  state.forward_sink = wrapped_config.realtime_sink;
-  state.forward_user = wrapped_config.realtime_user;
-  wrapped_config.realtime_sink = cpkt_sus_realtime_text_sink;
-  wrapped_config.realtime_user = &state;
+  state.forward_sink = wrapped_config.segmented_sink;
+  state.forward_user = wrapped_config.segmented_user;
+  wrapped_config.segmented_sink = cpkt_sus_segmented_text_sink;
+  wrapped_config.segmented_user = &state;
 
-  result = cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
+  result = cpkt_sus_transcriber_transcribe_audio_decoder_segmented_impl(
       self, decoder, &wrapped_config);
   if (result == CPKT_SUS_ERR_CALLBACK && state.result != CPKT_SUS_OK) {
     result = state.result;
@@ -1921,12 +1927,12 @@ static cpkt_sus_result cpkt_sus_model_create_transcriber_impl(
       cpkt_sus_transcriber_transcribe_f32_mono_16k_impl;
   transcriber->transcribe_f32_mono_16k_text =
       cpkt_sus_transcriber_transcribe_f32_mono_16k_text_impl;
-  transcriber->transcribe_audio_decoder_realtime =
-      cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl;
+  transcriber->transcribe_audio_decoder_segmented =
+      cpkt_sus_transcriber_transcribe_audio_decoder_segmented_impl;
   transcriber->transcribe_audio_vox_segment =
       cpkt_sus_transcriber_transcribe_audio_vox_segment_impl;
-  transcriber->transcribe_audio_decoder_realtime_text =
-      cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl;
+  transcriber->transcribe_audio_decoder_segmented_text =
+      cpkt_sus_transcriber_transcribe_audio_decoder_segmented_text_impl;
   transcriber->revised_text = cpkt_sus_transcriber_revised_text_impl;
   transcriber->destroy = cpkt_sus_transcriber_destroy_impl;
   *out = transcriber;

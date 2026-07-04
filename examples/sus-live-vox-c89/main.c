@@ -198,7 +198,7 @@ static int cpkt_sus_live_state_sink(const cpkt_audio_vox_state_event *event,
   return 0;
 }
 
-static int cpkt_sus_live_realtime_sink(const cpkt_sus_realtime_event *event,
+static int cpkt_sus_live_segmented_sink(const cpkt_sus_segmented_event *event,
                                        void *user) {
   struct cpkt_sus_live_run *run;
   char line[256];
@@ -221,7 +221,7 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   char line[256];
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config transcriber_config;
-  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_segmented_config segmented_config;
   cpkt_sus_result result;
 
   run = (struct cpkt_sus_live_run *)user;
@@ -244,13 +244,13 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
     return 1;
   }
 
-  memset(&realtime_config, 0, sizeof(realtime_config));
-  realtime_config.keep_context = -1;
-  realtime_config.realtime_sink = cpkt_sus_live_realtime_sink;
-  realtime_config.realtime_user = run;
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  segmented_config.keep_context = -1;
+  segmented_config.segmented_sink = cpkt_sus_live_segmented_sink;
+  segmented_config.segmented_user = run;
   run->current_segment_index = segment->segment_index;
   result = transcriber->transcribe_audio_vox_segment(transcriber, segment,
-                                                     &realtime_config);
+                                                     &segmented_config);
   transcriber->destroy(transcriber);
   if (result != CPKT_SUS_OK) {
     return 1;
