@@ -363,6 +363,7 @@ target_include_directories(cpkt_sus_static
 )
 target_link_libraries(cpkt_sus_static PUBLIC
   cpkt::whisper_static
+  cpkt::curl_static
   cpkt::openssl_crypto_static
 )
 target_compile_definitions(cpkt_sus_static PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
@@ -380,6 +381,7 @@ target_include_directories(cpkt_sus_shared
 )
 target_link_libraries(cpkt_sus_shared PUBLIC
   cpkt::whisper_shared
+  cpkt::curl_shared
   cpkt::openssl_crypto_shared
 )
 target_compile_definitions(cpkt_sus_shared PRIVATE CPKT_SUS_FACADE_VERSION="${CPKT_SUS_ABI_VERSION}")
@@ -666,7 +668,7 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME audio_facade_unit COMMAND cpkt_audio_facade_test)
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
       set_tests_properties(sus_facade_unit PROPERTIES
-        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib")
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
       add_test(NAME abi_test_shared COMMAND cpkt_abi_test_shared)
       add_test(NAME abi_test_static COMMAND cpkt_abi_test_static)
       add_test(NAME lua_runtime_unit COMMAND cpkt_lua_runtime_test)

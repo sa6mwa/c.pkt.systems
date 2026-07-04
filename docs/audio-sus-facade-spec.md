@@ -369,8 +369,12 @@ Current implementation status:
   cache directories, XDG/HOME cache directories, existing local cache files,
   pinned checksums, user checksum overrides, and explicit insecure checksum
   bypass;
-- missing local cache entries currently return `CPKT_SUS_ERR_IO`; the libcurl
-  download/write/verify/rename route is the next implementation slice;
+- missing local cache entries are downloaded with libcurl unless `offline` is
+  non-zero;
+- `source_url` may override a curated entry's URL for controlled mirrors or
+  deterministic tests, while checksum rules still apply;
+- downloaded files are written to a unique temporary path, flushed, checksum
+  verified, model-load verified, and then atomically renamed into place;
 - cache loading returns distinct lookup, I/O, checksum, model-load, and future
   network result codes.
 

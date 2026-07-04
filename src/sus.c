@@ -1,12 +1,15 @@
 #include <cpkt/sus.h>
 
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
+#include <curl/curl.h>
 #include <openssl/evp.h>
 #include <whisper.h>
 
@@ -36,6 +39,14 @@ struct cpkt_sus_catalog_entry {
   const char *quantization;
   int is_default;
 };
+
+struct cpkt_sus_download_sink {
+  FILE *file;
+  int failed;
+};
+
+cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
+                                         const cpkt_sus_model_config *config);
 
 static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
     {"tiny", "ggerganov/whisper.cpp", "ggml-tiny.bin",
@@ -345,6 +356,101 @@ static int cpkt_sus_file_exists(const char *path) {
   return S_ISREG(st.st_mode) ? 1 : 0;
 }
 
+static cpkt_sus_result cpkt_sus_mkdir_one(const char *path) {
+  struct stat st;
+
+  if (path == NULL || path[0] == '\0') {
+    return CPKT_SUS_ERR_ARG;
+  }
+  if (mkdir(path, 0700) == 0) {
+    return CPKT_SUS_OK;
+  }
+  if (errno == EEXIST) {
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+      return CPKT_SUS_OK;
+    }
+  }
+  return CPKT_SUS_ERR_IO;
+}
+
+static cpkt_sus_result cpkt_sus_mkdirs(const char *path) {
+  char *copy;
+  char *cursor;
+  cpkt_sus_result result;
+
+  if (path == NULL || path[0] == '\0') {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  copy = cpkt_sus_strdup_range(path, strlen(path));
+  if (copy == NULL) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+
+  cursor = copy;
+  if (cursor[0] == '/') {
+    ++cursor;
+  }
+
+  for (; *cursor != '\0'; ++cursor) {
+    if (*cursor == '/') {
+      *cursor = '\0';
+      if (copy[0] != '\0') {
+        result = cpkt_sus_mkdir_one(copy);
+        if (result != CPKT_SUS_OK) {
+          free(copy);
+          return result;
+        }
+      }
+      *cursor = '/';
+    }
+  }
+
+  result = cpkt_sus_mkdir_one(copy);
+  free(copy);
+  return result;
+}
+
+static cpkt_sus_result cpkt_sus_temp_path_for(char **out,
+                                              const char *model_path) {
+  static const char suffix[] = ".tmp.XXXXXX";
+  size_t path_len;
+  char *temp_path;
+  int fd;
+
+  if (out != NULL) {
+    *out = NULL;
+  }
+  if (out == NULL || model_path == NULL || model_path[0] == '\0') {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  path_len = strlen(model_path);
+  if (path_len > ((size_t)-1) - sizeof(suffix)) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+  temp_path = (char *)malloc(path_len + sizeof(suffix));
+  if (temp_path == NULL) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+  memcpy(temp_path, model_path, path_len);
+  memcpy(temp_path + path_len, suffix, sizeof(suffix));
+
+  fd = mkstemp(temp_path);
+  if (fd < 0) {
+    free(temp_path);
+    return CPKT_SUS_ERR_IO;
+  }
+  if (close(fd) != 0) {
+    (void)remove(temp_path);
+    free(temp_path);
+    return CPKT_SUS_ERR_IO;
+  }
+
+  *out = temp_path;
+  return CPKT_SUS_OK;
+}
+
 static cpkt_sus_result cpkt_sus_sha256_file(char out_hex[65],
                                             const char *path) {
   unsigned char digest[EVP_MAX_MD_SIZE];
@@ -439,6 +545,150 @@ cpkt_sus_validate_cached_file(const char *path,
     return CPKT_SUS_ERR_CHECKSUM;
   }
   return CPKT_SUS_OK;
+}
+
+static size_t cpkt_sus_curl_write(void *buffer, size_t size, size_t nmemb,
+                                  void *user_data) {
+  struct cpkt_sus_download_sink *sink;
+  size_t bytes;
+  size_t written;
+
+  sink = (struct cpkt_sus_download_sink *)user_data;
+  if (sink == NULL || sink->file == NULL) {
+    return 0U;
+  }
+  if (size != 0U && nmemb > ((size_t)-1) / size) {
+    sink->failed = 1;
+    return 0U;
+  }
+  bytes = size * nmemb;
+  written = fwrite(buffer, 1U, bytes, sink->file);
+  if (written != bytes) {
+    sink->failed = 1;
+  }
+  return written;
+}
+
+static cpkt_sus_result cpkt_sus_download_to_file(const char *url,
+                                                 const char *path) {
+  struct cpkt_sus_download_sink sink;
+  CURL *curl;
+  CURLcode code;
+
+  if (url == NULL || url[0] == '\0' || path == NULL || path[0] == '\0') {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+    return CPKT_SUS_ERR_NETWORK;
+  }
+
+  memset(&sink, 0, sizeof(sink));
+  sink.file = fopen(path, "wb");
+  if (sink.file == NULL) {
+    return CPKT_SUS_ERR_IO;
+  }
+
+  curl = curl_easy_init();
+  if (curl == NULL) {
+    fclose(sink.file);
+    return CPKT_SUS_ERR_NETWORK;
+  }
+
+  (void)curl_easy_setopt(curl, CURLOPT_URL, url);
+  (void)curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  (void)curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+  (void)curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cpkt_sus_curl_write);
+  (void)curl_easy_setopt(curl, CURLOPT_WRITEDATA, &sink);
+  (void)curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 30L);
+  (void)curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+  (void)curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, 60L);
+  (void)curl_easy_setopt(curl, CURLOPT_USERAGENT, "c.pkt.systems-cpkt-sus/0");
+
+  code = curl_easy_perform(curl);
+  curl_easy_cleanup(curl);
+  if (fflush(sink.file) != 0) {
+    sink.failed = 1;
+  }
+  if (fsync(fileno(sink.file)) != 0) {
+    sink.failed = 1;
+  }
+  if (fclose(sink.file) != 0) {
+    sink.failed = 1;
+  }
+
+  if (code != CURLE_OK || sink.failed) {
+    return code == CURLE_OK ? CPKT_SUS_ERR_IO : CPKT_SUS_ERR_NETWORK;
+  }
+  return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result
+cpkt_sus_verify_model_file(const char *path,
+                           const cpkt_sus_cache_config *config) {
+  cpkt_sus_model_config model_config;
+  cpkt_sus_model *model;
+  cpkt_sus_result result;
+
+  memset(&model_config, 0, sizeof(model_config));
+  model_config.model_path = path;
+  model_config.cpu_only = config != NULL ? config->cpu_only : 0;
+  model = NULL;
+  result = cpkt_sus_model_open_path(&model, &model_config);
+  if (model != NULL) {
+    model->destroy(model);
+  }
+  return result;
+}
+
+static cpkt_sus_result
+cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
+                           const struct cpkt_sus_catalog_entry *entry,
+                           const cpkt_sus_cache_config *config) {
+  const char *url;
+  char *temp_path;
+  cpkt_sus_result result;
+
+  if (model_path == NULL || cache_dir == NULL || entry == NULL ||
+      config == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  if (config->offline) {
+    return CPKT_SUS_ERR_IO;
+  }
+
+  result = cpkt_sus_mkdirs(cache_dir);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+
+  temp_path = NULL;
+  result = cpkt_sus_temp_path_for(&temp_path, model_path);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+
+  url = entry->url;
+  if (config->source_url != NULL && config->source_url[0] != '\0') {
+    url = config->source_url;
+  }
+
+  result = cpkt_sus_download_to_file(url, temp_path);
+  if (result == CPKT_SUS_OK) {
+    result = cpkt_sus_validate_cached_file(temp_path, entry, config);
+  }
+  if (result == CPKT_SUS_OK) {
+    result = cpkt_sus_verify_model_file(temp_path, config);
+  }
+  if (result == CPKT_SUS_OK && rename(temp_path, model_path) != 0) {
+    result = CPKT_SUS_ERR_IO;
+  }
+
+  if (result != CPKT_SUS_OK) {
+    (void)remove(temp_path);
+  }
+  free(temp_path);
+  return result;
 }
 
 static cpkt_sus_result cpkt_sus_info_impl(const cpkt_sus_model *self,
@@ -817,15 +1067,20 @@ cpkt_sus_model_open_cached(cpkt_sus_model **out,
     return result;
   }
   result = cpkt_sus_join2(&model_path, cache_dir, entry->filename);
-  free(cache_dir);
   if (result != CPKT_SUS_OK) {
+    free(cache_dir);
     return result;
   }
 
   if (!cpkt_sus_file_exists(model_path)) {
-    free(model_path);
-    return CPKT_SUS_ERR_IO;
+    result = cpkt_sus_fetch_cached_file(model_path, cache_dir, entry, config);
+    if (result != CPKT_SUS_OK) {
+      free(cache_dir);
+      free(model_path);
+      return result;
+    }
   }
+  free(cache_dir);
 
   result = cpkt_sus_validate_cached_file(model_path, entry, config);
   if (result == CPKT_SUS_OK) {

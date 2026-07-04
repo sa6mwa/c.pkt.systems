@@ -1,13 +1,21 @@
+#include <limits.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <cmocka.h>
 
 #include <cpkt/sus.h>
+
+static int cpkt_test_file_exists(const char *path) {
+  struct stat st;
+
+  return stat(path, &st) == 0 ? 1 : 0;
+}
 
 static void test_backend_metadata(void **state) {
   (void)state;
@@ -95,6 +103,7 @@ static void test_cached_open_contract(void **state) {
   (void)state;
   memset(&config, 0, sizeof(config));
   config.cache_dir = "cpkt-sus-test-cache";
+  config.offline = 1;
   (void)mkdir(config.cache_dir, 0700);
   (void)remove("cpkt-sus-test-cache/ggml-small.bin");
 
@@ -149,6 +158,50 @@ static void test_cached_open_contract(void **state) {
   (void)remove("cpkt-sus-test-cache/ggml-small.bin");
 }
 
+static void test_cached_open_downloads_to_temp_before_rename(void **state) {
+  cpkt_sus_cache_config config;
+  cpkt_sus_model *model;
+  char cwd[4096];
+  char source_url[4608];
+  FILE *file;
+
+  (void)state;
+  assert_non_null(getcwd(cwd, sizeof(cwd)));
+  assert_true(snprintf(source_url, sizeof(source_url),
+                       "file://%s/cpkt-sus-source-model.bin",
+                       cwd) < (int)sizeof(source_url));
+
+  (void)remove("cpkt-sus-source-model.bin");
+  (void)remove("cpkt-sus-fetch-cache/nested/ggml-small.bin");
+  (void)rmdir("cpkt-sus-fetch-cache/nested");
+  (void)rmdir("cpkt-sus-fetch-cache");
+
+  file = fopen("cpkt-sus-source-model.bin", "wb");
+  assert_non_null(file);
+  assert_int_equal(fwrite("not a whisper model", 1, 19, file), 19);
+  assert_int_equal(fclose(file), 0);
+
+  memset(&config, 0, sizeof(config));
+  config.model = "small";
+  config.cache_dir = "cpkt-sus-fetch-cache/nested";
+  config.source_url = source_url;
+  config.sha256 =
+      "88e9294cb41d862d3e2670fb9894c3e46f74fefdd18eadd8f47ee4611406487a";
+  config.cpu_only = 1;
+
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_MODEL);
+  assert_null(model);
+  assert_false(
+      cpkt_test_file_exists("cpkt-sus-fetch-cache/nested/ggml-small.bin"));
+
+  (void)remove("cpkt-sus-source-model.bin");
+  (void)remove("cpkt-sus-fetch-cache/nested/ggml-small.bin");
+  (void)rmdir("cpkt-sus-fetch-cache/nested");
+  (void)rmdir("cpkt-sus-fetch-cache");
+}
+
 static void test_result_strings(void **state) {
   (void)state;
 
@@ -168,6 +221,7 @@ int main(void) {
       cmocka_unit_test(test_open_model_reports_load_failure),
       cmocka_unit_test(test_model_helpers_reject_invalid_arguments),
       cmocka_unit_test(test_cached_open_contract),
+      cmocka_unit_test(test_cached_open_downloads_to_temp_before_rename),
       cmocka_unit_test(test_result_strings),
   };
 

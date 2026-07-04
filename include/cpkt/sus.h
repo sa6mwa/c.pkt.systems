@@ -56,9 +56,13 @@ typedef struct cpkt_sus_cache_config {
   const char *cache_dir;
   /** Optional lowercase hex SHA-256 override for the selected model. */
   const char *sha256;
+  /** Optional source URL override for controlled mirrors or tests. */
+  const char *source_url;
   /** Non-zero disables checksum enforcement. This is insecure and off by
    * default. */
   int insecure_no_checksum;
+  /** Non-zero disables downloading and requires an existing cache file. */
+  int offline;
   /** Non-zero requests CPU-only execution when the backend supports it. */
   int cpu_only;
 } cpkt_sus_cache_config;
@@ -188,8 +192,9 @@ cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
  * A NULL or empty model name selects the default "small" multilingual model.
  * The resolver checks an existing cache entry at cache_dir, XDG_CACHE_HOME, or
  * HOME/.cache, verifies SHA-256 unless insecure_no_checksum is non-zero, and
- * then loads the model. Download support is explicit to this route and returns
- * CPKT_SUS_ERR_NETWORK until the libcurl fetcher is wired.
+ * then loads the model. Missing cache entries are downloaded through libcurl
+ * unless offline is non-zero. source_url may override the curated URL, but the
+ * checksum rules still apply.
  */
 cpkt_sus_result cpkt_sus_model_open_cached(cpkt_sus_model **out,
                                            const cpkt_sus_cache_config *config);
