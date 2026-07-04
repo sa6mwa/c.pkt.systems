@@ -459,6 +459,15 @@ workflow demand.
 convenience entry points that accept `cpkt_audio_decoder` only if the build and
 package metadata keep library dependencies clear.
 
+Current implementation status:
+
+- `libcpktsus` does not link `libcpktaudio`;
+- realtime integration accepts the public `cpkt_audio_decoder` receiver shell
+  and calls its decoder method, so the two libraries remain independently
+  consumable;
+- examples and integration tests link both libraries when demonstrating the
+  end-to-end audio-to-text workflow.
+
 The desired workflow is:
 
 1. Open audio through `cpkt_audio_decoder`.
@@ -627,16 +636,21 @@ Model-download tests that require network access must be opt-in. Local tests
 should use small fixtures, fake download transports, or injected local model
 files.
 
-## Open Decisions
+## Deferred Decisions
 
-- Whether `libcpktsus` directly links `libcpktaudio` for convenience APIs or
-  keeps all audio integration in examples/an optional helper target.
-- Exact miniaudio encoder formats available without optional extras.
-- Exact model SHA-256 and size entries for every curated OpenAI-derived and
-  KBLab GGML model.
-- Whether the first release exposes any whisper.cpp VAD/tinydiarize features.
-- Whether quantized model aliases should use `name:q5_0`, separate constants,
-  or both.
+The first implementation has resolved the initial library split, encoder
+format, model catalog, and quantized-alias policy:
+
+- `cpktsus` remains independent from `cpktaudio` at link time;
+- WAV is the only advertised encoder format until another miniaudio encoder
+  path is deliberately enabled and tested;
+- curated OpenAI-derived and KBLab GGML model entries carry pinned SHA-256 and
+  size metadata in source and mirrored documentation;
+- quantized model aliases use explicit `name:q5_0` or `name:q5_1` suffixes.
+
+Remaining deferred decisions:
+
+- Whether a later release exposes whisper.cpp VAD or tinydiarize features.
 - When to introduce Vulkan/CUDA artifacts and whether they use direct linked
   backends or `GGML_BACKEND_DL`.
 - Whether runtime GPU device selection is exposed with GPU-enabled artifacts or
