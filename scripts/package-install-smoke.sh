@@ -331,6 +331,17 @@ assert_file_contains() {
   fi
 }
 
+assert_file_not_contains() {
+  file_path=$1
+  unexpected=$2
+  description=$3
+  if grep -F -- "$unexpected" "$file_path" >/dev/null 2>&1; then
+    printf '%s contains unexpected metadata-propagated item: %s\n' "$description" "$unexpected" >&2
+    printf 'inspected file: %s\n' "$file_path" >&2
+    exit 1
+  fi
+}
+
 assert_package_file "lib/cmake/OpenSSL/OpenSSLConfig.cmake"
 assert_package_file "lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake"
 assert_package_file "lib/cmake/zlib/ZLIBConfig.cmake"
@@ -1262,6 +1273,9 @@ assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefi
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libcrypto.a" "open62541::open62541 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcurl.a" "cpkt::audio link line"
+assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::audio link line"
+assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libwhisper.a" "cpkt::audio link line"
+assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libggml.a" "cpkt::audio link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libcpkt_opcua.a" "cpkt::opcua link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libopen62541.a" "cpkt::opcua link line"
 case "$target_id" in
@@ -1284,6 +1298,8 @@ case "$target_id" in
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libwhisper.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libstdc++.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libgcc.a" "cpkt::sus link line"
+    assert_file_not_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::sus link line"
+    assert_file_not_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libminiaudio.a" "cpkt::sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio+sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::audio+sus link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcurl.a" "cpkt::audio+sus link line"
@@ -1524,6 +1540,11 @@ assert_words_contain "$audio_words" "-lnghttp2" "cpkt-audio.pc --static output"
 assert_words_contain "$audio_words" "-lssl" "cpkt-audio.pc --static output"
 assert_words_contain "$audio_words" "-lcrypto" "cpkt-audio.pc --static output"
 assert_words_contain "$audio_words" "-lz" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lcpktsus" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lwhisper" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lggml" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lggml-base" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lggml-cpu" "cpkt-audio.pc --static output"
 assert_words_contain "$mqttc_words" "-lmqttc" "mqtt-c.pc --static output"
 assert_words_contain "$open62541_words" "-lssl" "open62541.pc --static output"
 assert_words_contain "$open62541_words" "-lcrypto" "open62541.pc --static output"
@@ -1540,6 +1561,8 @@ assert_words_contain "$sus_words" "-lggml-base" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lggml-cpu" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lcurl" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lcrypto" "cpkt-sus.pc --static output"
+assert_words_not_contain "$sus_words" "-lcpktaudio" "cpkt-sus.pc --static output"
+assert_words_not_contain "$sus_words" "-lminiaudio" "cpkt-sus.pc --static output"
 case "$target_id" in
   *-linux-*)
     assert_words_contain "$sus_words" "$pkg_config_libdir/../../lib/cpkt-cxx/libstdc++.a" "cpkt-sus.pc --static output"
