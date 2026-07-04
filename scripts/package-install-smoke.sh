@@ -473,6 +473,52 @@ int main(void) {
   return message == 0 || message[0] == '\0';
 }
 EOF
+cat > "$cmake_source_dir/cpkt_sus_facade_strict.c" <<'EOF'
+#include <cpkt/sus.h>
+
+#include <string.h>
+
+int main(void) {
+  cpkt_sus_model_entry entry;
+  cpkt_sus_model *model;
+  cpkt_sus_model_config config;
+
+  if (cpkt_sus_backend_version() == 0 ||
+      cpkt_sus_backend_system_info() == 0 ||
+      cpkt_sus_facade_version() == 0) {
+    return 1;
+  }
+  if (cpkt_sus_result_string(CPKT_SUS_ERR_MODEL) == 0) {
+    return 2;
+  }
+  if (cpkt_sus_model_catalog_count() == 0) {
+    return 3;
+  }
+  if (cpkt_sus_model_catalog_default(&entry) != CPKT_SUS_OK) {
+    return 4;
+  }
+  if (entry.name == 0 || strcmp(entry.name, "small") != 0) {
+    return 5;
+  }
+  if (cpkt_sus_model_catalog_find("kb-whisper-small", &entry) != CPKT_SUS_OK) {
+    return 6;
+  }
+  if (entry.provider == 0 || strcmp(entry.provider, "KBLab/kb-whisper-small") != 0) {
+    return 7;
+  }
+  memset(&config, 0, sizeof(config));
+  config.model_path = "";
+  model = (cpkt_sus_model *)1;
+  if (cpkt_sus_model_open_path(&model, &config) != CPKT_SUS_ERR_ARG) {
+    return 8;
+  }
+  if (model != 0) {
+    return 9;
+  }
+  cpkt_sus_string_free(0);
+  return 0;
+}
+EOF
 cat > "$cmake_source_dir/cpkt_opcua_facade_strict.c" <<'EOF'
 #include <cpkt/opcua.h>
 
@@ -949,6 +995,9 @@ find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
 find_package(open62541 CONFIG REQUIRED)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  find_package(CpktSus CONFIG REQUIRED)
+endif()
 
 function(cpkt_add_static_smoke target_name source_name link_target)
   add_executable("\${target_name}" "\${source_name}")
@@ -969,6 +1018,11 @@ cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
 set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  cpkt_add_static_smoke(cpkt_cmake_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
+  set_source_files_properties(cpkt_sus_facade_strict.c PROPERTIES
+    COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+endif()
 add_executable(cpkt_cmake_all cpkt_all.c)
 target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic -Werror)
 target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua miniaudio::miniaudio open62541::open62541)
@@ -1013,6 +1067,7 @@ cmake_args=(
   -DLua_DIR="$prefix/lib/cmake/Lua" \
   -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCpktSus_DIR="$prefix/lib/cmake/CpktSus" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
@@ -1078,6 +1133,14 @@ case "$target_id" in
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "CoreFoundation" "CURL::libcurl link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "SystemConfiguration" "CURL::libcurl link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "iconv" "LibXml2::LibXml2 link line"
+    ;;
+esac
+case "$target_id" in
+  *-linux-*)
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libwhisper.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libstdc++.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libgcc.a" "cpkt::sus link line"
     ;;
 esac
 
@@ -1231,6 +1294,7 @@ mqttc_words=$(pkg_config_words mqtt-c)
 lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
 open62541_words=$(pkg_config_words open62541)
 opcua_words=$(pkg_config_words cpkt-opcua)
+sus_words=$(pkg_config_words cpkt-sus)
 openssl_default_words=$(pkg_config_default_words openssl)
 
 case "$target_id" in
@@ -1293,6 +1357,19 @@ assert_words_contain "$opcua_words" "-lopen62541" "cpkt-opcua.pc --static output
 assert_words_contain "$opcua_words" "-lssl" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lcrypto" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lm" "cpkt-opcua.pc --static output"
+assert_words_contain "$sus_words" "-lcpktsus" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lwhisper" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lggml" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lggml-base" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lggml-cpu" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lcurl" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lcrypto" "cpkt-sus.pc --static output"
+case "$target_id" in
+  *-linux-*)
+    assert_words_contain "$sus_words" "$pkg_config_libdir/../../lib/cpkt-cxx/libstdc++.a" "cpkt-sus.pc --static output"
+    assert_words_contain "$sus_words" "$pkg_config_libdir/../../lib/cpkt-cxx/libgcc.a" "cpkt-sus.pc --static output"
+    ;;
+esac
 
 cpkt_pkg_config_static_smoke() {
   pc_name=$1
@@ -1313,6 +1390,11 @@ cpkt_pkg_config_static_smoke() {
           bundled["-llua"] = 1
           bundled["-lcpkt_lua_runtime"] = 1
           bundled["-lmqttc"] = 1
+          bundled["-lwhisper"] = 1
+          bundled["-lggml"] = 1
+          bundled["-lggml-base"] = 1
+          bundled["-lggml-cpu"] = 1
+          bundled["-lcpktsus"] = 1
           bundled["-lopen62541"] = 1
           bundled["-lcpkt_opcua"] = 1
         }
@@ -1350,6 +1432,11 @@ cpkt_pkg_config_static_smoke lua cpkt_lua.c
 cpkt_pkg_config_static_smoke mqtt-c cpkt_mqttc.c
 cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
 cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
+case "$target_id" in
+  *-linux-*)
+    cpkt_pkg_config_static_smoke cpkt-sus cpkt_sus_facade_strict.c
+    ;;
+esac
 
 example_pkg_config_output="$work_root/bin/cpkt_example_pkg_config_consumer"
 CPKT_SDK_PREFIX="$prefix" \
