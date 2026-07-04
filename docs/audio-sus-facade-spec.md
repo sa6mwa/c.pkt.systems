@@ -26,7 +26,8 @@ decisions so implementation can begin against a concrete target.
 - Provide a C89-compatible public API that exposes no miniaudio, whisper.cpp,
   ggml, C++ standard library, or backend-specific types in installed headers.
 - Make receiver-style handles the intended usage style for these new facades.
-- Support streaming audio input from files and callback readers.
+- Support streaming audio input from files, HTTP/HTTPS URLs, and callback
+  readers.
 - Decode supported audio into PCM suitable for whisper.cpp: `float32`, mono,
   16000 Hz.
 - Support audio encoding where miniaudio provides a practical built-in encoder,
@@ -301,6 +302,8 @@ the backend's requested byte count.
 The first decoder tier must support:
 
 - open from explicit file path;
+- open from HTTP/HTTPS URL through libcurl without pre-downloading the full
+  response;
 - open from callback reader;
 - decode to `float32` mono 16000 Hz for whisper.cpp;
 - report source format where miniaudio exposes it;
@@ -595,6 +598,8 @@ Required checks:
 - public headers compile standalone as C89 and C++;
 - receiver-style examples build and avoid free-function happy-path usage;
 - `cpkt_audio` decoder opens WAV/MP3/FLAC fixtures when supported;
+- `cpkt_audio` URL decoder streams through libcurl without full-response
+  materialization;
 - decoder callback reader handles fragmented reads, EOF, seek failures, and
   callback errors;
 - seekless callback readers are rejected safely when the backend format needs
