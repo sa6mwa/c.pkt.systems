@@ -55,8 +55,42 @@ struct cpkt_sus_download_sink {
   int failed;
 };
 
+static cpkt_sus_log_sink cpkt_sus_log_callback = NULL;
+static void *cpkt_sus_log_user = NULL;
+static int cpkt_sus_log_installed = 0;
+
 cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
                                          const cpkt_sus_model_config *config);
+
+static void cpkt_sus_whisper_log_bridge(enum ggml_log_level level,
+                                        const char *text, void *user_data) {
+  cpkt_sus_log_event event;
+
+  (void)user_data;
+  if (cpkt_sus_log_callback == NULL) {
+    return;
+  }
+  memset(&event, 0, sizeof(event));
+  event.level = (int)level;
+  event.component = "whisper";
+  event.message = text != NULL ? text : "";
+  cpkt_sus_log_callback(&event, cpkt_sus_log_user);
+}
+
+static void cpkt_sus_log_ensure_installed(void) {
+  if (!cpkt_sus_log_installed) {
+    whisper_log_set(cpkt_sus_whisper_log_bridge, NULL);
+    cpkt_sus_log_installed = 1;
+  }
+}
+
+/** Sets or clears the process-wide backend log sink. */
+void cpkt_sus_log_set(cpkt_sus_log_sink sink, void *user) {
+  cpkt_sus_log_callback = sink;
+  cpkt_sus_log_user = user;
+  whisper_log_set(cpkt_sus_whisper_log_bridge, NULL);
+  cpkt_sus_log_installed = 1;
+}
 
 static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
     {"tiny", "ggerganov/whisper.cpp", "ggml-tiny.bin",
@@ -158,52 +192,107 @@ static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
      "ggml-large-v3-turbo-q5_0.bin",
      "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
      574041195UL, "MIT", "q5_0", 0},
-    {"kb-whisper-tiny", "KBLab/kb-whisper-tiny", "ggml-model.bin",
+    {"tiny.sv", "KBLab/kb-whisper-tiny", "ggml-tiny.sv.bin",
      "https://huggingface.co/KBLab/kb-whisper-tiny/resolve/main/"
      "ggml-model.bin",
      "054187c95948ee0455d428db0c0d6c84d6c6157dab72e86857ced13233118b03",
      77691730UL, "Apache-2.0", "f16", 0},
-    {"kb-whisper-tiny:q5_0", "KBLab/kb-whisper-tiny", "ggml-model-q5_0.bin",
+    {"tiny.sv:q5_0", "KBLab/kb-whisper-tiny", "ggml-tiny.sv-q5_0.bin",
      "https://huggingface.co/KBLab/kb-whisper-tiny/resolve/main/"
      "ggml-model-q5_0.bin",
      "98d46b7d23e5528d006e8a42e29eb0cb39b44bed94e1329f10f57d1fd15c658b",
      29875738UL, "Apache-2.0", "q5_0", 0},
-    {"kb-whisper-base", "KBLab/kb-whisper-base", "ggml-model.bin",
+    {"base.sv", "KBLab/kb-whisper-base", "ggml-base.sv.bin",
      "https://huggingface.co/KBLab/kb-whisper-base/resolve/main/"
      "ggml-model.bin",
      "f5e3cdb33e537eedfa2a749b5cae28c4c511873a1b13362f87dffbe07891d3fe",
      147951482UL, "Apache-2.0", "f16", 0},
-    {"kb-whisper-base:q5_0", "KBLab/kb-whisper-base", "ggml-model-q5_0.bin",
+    {"base.sv:q5_0", "KBLab/kb-whisper-base", "ggml-base.sv-q5_0.bin",
      "https://huggingface.co/KBLab/kb-whisper-base/resolve/main/"
      "ggml-model-q5_0.bin",
      "aead29b356bca8840e72a8dc2286e2d69e6702639751a1e60cb3c8eacefec546",
      55295450UL, "Apache-2.0", "q5_0", 0},
-    {"kb-whisper-small", "KBLab/kb-whisper-small", "ggml-model.bin",
+    {"small.sv", "KBLab/kb-whisper-small", "ggml-small.sv.bin",
      "https://huggingface.co/KBLab/kb-whisper-small/resolve/main/"
      "ggml-model.bin",
      "de6911330cbdc131362f7a955682b65c8a5a2394caba73e7ea821a9822efb8c6",
      487601984UL, "Apache-2.0", "f16", 0},
-    {"kb-whisper-small:q5_0", "KBLab/kb-whisper-small", "ggml-model-q5_0.bin",
+    {"small.sv:q5_0", "KBLab/kb-whisper-small", "ggml-small.sv-q5_0.bin",
      "https://huggingface.co/KBLab/kb-whisper-small/resolve/main/"
      "ggml-model-q5_0.bin",
      "6768836a51abc902e420c613153e6d418c90ea2774e913274d02ab23170225b7",
      175209680UL, "Apache-2.0", "q5_0", 0},
-    {"kb-whisper-medium", "KBLab/kb-whisper-medium", "ggml-model.bin",
+    {"medium.sv", "KBLab/kb-whisper-medium", "ggml-medium.sv.bin",
      "https://huggingface.co/KBLab/kb-whisper-medium/resolve/main/"
      "ggml-model.bin",
      "1b7842bc1c3f79fb3bf043a0a3590961d625a49ef3ccbdceb00e738c5dd8b015",
      1533763076UL, "Apache-2.0", "f16", 0},
-    {"kb-whisper-medium:q5_0", "KBLab/kb-whisper-medium", "ggml-model-q5_0.bin",
+    {"medium.sv:q5_0", "KBLab/kb-whisper-medium", "ggml-medium.sv-q5_0.bin",
      "https://huggingface.co/KBLab/kb-whisper-medium/resolve/main/"
      "ggml-model-q5_0.bin",
      "7f8762e0ade9e0073674c0d5acae942a0b1ea98add9baa008ee89c94eaba43d0",
      539212484UL, "Apache-2.0", "q5_0", 0},
-    {"kb-whisper-large", "KBLab/kb-whisper-large", "ggml-model.bin",
+    {"large.sv", "KBLab/kb-whisper-large", "ggml-large.sv.bin",
      "https://huggingface.co/KBLab/kb-whisper-large/resolve/main/"
      "ggml-model.bin",
      "b66f2dda369a88f6c03fe37326d7cc37aa216f6f34e6fc1be686e497ba9c2f39",
      3095033483UL, "Apache-2.0", "f16", 0},
-    {"kb-whisper-large:q5_0", "KBLab/kb-whisper-large", "ggml-model-q5_0.bin",
+    {"large.sv:q5_0", "KBLab/kb-whisper-large", "ggml-large.sv-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-large/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "6d2863812d7410322bb7d8647a5c7260761300fa946714c9ed66d22bb30bcb19",
+     1081140203UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-tiny", "KBLab/kb-whisper-tiny", "ggml-tiny.sv.bin",
+     "https://huggingface.co/KBLab/kb-whisper-tiny/resolve/main/"
+     "ggml-model.bin",
+     "054187c95948ee0455d428db0c0d6c84d6c6157dab72e86857ced13233118b03",
+     77691730UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-tiny:q5_0", "KBLab/kb-whisper-tiny",
+     "ggml-tiny.sv-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-tiny/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "98d46b7d23e5528d006e8a42e29eb0cb39b44bed94e1329f10f57d1fd15c658b",
+     29875738UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-base", "KBLab/kb-whisper-base", "ggml-base.sv.bin",
+     "https://huggingface.co/KBLab/kb-whisper-base/resolve/main/"
+     "ggml-model.bin",
+     "f5e3cdb33e537eedfa2a749b5cae28c4c511873a1b13362f87dffbe07891d3fe",
+     147951482UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-base:q5_0", "KBLab/kb-whisper-base",
+     "ggml-base.sv-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-base/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "aead29b356bca8840e72a8dc2286e2d69e6702639751a1e60cb3c8eacefec546",
+     55295450UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-small", "KBLab/kb-whisper-small", "ggml-small.sv.bin",
+     "https://huggingface.co/KBLab/kb-whisper-small/resolve/main/"
+     "ggml-model.bin",
+     "de6911330cbdc131362f7a955682b65c8a5a2394caba73e7ea821a9822efb8c6",
+     487601984UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-small:q5_0", "KBLab/kb-whisper-small",
+     "ggml-small.sv-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-small/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "6768836a51abc902e420c613153e6d418c90ea2774e913274d02ab23170225b7",
+     175209680UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-medium", "KBLab/kb-whisper-medium", "ggml-medium.sv.bin",
+     "https://huggingface.co/KBLab/kb-whisper-medium/resolve/main/"
+     "ggml-model.bin",
+     "1b7842bc1c3f79fb3bf043a0a3590961d625a49ef3ccbdceb00e738c5dd8b015",
+     1533763076UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-medium:q5_0", "KBLab/kb-whisper-medium",
+     "ggml-medium.sv-q5_0.bin",
+     "https://huggingface.co/KBLab/kb-whisper-medium/resolve/main/"
+     "ggml-model-q5_0.bin",
+     "7f8762e0ade9e0073674c0d5acae942a0b1ea98add9baa008ee89c94eaba43d0",
+     539212484UL, "Apache-2.0", "q5_0", 0},
+    {"kb-whisper-large", "KBLab/kb-whisper-large", "ggml-large.sv.bin",
+     "https://huggingface.co/KBLab/kb-whisper-large/resolve/main/"
+     "ggml-model.bin",
+     "b66f2dda369a88f6c03fe37326d7cc37aa216f6f34e6fc1be686e497ba9c2f39",
+     3095033483UL, "Apache-2.0", "f16", 0},
+    {"kb-whisper-large:q5_0", "KBLab/kb-whisper-large",
+     "ggml-large.sv-q5_0.bin",
      "https://huggingface.co/KBLab/kb-whisper-large/resolve/main/"
      "ggml-model-q5_0.bin",
      "6d2863812d7410322bb7d8647a5c7260761300fa946714c9ed66d22bb30bcb19",
@@ -910,6 +999,7 @@ static cpkt_sus_result cpkt_sus_transcriber_run(cpkt_sus_transcriber *self,
     params.abort_callback_user_data = impl;
   }
 
+  cpkt_sus_log_ensure_installed();
   full_result =
       whisper_full(model_impl->context, params, samples, (int)sample_count);
   if (impl->callback_error) {
@@ -1482,6 +1572,7 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
     params.abort_callback_user_data = impl;
   }
 
+  cpkt_sus_log_ensure_installed();
   full_result = whisper_full(state->model_impl->context, params, samples,
                              (int)sample_count);
   free(samples);
@@ -1809,6 +1900,7 @@ cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
     params.use_gpu = false;
   }
 
+  cpkt_sus_log_ensure_installed();
   impl->context =
       whisper_init_from_file_with_params(config->model_path, params);
   if (impl->context == NULL) {

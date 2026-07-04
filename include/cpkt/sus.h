@@ -108,6 +108,29 @@ typedef struct cpkt_sus_realtime_event {
   int is_final;
 } cpkt_sus_realtime_event;
 
+/** Backend log levels exposed through the speech facade. */
+typedef enum cpkt_sus_log_level {
+  CPKT_SUS_LOG_NONE = 0,
+  CPKT_SUS_LOG_DEBUG = 1,
+  CPKT_SUS_LOG_INFO = 2,
+  CPKT_SUS_LOG_WARN = 3,
+  CPKT_SUS_LOG_ERROR = 4,
+  CPKT_SUS_LOG_CONT = 5
+} cpkt_sus_log_level;
+
+/** Backend log event delivered to caller logging sinks. */
+typedef struct cpkt_sus_log_event {
+  /** One of cpkt_sus_log_level. Kept int-sized for ABI stability. */
+  int level;
+  /** Facade component that produced the log event, such as "backend". */
+  const char *component;
+  /** Backend-owned log text valid only during the callback. */
+  const char *message;
+} cpkt_sus_log_event;
+
+/** Receives backend log events. The sink must not retain event pointers. */
+typedef void (*cpkt_sus_log_sink)(const cpkt_sus_log_event *event, void *user);
+
 /** Read-only curated cached-model catalog entry. */
 typedef struct cpkt_sus_model_entry {
   /** Stable public model name accepted by cpkt_sus_model_open_cached. */
@@ -338,6 +361,15 @@ cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
 
 /** Releases strings allocated by cpkt_sus materialized-text helpers. */
 void cpkt_sus_string_free(char *text);
+
+/**
+ * Sets the process-wide backend log sink used by cpktsus.
+ *
+ * The speech backend exposes logging as process-global state, so this facade
+ * surface is also process-wide. Passing NULL silences backend logs, which is
+ * the default behavior installed before model loading and inference.
+ */
+void cpkt_sus_log_set(cpkt_sus_log_sink sink, void *user);
 
 /** Returns the number of curated cached-model catalog entries. */
 unsigned long cpkt_sus_model_catalog_count(void);

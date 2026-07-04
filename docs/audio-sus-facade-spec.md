@@ -553,6 +553,19 @@ whisper.cpp GGML model.
 
 Initial KBLab Swedish-optimized GGML entries:
 
+- `tiny.sv`
+- `tiny.sv:q5_0`
+- `base.sv`
+- `base.sv:q5_0`
+- `small.sv`
+- `small.sv:q5_0`
+- `medium.sv`
+- `medium.sv:q5_0`
+- `large.sv`
+- `large.sv:q5_0`
+
+Compatibility aliases:
+
 - `kb-whisper-tiny`
 - `kb-whisper-tiny:q5_0`
 - `kb-whisper-base`
@@ -567,7 +580,7 @@ Initial KBLab Swedish-optimized GGML entries:
 For example:
 
 ```c
-config.model = "kb-whisper-small";
+config.model = "small.sv";
 cpkt_sus_model_open_cached(&model, &config);
 ```
 
@@ -577,12 +590,17 @@ ONNX, PyTorch, or safetensors artifacts.
 Quantized variants should be explicit. Recommended naming:
 
 ```text
-kb-whisper-small:q5_0
+small.sv:q5_0
 small:q5_0
 ```
 
 The default for each model name without a quantization suffix should be the
 full GGML model file, not a quantized variant.
+
+Cache filenames are facade-owned and must be stable, provider-qualified, and
+artifact-specific. Provider basenames such as KBLab's repeated
+`ggml-model.bin` must not be used directly as cache filenames unless the same
+cache path maps to the same source URL and checksum.
 
 ## Cache Path Policy
 

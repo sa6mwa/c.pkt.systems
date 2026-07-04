@@ -11,11 +11,6 @@
 #define CPKTXSCRIBE_DEFAULT_MEMORY_SPOOL_BYTES 65536UL
 #define CPKTXSCRIBE_DEFAULT_MAX_SPOOL_BYTES (1024UL * 1024UL * 1024UL)
 
-typedef void (*cpktxscribe_whisper_log_fn)(int level, const char *text,
-                                           void *user);
-extern void whisper_log_set(cpktxscribe_whisper_log_fn log_callback,
-                            void *user_data);
-
 struct cpktxscribe_options {
   const char *input_path;
   const char *url;
@@ -60,7 +55,7 @@ struct cpktxscribe_stream {
 
 static void cpktxscribe_defaults(struct cpktxscribe_options *options) {
   memset(options, 0, sizeof(*options));
-  options->model = "small";
+  options->model = "tiny";
   options->language = "auto";
   options->encoding = CPKT_AUDIO_ENCODING_UNKNOWN;
   options->cpu_only = 1;
@@ -145,19 +140,11 @@ static int cpktxscribe_is_url(const char *text) {
   return cursor != NULL && cursor != text;
 }
 
-static void cpktxscribe_whisper_silent(int level, const char *text,
-                                       void *user) {
-  (void)level;
-  (void)text;
-  (void)user;
-}
-
-static void cpktxscribe_whisper_verbose(int level, const char *text,
+static void cpktxscribe_sus_log_verbose(const cpkt_sus_log_event *event,
                                         void *user) {
-  (void)level;
   (void)user;
-  if (text != NULL) {
-    fputs(text, stderr);
+  if (event != NULL && event->message != NULL) {
+    fputs(event->message, stderr);
   }
 }
 
@@ -266,12 +253,12 @@ cpktxscribe_print_status(const struct cpktxscribe_options *options) {
                       : (options->offline ? "missing-offline" : "download");
     fprintf(stderr, "status source=%s model=%s cache=%s cache_state=%s\n",
             cpktxscribe_source_label(options),
-            options->model != NULL ? options->model : "small", cache_path,
+            options->model != NULL ? options->model : "tiny", cache_path,
             cache_state);
   } else {
     fprintf(stderr, "status source=%s model=%s cache=(unresolved)\n",
             cpktxscribe_source_label(options),
-            options->model != NULL ? options->model : "small");
+            options->model != NULL ? options->model : "tiny");
   }
   free(cache_path);
   free(cache_dir);
@@ -285,7 +272,7 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "  --url URL                    Stream a libcurl-supported URL.\n");
   fprintf(out, "  --encoding auto|wav|flac|mp3 Input hint; default auto.\n");
   fprintf(out, "\nModel:\n");
-  fprintf(out, "  --model NAME                 Cached model name; default small.\n");
+  fprintf(out, "  --model NAME                 Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH            Load an explicit model file.\n");
   fprintf(out, "  --cache-dir DIR              Model cache directory.\n");
   fprintf(out, "  --offline                    Require an existing cached model.\n");
@@ -315,6 +302,12 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "  --metrics                    Print stream metrics to stderr.\n");
   fprintf(out, "  --progress                   Print backend progress to stderr.\n");
   fprintf(out, "  --no-final-newline           Do not append a final newline.\n");
+  fprintf(out, "\nExamples:\n");
+  fprintf(out, "  cpktxscribe intro.mp3\n");
+  fprintf(out, "  cpktxscribe https://pkt.systems/trajectory/assets/narration/intro/intro.mp3\n");
+  fprintf(out, "  cpktxscribe --model small intro.wav\n");
+  fprintf(out, "  cpktxscribe --model tiny.sv intro.mp3\n");
+  fprintf(out, "  cpktxscribe --model-path ggml-small.bin intro.mp3\n");
 }
 
 static int cpktxscribe_print_models(void) {
@@ -676,8 +669,10 @@ int main(int argc, char **argv) {
   if (options.list_models) {
     return cpktxscribe_print_models();
   }
-  whisper_log_set(options.verbose ? cpktxscribe_whisper_verbose
-                                  : cpktxscribe_whisper_silent,
-                  NULL);
+  if (options.verbose) {
+    cpkt_sus_log_set(cpktxscribe_sus_log_verbose, NULL);
+  } else {
+    cpkt_sus_log_set(NULL, NULL);
+  }
   return cpktxscribe_run(&options);
 }

@@ -43,6 +43,27 @@ static int cpkt_test_file_equals(const char *path, const char *expected) {
              : 0;
 }
 
+struct cpkt_test_log_capture {
+  unsigned long count;
+  int last_level;
+  const char *last_component;
+  const char *last_message;
+};
+
+static void cpkt_test_log_sink(const cpkt_sus_log_event *event, void *user) {
+  struct cpkt_test_log_capture *capture;
+
+  capture = (struct cpkt_test_log_capture *)user;
+  assert_non_null(capture);
+  assert_non_null(event);
+  assert_non_null(event->component);
+  assert_non_null(event->message);
+  ++capture->count;
+  capture->last_level = event->level;
+  capture->last_component = event->component;
+  capture->last_message = event->message;
+}
+
 static void test_backend_metadata(void **state) {
   (void)state;
 
@@ -52,6 +73,29 @@ static void test_backend_metadata(void **state) {
   assert_true(cpkt_sus_backend_system_info()[0] != '\0');
   assert_string_equal(cpkt_sus_backend_capabilities(), "cpu");
   assert_string_equal(cpkt_sus_facade_version(), "0");
+}
+
+static void test_log_callback_receives_backend_events(void **state) {
+  struct cpkt_test_log_capture capture;
+  cpkt_sus_model *model;
+  cpkt_sus_config config;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.model_path = "cpkt-sus-missing-model.gguf";
+  config.cpu_only = 1;
+
+  cpkt_sus_log_set(cpkt_test_log_sink, &capture);
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_path(&model, &config),
+                   CPKT_SUS_ERR_MODEL);
+  assert_null(model);
+  assert_true(capture.count > 0UL);
+  assert_string_equal(capture.last_component, "whisper");
+  assert_true(capture.last_level >= CPKT_SUS_LOG_NONE);
+  assert_non_null(capture.last_message);
+  cpkt_sus_log_set(NULL, NULL);
 }
 
 static void test_open_model_rejects_invalid_arguments(void **state) {
@@ -124,12 +168,15 @@ static void test_model_helpers_reject_invalid_arguments(void **state) {
 
 static void test_model_catalog_queries(void **state) {
   cpkt_sus_model_entry entry;
+  cpkt_sus_model_entry other;
   unsigned long count;
+  unsigned long i;
+  unsigned long j;
 
   (void)state;
 
   count = cpkt_sus_model_catalog_count();
-  assert_true(count >= 30UL);
+  assert_true(count >= 40UL);
 
   memset(&entry, 0xff, sizeof(entry));
   assert_int_equal(cpkt_sus_model_catalog_entry(0, &entry), CPKT_SUS_OK);
@@ -159,8 +206,15 @@ static void test_model_catalog_queries(void **state) {
   assert_int_equal(cpkt_sus_model_catalog_find("kb-whisper-small", &entry),
                    CPKT_SUS_OK);
   assert_string_equal(entry.provider, "KBLab/kb-whisper-small");
-  assert_string_equal(entry.filename, "ggml-model.bin");
+  assert_string_equal(entry.filename, "ggml-small.sv.bin");
   assert_string_equal(entry.license, "Apache-2.0");
+
+  memset(&entry, 0, sizeof(entry));
+  assert_int_equal(cpkt_sus_model_catalog_find("small.sv", &entry),
+                   CPKT_SUS_OK);
+  assert_string_equal(entry.provider, "KBLab/kb-whisper-small");
+  assert_string_equal(entry.filename, "ggml-small.sv.bin");
+  assert_string_equal(entry.quantization, "f16");
 
   memset(&entry, 0, sizeof(entry));
   assert_int_equal(cpkt_sus_model_catalog_find("large-v3-turbo:q5_0", &entry),
@@ -180,6 +234,17 @@ static void test_model_catalog_queries(void **state) {
 
   assert_int_equal(cpkt_sus_model_catalog_entry(0, NULL), CPKT_SUS_ERR_ARG);
   assert_int_equal(cpkt_sus_model_catalog_default(NULL), CPKT_SUS_ERR_ARG);
+
+  for (i = 0UL; i < count; ++i) {
+    assert_int_equal(cpkt_sus_model_catalog_entry(i, &entry), CPKT_SUS_OK);
+    for (j = i + 1UL; j < count; ++j) {
+      assert_int_equal(cpkt_sus_model_catalog_entry(j, &other), CPKT_SUS_OK);
+      if (strcmp(entry.filename, other.filename) == 0) {
+        assert_string_equal(entry.source_url, other.source_url);
+        assert_string_equal(entry.sha256, other.sha256);
+      }
+    }
+  }
 }
 
 static void test_cached_open_contract(void **state) {
@@ -360,6 +425,7 @@ static void test_result_strings(void **state) {
 int main(void) {
   const struct CMUnitTest tests[] = {
       cmocka_unit_test(test_backend_metadata),
+      cmocka_unit_test(test_log_callback_receives_backend_events),
       cmocka_unit_test(test_open_model_rejects_invalid_arguments),
       cmocka_unit_test(test_open_model_reports_load_failure),
       cmocka_unit_test(test_model_helpers_reject_invalid_arguments),
