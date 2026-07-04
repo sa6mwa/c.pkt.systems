@@ -22,6 +22,12 @@ struct cpkt_sus_test_progress {
   int last;
 };
 
+struct cpkt_sus_test_exact_step_decoder {
+  cpkt_audio_decoder decoder;
+  unsigned long total_frames;
+  unsigned long cursor;
+};
+
 static int cpkt_sus_test_contains_expected(const char *actual_a,
                                            const char *actual_b,
                                            const char *expected);
@@ -120,6 +126,36 @@ static int cpkt_sus_test_abort_now(void *user) {
     ++*count;
   }
   return 1;
+}
+
+static cpkt_audio_result
+cpkt_sus_test_exact_step_read(cpkt_audio_decoder *decoder, float *frames,
+                              size_t frame_capacity, size_t *frames_read) {
+  struct cpkt_sus_test_exact_step_decoder *state;
+  unsigned long remaining;
+  size_t to_write;
+  size_t i;
+
+  if (decoder == NULL || decoder->impl == NULL || frames == NULL ||
+      frames_read == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  state = (struct cpkt_sus_test_exact_step_decoder *)decoder->impl;
+  if (state->cursor >= state->total_frames) {
+    *frames_read = 0U;
+    return CPKT_AUDIO_AT_END;
+  }
+  remaining = state->total_frames - state->cursor;
+  to_write = frame_capacity;
+  if ((unsigned long)to_write > remaining) {
+    to_write = (size_t)remaining;
+  }
+  for (i = 0U; i < to_write; ++i) {
+    frames[i] = 0.0f;
+  }
+  state->cursor += (unsigned long)to_write;
+  *frames_read = to_write;
+  return CPKT_AUDIO_OK;
 }
 
 static int cpkt_sus_test_open_audio_decoder(cpkt_audio_decoder **out,
@@ -315,6 +351,56 @@ cleanup:
   return rc;
 }
 
+static int cpkt_sus_test_run_realtime_exact_step_final_event(
+    cpkt_sus_model *model) {
+  struct cpkt_sus_test_exact_step_decoder decoder_state;
+  struct cpkt_sus_test_realtime_events events;
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config config;
+  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_result result;
+  int rc;
+
+  memset(&decoder_state, 0, sizeof(decoder_state));
+  decoder_state.decoder.impl = &decoder_state;
+  decoder_state.decoder.read_f32_mono_16k = cpkt_sus_test_exact_step_read;
+  decoder_state.total_frames = 16000UL;
+
+  memset(&events, 0, sizeof(events));
+  transcriber = NULL;
+  rc = 1;
+
+  memset(&config, 0, sizeof(config));
+  config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
+  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+    goto cleanup;
+  }
+
+  memset(&realtime_config, 0, sizeof(realtime_config));
+  realtime_config.read_frames = CPKT_SUS_TEST_READ_FRAMES;
+  realtime_config.step_ms = 1000UL;
+  realtime_config.length_ms = 1000UL;
+  realtime_config.keep_ms = 0UL;
+  realtime_config.realtime_sink = cpkt_sus_test_realtime_sink;
+  realtime_config.realtime_user = &events;
+
+  result = transcriber->transcribe_audio_decoder_realtime(
+      transcriber, &decoder_state.decoder, &realtime_config);
+  if (result != CPKT_SUS_OK || events.count == 0UL ||
+      events.final_count == 0UL) {
+    fprintf(stderr, "exact-step realtime EOF did not emit a final event\n");
+    goto cleanup;
+  }
+
+  rc = 0;
+
+cleanup:
+  if (transcriber != NULL) {
+    transcriber->destroy(transcriber);
+  }
+  return rc;
+}
+
 static int cpkt_sus_test_run_realtime_callback_failure(
     cpkt_sus_model *model, const char *audio_path, const char *audio_url) {
   cpkt_audio_decoder *decoder;
@@ -471,6 +557,11 @@ int main(void) {
 
   if (cpkt_sus_test_run_realtime_abort(model, audio_path, audio_url) != 0) {
     fprintf(stderr, "realtime abort transcription failed\n");
+    goto cleanup;
+  }
+
+  if (cpkt_sus_test_run_realtime_exact_step_final_event(model) != 0) {
+    fprintf(stderr, "exact-step realtime final event test failed\n");
     goto cleanup;
   }
 

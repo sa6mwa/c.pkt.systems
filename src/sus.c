@@ -1434,6 +1434,13 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
       goto cleanup;
     }
     if (new_count == 0UL) {
+      if (at_end && iter > 0) {
+        sus_result = cpkt_sus_emit_realtime_event(
+            impl, config, model_impl->context, (unsigned long)(iter - 1), 1);
+        if (sus_result != CPKT_SUS_OK) {
+          goto cleanup;
+        }
+      }
       break;
     }
 
