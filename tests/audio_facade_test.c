@@ -213,7 +213,8 @@ static int memory_writer_seek(void *user, long offset, int origin) {
   return 0;
 }
 
-static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder) {
+static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder,
+                                              int expected_source_format) {
   cpkt_audio_stream_info info;
   float frames[64];
   size_t frames_read;
@@ -222,6 +223,7 @@ static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder) {
 
   memset(&info, 0, sizeof(info));
   assert_int_equal(decoder->info(decoder, &info), CPKT_AUDIO_OK);
+  assert_int_equal(info.source_format, expected_source_format);
   assert_int_equal(info.output_channels, 1);
   assert_int_equal(info.output_sample_rate, 16000);
 
@@ -243,7 +245,7 @@ static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder) {
 
 static void assert_decoder_reads_fixture_file(
     const char *path, const unsigned char *data, size_t size,
-    const cpkt_audio_decoder_config *config) {
+    const cpkt_audio_decoder_config *config, int expected_source_format) {
   FILE *file;
   cpkt_audio_decoder *decoder;
 
@@ -257,7 +259,7 @@ static void assert_decoder_reads_fixture_file(
   assert_int_equal(cpkt_audio_decoder_open_file(&decoder, path, config),
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
-  assert_decoder_reads_f32_mono_16k(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder, expected_source_format);
   decoder->destroy(decoder);
   assert_int_equal(remove(path), 0);
 }
@@ -297,7 +299,7 @@ static void test_decoder_reads_from_callback_reader(void **state) {
   assert_non_null(decoder->read_f32_mono_16k);
   assert_non_null(decoder->info);
   assert_non_null(decoder->destroy);
-  assert_decoder_reads_f32_mono_16k(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_WAV);
   decoder->destroy(decoder);
 }
 
@@ -320,7 +322,7 @@ static void test_decoder_reads_fragmented_callback_reader(void **state) {
   assert_int_equal(cpkt_audio_decoder_open_reader(&decoder, &reader, NULL),
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
-  assert_decoder_reads_f32_mono_16k(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_WAV);
   decoder->destroy(decoder);
 }
 
@@ -356,7 +358,8 @@ static void test_decoder_reads_from_file(void **state) {
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_WAV));
   assert_decoder_reads_fixture_file("cpkt_audio_facade_test.wav",
                                     test_wav_mono_8000,
-                                    sizeof(test_wav_mono_8000), NULL);
+                                    sizeof(test_wav_mono_8000), NULL,
+                                    CPKT_AUDIO_FORMAT_WAV);
 }
 
 static void test_decoder_reads_flac_file_when_supported(void **state) {
@@ -364,7 +367,8 @@ static void test_decoder_reads_flac_file_when_supported(void **state) {
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_FLAC));
   assert_decoder_reads_fixture_file("cpkt_audio_facade_test.flac",
                                     test_flac_mono_8000,
-                                    sizeof(test_flac_mono_8000), NULL);
+                                    sizeof(test_flac_mono_8000), NULL,
+                                    CPKT_AUDIO_FORMAT_FLAC);
 }
 
 static void test_decoder_reads_mp3_file_when_supported(void **state) {
@@ -380,7 +384,8 @@ static void test_decoder_reads_mp3_file_when_supported(void **state) {
   assert_true(mp3_size > 0);
   assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3));
   assert_decoder_reads_fixture_file("cpkt_audio_facade_test.mp3", mp3_data,
-                                    mp3_size, &config);
+                                    mp3_size, &config,
+                                    CPKT_AUDIO_FORMAT_MP3);
 }
 
 static void test_encoder_writes_wav_file(void **state) {
@@ -408,7 +413,7 @@ static void test_encoder_writes_wav_file(void **state) {
   assert_int_equal(cpkt_audio_decoder_open_file(&decoder, path, NULL),
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
-  assert_decoder_reads_f32_mono_16k(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_WAV);
   decoder->destroy(decoder);
   assert_int_equal(remove(path), 0);
 }
@@ -449,7 +454,7 @@ static void test_encoder_writes_wav_callback_writer(void **state) {
   assert_int_equal(cpkt_audio_decoder_open_reader(&decoder, &reader, NULL),
                    CPKT_AUDIO_OK);
   assert_non_null(decoder);
-  assert_decoder_reads_f32_mono_16k(decoder);
+  assert_decoder_reads_f32_mono_16k(decoder, CPKT_AUDIO_FORMAT_WAV);
   decoder->destroy(decoder);
 }
 

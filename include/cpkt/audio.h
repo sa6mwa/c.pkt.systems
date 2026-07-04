@@ -64,8 +64,10 @@ typedef enum cpkt_audio_format {
   CPKT_AUDIO_FORMAT_MP3 = 3
 } cpkt_audio_format;
 
-/** Output stream description for an opened decoder. */
+/** Stream description for an opened decoder. */
 typedef struct cpkt_audio_stream_info {
+  /** Detected or configured cpkt_audio_format for the source stream. */
+  int source_format;
   /** Output sample rate in hertz. */
   unsigned long output_sample_rate;
   /** Output channel count. The current speech-oriented output path uses mono.

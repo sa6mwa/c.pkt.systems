@@ -1,6 +1,7 @@
 #include <cpkt/audio.h>
 
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,6 +10,7 @@
 struct cpkt_audio_decoder_impl {
   ma_decoder decoder;
   cpkt_audio_reader reader;
+  int source_format;
   int owns_reader;
   int callback_error;
 };
@@ -44,6 +46,91 @@ static ma_encoding_format cpkt_audio_format_to_ma_encoding(int format) {
   default:
     return ma_encoding_format_unknown;
   }
+}
+
+static int cpkt_audio_format_from_encoding(int encoding) {
+  switch (encoding) {
+  case CPKT_AUDIO_ENCODING_WAV:
+    return CPKT_AUDIO_FORMAT_WAV;
+  case CPKT_AUDIO_ENCODING_FLAC:
+    return CPKT_AUDIO_FORMAT_FLAC;
+  case CPKT_AUDIO_ENCODING_MP3:
+    return CPKT_AUDIO_FORMAT_MP3;
+  default:
+    return CPKT_AUDIO_FORMAT_UNKNOWN;
+  }
+}
+
+static int cpkt_audio_format_from_signature(const unsigned char *data,
+                                            size_t size) {
+  if (data == NULL || size < 4U) {
+    return CPKT_AUDIO_FORMAT_UNKNOWN;
+  }
+  if (size >= 12U && memcmp(data, "RIFF", 4U) == 0 &&
+      memcmp(data + 8U, "WAVE", 4U) == 0) {
+    return CPKT_AUDIO_FORMAT_WAV;
+  }
+  if (memcmp(data, "fLaC", 4U) == 0) {
+    return CPKT_AUDIO_FORMAT_FLAC;
+  }
+  if (size >= 3U && memcmp(data, "ID3", 3U) == 0) {
+    return CPKT_AUDIO_FORMAT_MP3;
+  }
+  if (size >= 2U && data[0] == 0xffU && (data[1] & 0xe0U) == 0xe0U) {
+    return CPKT_AUDIO_FORMAT_MP3;
+  }
+  return CPKT_AUDIO_FORMAT_UNKNOWN;
+}
+
+static int cpkt_audio_detect_file_format(const char *path) {
+  unsigned char header[16];
+  FILE *file;
+  size_t read_size;
+
+  if (path == NULL || path[0] == '\0') {
+    return CPKT_AUDIO_FORMAT_UNKNOWN;
+  }
+  file = fopen(path, "rb");
+  if (file == NULL) {
+    return CPKT_AUDIO_FORMAT_UNKNOWN;
+  }
+  read_size = fread(header, 1U, sizeof(header), file);
+  fclose(file);
+  return cpkt_audio_format_from_signature(header, read_size);
+}
+
+static int
+cpkt_audio_source_format_from_config(const cpkt_audio_decoder_config *config) {
+  if (config == NULL) {
+    return CPKT_AUDIO_FORMAT_UNKNOWN;
+  }
+  return cpkt_audio_format_from_encoding(config->encoding);
+}
+
+static cpkt_audio_result cpkt_audio_detect_reader_format(
+    int *format_out, const cpkt_audio_reader *reader) {
+  unsigned char header[16];
+  size_t read_size;
+
+  if (format_out != NULL) {
+    *format_out = CPKT_AUDIO_FORMAT_UNKNOWN;
+  }
+  if (format_out == NULL || reader == NULL || reader->read == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  if (reader->seek == NULL) {
+    return CPKT_AUDIO_OK;
+  }
+
+  read_size = reader->read(reader->user, header, sizeof(header));
+  if (read_size > sizeof(header)) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  if (reader->seek(reader->user, 0L, CPKT_AUDIO_SEEK_SET) != 0) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  *format_out = cpkt_audio_format_from_signature(header, read_size);
+  return CPKT_AUDIO_OK;
 }
 
 static cpkt_audio_result cpkt_audio_from_ma_result(ma_result result) {
@@ -248,6 +335,7 @@ cpkt_audio_decoder_info_impl(const cpkt_audio_decoder *self,
     return cpkt_audio_from_ma_result(result);
   }
   (void)format;
+  info->source_format = impl->source_format;
   info->output_channels = channels;
   info->output_sample_rate = sample_rate;
   length = 0;
@@ -468,6 +556,10 @@ cpkt_audio_decoder_open_file(cpkt_audio_decoder **out, const char *path,
   }
 
   ma_config = cpkt_audio_ma_decoder_config(config);
+  impl->source_format = cpkt_audio_detect_file_format(path);
+  if (impl->source_format == CPKT_AUDIO_FORMAT_UNKNOWN) {
+    impl->source_format = cpkt_audio_source_format_from_config(config);
+  }
   ma_status = ma_decoder_init_file(path, &ma_config, &impl->decoder);
   if (ma_status != MA_SUCCESS) {
     decoder->impl = NULL;
@@ -502,6 +594,16 @@ cpkt_audio_decoder_open_reader(cpkt_audio_decoder **out,
   result = cpkt_audio_decoder_alloc(out, &decoder, &impl);
   if (result != CPKT_AUDIO_OK) {
     return result;
+  }
+  result = cpkt_audio_detect_reader_format(&impl->source_format, reader);
+  if (result != CPKT_AUDIO_OK) {
+    decoder->impl = NULL;
+    free(impl);
+    free(decoder);
+    return result;
+  }
+  if (impl->source_format == CPKT_AUDIO_FORMAT_UNKNOWN) {
+    impl->source_format = cpkt_audio_source_format_from_config(config);
   }
   impl->reader = *reader;
 
