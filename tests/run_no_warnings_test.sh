@@ -67,10 +67,20 @@ require_file_lacks \
   'bash ./scripts/run-no-warnings.sh "package arm64-apple-darwin-release" $(CMAKE) --build --preset package-arm64-apple-darwin-release;' \
   'Darwin package builds must not scan full upstream dependency build logs for warnings'
 
-require_file_contains \
-  "$repo_root/CMakeLists.txt" \
-  'target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
-  'repo-owned C targets must compile with warning errors on GCC/Clang'
+for compile_option in \
+    '-Wall' \
+    '-Wextra' \
+    '-Wpedantic' \
+    '-Werror' \
+    '"-ffile-prefix-map=${CMAKE_SOURCE_DIR}=src"' \
+    '"-ffile-prefix-map=${CMAKE_BINARY_DIR}=build"' \
+    '"-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=src"' \
+    '"-fdebug-prefix-map=${CMAKE_BINARY_DIR}=build"'; do
+  require_file_contains \
+    "$repo_root/CMakeLists.txt" \
+    "$compile_option" \
+    "repo-owned C targets must compile with warning errors and local-path prefix maps on GCC/Clang"
+done
 
 require_file_contains \
   "$repo_root/CMakeLists.txt" \
@@ -85,8 +95,14 @@ require_file_contains \
 for facade_target in \
     cpkt_lua_runtime_static \
     cpkt_lua_runtime_shared \
+    cpkt_audio_static \
+    cpkt_audio_shared \
+    cpkt_sus_static \
+    cpkt_sus_shared \
     cpkt_opcua_static \
     cpkt_opcua_shared \
+    cpkt_audio_facade_test \
+    cpkt_sus_facade_test \
     cpkt_lua_runtime_test \
     cpkt_opcua_facade_test; do
   require_file_contains \

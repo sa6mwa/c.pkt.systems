@@ -27,6 +27,7 @@ foreach(_required
     CPKT_AUDIO_SHARED_LIBRARY
     CPKT_WHISPER_VERSION
     CPKT_SUS_ABI_VERSION
+    CPKT_SUS_BACKEND_CAPABILITIES
     CPKT_SUS_STATIC_LIBRARY
     CPKT_SUS_SHARED_LIBRARY
     CPKT_OPCUA_ABI_VERSION
@@ -990,6 +991,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "lua_version=${CPKT_LUA_VERSION}\n"
   "miniaudio_version=${CPKT_MINIAUDIO_VERSION}\n"
   "whisper_version=${CPKT_WHISPER_VERSION}\n"
+  "sus_backend_capabilities=${CPKT_SUS_BACKEND_CAPABILITIES}\n"
   "mqtt_c_version=${CPKT_MQTTC_VERSION}\n"
   "mqtt_c_commit=${CPKT_MQTTC_COMMIT}\n"
   "open62541_version=${CPKT_OPEN62541_VERSION}\n"
@@ -1012,6 +1014,9 @@ file(COPY_FILE
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/opcua-c89-facade-spec.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/audio-sus-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md")
 file(COPY
   "${CPKT_SOURCE_DIR}/examples/"
   DESTINATION "${_stage_root}/share/doc/c.pkt.systems/examples")

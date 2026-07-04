@@ -42,7 +42,7 @@ typedef cpkt_sus_model_config cpkt_sus_config;
 /** Cache-backed model resolver options. Network access is explicit to this
  * path. */
 typedef struct cpkt_sus_cache_config {
-  /** Public model name such as "small" or "kb-whisper-small". */
+  /** Public model name such as "small" or a provider-specific alias. */
   const char *model;
   /** Optional cache directory. NULL selects the documented cpkt cache path. */
   const char *cache_dir;
@@ -71,9 +71,9 @@ typedef struct cpkt_sus_segment {
   const char *text;
   /** Segment text length in bytes, excluding the terminating NUL. */
   unsigned long text_length;
-  /** Start time in 10 ms units, matching whisper.cpp segment timestamps. */
+  /** Start time in 10 ms units. */
   long t0;
-  /** End time in 10 ms units, matching whisper.cpp segment timestamps. */
+  /** End time in 10 ms units. */
   long t1;
 } cpkt_sus_segment;
 

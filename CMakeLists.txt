@@ -22,6 +22,7 @@ option(CPKT_BUILD_DEPENDENCIES "Download and build pinned third-party dependenci
 option(CPKT_BUILD_TESTS "Build ABI/link smoke tests for published dependency artifacts." ON)
 option(CPKT_ENABLE_FUZZING "Build libFuzzer facade fuzz targets." OFF)
 option(CPKT_FACADE_ONLY "Build only repo-owned facade hardening targets." OFF)
+option(CPKT_SUS_CPU_ONLY "Build the cpkt_sus whisper.cpp dependency set with CPU backends only." ON)
 
 function(cpkt_normalize_arch arch out_var)
   string(TOLOWER "${arch}" _cpkt_arch)
@@ -55,7 +56,15 @@ cpkt_target_executables_runnable(CPKT_CAN_RUN_TARGET_EXECUTABLES)
 function(cpkt_add_repo_warning_errors target_name)
   get_target_property(_cpkt_target_type ${target_name} TYPE)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
-    target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(${target_name} PRIVATE
+      -Wall
+      -Wextra
+      -Wpedantic
+      -Werror
+      "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=src"
+      "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build"
+      "-fdebug-prefix-map=${CMAKE_SOURCE_DIR}=src"
+      "-fdebug-prefix-map=${CMAKE_BINARY_DIR}=build")
     if(NOT _cpkt_target_type STREQUAL "STATIC_LIBRARY")
       if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         target_link_options(${target_name} PRIVATE LINKER:-fatal_warnings)
@@ -149,6 +158,10 @@ set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major.
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SUS_ABI_VERSION "0" CACHE STRING "Susurro/whisper facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPCUA_ABI_VERSION "0" CACHE STRING "OPC UA facade ABI major. Do not bump without maintainer approval.")
+if(NOT CPKT_SUS_CPU_ONLY)
+  message(FATAL_ERROR "CPKT_SUS_CPU_ONLY=OFF is reserved for a later GPU-backend packaging phase")
+endif()
+set(CPKT_SUS_BACKEND_CAPABILITIES "cpu" CACHE INTERNAL "Compiled cpkt_sus whisper.cpp backend capability list.")
 set(CPKT_CXX_STDLIB_STATIC_LIBRARY "" CACHE FILEPATH "Static C++ standard library archive used by C-facing static SDK metadata.")
 if(CPKT_CXX_STDLIB_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
   execute_process(
@@ -741,6 +754,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_OPCUA_SHARED_LIBRARY=$<TARGET_FILE:cpkt_opcua_shared>
         -DCPKT_WHISPER_VERSION=${CPKT_WHISPER_VERSION}
         -DCPKT_SUS_ABI_VERSION=${CPKT_SUS_ABI_VERSION}
+        -DCPKT_SUS_BACKEND_CAPABILITIES=${CPKT_SUS_BACKEND_CAPABILITIES}
         -DCPKT_SUS_STATIC_LIBRARY=$<TARGET_FILE:cpkt_sus_static>
         -DCPKT_SUS_SHARED_LIBRARY=$<TARGET_FILE:cpkt_sus_shared>
         -DCPKT_CXX_STDLIB_STATIC_LIBRARY=${CPKT_CXX_STDLIB_STATIC_LIBRARY}

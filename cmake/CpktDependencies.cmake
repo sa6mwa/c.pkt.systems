@@ -1340,6 +1340,10 @@ function(cpkt_add_miniaudio)
 endfunction()
 
 function(cpkt_add_whisper)
+  if(NOT CPKT_SUS_CPU_ONLY)
+    message(FATAL_ERROR "cpkt_sus currently supports only CPU-only whisper.cpp dependency builds")
+  endif()
+
   set(project_name_shared "cpkt_whisper_shared_project")
   set(project_name_static "cpkt_whisper_static_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper")

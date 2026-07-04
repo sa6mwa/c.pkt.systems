@@ -472,6 +472,14 @@ endif()
 if(NOT _manifest_text MATCHES "(^|\n)whisper_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing whisper_version")
 endif()
+if(NOT _manifest_text MATCHES "(^|\n)sus_backend_capabilities=([A-Za-z0-9_,.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing sus_backend_capabilities")
+endif()
+set(_manifest_sus_backend_capabilities "${CMAKE_MATCH_2}")
+if(NOT "${_manifest_sus_backend_capabilities}" STREQUAL "cpu")
+  message(FATAL_ERROR
+    "package manifest reports unsupported sus backend capabilities: ${_manifest_sus_backend_capabilities}")
+endif()
 if(NOT _manifest_text MATCHES "(^|\n)open62541_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing open62541_version")
 endif()
@@ -654,6 +662,7 @@ foreach(_path
     "share/c.pkt.systems/manifest.txt"
     "share/doc/c.pkt.systems/LICENSE"
     "share/doc/c.pkt.systems/README.md"
+    "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
     "share/doc/c.pkt.systems/examples/abi_smoke.c"
     "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"

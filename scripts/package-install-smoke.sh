@@ -328,8 +328,10 @@ assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
 assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
 assert_package_file "lib/cmake/open62541/open62541Config.cmake"
 assert_package_file "lib/cmake/open62541/open62541ConfigVersion.cmake"
+assert_package_file "share/c.pkt.systems/manifest.txt"
 assert_package_file "share/doc/c.pkt.systems/LICENSE"
 assert_package_file "share/doc/c.pkt.systems/README.md"
+assert_package_file "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
 assert_package_file "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
@@ -346,6 +348,7 @@ assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "find_depe
 assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "Iconv::Iconv" "libxml2 CMake config"
 assert_file_contains "$prefix/lib/cmake/open62541/open62541Config.cmake" "find_dependency(OpenSSL CONFIG REQUIRED)" "open62541 CMake config"
 assert_file_contains "$prefix/lib/cmake/mqtt-c/mqtt-cConfig.cmake" "find_dependency(Threads REQUIRED)" "mqtt-c CMake config"
+assert_file_contains "$prefix/share/c.pkt.systems/manifest.txt" "sus_backend_capabilities=cpu" "package manifest"
 assert_package_dir_absent "lib/cmake/ZLIB"
 assert_package_dir_absent "lib/cmake/Libssh2"
 
@@ -941,6 +944,7 @@ find_package(Libssh2 CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(libxml2 CONFIG REQUIRED)
 find_package(Lua CONFIG REQUIRED)
+find_package(miniaudio CONFIG REQUIRED)
 find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
@@ -967,7 +971,7 @@ set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 add_executable(cpkt_cmake_all cpkt_all.c)
 target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua open62541::open62541)
+target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua miniaudio::miniaudio open62541::open62541)
 
 file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/strict_file.lua"
   "local h = require('host')\\n"
