@@ -17,6 +17,32 @@ static int cpkt_test_file_exists(const char *path) {
   return stat(path, &st) == 0 ? 1 : 0;
 }
 
+static int cpkt_test_file_equals(const char *path, const char *expected) {
+  char buffer[128];
+  FILE *file;
+  size_t expected_len;
+  size_t read_len;
+
+  if (path == NULL || expected == NULL) {
+    return 0;
+  }
+  expected_len = strlen(expected);
+  if (expected_len + 1U > sizeof(buffer)) {
+    return 0;
+  }
+  file = fopen(path, "rb");
+  if (file == NULL) {
+    return 0;
+  }
+  read_len = fread(buffer, 1U, sizeof(buffer), file);
+  if (fclose(file) != 0) {
+    return 0;
+  }
+  return read_len == expected_len && memcmp(buffer, expected, expected_len) == 0
+             ? 1
+             : 0;
+}
+
 static void test_backend_metadata(void **state) {
   (void)state;
 
@@ -310,6 +336,8 @@ static void test_cached_open_retries_invalid_existing_cache(void **state) {
   assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
                    CPKT_SUS_ERR_MODEL);
   assert_null(model);
+  assert_true(cpkt_test_file_equals("cpkt-sus-retry-cache/ggml-small.bin",
+                                    "stale corrupt cache"));
 
   (void)remove("cpkt-sus-retry-cache/ggml-small.bin");
   (void)remove("cpkt-sus-replacement-model.bin");
