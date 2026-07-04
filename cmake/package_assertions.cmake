@@ -587,6 +587,59 @@ function(cpkt_assert_elf_soname file_path expected_soname description)
   endif()
 endfunction()
 
+function(cpkt_assert_elf_lacks_needed file_path forbidden_needed_regex description)
+  find_program(CPKT_READELF_BIN NAMES readelf)
+  if(NOT CPKT_READELF_BIN)
+    message(FATAL_ERROR "readelf is required to verify ${description}")
+  endif()
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_READELF_BIN}" -d "${file_path}"
+    RESULT_VARIABLE _readelf_result
+    OUTPUT_VARIABLE _readelf_output
+    ERROR_VARIABLE _readelf_error
+  )
+  if(NOT _readelf_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
+  endif()
+  if(_readelf_output MATCHES "\\(NEEDED\\)[^\n]*\\[${forbidden_needed_regex}\\]")
+    message(FATAL_ERROR "${description} must not need ${forbidden_needed_regex}")
+  endif()
+endfunction()
+
+function(cpkt_assert_dynamic_exports_match file_path allowed_symbol_regex description)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+  cpkt_find_nm(_cpkt_nm)
+  execute_process(
+    COMMAND "${_cpkt_nm}" -D --defined-only "${file_path}"
+    RESULT_VARIABLE _nm_result
+    OUTPUT_VARIABLE _nm_output
+    ERROR_VARIABLE _nm_error
+  )
+  if(NOT _nm_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect exported symbols from ${description}: ${file_path}\n${_nm_error}")
+  endif()
+  string(REPLACE "\n" ";" _nm_lines "${_nm_output}")
+  foreach(_nm_line IN LISTS _nm_lines)
+    string(STRIP "${_nm_line}" _nm_line)
+    if("${_nm_line}" STREQUAL "")
+      continue()
+    endif()
+    if(NOT _nm_line MATCHES "^[0-9A-Fa-f]+[ ]+[A-Za-z][ ]+([^ ]+)$")
+      message(FATAL_ERROR "unexpected exported symbol line for ${description}: ${_nm_line}")
+    endif()
+    set(_symbol_name "${CMAKE_MATCH_1}")
+    if(NOT _symbol_name MATCHES "${allowed_symbol_regex}")
+      message(FATAL_ERROR "${description} exports non-facade symbol: ${_symbol_name}")
+    endif()
+  endforeach()
+endfunction()
+
 foreach(_path
     "include/openssl/ssl.h"
     "lib/libssl.a"
@@ -1066,6 +1119,18 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
     "libcpktsus SONAME")
+  cpkt_assert_elf_lacks_needed(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "libstdc\\+\\+\\.so[^]]*"
+    "libcpktsus C++ runtime dependency closure")
+  cpkt_assert_elf_lacks_needed(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "libgcc_s\\.so[^]]*"
+    "libcpktsus GCC runtime dependency closure")
+  cpkt_assert_dynamic_exports_match(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "^cpkt_sus_"
+    "libcpktsus public ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"
