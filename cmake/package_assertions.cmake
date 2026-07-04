@@ -684,6 +684,7 @@ foreach(_path
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
     "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/examples/abi_smoke.c"
+    "share/doc/c.pkt.systems/examples/audio-sus-c89/main.c"
     "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
     "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
     "share/doc/c.pkt.systems/examples/lua-runtime-c89/build-pkg-config.sh"

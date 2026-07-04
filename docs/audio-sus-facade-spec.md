@@ -511,7 +511,7 @@ For example:
 
 ```c
 config.model = "kb-whisper-small";
-model->open_cached(model, &config);
+cpkt_sus_model_open_cached(&model, &config);
 ```
 
 This should select KBLab's Swedish-optimized GGML model, not its Transformers,

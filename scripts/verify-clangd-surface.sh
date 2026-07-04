@@ -130,6 +130,7 @@ if all_failures:
 PY
 
 require_compile_command "examples/abi_smoke.c"
+require_compile_command "examples/audio-sus-c89/main.c"
 require_compile_command "examples/lua-runtime-c89/main.c"
 require_compile_command "examples/lua-runtime-c89/host_module.c"
 require_compile_command "examples/opcua-c89/main.c"
@@ -140,6 +141,7 @@ if ! command -v clangd >/dev/null 2>&1; then
 fi
 
 clangd --check="${SOURCE_DIR}/examples/abi_smoke.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
+clangd --check="${SOURCE_DIR}/examples/audio-sus-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/host_module.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/examples/opcua-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null

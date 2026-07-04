@@ -496,6 +496,16 @@ if(CPKT_BUILD_TESTS)
     add_dependencies(cpkt_opcua_c89_example cpkt_deps)
   endif()
 
+  add_executable(cpkt_audio_sus_c89_example examples/audio-sus-c89/main.c)
+  target_compile_options(cpkt_audio_sus_c89_example PRIVATE -std=c89)
+  cpkt_add_repo_warning_errors(cpkt_audio_sus_c89_example)
+  target_link_libraries(cpkt_audio_sus_c89_example PRIVATE
+    cpkt_audio_static
+    cpkt_sus_shared)
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt_audio_sus_c89_example cpkt_deps)
+  endif()
+
   add_executable(cpkt_abi_smoke_shared examples/abi_smoke.c)
   target_compile_options(cpkt_abi_smoke_shared PRIVATE -std=c99)
   target_link_libraries(cpkt_abi_smoke_shared PRIVATE
@@ -646,6 +656,9 @@ if(CPKT_BUILD_TESTS)
       NAME lua_runtime_c89_example
       COMMAND cpkt_lua_runtime_c89_example "${_cpkt_lua_runtime_example_file}")
     add_test(NAME opcua_c89_example COMMAND cpkt_opcua_c89_example)
+    add_test(NAME audio_sus_c89_example COMMAND cpkt_audio_sus_c89_example)
+    set_tests_properties(audio_sus_c89_example PROPERTIES
+      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     add_test(
       NAME opcua_word_portability
       COMMAND
@@ -698,6 +711,11 @@ if(CPKT_BUILD_TESTS)
         NAME sus_model_catalog_metadata
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/sus_model_catalog_metadata_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME receiver_style_examples
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/receiver_style_examples_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
         NAME clangd_surface
