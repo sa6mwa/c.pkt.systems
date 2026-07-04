@@ -269,6 +269,11 @@ typedef struct cpkt_audio_vox_config {
    * the leading attack of speech in the emitted segment.
    */
   unsigned long prebuffer_ms;
+  /**
+   * Rolling RMS window used for threshold detection. Zero selects 5 ms.
+   * Larger values reject short transients at the cost of slower TX opening.
+   */
+  unsigned long power_window_ms;
   /** Maximum segment duration before a budget split. Zero disables the time
    * cap. */
   unsigned long max_segment_ms;

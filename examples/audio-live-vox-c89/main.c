@@ -86,7 +86,7 @@ static void cpkt_live_vox_defaults(struct cpkt_live_vox_options *opts) {
   opts->seconds = 0UL;
   opts->threshold_milli = 60UL;
   opts->hang_ms = 1500UL;
-  opts->prebuffer_ms = 0UL;
+  opts->prebuffer_ms = 20UL;
   opts->max_segment_ms = 0UL;
   opts->buffer_ms = 2000UL;
   opts->period_ms = 20UL;
@@ -383,7 +383,7 @@ static void cpkt_live_vox_usage(FILE *out) {
           "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
-          "  --prebuffer-ms N            VOX prebuffer; default 10.\n");
+          "  --prebuffer-ms N            VOX prebuffer; default 20.\n");
   fprintf(out,
           "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
   fprintf(out,
