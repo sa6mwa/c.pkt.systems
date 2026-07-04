@@ -85,7 +85,7 @@ int main(void) {
 
   realtime_config.read_frames = 4096UL;
   realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 5000UL;
+  realtime_config.length_ms = 7000UL;
   realtime_config.keep_ms = 2000UL;
   realtime_config.keep_context = 1;
   realtime_config.memory_spool_bytes = 1024UL * 1024UL;
@@ -165,7 +165,7 @@ int main() {
   encoder_config.sample_rate = 16000UL;
   encoder_config.channels = 1UL;
   realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 5000UL;
+  realtime_config.length_ms = 7000UL;
   realtime_config.keep_ms = 2000UL;
   realtime_config.keep_context = 1;
   realtime_config.memory_spool_bytes = 1024UL * 1024UL;

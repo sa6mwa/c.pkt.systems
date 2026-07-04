@@ -15,7 +15,7 @@ mkdir -p "$out_dir"
   --language en \
   --vox-threshold 0.03 \
   --hang-ms 500 \
-  --segment-ms 5000 \
+  --segment-ms 7000 \
   "$url" >"$stdout_path" 2>"$stderr_path"
 
 if ! grep -qi 'organizations' "$stdout_path"; then

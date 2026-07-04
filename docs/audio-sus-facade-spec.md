@@ -426,7 +426,7 @@ The decoder realtime path therefore uses `cpkt_audio` VOX segmentation:
 - audio is decoded and pushed through VOX as float32 mono 16000 Hz PCM;
 - silence release closes a segment after `keep_ms` milliseconds;
 - continuous speech is hard-cut after `length_ms` milliseconds, defaulting to
-  5000 ms for `cpkt_sus`;
+  7000 ms for `cpkt_sus`;
 - sus zero-config VOX uses a lower speech-oriented threshold than generic audio
   VOX, currently 0.001;
 - previous audio is never sent through Whisper again;

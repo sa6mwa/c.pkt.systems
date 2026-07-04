@@ -32,6 +32,7 @@ struct cpkt_sus_test_exact_step_decoder {
   cpkt_audio_decoder decoder;
   unsigned long total_frames;
   unsigned long cursor;
+  float sample_value;
 };
 
 static int cpkt_sus_test_contains_expected(const char *actual_a,
@@ -173,7 +174,7 @@ cpkt_sus_test_exact_step_read(cpkt_audio_decoder *decoder, float *frames,
     to_write = (size_t)remaining;
   }
   for (i = 0U; i < to_write; ++i) {
-    frames[i] = 0.0f;
+    frames[i] = state->sample_value;
   }
   state->cursor += (unsigned long)to_write;
   *frames_read = to_write;
@@ -217,7 +218,7 @@ static void cpkt_sus_test_realtime_config(cpkt_sus_realtime_config *config) {
   config->step_ms =
       cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_STEP_MS", 1000UL);
   config->length_ms = cpkt_sus_test_env_ulong(
-      "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 5000UL);
+      "CPKT_SUS_INTEGRATION_REALTIME_LENGTH_MS", 7000UL);
   config->keep_ms =
       cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_REALTIME_KEEP_MS", 500UL);
   config->vox_threshold =
@@ -530,6 +531,7 @@ static int cpkt_sus_test_run_realtime_exact_step_final_event(
   decoder_state.decoder.impl = &decoder_state;
   decoder_state.decoder.read_f32_mono_16k = cpkt_sus_test_exact_step_read;
   decoder_state.total_frames = 16000UL;
+  decoder_state.sample_value = 0.2f;
 
   memset(&events, 0, sizeof(events));
   transcriber = NULL;

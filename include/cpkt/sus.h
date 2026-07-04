@@ -115,6 +115,7 @@ typedef enum cpkt_sus_log_level {
   CPKT_SUS_LOG_INFO = 2,
   CPKT_SUS_LOG_WARN = 3,
   CPKT_SUS_LOG_ERROR = 4,
+  /** Reserved continuation level; backend continuations are normalized. */
   CPKT_SUS_LOG_CONT = 5
 } cpkt_sus_log_level;
 
@@ -218,7 +219,7 @@ typedef struct cpkt_sus_realtime_config {
   unsigned long step_ms;
   /**
    * Maximum VOX speech segment passed to one inference call, in milliseconds.
-   * Zero selects 5000 ms. A continuous speech run beyond this budget is hard
+   * Zero selects 7000 ms. A continuous speech run beyond this budget is hard
    * cut and continued with prior prompt tokens, not prior audio.
    */
   unsigned long length_ms;

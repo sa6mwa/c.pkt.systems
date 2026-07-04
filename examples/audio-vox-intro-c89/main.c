@@ -45,7 +45,7 @@ static void cpkt_vox_defaults(struct cpkt_vox_options *options) {
   options->dump_dir = CPKT_VOX_DUMP_DIR;
   options->threshold = 0.03f;
   options->hang_ms = 500UL;
-  options->budget_ms = 5000UL;
+  options->budget_ms = 7000UL;
   options->memory_spool_bytes = CPKT_VOX_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKT_VOX_MAX_SPOOL_BYTES;
 }

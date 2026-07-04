@@ -58,6 +58,7 @@ struct cpkt_sus_download_sink {
 static cpkt_sus_log_sink cpkt_sus_log_callback = NULL;
 static void *cpkt_sus_log_user = NULL;
 static int cpkt_sus_log_installed = 0;
+static int cpkt_sus_log_last_level = CPKT_SUS_LOG_INFO;
 
 cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
                                          const cpkt_sus_model_config *config);
@@ -71,7 +72,12 @@ static void cpkt_sus_whisper_log_bridge(enum ggml_log_level level,
     return;
   }
   memset(&event, 0, sizeof(event));
-  event.level = (int)level;
+  if (level == GGML_LOG_LEVEL_CONT) {
+    event.level = cpkt_sus_log_last_level;
+  } else {
+    event.level = (int)level;
+    cpkt_sus_log_last_level = event.level;
+  }
   event.component = "whisper";
   event.message = text != NULL ? text : "";
   cpkt_sus_log_callback(&event, cpkt_sus_log_user);
@@ -88,6 +94,7 @@ static void cpkt_sus_log_ensure_installed(void) {
 void cpkt_sus_log_set(cpkt_sus_log_sink sink, void *user) {
   cpkt_sus_log_callback = sink;
   cpkt_sus_log_user = user;
+  cpkt_sus_log_last_level = CPKT_SUS_LOG_INFO;
   whisper_log_set(cpkt_sus_whisper_log_bridge, NULL);
   cpkt_sus_log_installed = 1;
 }
@@ -1657,7 +1664,7 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
                     ? config->read_frames
                     : 4096UL;
   length_ms =
-      config != NULL && config->length_ms != 0UL ? config->length_ms : 5000UL;
+      config != NULL && config->length_ms != 0UL ? config->length_ms : 7000UL;
   keep_ms =
       config != NULL && config->keep_ms != 0UL ? config->keep_ms : 2000UL;
   if (read_frames == 0UL || read_frames > ((unsigned long)-1) / sizeof(float)) {

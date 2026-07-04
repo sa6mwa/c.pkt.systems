@@ -880,6 +880,90 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   vox->destroy(vox);
 }
 
+static void test_vox_budget_keeps_overflowing_mark_for_next_segment(
+    void **state) {
+  struct vox_capture capture;
+  cpkt_audio_vox_config config;
+  cpkt_audio_vox *vox;
+  float frames[900];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.threshold = 0.1f;
+  config.release_silence_ms = 1000UL;
+  config.max_segment_ms = 50UL;
+  config.min_segment_ms = 1UL;
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+
+  for (i = 0U; i < 600U; ++i) {
+    frames[i] = 0.2f;
+  }
+  for (; i < 700U; ++i) {
+    frames[i] = 0.0f;
+  }
+  for (; i < 900U; ++i) {
+    frames[i] = 0.2f;
+  }
+
+  vox = NULL;
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
+  assert_non_null(vox);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 900U),
+                   CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.hard_count, 0UL);
+  assert_int_equal(capture.frames[0], 700U);
+  assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 2UL);
+  assert_int_equal(capture.final_count, 1UL);
+  assert_int_equal(capture.frames[1], 200U);
+  vox->destroy(vox);
+}
+
+static void test_vox_flush_drops_subminimum_post_cut_tail(void **state) {
+  struct vox_capture capture;
+  cpkt_audio_vox_config config;
+  cpkt_audio_vox *vox;
+  float frames[1380];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.threshold = 0.1f;
+  config.release_silence_ms = 1000UL;
+  config.max_segment_ms = 50UL;
+  config.min_segment_ms = 10UL;
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+
+  for (i = 0U; i < 800U; ++i) {
+    frames[i] = 0.2f;
+  }
+  for (; i < 880U; ++i) {
+    frames[i] = 0.2f;
+  }
+  for (; i < 1380U; ++i) {
+    frames[i] = 0.0f;
+  }
+
+  vox = NULL;
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
+  assert_non_null(vox);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1380U),
+                   CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.hard_count, 1UL);
+  assert_int_equal(capture.frames[0], 800U);
+  assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.final_count, 0UL);
+  vox->destroy(vox);
+}
+
 static void test_vox_spills_and_hard_cuts_at_storage_budget(void **state) {
   struct vox_capture capture;
   cpkt_audio_vox_config config;
@@ -1037,6 +1121,8 @@ int main(void) {
       cmocka_unit_test(test_encoder_callback_write_failure),
       cmocka_unit_test(test_vox_releases_on_silence),
       cmocka_unit_test(test_vox_hard_cuts_at_segment_budget),
+      cmocka_unit_test(test_vox_budget_keeps_overflowing_mark_for_next_segment),
+      cmocka_unit_test(test_vox_flush_drops_subminimum_post_cut_tail),
       cmocka_unit_test(test_vox_spills_and_hard_cuts_at_storage_budget),
       cmocka_unit_test(test_vox_rejects_invalid_and_reports_callback_failure),
       cmocka_unit_test(test_invalid_arguments),
