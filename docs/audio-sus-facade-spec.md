@@ -316,8 +316,8 @@ the backend's requested byte count.
 The first decoder tier must support:
 
 - open from explicit file path;
-- open from HTTP/HTTPS URL through libcurl without pre-downloading the full
-  response;
+- open from libcurl-supported URLs through libcurl without pre-downloading the
+  full response;
 - open from callback reader;
 - decode to `float32` mono 16000 Hz for whisper.cpp;
 - report source format where miniaudio exposes it;

@@ -31,6 +31,7 @@ struct memory_writer {
   size_t size;
   size_t cursor;
   size_t fail_after_size;
+  int fail_seek;
 };
 
 static const unsigned char test_wav_mono_8000[] = {
@@ -323,6 +324,9 @@ static int memory_writer_seek(void *user, long offset, int origin) {
   long next;
 
   writer = (struct memory_writer *)user;
+  if (writer->fail_seek) {
+    return -1;
+  }
   if (origin == CPKT_AUDIO_SEEK_SET) {
     base = 0;
   } else if (origin == CPKT_AUDIO_SEEK_CUR) {
@@ -769,6 +773,28 @@ static void test_encoder_callback_write_failure(void **state) {
   frames_written = 99;
   assert_int_equal(encoder->write_f32(encoder, frames, 16, &frames_written),
                    CPKT_AUDIO_OK);
+  assert_int_equal(encoder->close(encoder), CPKT_AUDIO_ERR_IO);
+  encoder->destroy(encoder);
+}
+
+static void test_encoder_callback_seek_failure(void **state) {
+  struct memory_writer memory;
+  cpkt_audio_writer writer;
+  cpkt_audio_encoder *encoder;
+
+  (void)state;
+  memset(&memory, 0, sizeof(memory));
+  memset(&writer, 0, sizeof(writer));
+  writer.user = &memory;
+  writer.write = memory_write;
+  writer.seek = memory_writer_seek;
+
+  encoder = NULL;
+  assert_int_equal(cpkt_audio_encoder_open_writer(&encoder, &writer, NULL),
+                   CPKT_AUDIO_OK);
+  assert_non_null(encoder);
+  write_test_pcm(encoder);
+  memory.fail_seek = 1;
   assert_int_equal(encoder->close(encoder), CPKT_AUDIO_ERR_IO);
   encoder->destroy(encoder);
 }
@@ -1323,6 +1349,7 @@ int main(void) {
       cmocka_unit_test(test_encoder_writes_wav_file),
       cmocka_unit_test(test_encoder_writes_wav_callback_writer),
       cmocka_unit_test(test_encoder_callback_write_failure),
+      cmocka_unit_test(test_encoder_callback_seek_failure),
       cmocka_unit_test(test_vox_releases_on_silence),
       cmocka_unit_test(test_vox_includes_prebuffer_before_threshold),
       cmocka_unit_test(test_vox_hard_cuts_at_segment_budget),
