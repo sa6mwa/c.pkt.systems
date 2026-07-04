@@ -8,7 +8,7 @@ CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 E2E_SUS_PRESET ?= release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug clangd-surface e2e-sus asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug clangd-surface e2e-sus example-audio-vox-intro asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf '%s\n' \
@@ -24,6 +24,7 @@ help:
 		'make debug     Build and test the host debug preset.' \
 		'make clangd-surface Verify compile_commands and public hover comments for examples.' \
 		'make e2e-sus   Run opt-in sus audio e2e with cached remote MP3 and tiny model.' \
+		'make example-audio-vox-intro Run cached intro.mp3 VOX calibration and dump WAV segments.' \
 		'make asan      Build and test the facade-only AddressSanitizer/UBSan preset.' \
 		'make tsan      Build and test the facade-only ThreadSanitizer preset.' \
 		'make msan      Build and test the facade-only MemorySanitizer preset with clang.' \
@@ -97,6 +98,11 @@ e2e-sus:
 	$(CMAKE) --preset $(E2E_SUS_PRESET)
 	$(CMAKE) --build --preset $(E2E_SUS_PRESET) --target cpkt_sus_audio_integration_test
 	bash ./scripts/e2e-sus.sh "$$(pwd)/build/$(E2E_SUS_PRESET)/cpkt_sus_audio_integration_test" "$$(pwd)/build/$(E2E_SUS_PRESET)"
+
+example-audio-vox-intro:
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug --target cpkt_audio_vox_intro_c89_example
+	bash ./scripts/run-audio-vox-intro.sh "$$(pwd)/build/debug/cpkt_audio_vox_intro_c89_example"
 
 asan:
 	$(CMAKE) --preset asan
