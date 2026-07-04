@@ -488,6 +488,8 @@ int main(void) {
   cpkt_sus_model_entry entry;
   cpkt_sus_model *model;
   cpkt_sus_model_config config;
+  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_realtime_event event;
 
   if (cpkt_sus_backend_version() == 0 ||
       cpkt_sus_backend_system_info() == 0 ||
@@ -520,6 +522,17 @@ int main(void) {
     return 8;
   }
   memset(&config, 0, sizeof(config));
+  memset(&realtime_config, 0, sizeof(realtime_config));
+  memset(&event, 0, sizeof(event));
+  realtime_config.step_ms = 1000UL;
+  realtime_config.length_ms = 5000UL;
+  event.is_final = 1;
+  if (realtime_config.step_ms != 1000UL || event.is_final == 0) {
+    return 12;
+  }
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0) {
+    return 13;
+  }
   config.model_path = "";
   model = (cpkt_sus_model *)1;
   if (cpkt_sus_model_open_path(&model, &config) != CPKT_SUS_ERR_ARG) {
@@ -564,6 +577,8 @@ int main(void) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_model *model;
   cpkt_sus_model_config model_config;
+  cpkt_sus_realtime_config realtime_config;
+  cpkt_sus_realtime_event event;
 
   if (cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3) == 0) {
     return 1;
@@ -583,6 +598,18 @@ int main(void) {
     return 5;
   }
   memset(&model_config, 0, sizeof(model_config));
+  memset(&realtime_config, 0, sizeof(realtime_config));
+  memset(&event, 0, sizeof(event));
+  realtime_config.step_ms = 1000UL;
+  realtime_config.length_ms = 5000UL;
+  event.step_index = 1UL;
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0) {
+    return 8;
+  }
+  if (event.step_index != 1UL) {
+    return 9;
+  }
   model_config.model_path = "";
   model = (cpkt_sus_model *)1;
   if (cpkt_sus_model_open_path(&model, &model_config) != CPKT_SUS_ERR_ARG) {

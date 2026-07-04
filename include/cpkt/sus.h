@@ -96,6 +96,18 @@ typedef struct cpkt_sus_segment {
   long t1;
 } cpkt_sus_segment;
 
+/** Live realtime transcription hypothesis delivered during rolling inference. */
+typedef struct cpkt_sus_realtime_event {
+  /** Current hypothesis text owned by the facade during the callback. */
+  const char *text;
+  /** Hypothesis text length in bytes, excluding the terminating NUL. */
+  unsigned long text_length;
+  /** Number of realtime inference steps completed before this event. */
+  unsigned long step_index;
+  /** Non-zero only when the event is the final end-of-stream hypothesis. */
+  int is_final;
+} cpkt_sus_realtime_event;
+
 /** Read-only curated cached-model catalog entry. */
 typedef struct cpkt_sus_model_entry {
   /** Stable public model name accepted by cpkt_sus_model_open_cached. */
@@ -126,6 +138,15 @@ typedef struct cpkt_sus_model_entry {
  */
 typedef int (*cpkt_sus_segment_sink)(const cpkt_sus_segment *segment,
                                      void *user);
+
+/**
+ * Receives realtime rolling transcription hypotheses.
+ *
+ * Return zero to continue. Returning non-zero requests CPKT_SUS_ERR_CALLBACK
+ * after the active backend call completes.
+ */
+typedef int (*cpkt_sus_realtime_sink)(const cpkt_sus_realtime_event *event,
+                                      void *user);
 
 /** Receives backend progress in percent. Return non-zero to report failure. */
 typedef int (*cpkt_sus_progress_sink)(int progress, void *user);
@@ -193,6 +214,10 @@ typedef struct cpkt_sus_realtime_config {
   unsigned long audio_ctx;
   /** Maximum tokens per inference call. Zero keeps the backend default. */
   unsigned long max_tokens;
+  /** Optional sink for rolling realtime hypotheses. */
+  cpkt_sus_realtime_sink realtime_sink;
+  /** User value passed to realtime_sink. */
+  void *realtime_user;
 } cpkt_sus_realtime_config;
 
 /** Receiver shell for loaded model operations. */
@@ -237,12 +262,23 @@ struct cpkt_sus_transcriber {
    * The decoder must produce float32 mono 16000 Hz PCM, as cpkt_audio_decoder
    * does. The transcriber reads until end-of-stream and repeatedly runs
    * inference over step_ms of new audio plus retained rolling context. The full
-   * decoded stream is never materialized. Segment callbacks receive each
-   * realtime hypothesis.
+   * decoded stream is never materialized. realtime_sink receives rolling
+   * hypotheses; ordinary segment callbacks are reserved for append-oriented
+   * transcription calls.
    */
   cpkt_sus_result (*transcribe_audio_decoder_realtime)(
       cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
       const cpkt_sus_realtime_config *config);
+  /**
+   * Runs realtime decoder transcription and returns revised session text.
+   *
+   * Audio remains streaming and bounded as with transcribe_audio_decoder_realtime.
+   * The returned text is assembled from rolling realtime hypotheses and must be
+   * released with cpkt_sus_string_free.
+   */
+  cpkt_sus_result (*transcribe_audio_decoder_realtime_text)(
+      cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
+      const cpkt_sus_realtime_config *config, char **text_out);
   /** Releases the transcriber. The loaded model remains owned by its model
    * handle. */
   void (*destroy)(cpkt_sus_transcriber *self);

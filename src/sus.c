@@ -1002,32 +1002,234 @@ static int cpkt_sus_ms_to_frames(unsigned long ms, unsigned long *out) {
   return 1;
 }
 
-static cpkt_sus_result cpkt_sus_emit_realtime_segments(
-    struct cpkt_sus_transcriber_impl *impl,
-    struct whisper_context *context) {
-  cpkt_sus_segment segment;
-  const char *text;
+static cpkt_sus_result cpkt_sus_build_realtime_text(char **out,
+                                                    struct whisper_context *context) {
+  const char *segment_text;
+  char *text;
+  size_t length;
+  size_t segment_length;
   int count;
   int i;
 
-  if (impl == NULL || context == NULL || impl->config.segment_sink == NULL) {
-    return CPKT_SUS_OK;
+  if (out != NULL) {
+    *out = NULL;
+  }
+  if (out == NULL || context == NULL) {
+    return CPKT_SUS_ERR_ARG;
   }
 
   count = whisper_full_n_segments(context);
+  length = 0U;
   for (i = 0; i < count; ++i) {
-    text = whisper_full_get_segment_text(context, i);
-    memset(&segment, 0, sizeof(segment));
-    segment.text = text;
-    segment.text_length = text == NULL ? 0UL : (unsigned long)strlen(text);
-    segment.t0 = cpkt_sus_i64_to_long(whisper_full_get_segment_t0(context, i));
-    segment.t1 = cpkt_sus_i64_to_long(whisper_full_get_segment_t1(context, i));
-    if (impl->config.segment_sink(&segment, impl->config.segment_user) != 0) {
-      impl->callback_error = 1;
-      return CPKT_SUS_ERR_CALLBACK;
+    segment_text = whisper_full_get_segment_text(context, i);
+    if (segment_text != NULL) {
+      segment_length = strlen(segment_text);
+      if (segment_length > ((size_t)-1) - length - 1U) {
+        return CPKT_SUS_ERR_ALLOC;
+      }
+      length += segment_length;
     }
   }
+
+  text = (char *)malloc(length + 1U);
+  if (text == NULL) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+  length = 0U;
+  for (i = 0; i < count; ++i) {
+    segment_text = whisper_full_get_segment_text(context, i);
+    if (segment_text != NULL) {
+      segment_length = strlen(segment_text);
+      memcpy(text + length, segment_text, segment_length);
+      length += segment_length;
+    }
+  }
+  text[length] = '\0';
+  *out = text;
   return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result cpkt_sus_emit_realtime_event(
+    struct cpkt_sus_transcriber_impl *impl,
+    const cpkt_sus_realtime_config *config,
+    struct whisper_context *context, unsigned long step_index, int final) {
+  cpkt_sus_realtime_event event;
+  cpkt_sus_result result;
+  char *text;
+  int callback_result;
+
+  if (impl == NULL || config == NULL || config->realtime_sink == NULL ||
+      context == NULL) {
+    return CPKT_SUS_OK;
+  }
+
+  text = NULL;
+  result = cpkt_sus_build_realtime_text(&text, context);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+
+  memset(&event, 0, sizeof(event));
+  event.text = text;
+  event.text_length = (unsigned long)strlen(text);
+  event.step_index = step_index;
+  event.is_final = final;
+  callback_result = config->realtime_sink(&event, config->realtime_user);
+  free(text);
+  if (callback_result != 0) {
+    impl->callback_error = 1;
+    return CPKT_SUS_ERR_CALLBACK;
+  }
+  return CPKT_SUS_OK;
+}
+
+struct cpkt_sus_realtime_text_state {
+  cpkt_sus_realtime_sink forward_sink;
+  void *forward_user;
+  char *text;
+  size_t length;
+  size_t capacity;
+  cpkt_sus_result result;
+};
+
+static int cpkt_sus_char_equal_ci(char left, char right) {
+  if (left >= 'A' && left <= 'Z') {
+    left = (char)(left - 'A' + 'a');
+  }
+  if (right >= 'A' && right <= 'Z') {
+    right = (char)(right - 'A' + 'a');
+  }
+  return left == right;
+}
+
+static size_t cpkt_sus_common_prefix_ci(const char *left, size_t left_len,
+                                        const char *right, size_t right_len) {
+  size_t i;
+  size_t limit;
+
+  limit = left_len < right_len ? left_len : right_len;
+  for (i = 0U; i < limit; ++i) {
+    if (!cpkt_sus_char_equal_ci(left[i], right[i])) {
+      break;
+    }
+  }
+  return i;
+}
+
+static cpkt_sus_result cpkt_sus_text_reserve(char **text, size_t *capacity,
+                                             size_t needed) {
+  char *grown;
+  size_t next_capacity;
+
+  if (text == NULL || capacity == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  if (needed <= *capacity) {
+    return CPKT_SUS_OK;
+  }
+  next_capacity = *capacity == 0U ? 256U : *capacity;
+  while (next_capacity < needed) {
+    if (next_capacity > ((size_t)-1) / 2U) {
+      return CPKT_SUS_ERR_ALLOC;
+    }
+    next_capacity *= 2U;
+  }
+  grown = (char *)realloc(*text, next_capacity);
+  if (grown == NULL) {
+    return CPKT_SUS_ERR_ALLOC;
+  }
+  *text = grown;
+  *capacity = next_capacity;
+  return CPKT_SUS_OK;
+}
+
+static cpkt_sus_result
+cpkt_sus_realtime_text_apply(struct cpkt_sus_realtime_text_state *state,
+                             const char *hypothesis, size_t hypothesis_len) {
+  size_t best_start;
+  size_t best_common;
+  size_t start;
+  size_t min_common;
+  size_t search_start;
+  size_t needed;
+  cpkt_sus_result result;
+
+  if (state == NULL || hypothesis == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  if (hypothesis_len == 0U) {
+    return CPKT_SUS_OK;
+  }
+  if (state->length == 0U) {
+    needed = hypothesis_len + 1U;
+    result = cpkt_sus_text_reserve(&state->text, &state->capacity, needed);
+    if (result != CPKT_SUS_OK) {
+      return result;
+    }
+    memcpy(state->text, hypothesis, hypothesis_len);
+    state->text[hypothesis_len] = '\0';
+    state->length = hypothesis_len;
+    return CPKT_SUS_OK;
+  }
+
+  best_start = state->length;
+  best_common = 0U;
+  min_common = hypothesis_len < 16U ? hypothesis_len : 16U;
+  search_start = state->length > 4096U ? state->length - 4096U : 0U;
+  for (start = search_start; start < state->length; ++start) {
+    size_t common;
+
+    common = cpkt_sus_common_prefix_ci(state->text + start,
+                                       state->length - start, hypothesis,
+                                       hypothesis_len);
+    if (common > best_common) {
+      best_common = common;
+      best_start = start;
+    }
+  }
+
+  if (best_common >= min_common) {
+    needed = best_start + hypothesis_len + 1U;
+    result = cpkt_sus_text_reserve(&state->text, &state->capacity, needed);
+    if (result != CPKT_SUS_OK) {
+      return result;
+    }
+    memcpy(state->text + best_start, hypothesis, hypothesis_len);
+    state->length = best_start + hypothesis_len;
+    state->text[state->length] = '\0';
+    return CPKT_SUS_OK;
+  }
+
+  needed = state->length + hypothesis_len + 1U;
+  result = cpkt_sus_text_reserve(&state->text, &state->capacity, needed);
+  if (result != CPKT_SUS_OK) {
+    return result;
+  }
+  memcpy(state->text + state->length, hypothesis, hypothesis_len);
+  state->length += hypothesis_len;
+  state->text[state->length] = '\0';
+  return CPKT_SUS_OK;
+}
+
+static int cpkt_sus_realtime_text_sink(const cpkt_sus_realtime_event *event,
+                                       void *user) {
+  struct cpkt_sus_realtime_text_state *state;
+  cpkt_sus_result result;
+
+  state = (struct cpkt_sus_realtime_text_state *)user;
+  if (state == NULL || event == NULL || event->text == NULL) {
+    return 1;
+  }
+  result = cpkt_sus_realtime_text_apply(state, event->text,
+                                        (size_t)event->text_length);
+  if (result != CPKT_SUS_OK) {
+    state->result = result;
+    return 1;
+  }
+  if (state->forward_sink != NULL) {
+    return state->forward_sink(event, state->forward_user);
+  }
+  return 0;
 }
 
 static cpkt_sus_result cpkt_sus_capture_prompt_tokens(
@@ -1223,6 +1425,7 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
   while (!at_end) {
     unsigned long take_count;
     unsigned long current_count;
+    int event_final;
 
     sus_result =
         cpkt_sus_read_decoder_step(decoder, new_samples, step_frames,
@@ -1325,7 +1528,10 @@ static cpkt_sus_result cpkt_sus_transcriber_transcribe_audio_decoder_realtime_im
       goto cleanup;
     }
 
-    sus_result = cpkt_sus_emit_realtime_segments(impl, model_impl->context);
+    event_final = at_end ? 1 : 0;
+    sus_result = cpkt_sus_emit_realtime_event(impl, config, model_impl->context,
+                                              (unsigned long)iter,
+                                              event_final);
     if (sus_result != CPKT_SUS_OK) {
       goto cleanup;
     }
@@ -1356,6 +1562,52 @@ cleanup:
   free(new_samples);
   free(old_samples);
   return sus_result;
+}
+
+static cpkt_sus_result
+cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl(
+    cpkt_sus_transcriber *self, cpkt_audio_decoder *decoder,
+    const cpkt_sus_realtime_config *config, char **text_out) {
+  struct cpkt_sus_realtime_text_state state;
+  cpkt_sus_realtime_config wrapped_config;
+  cpkt_sus_result result;
+
+  if (text_out != NULL) {
+    *text_out = NULL;
+  }
+  if (text_out == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  memset(&state, 0, sizeof(state));
+  state.result = CPKT_SUS_OK;
+  memset(&wrapped_config, 0, sizeof(wrapped_config));
+  if (config != NULL) {
+    wrapped_config = *config;
+  }
+  state.forward_sink = wrapped_config.realtime_sink;
+  state.forward_user = wrapped_config.realtime_user;
+  wrapped_config.realtime_sink = cpkt_sus_realtime_text_sink;
+  wrapped_config.realtime_user = &state;
+
+  result = cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl(
+      self, decoder, &wrapped_config);
+  if (result == CPKT_SUS_ERR_CALLBACK && state.result != CPKT_SUS_OK) {
+    result = state.result;
+  }
+  if (result != CPKT_SUS_OK) {
+    free(state.text);
+    return result;
+  }
+  if (state.text == NULL) {
+    state.text = (char *)malloc(1U);
+    if (state.text == NULL) {
+      return CPKT_SUS_ERR_ALLOC;
+    }
+    state.text[0] = '\0';
+  }
+  *text_out = state.text;
+  return CPKT_SUS_OK;
 }
 
 static void cpkt_sus_transcriber_destroy_impl(cpkt_sus_transcriber *self) {
@@ -1401,6 +1653,8 @@ static cpkt_sus_result cpkt_sus_model_create_transcriber_impl(
       cpkt_sus_transcriber_transcribe_f32_mono_16k_text_impl;
   transcriber->transcribe_audio_decoder_realtime =
       cpkt_sus_transcriber_transcribe_audio_decoder_realtime_impl;
+  transcriber->transcribe_audio_decoder_realtime_text =
+      cpkt_sus_transcriber_transcribe_audio_decoder_realtime_text_impl;
   transcriber->destroy = cpkt_sus_transcriber_destroy_impl;
   *out = transcriber;
   return CPKT_SUS_OK;

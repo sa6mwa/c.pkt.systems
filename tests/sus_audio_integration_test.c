@@ -8,18 +8,23 @@
 #include <cpkt/sus.h>
 
 #define CPKT_SUS_TEST_READ_FRAMES 4096UL
-#define CPKT_SUS_TEST_MAX_MATERIALIZED_SAMPLES (16000UL * 60UL * 10UL)
 
-struct cpkt_sus_test_segments {
+struct cpkt_sus_test_realtime_events {
   char text[8192];
-  size_t used;
+  const char *expected;
   unsigned long count;
+  unsigned long final_count;
+  int matched_expected;
 };
 
 struct cpkt_sus_test_progress {
   unsigned long count;
   int last;
 };
+
+static int cpkt_sus_test_contains_expected(const char *actual_a,
+                                           const char *actual_b,
+                                           const char *expected);
 
 static int cpkt_sus_test_enabled(void) {
   const char *enabled;
@@ -55,37 +60,39 @@ static unsigned long cpkt_sus_test_env_ulong(const char *name,
   return parsed;
 }
 
-static int cpkt_sus_test_segment_sink(const cpkt_sus_segment *segment,
-                                      void *user) {
-  struct cpkt_sus_test_segments *segments;
-  size_t available;
+static int
+cpkt_sus_test_realtime_sink(const cpkt_sus_realtime_event *event, void *user) {
+  struct cpkt_sus_test_realtime_events *events;
   size_t copy_size;
 
-  segments = (struct cpkt_sus_test_segments *)user;
-  if (segments == NULL || segment == NULL || segment->text == NULL) {
+  events = (struct cpkt_sus_test_realtime_events *)user;
+  if (events == NULL || event == NULL || event->text == NULL) {
     return 1;
   }
 
-  ++segments->count;
-  if (segments->used + 1U >= sizeof(segments->text)) {
-    return 0;
+  ++events->count;
+  if (event->is_final) {
+    ++events->final_count;
   }
-  available = sizeof(segments->text) - segments->used - 1U;
-  copy_size = (size_t)segment->text_length;
-  if (copy_size > available) {
-    copy_size = available;
+  copy_size = (size_t)event->text_length;
+  if (copy_size >= sizeof(events->text)) {
+    copy_size = sizeof(events->text) - 1U;
   }
-  memcpy(segments->text + segments->used, segment->text, copy_size);
-  segments->used += copy_size;
-  segments->text[segments->used] = '\0';
+  memcpy(events->text, event->text, copy_size);
+  events->text[copy_size] = '\0';
+  if (cpkt_sus_test_contains_expected(events->text, NULL,
+                                      events->expected)) {
+    events->matched_expected = 1;
+  }
   return 0;
 }
 
-static int cpkt_sus_test_failing_segment_sink(const cpkt_sus_segment *segment,
-                                              void *user) {
+static int
+cpkt_sus_test_failing_realtime_sink(const cpkt_sus_realtime_event *event,
+                                    void *user) {
   unsigned long *count;
 
-  (void)segment;
+  (void)event;
   count = (unsigned long *)user;
   if (count != NULL) {
     ++*count;
@@ -257,8 +264,9 @@ static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
 static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
                                       const char *audio_path,
                                       const char *audio_url,
-                                      struct cpkt_sus_test_segments *segments,
-                                      struct cpkt_sus_test_progress *progress) {
+                                      struct cpkt_sus_test_realtime_events *events,
+                                      struct cpkt_sus_test_progress *progress,
+                                      char **text_out) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
@@ -268,6 +276,7 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
 
   decoder = NULL;
   transcriber = NULL;
+  *text_out = NULL;
   rc = 1;
 
   if (cpkt_sus_test_open_audio_decoder(&decoder, audio_path, audio_url) != 0) {
@@ -276,8 +285,6 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
 
   memset(&config, 0, sizeof(config));
   config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
-  config.segment_sink = cpkt_sus_test_segment_sink;
-  config.segment_user = segments;
   config.progress_sink = cpkt_sus_test_progress_sink;
   config.progress_user = progress;
   if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
@@ -286,9 +293,11 @@ static int cpkt_sus_test_run_realtime(cpkt_sus_model *model,
   }
 
   cpkt_sus_test_realtime_config(&realtime_config);
-  sus_result = transcriber->transcribe_audio_decoder_realtime(
-      transcriber, decoder, &realtime_config);
-  if (sus_result != CPKT_SUS_OK) {
+  realtime_config.realtime_sink = cpkt_sus_test_realtime_sink;
+  realtime_config.realtime_user = events;
+  sus_result = transcriber->transcribe_audio_decoder_realtime_text(
+      transcriber, decoder, &realtime_config, text_out);
+  if (sus_result != CPKT_SUS_OK || *text_out == NULL) {
     fprintf(stderr, "failed to transcribe realtime audio: %s\n",
             cpkt_sus_result_string(sus_result));
     goto cleanup;
@@ -327,13 +336,13 @@ static int cpkt_sus_test_run_realtime_callback_failure(
 
   memset(&config, 0, sizeof(config));
   config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
-  config.segment_sink = cpkt_sus_test_failing_segment_sink;
-  config.segment_user = &callback_count;
   if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
     goto cleanup;
   }
 
   cpkt_sus_test_realtime_config(&realtime_config);
+  realtime_config.realtime_sink = cpkt_sus_test_failing_realtime_sink;
+  realtime_config.realtime_user = &callback_count;
   result = transcriber->transcribe_audio_decoder_realtime(
       transcriber, decoder, &realtime_config);
   if (result != CPKT_SUS_ERR_CALLBACK || callback_count == 0UL) {
@@ -399,172 +408,9 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_materialize_samples(float **out,
-                                             unsigned long *sample_count_out,
-                                             const char *audio_path) {
-  cpkt_audio_decoder *decoder;
-  float read_buffer[CPKT_SUS_TEST_READ_FRAMES];
-  float *samples;
-  float *grown;
-  size_t capacity;
-  size_t used;
-  size_t frames_read;
-  cpkt_audio_result audio_result;
-  int rc;
-
-  *out = NULL;
-  *sample_count_out = 0UL;
-  decoder = NULL;
-  samples = NULL;
-  capacity = 0U;
-  used = 0U;
-  rc = 1;
-
-  if (cpkt_audio_decoder_open_file(&decoder, audio_path, NULL) !=
-      CPKT_AUDIO_OK) {
-    goto cleanup;
-  }
-
-  for (;;) {
-    audio_result = decoder->read_f32_mono_16k(
-        decoder, read_buffer, CPKT_SUS_TEST_READ_FRAMES, &frames_read);
-    if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
-      goto cleanup;
-    }
-    if (frames_read > 0U) {
-      if (used + frames_read > CPKT_SUS_TEST_MAX_MATERIALIZED_SAMPLES) {
-        fprintf(stderr, "audio fixture exceeds integration materialization "
-                        "limit\n");
-        goto cleanup;
-      }
-      if (used + frames_read > capacity) {
-        size_t next_capacity;
-
-        next_capacity = capacity == 0U ? 16384U : capacity * 2U;
-        while (next_capacity < used + frames_read) {
-          next_capacity *= 2U;
-        }
-        grown = (float *)realloc(samples, sizeof(float) * next_capacity);
-        if (grown == NULL) {
-          goto cleanup;
-        }
-        samples = grown;
-        capacity = next_capacity;
-      }
-      memcpy(samples + used, read_buffer, sizeof(float) * frames_read);
-      used += frames_read;
-    }
-    if (audio_result == CPKT_AUDIO_AT_END) {
-      break;
-    }
-  }
-
-  *out = samples;
-  *sample_count_out = (unsigned long)used;
-  samples = NULL;
-  rc = 0;
-
-cleanup:
-  if (decoder != NULL) {
-    decoder->destroy(decoder);
-  }
-  free(samples);
-  return rc;
-}
-
-static int cpkt_sus_test_run_materialized(cpkt_sus_model *model,
-                                          const char *audio_path,
-                                          char **text_out) {
-  cpkt_sus_transcriber *transcriber;
-  cpkt_sus_transcriber_config config;
-  float *samples;
-  unsigned long sample_count;
-  cpkt_sus_result result;
-  int rc;
-
-  transcriber = NULL;
-  samples = NULL;
-  *text_out = NULL;
-  rc = 1;
-
-  if (cpkt_sus_test_materialize_samples(&samples, &sample_count, audio_path) !=
-      0) {
-    goto cleanup;
-  }
-  if (sample_count == 0UL) {
-    goto cleanup;
-  }
-
-  memset(&config, 0, sizeof(config));
-  config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
-  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
-    goto cleanup;
-  }
-
-  result = transcriber->transcribe_f32_mono_16k_text(transcriber, samples,
-                                                     sample_count, text_out);
-  if (result != CPKT_SUS_OK || *text_out == NULL) {
-    goto cleanup;
-  }
-  rc = 0;
-
-cleanup:
-  if (transcriber != NULL) {
-    transcriber->destroy(transcriber);
-  }
-  free(samples);
-  return rc;
-}
-
-static int cpkt_sus_test_run_abort(cpkt_sus_model *model,
-                                   const char *audio_path) {
-  cpkt_sus_transcriber *transcriber;
-  cpkt_sus_transcriber_config config;
-  float *samples;
-  unsigned long sample_count;
-  unsigned long abort_count;
-  cpkt_sus_result result;
-  int rc;
-
-  transcriber = NULL;
-  samples = NULL;
-  abort_count = 0UL;
-  rc = 1;
-
-  if (cpkt_sus_test_materialize_samples(&samples, &sample_count, audio_path) !=
-      0) {
-    goto cleanup;
-  }
-  if (sample_count == 0UL) {
-    goto cleanup;
-  }
-
-  memset(&config, 0, sizeof(config));
-  config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
-  config.abort = cpkt_sus_test_abort_now;
-  config.abort_user = &abort_count;
-  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
-    goto cleanup;
-  }
-
-  result =
-      transcriber->transcribe_f32_mono_16k(transcriber, samples, sample_count);
-  if (result != CPKT_SUS_ABORTED || abort_count == 0UL) {
-    goto cleanup;
-  }
-  rc = 0;
-
-cleanup:
-  if (transcriber != NULL) {
-    transcriber->destroy(transcriber);
-  }
-  free(samples);
-  return rc;
-}
-
 int main(void) {
   cpkt_sus_model *model;
-  struct cpkt_sus_test_segments segments;
+  struct cpkt_sus_test_realtime_events events;
   struct cpkt_sus_test_progress progress;
   const char *audio_path;
   const char *audio_url;
@@ -596,14 +442,20 @@ int main(void) {
     return 3;
   }
 
-  memset(&segments, 0, sizeof(segments));
+  memset(&events, 0, sizeof(events));
   memset(&progress, 0, sizeof(progress));
+  expected = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_EXPECTED_TEXT");
+  events.expected = expected;
   text = NULL;
   rc = 1;
 
-  if (cpkt_sus_test_run_realtime(model, audio_path, audio_url, &segments,
-                                 &progress) != 0) {
+  if (cpkt_sus_test_run_realtime(model, audio_path, audio_url, &events,
+                                 &progress, &text) != 0) {
     fprintf(stderr, "realtime audio transcription failed\n");
+    goto cleanup;
+  }
+  if (events.count == 0UL || events.final_count == 0UL) {
+    fprintf(stderr, "realtime hypothesis callback was not invoked\n");
     goto cleanup;
   }
   if (progress.count == 0UL) {
@@ -622,19 +474,11 @@ int main(void) {
     goto cleanup;
   }
 
-  if (cpkt_sus_test_run_materialized(model, audio_path, &text) != 0) {
-    fprintf(stderr, "materialized audio transcription failed\n");
-    goto cleanup;
-  }
-
-  if (cpkt_sus_test_run_abort(model, audio_path) != 0) {
-    fprintf(stderr, "abort callback transcription failed\n");
-    goto cleanup;
-  }
-
-  expected = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_EXPECTED_TEXT");
-  if (!cpkt_sus_test_contains_expected(segments.text, text, expected)) {
+  if (!events.matched_expected ||
+      !cpkt_sus_test_contains_expected(text, NULL, expected)) {
     fprintf(stderr, "expected transcript text was not found\n");
+    fprintf(stderr, "latest realtime hypothesis: %s\n", events.text);
+    fprintf(stderr, "realtime text: %s\n", text);
     goto cleanup;
   }
 

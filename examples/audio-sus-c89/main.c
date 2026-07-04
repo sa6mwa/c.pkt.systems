@@ -2,38 +2,26 @@
 #include <cpkt/sus.h>
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#define CPKT_EXAMPLE_WINDOW_FRAMES (16000UL * 30UL)
 #define CPKT_EXAMPLE_READ_FRAMES 4096UL
 
-static int cpkt_example_segment_sink(const cpkt_sus_segment *segment,
-                                     void *user) {
+static int cpkt_example_realtime_sink(const cpkt_sus_realtime_event *event,
+                                      void *user) {
   FILE *out;
 
   out = (FILE *)user;
-  if (segment == NULL || segment->text == NULL || out == NULL) {
+  if (event == NULL || event->text == NULL || out == NULL) {
     return 1;
   }
-  if (fwrite(segment->text, 1U, (size_t)segment->text_length, out) !=
-      (size_t)segment->text_length) {
+  if (fwrite(event->text, 1U, (size_t)event->text_length, out) !=
+      (size_t)event->text_length) {
+    return 1;
+  }
+  if (fputc('\n', out) == EOF) {
     return 1;
   }
   return 0;
-}
-
-static int cpkt_example_transcribe_window(cpkt_sus_transcriber *transcriber,
-                                          const float *samples,
-                                          unsigned long sample_count) {
-  cpkt_sus_result result;
-
-  if (sample_count == 0UL) {
-    return 0;
-  }
-  result = transcriber->transcribe_f32_mono_16k(transcriber, samples,
-                                                sample_count);
-  return result == CPKT_SUS_OK ? 0 : 1;
 }
 
 static int cpkt_example_transcribe_file(const char *model_path,
@@ -43,30 +31,27 @@ static int cpkt_example_transcribe_file(const char *model_path,
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_model_config model_config;
   cpkt_sus_transcriber_config transcriber_config;
-  float *window;
-  float read_buffer[CPKT_EXAMPLE_READ_FRAMES];
-  size_t frames_read;
-  size_t window_used;
-  cpkt_audio_result audio_result;
+  cpkt_sus_realtime_config realtime_config;
+  char *text;
   int rc;
 
   decoder = NULL;
   model = NULL;
   transcriber = NULL;
-  window = NULL;
-  window_used = 0U;
+  text = NULL;
   rc = 1;
 
   memset(&model_config, 0, sizeof(model_config));
   model_config.model_path = model_path;
   memset(&transcriber_config, 0, sizeof(transcriber_config));
-  transcriber_config.segment_sink = cpkt_example_segment_sink;
-  transcriber_config.segment_user = stdout;
+  memset(&realtime_config, 0, sizeof(realtime_config));
+  realtime_config.read_frames = CPKT_EXAMPLE_READ_FRAMES;
+  realtime_config.step_ms = 1000UL;
+  realtime_config.length_ms = 5000UL;
+  realtime_config.keep_ms = 200UL;
+  realtime_config.realtime_sink = cpkt_example_realtime_sink;
+  realtime_config.realtime_user = stdout;
 
-  window = (float *)malloc(sizeof(float) * (size_t)CPKT_EXAMPLE_WINDOW_FRAMES);
-  if (window == NULL) {
-    goto cleanup;
-  }
   if (cpkt_audio_decoder_open_file(&decoder, audio_path, NULL) !=
       CPKT_AUDIO_OK) {
     goto cleanup;
@@ -78,46 +63,11 @@ static int cpkt_example_transcribe_file(const char *model_path,
       CPKT_SUS_OK) {
     goto cleanup;
   }
-
-  for (;;) {
-    audio_result = decoder->read_f32_mono_16k(
-        decoder, read_buffer, (size_t)CPKT_EXAMPLE_READ_FRAMES, &frames_read);
-    if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
-      goto cleanup;
-    }
-    if (frames_read > 0U) {
-      size_t offset;
-
-      offset = 0U;
-      while (offset < frames_read) {
-        size_t available;
-        size_t chunk;
-
-        available = (size_t)CPKT_EXAMPLE_WINDOW_FRAMES - window_used;
-        chunk = frames_read - offset;
-        if (chunk > available) {
-          chunk = available;
-        }
-        memcpy(window + window_used, read_buffer + offset,
-               sizeof(float) * chunk);
-        window_used += chunk;
-        offset += chunk;
-        if (window_used == (size_t)CPKT_EXAMPLE_WINDOW_FRAMES) {
-          if (cpkt_example_transcribe_window(
-                  transcriber, window, CPKT_EXAMPLE_WINDOW_FRAMES) != 0) {
-            goto cleanup;
-          }
-          window_used = 0U;
-        }
-      }
-    }
-    if (audio_result == CPKT_AUDIO_AT_END) {
-      break;
-    }
+  if (transcriber->transcribe_audio_decoder_realtime_text(
+          transcriber, decoder, &realtime_config, &text) != CPKT_SUS_OK) {
+    goto cleanup;
   }
-
-  if (cpkt_example_transcribe_window(transcriber, window,
-                                     (unsigned long)window_used) != 0) {
+  if (fputs(text, stdout) == EOF) {
     goto cleanup;
   }
   rc = 0;
@@ -132,7 +82,7 @@ cleanup:
   if (decoder != NULL) {
     decoder->destroy(decoder);
   }
-  free(window);
+  cpkt_sus_string_free(text);
   return rc;
 }
 

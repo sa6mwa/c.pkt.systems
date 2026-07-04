@@ -423,6 +423,14 @@ segment callbacks. Do not hide full-audio materialization behind a
 streaming-looking API, and do not invent a separate seconds/window contract that
 does not match upstream semantics.
 
+`step_ms` is the realtime cadence, not the whole inference context. Realtime
+output is a rolling hypothesis surface: later audio can revise earlier text while
+that audio remains inside the retained `length_ms` context. The facade must not
+append every rolling hypothesis as final transcript text. It should support both
+streaming hypothesis callbacks and an after-the-fact revised text result for the
+session. The revised text path may materialize text, but it must not materialize
+decoded audio.
+
 Initial transcription options should expose only stable, high-value knobs:
 
 - model handle;
@@ -437,6 +445,8 @@ Initial transcription options should expose only stable, high-value knobs:
 - realtime decoder options named after upstream `whisper-stream`: `step_ms`,
   `length_ms`, `keep_ms`, optional prompt-token context carryover, audio context,
   and max tokens;
+- realtime hypothesis callbacks and a materialized revised-text helper that
+  assembles session text from hypotheses without buffering decoded audio;
 - initial prompt;
 - progress and abort callbacks.
 
