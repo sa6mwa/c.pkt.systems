@@ -264,6 +264,11 @@ typedef struct cpkt_audio_vox_config {
   float threshold;
   /** Silence duration that releases VOX. Zero selects 1500 ms. */
   unsigned long release_silence_ms;
+  /**
+   * Audio retained before threshold opens VOX. Zero selects 10 ms. This keeps
+   * the leading attack of speech in the emitted segment.
+   */
+  unsigned long prebuffer_ms;
   /** Maximum segment duration before a budget split. Zero disables the time
    * cap. */
   unsigned long max_segment_ms;

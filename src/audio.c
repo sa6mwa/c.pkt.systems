@@ -11,6 +11,10 @@
 #define MA_NO_NODE_GRAPH
 #define MA_NO_ENGINE
 #define MA_NO_GENERATION
+#ifdef CPKT_AUDIO_NO_DEVICE_IO
+#define MA_NO_DEVICE_IO
+#define MA_NO_RUNTIME_LINKING
+#endif
 #define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
 
@@ -73,6 +77,7 @@ struct cpkt_audio_encoder_impl {
   int callback_error;
 };
 
+#ifndef CPKT_AUDIO_NO_DEVICE_IO
 struct cpkt_audio_capture_impl {
   ma_device device;
   ma_pcm_rb rb;
@@ -90,15 +95,20 @@ struct cpkt_audio_playback_impl {
   int started;
   int underrun;
 };
+#endif
 
 struct cpkt_audio_vox_impl {
   cpkt_audio_vox_config config;
   float *frames;
+  float *prebuffer_frames;
   size_t frame_capacity;
+  size_t prebuffer_capacity;
   size_t memory_frame_count;
   size_t total_frame_count;
   size_t speech_frame_count;
   size_t read_cursor;
+  size_t prebuffer_count;
+  size_t prebuffer_cursor;
   FILE *spool_file;
   unsigned long release_silence_frames;
   unsigned long max_segment_frames;
@@ -970,6 +980,14 @@ static void cpkt_audio_vox_reset_segment(struct cpkt_audio_vox_impl *impl) {
   impl->open = 0;
 }
 
+static void cpkt_audio_vox_reset_prebuffer(struct cpkt_audio_vox_impl *impl) {
+  if (impl == NULL) {
+    return;
+  }
+  impl->prebuffer_count = 0U;
+  impl->prebuffer_cursor = 0U;
+}
+
 static cpkt_audio_result
 cpkt_audio_vox_spill_to_file(struct cpkt_audio_vox_impl *impl) {
   if (impl == NULL) {
@@ -1104,6 +1122,47 @@ cpkt_audio_vox_append_frame(struct cpkt_audio_vox_impl *impl, float frame) {
   return CPKT_AUDIO_OK;
 }
 
+static void cpkt_audio_vox_prebuffer_frame(struct cpkt_audio_vox_impl *impl,
+                                           float frame) {
+  size_t write_index;
+
+  if (impl == NULL || impl->prebuffer_frames == NULL ||
+      impl->prebuffer_capacity == 0U) {
+    return;
+  }
+  if (impl->prebuffer_count < impl->prebuffer_capacity) {
+    write_index = (impl->prebuffer_cursor + impl->prebuffer_count) %
+                  impl->prebuffer_capacity;
+    ++impl->prebuffer_count;
+  } else {
+    write_index = impl->prebuffer_cursor;
+    impl->prebuffer_cursor =
+        (impl->prebuffer_cursor + 1U) % impl->prebuffer_capacity;
+  }
+  impl->prebuffer_frames[write_index] = frame;
+}
+
+static cpkt_audio_result
+cpkt_audio_vox_append_prebuffer(struct cpkt_audio_vox_impl *impl) {
+  size_t i;
+  cpkt_audio_result result;
+
+  if (impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  for (i = 0U; i < impl->prebuffer_count; ++i) {
+    size_t index;
+
+    index = (impl->prebuffer_cursor + i) % impl->prebuffer_capacity;
+    result = cpkt_audio_vox_append_frame(impl, impl->prebuffer_frames[index]);
+    if (result != CPKT_AUDIO_OK) {
+      return result;
+    }
+  }
+  cpkt_audio_vox_reset_prebuffer(impl);
+  return CPKT_AUDIO_OK;
+}
+
 static void cpkt_audio_vox_note_loudness(struct cpkt_audio_vox_impl *impl,
                                          int loud) {
   if (loud) {
@@ -1159,6 +1218,7 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self, const float *frames,
 
     loud = cpkt_audio_absf(frames[i]) >= impl->threshold ? 1 : 0;
     if (!impl->open && !loud) {
+      cpkt_audio_vox_prebuffer_frame(impl, frames[i]);
       continue;
     }
     if (!impl->open) {
@@ -1169,6 +1229,10 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self, const float *frames,
       impl->speech_frame_count = 0U;
       impl->read_cursor = 0U;
       result = cpkt_audio_vox_emit_state(impl, CPKT_AUDIO_VOX_TX_ON);
+      if (result != CPKT_AUDIO_OK) {
+        return result;
+      }
+      result = cpkt_audio_vox_append_prebuffer(impl);
       if (result != CPKT_AUDIO_OK) {
         return result;
       }
@@ -1252,6 +1316,7 @@ static void cpkt_audio_vox_destroy_impl(cpkt_audio_vox *self) {
       fclose(impl->spool_file);
     }
     free(impl->frames);
+    free(impl->prebuffer_frames);
     free(impl);
   }
   free(self);
@@ -1769,6 +1834,7 @@ static void cpkt_audio_encoder_destroy_impl(cpkt_audio_encoder *self) {
   free(self);
 }
 
+#ifndef CPKT_AUDIO_NO_DEVICE_IO
 static ma_backend cpkt_audio_to_ma_backend(int backend) {
   switch (backend) {
   case CPKT_AUDIO_DEVICE_BACKEND_ALSA:
@@ -1826,7 +1892,9 @@ static ma_uint32 cpkt_audio_device_period_ms(unsigned long period_ms) {
   }
   return (ma_uint32)ms;
 }
+#endif
 
+#ifndef CPKT_AUDIO_NO_DEVICE_IO
 static void cpkt_audio_capture_callback(ma_device *device, void *output,
                                         const void *input,
                                         ma_uint32 frame_count) {
@@ -2118,6 +2186,7 @@ static void cpkt_audio_playback_destroy_impl(cpkt_audio_playback *self) {
   }
   free(self);
 }
+#endif
 
 static cpkt_audio_result
 cpkt_audio_decoder_alloc(cpkt_audio_decoder **out,
@@ -2177,6 +2246,7 @@ cpkt_audio_encoder_alloc(cpkt_audio_encoder **out,
   return CPKT_AUDIO_OK;
 }
 
+#ifndef CPKT_AUDIO_NO_DEVICE_IO
 static cpkt_audio_result
 cpkt_audio_capture_alloc(cpkt_audio_capture **out,
                          cpkt_audio_capture **capture_out,
@@ -2237,6 +2307,7 @@ cpkt_audio_playback_alloc(cpkt_audio_playback **out,
   *impl_out = impl;
   return CPKT_AUDIO_OK;
 }
+#endif
 
 static ma_decoder_config
 cpkt_audio_ma_decoder_config(const cpkt_audio_decoder_config *config) {
@@ -2574,6 +2645,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_encoder_open_writer(
   return CPKT_AUDIO_OK;
 }
 
+#ifndef CPKT_AUDIO_NO_DEVICE_IO
 /** Opens receiver-shell capture from the platform default input device. */
 CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
     cpkt_audio_capture **out, const cpkt_audio_capture_config *config) {
@@ -2719,6 +2791,29 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
   *out = playback;
   return CPKT_AUDIO_OK;
 }
+#else
+/** Opens receiver-shell capture from the platform default input device. */
+CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
+    cpkt_audio_capture **out, const cpkt_audio_capture_config *config) {
+  (void)config;
+  if (out == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  *out = NULL;
+  return CPKT_AUDIO_ERR_IO;
+}
+
+/** Opens receiver-shell playback to the platform default output device. */
+CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
+    cpkt_audio_playback **out, const cpkt_audio_playback_config *config) {
+  (void)config;
+  if (out == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  *out = NULL;
+  return CPKT_AUDIO_ERR_IO;
+}
+#endif
 
 /** Opens a receiver-shell VOX segmenter for float32 mono 16000 Hz PCM. */
 CPKT_AUDIO_EXPORT cpkt_audio_result
@@ -2728,12 +2823,15 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   unsigned long release_frames;
   unsigned long max_frames;
   unsigned long min_frames;
+  unsigned long prebuffer_frames_ul;
   unsigned long release_ms;
   unsigned long min_ms;
+  unsigned long prebuffer_ms;
   unsigned long memory_spool_bytes;
   unsigned long max_spool_bytes;
   size_t memory_spool_frames;
   size_t max_spool_frames;
+  size_t prebuffer_frames;
 
   if (out != NULL) {
     *out = NULL;
@@ -2745,8 +2843,10 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   release_ms =
       config->release_silence_ms != 0UL ? config->release_silence_ms : 1500UL;
   min_ms = config->min_segment_ms != 0UL ? config->min_segment_ms : 100UL;
+  prebuffer_ms = config->prebuffer_ms != 0UL ? config->prebuffer_ms : 10UL;
   if (!cpkt_audio_ms_to_16k_frames(release_ms, &release_frames) ||
       !cpkt_audio_ms_to_16k_frames(min_ms, &min_frames) ||
+      !cpkt_audio_ms_to_16k_frames(prebuffer_ms, &prebuffer_frames_ul) ||
       (config->max_segment_ms != 0UL &&
        !cpkt_audio_ms_to_16k_frames(config->max_segment_ms, &max_frames))) {
     return CPKT_AUDIO_ERR_ARG;
@@ -2768,8 +2868,12 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   }
   memory_spool_frames = (size_t)(memory_spool_bytes / sizeof(float));
   max_spool_frames = (size_t)(max_spool_bytes / sizeof(float));
+  prebuffer_frames = (size_t)prebuffer_frames_ul;
   if (memory_spool_frames == 0U || max_spool_frames == 0U ||
-      memory_spool_frames > ((size_t)-1) / sizeof(float)) {
+      memory_spool_frames > ((size_t)-1) / sizeof(float) ||
+      (unsigned long)prebuffer_frames != prebuffer_frames_ul ||
+      (prebuffer_frames != 0U &&
+       prebuffer_frames > ((size_t)-1) / sizeof(float))) {
     return CPKT_AUDIO_ERR_ARG;
   }
 
@@ -2788,12 +2892,23 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
     free(vox);
     return CPKT_AUDIO_ERR_ALLOC;
   }
+  if (prebuffer_frames != 0U) {
+    impl->prebuffer_frames =
+        (float *)malloc(sizeof(float) * prebuffer_frames);
+    if (impl->prebuffer_frames == NULL) {
+      free(impl->frames);
+      free(impl);
+      free(vox);
+      return CPKT_AUDIO_ERR_ALLOC;
+    }
+  }
 
   impl->config = *config;
   impl->release_silence_frames = release_frames;
   impl->max_segment_frames = max_frames;
   impl->min_segment_frames = min_frames;
   impl->frame_capacity = memory_spool_frames;
+  impl->prebuffer_capacity = prebuffer_frames;
   impl->max_spool_frames = max_spool_frames;
   impl->threshold = config->threshold > 0.0f ? config->threshold : 0.01f;
 

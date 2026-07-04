@@ -781,6 +781,7 @@ struct vox_capture {
   int states[16];
   unsigned long state_segments[16];
   size_t frames[8];
+  float first_frame[8];
   int fail;
 };
 
@@ -812,6 +813,7 @@ static int capture_vox_segment(cpkt_audio_vox_segment *segment, void *user) {
   }
   assert_true(capture->count < 8UL);
   capture->frames[capture->count] = segment->frame_count;
+  capture->first_frame[capture->count] = 999.0f;
   if (segment->hard_cut) {
     ++capture->hard_count;
   }
@@ -824,6 +826,9 @@ static int capture_vox_segment(cpkt_audio_vox_segment *segment, void *user) {
     frames_read = 99U;
     result = segment->read_f32_mono_16k(segment, frames, 256U, &frames_read);
     assert_true(result == CPKT_AUDIO_OK || result == CPKT_AUDIO_AT_END);
+    if (total == 0U && frames_read > 0U) {
+      capture->first_frame[capture->count] = frames[0];
+    }
     total += frames_read;
   } while (result != CPKT_AUDIO_AT_END);
   assert_int_equal(total, segment->frame_count);
@@ -872,6 +877,44 @@ static void test_vox_releases_on_silence(void **state) {
   assert_int_equal(capture.state_segments[1], 0UL);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
+  vox->destroy(vox);
+}
+
+static void test_vox_includes_prebuffer_before_threshold(void **state) {
+  struct vox_capture capture;
+  cpkt_audio_vox_config config;
+  cpkt_audio_vox *vox;
+  float frames[400];
+  size_t i;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  memset(&config, 0, sizeof(config));
+  config.threshold = 0.1f;
+  config.release_silence_ms = 10UL;
+  config.prebuffer_ms = 5UL;
+  config.min_segment_ms = 1UL;
+  config.segment_sink = capture_vox_segment;
+  config.segment_user = &capture;
+
+  for (i = 0U; i < 120U; ++i) {
+    frames[i] = 0.01f;
+  }
+  for (; i < 240U; ++i) {
+    frames[i] = 0.2f;
+  }
+  for (; i < 400U; ++i) {
+    frames[i] = 0.0f;
+  }
+
+  vox = NULL;
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
+  assert_non_null(vox);
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 400U), CPKT_AUDIO_OK);
+  assert_int_equal(capture.count, 1UL);
+  assert_int_equal(capture.frames[0], 360U);
+  assert_float_equal(capture.first_frame[0], 0.01f, 0.0001f);
+  assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   vox->destroy(vox);
 }
 
@@ -1255,6 +1298,7 @@ int main(void) {
       cmocka_unit_test(test_encoder_writes_wav_callback_writer),
       cmocka_unit_test(test_encoder_callback_write_failure),
       cmocka_unit_test(test_vox_releases_on_silence),
+      cmocka_unit_test(test_vox_includes_prebuffer_before_threshold),
       cmocka_unit_test(test_vox_hard_cuts_at_segment_budget),
       cmocka_unit_test(
           test_vox_releases_at_hang_time_even_when_more_audio_fits),

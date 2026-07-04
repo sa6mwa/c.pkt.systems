@@ -22,6 +22,7 @@ struct cpkt_sus_live_options {
   unsigned long seconds;
   unsigned long threshold_milli;
   unsigned long hang_ms;
+  unsigned long prebuffer_ms;
   unsigned long max_segment_ms;
   unsigned long buffer_ms;
   unsigned long period_ms;
@@ -86,6 +87,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
   opts->seconds = 0UL;
   opts->threshold_milli = 60UL;
   opts->hang_ms = 1500UL;
+  opts->prebuffer_ms = 0UL;
   opts->max_segment_ms = 0UL;
   opts->buffer_ms = 2000UL;
   opts->period_ms = 20UL;
@@ -409,6 +411,7 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
     memset(&vox_config, 0, sizeof(vox_config));
     vox_config.threshold = cpkt_sus_live_threshold(opts);
     vox_config.release_silence_ms = opts->hang_ms;
+    vox_config.prebuffer_ms = opts->prebuffer_ms;
     vox_config.max_segment_ms = opts->max_segment_ms;
     vox_config.min_segment_ms = 100UL;
     vox_config.segment_sink = cpkt_sus_live_segment_sink;
@@ -524,6 +527,8 @@ static void cpkt_sus_live_usage(FILE *out) {
           "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
+          "  --prebuffer-ms N            VOX prebuffer; default 10.\n");
+  fprintf(out,
           "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
   fprintf(out,
           "  --buffer-ms N               Device ring buffer; default 2000.\n");
@@ -567,6 +572,10 @@ static int cpkt_sus_live_parse_options(int argc, char **argv,
       }
     } else if (strcmp(argv[i], "--hang-ms") == 0 && i + 1 < argc) {
       if (!cpkt_sus_live_parse_ulong(argv[++i], &opts->hang_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--prebuffer-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_sus_live_parse_ulong(argv[++i], &opts->prebuffer_ms)) {
         return 0;
       }
     } else if (strcmp(argv[i], "--max-segment-ms") == 0 && i + 1 < argc) {

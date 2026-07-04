@@ -1096,6 +1096,37 @@ static int cpkt_sus_ul_to_int(unsigned long value, int *out) {
   return 1;
 }
 
+static int cpkt_sus_ascii_space(char ch) {
+  return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' ||
+         ch == '\v';
+}
+
+static int cpkt_sus_ascii_punctuation(char ch) {
+  return ch == '.' || ch == ',' || ch == ';' || ch == ':' || ch == '!' ||
+         ch == '?' || ch == ')' || ch == ']' || ch == '}';
+}
+
+static void cpkt_sus_trim_ascii_space(const char **text, size_t *length) {
+  const char *value;
+  size_t value_length;
+
+  if (text == NULL || length == NULL || *text == NULL) {
+    return;
+  }
+  value = *text;
+  value_length = *length;
+  while (value_length > 0U && cpkt_sus_ascii_space(value[0])) {
+    ++value;
+    --value_length;
+  }
+  while (value_length > 0U &&
+         cpkt_sus_ascii_space(value[value_length - 1U])) {
+    --value_length;
+  }
+  *text = value;
+  *length = value_length;
+}
+
 static cpkt_sus_result
 cpkt_sus_build_segmented_text(char **out, struct whisper_context *context) {
   const char *segment_text;
@@ -1160,6 +1191,9 @@ cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
     return CPKT_SUS_OK;
   }
 
+  if (text != NULL && text_len > 0U) {
+    cpkt_sus_trim_ascii_space(&text, &text_len);
+  }
   if (text != NULL && text_len > 0U) {
     result = cpkt_sus_transcriber_append_revised_text(impl, text, text_len);
     if (result != CPKT_SUS_OK) {
@@ -1339,6 +1373,7 @@ cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
                                          const char *text, size_t text_len) {
   cpkt_sus_result result;
   size_t needed;
+  size_t separator;
 
   if (impl == NULL || text == NULL) {
     return CPKT_SUS_ERR_ARG;
@@ -1346,14 +1381,24 @@ cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
   if (text_len == 0U) {
     return CPKT_SUS_OK;
   }
-  if (text_len > ((size_t)-1) - impl->revised_length - 1U) {
+  separator = 0U;
+  if (impl->revised_length > 0U &&
+      !cpkt_sus_ascii_space(impl->revised_text[impl->revised_length - 1U]) &&
+      !cpkt_sus_ascii_punctuation(text[0])) {
+    separator = 1U;
+  }
+  if (text_len > ((size_t)-1) - impl->revised_length - separator - 1U) {
     return CPKT_SUS_ERR_ALLOC;
   }
-  needed = impl->revised_length + text_len + 1U;
+  needed = impl->revised_length + separator + text_len + 1U;
   result = cpkt_sus_text_reserve(&impl->revised_text, &impl->revised_capacity,
                                  needed);
   if (result != CPKT_SUS_OK) {
     return result;
+  }
+  if (separator) {
+    impl->revised_text[impl->revised_length] = ' ';
+    ++impl->revised_length;
   }
   memcpy(impl->revised_text + impl->revised_length, text, text_len);
   impl->revised_length += text_len;
