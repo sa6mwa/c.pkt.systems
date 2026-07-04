@@ -22,6 +22,21 @@ cmake_generator="Unix Makefiles"
 cmake_toolchain_file=
 cmake_toolchain_args=()
 
+cpkt_infer_cxx_from_cc() {
+  case "$1" in
+    *gcc) printf '%sg++\n' "${1%gcc}" ;;
+    *cc)
+      if [ -x "${1%cc}c++" ]; then
+        printf '%sc++\n' "${1%cc}"
+      else
+        printf 'c++\n'
+      fi
+      ;;
+    *clang) printf '%sclang++\n' "${1%clang}" ;;
+    *) printf 'c++\n' ;;
+  esac
+}
+
 cpkt_ensure_toolchain() {
   "$repo_root/scripts/ensure-toolchain.sh" "$1"
 }
@@ -159,6 +174,15 @@ if [ ! -x "$cc" ]; then
   printf 'compiler for %s is not executable: %s\n' "$target_id" "$cc" >&2
   exit 1
 fi
+cxx=${CXX:-$(cpkt_infer_cxx_from_cc "$cc")}
+case "$target_id" in
+  *-linux-*)
+    if [ ! -x "$cxx" ]; then
+      printf 'C++ compiler for %s is not executable: %s\n' "$target_id" "$cxx" >&2
+      exit 1
+    fi
+    ;;
+esac
 
 if [ "${CPKT_PACKAGE_INSTALL_SMOKE_PRINT_CMAKE_TOOLCHAIN_ARGS:-0}" = 1 ]; then
   printf '%s\n' -G
@@ -1611,6 +1635,82 @@ cpkt_pkg_config_static_multi_smoke() {
     $static_extra_libs"
 }
 
+cpkt_pkg_config_static_mixed_cxx_smoke() {
+  output_path="$work_root/bin/cpkt_pkg_sus_mixed_cxx"
+  c_source="$work_root/cpkt_sus_mixed_c_main.c"
+  c_object="$work_root/cpkt_sus_mixed_c_main.o"
+  cxx_source="$work_root/cpkt_sus_mixed_cxx_probe.cpp"
+  cxx_object="$work_root/cpkt_sus_mixed_cxx_probe.o"
+  pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs cpkt-sus)
+  case "$target_id" in
+    *-linux-gnu)
+      pkg_config_link_words=$(printf '%s\n' "$pkg_config_link_words" | awk '
+        BEGIN {
+          bundled["-lcrypto"] = 1
+          bundled["-lssl"] = 1
+          bundled["-lz"] = 1
+          bundled["-lnghttp2"] = 1
+          bundled["-lssh2"] = 1
+          bundled["-lcurl"] = 1
+          bundled["-lwhisper"] = 1
+          bundled["-lggml"] = 1
+          bundled["-lggml-base"] = 1
+          bundled["-lggml-cpu"] = 1
+          bundled["-lcpktsus"] = 1
+        }
+        {
+          for (i = 1; i <= NF; ++i) {
+            if ($i in bundled) {
+              printf " -Wl,-Bstatic %s", $i
+            } else if ($i ~ /^-l/ || $i == "-pthread") {
+              printf " -Wl,-Bdynamic %s", $i
+            } else {
+              printf " %s", $i
+            }
+          }
+          printf " -Wl,-Bdynamic"
+        }')
+      ;;
+  esac
+  cat > "$c_source" <<'EOF'
+#include <string.h>
+
+#include <cpkt/sus.h>
+
+int cpkt_sus_mixed_cxx_value(void);
+
+int main(void) {
+  const char *capabilities;
+
+  capabilities = cpkt_sus_backend_capabilities();
+  if (capabilities == 0 || strcmp(capabilities, "cpu") != 0) {
+    return 1;
+  }
+  return cpkt_sus_mixed_cxx_value() == 8 ? 0 : 2;
+}
+EOF
+  cat > "$cxx_source" <<'EOF'
+#include <string>
+
+extern "C" int cpkt_sus_mixed_cxx_value(void) {
+  std::string value("cpkt-sus");
+  return static_cast<int>(value.size());
+}
+EOF
+  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C compile" \
+    "\"$cc\" $pkg_config_compile_toolchain_flags $common_flags -c \"$c_source\" -o \"$c_object\" \
+    $(cpkt_pkg_config --cflags cpkt-sus)"
+  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C++ compile" \
+    "\"$cxx\" $pkg_config_compile_toolchain_flags -std=c++11 -Wall -Wextra -Wpedantic -Werror -c \"$cxx_source\" -o \"$cxx_object\" \
+    $(cpkt_pkg_config --cflags cpkt-sus)"
+  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C-final link" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_link_toolchain_flags \
+    \"$c_object\" \"$cxx_object\" \
+    -o \"$output_path\" \
+    $pkg_config_link_words \
+    $static_extra_libs"
+}
+
 cpkt_pkg_config_static_smoke zlib cpkt_zlib.c
 cpkt_pkg_config_static_smoke libnghttp2 cpkt_nghttp2.c
 cpkt_pkg_config_static_smoke libcrypto cpkt_crypto.c
@@ -1628,6 +1728,7 @@ case "$target_id" in
     cpkt_pkg_config_static_smoke cpkt-audio cpkt_audio_facade_strict.c
     cpkt_pkg_config_static_smoke cpkt-sus cpkt_sus_facade_strict.c
     cpkt_pkg_config_static_multi_smoke cpkt_pkg_audio_sus_facade cpkt_audio_sus_facade_strict.c cpkt-audio cpkt-sus
+    cpkt_pkg_config_static_mixed_cxx_smoke
     ;;
 esac
 
@@ -1722,6 +1823,9 @@ if [ -z "$run_prefix" ]; then
   "$work_root/bin/cpkt_pkg_mqtt-c"
   "$work_root/bin/cpkt_pkg_open62541"
   "$work_root/bin/cpkt_pkg_cpkt-opcua"
+  case "$target_id" in
+    *-linux-*) "$work_root/bin/cpkt_pkg_sus_mixed_cxx" ;;
+  esac
   "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
   "$example_pkg_config_output"
   "$lua_runtime_example_cmake_build_dir/cpkt_lua_runtime_c89_example" "$lua_runtime_example_cmake_build_dir/example_file.lua"
@@ -1781,6 +1885,12 @@ else
   $run_prefix "$work_root/bin/cpkt_pkg_open62541"
   # shellcheck disable=SC2086
   $run_prefix "$work_root/bin/cpkt_pkg_cpkt-opcua"
+  case "$target_id" in
+    *-linux-*)
+      # shellcheck disable=SC2086
+      $run_prefix "$work_root/bin/cpkt_pkg_sus_mixed_cxx"
+      ;;
+  esac
   # shellcheck disable=SC2086
   $run_prefix "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
   # shellcheck disable=SC2086
