@@ -355,6 +355,9 @@ assert_package_file "share/doc/c.pkt.systems/README.md"
 assert_package_file "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/main.c"
 assert_package_file "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/build-pkg-config.sh"
@@ -1323,6 +1326,26 @@ fi
 cpkt_run_checked "opcua cmake example configure" cmake "${opcua_example_cmake_args[@]}"
 cpkt_run_checked "opcua cmake example build" cmake --build "$opcua_example_cmake_build_dir"
 
+audio_sus_example_cmake_build_dir="$work_root/example-audio-sus-c89-cmake-build"
+audio_sus_example_cmake_args=(
+  -G "$cmake_generator" \
+  -S "$installed_examples_dir/audio-sus-c89" \
+  -B "$audio_sus_example_cmake_build_dir" \
+  -DCMAKE_C_COMPILER="$cc" \
+  "-DCMAKE_C_FLAGS=-Werror" \
+  -DCMAKE_PREFIX_PATH="$prefix" \
+  -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
+  -DCpktSus_DIR="$prefix/lib/cmake/CpktSus" \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+)
+if [ -n "$cmake_toolchain_file" ]; then
+  audio_sus_example_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
+  audio_sus_example_cmake_args+=("${cmake_toolchain_args[@]}")
+  audio_sus_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+fi
+cpkt_run_checked "audio sus cmake example configure" cmake "${audio_sus_example_cmake_args[@]}"
+cpkt_run_checked "audio sus cmake example build" cmake --build "$audio_sus_example_cmake_build_dir"
+
 pkg_config_libdir="$prefix/lib/pkgconfig"
 pkg_config_words() {
   cpkt_pkg_config --static --cflags --libs "$1"
@@ -1579,6 +1602,14 @@ CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $
   cpkt_run_checked "opcua pkg-config example build" \
     "$installed_examples_dir/opcua-c89/build-pkg-config.sh" "$opcua_example_pkg_config_output"
 
+audio_sus_example_pkg_config_output="$work_root/bin/cpkt_audio_sus_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "audio sus pkg-config example build" \
+    "$installed_examples_dir/audio-sus-c89/build-pkg-config.sh" "$audio_sus_example_pkg_config_output"
+
 cpkt_pkg_config_smoke() {
   pc_name=$1
   source_name=$2
@@ -1628,6 +1659,8 @@ if [ -z "$run_prefix" ]; then
   "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
   "$opcua_example_cmake_build_dir/cpkt_opcua_c89_example"
   "$opcua_example_pkg_config_output"
+  "$audio_sus_example_cmake_build_dir/cpkt_audio_sus_c89_example"
+  "$audio_sus_example_pkg_config_output"
 else
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_zlib"
@@ -1691,4 +1724,8 @@ else
   $run_prefix "$opcua_example_cmake_build_dir/cpkt_opcua_c89_example"
   # shellcheck disable=SC2086
   $run_prefix "$opcua_example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$audio_sus_example_cmake_build_dir/cpkt_audio_sus_c89_example"
+  # shellcheck disable=SC2086
+  $run_prefix "$audio_sus_example_pkg_config_output"
 fi
