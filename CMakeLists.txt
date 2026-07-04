@@ -955,6 +955,13 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/sus_static_runtime_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME privacy_scan_failure
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/privacy_scan_failure_test.sh")
+      set_tests_properties(privacy_scan_failure PROPERTIES
+        LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
         NAME receiver_style_examples
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/receiver_style_examples_test.sh"

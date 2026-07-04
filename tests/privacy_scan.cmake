@@ -2,6 +2,8 @@ function(cpkt_private_trace_needles out_var)
     set(_needles "")
 
     foreach(_entry
+        "CPKT_ROOT_FILE_URL=file://${CPKT_ROOT}"
+        "HOME_FILE_URL=file://$ENV{HOME}"
         "CPKT_ROOT=${CPKT_ROOT}"
         "HOME=$ENV{HOME}"
     )

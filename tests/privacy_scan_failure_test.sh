@@ -49,9 +49,36 @@ raw_leak="$work_root/raw-leak.txt"
 printf 'private source path: %s\n' "$repo_root" > "$raw_leak"
 expect_privacy_failure "$raw_leak" "release artifact contains private trace CPKT_ROOT"
 
+if [ -n "${HOME:-}" ]; then
+  home_leak="$work_root/home-leak.txt"
+  printf 'private home path: %s\n' "$HOME" > "$home_leak"
+  expect_privacy_failure "$home_leak" "release artifact contains private trace HOME"
+fi
+
+root_file_url_leak="$work_root/root-file-url-leak.txt"
+printf 'private source file URL: file://%s/model.bin\n' "$repo_root" \
+  > "$root_file_url_leak"
+expect_privacy_failure "$root_file_url_leak" \
+  "release artifact contains private trace CPKT_ROOT_FILE_URL"
+
+if [ -n "${HOME:-}" ]; then
+  home_file_url_leak="$work_root/home-file-url-leak.txt"
+  printf 'private home file URL: file://%s/cache.bin\n' "$HOME" \
+    > "$home_file_url_leak"
+  expect_privacy_failure "$home_file_url_leak" \
+    "release artifact contains private trace HOME_FILE_URL"
+fi
+
 symlink_leak="$work_root/symlink-leak"
 ln -s "$repo_root/private-target" "$symlink_leak"
 expect_privacy_failure "$symlink_leak" "release artifact contains private trace CPKT_ROOT"
+
+if [ -n "${HOME:-}" ]; then
+  symlink_home_url_leak="$work_root/symlink-home-file-url-leak"
+  ln -s "file://$HOME/private-target" "$symlink_home_url_leak"
+  expect_privacy_failure "$symlink_home_url_leak" \
+    "release artifact contains private trace HOME_FILE_URL"
+fi
 
 archive_stage="$work_root/archive-stage"
 mkdir -p "$archive_stage/c.pkt.systems-privacy-fixture"
@@ -63,5 +90,17 @@ archive_leak="$work_root/archive-leak.tar.gz"
   tar -czf "$archive_leak" -- c.pkt.systems-privacy-fixture
 )
 expect_privacy_failure "$archive_leak" "release artifact contains private trace CPKT_ROOT"
+
+archive_file_url_stage="$work_root/archive-file-url-stage"
+mkdir -p "$archive_file_url_stage/c.pkt.systems-privacy-fixture"
+printf 'nested private source file URL: file://%s/archive.bin\n' "$repo_root" \
+  > "$archive_file_url_stage/c.pkt.systems-privacy-fixture/file-url-leak.txt"
+archive_file_url_leak="$work_root/archive-file-url-leak.tar.gz"
+(
+  cd "$archive_file_url_stage"
+  tar -czf "$archive_file_url_leak" -- c.pkt.systems-privacy-fixture
+)
+expect_privacy_failure "$archive_file_url_leak" \
+  "release artifact contains private trace CPKT_ROOT_FILE_URL"
 
 printf '[test] privacy scan failure modes passed\n'
