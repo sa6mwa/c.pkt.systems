@@ -13,6 +13,7 @@ paths = [
     source_dir / "docs" / "audio-sus-facade-spec.md",
     source_dir / "examples" / "audio-sus-c89" / "main.c",
     source_dir / "examples" / "audio-vox-intro-c89" / "main.c",
+    source_dir / "examples" / "sus-vox-intro-c89" / "main.c",
 ]
 
 patterns = [

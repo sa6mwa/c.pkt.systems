@@ -557,6 +557,17 @@ if(CPKT_BUILD_TESTS)
     add_dependencies(cpkt_audio_vox_intro_c89_example cpkt_deps)
   endif()
 
+  add_executable(cpkt_sus_vox_intro_c89_example
+    examples/sus-vox-intro-c89/main.c)
+  target_compile_options(cpkt_sus_vox_intro_c89_example PRIVATE -std=c89)
+  cpkt_add_repo_warning_errors(cpkt_sus_vox_intro_c89_example)
+  target_link_libraries(cpkt_sus_vox_intro_c89_example PRIVATE
+    cpkt_audio_static
+    cpkt_sus_shared)
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt_sus_vox_intro_c89_example cpkt_deps)
+  endif()
+
   add_executable(cpkt_abi_smoke_shared examples/abi_smoke.c)
   target_compile_options(cpkt_abi_smoke_shared PRIVATE -std=c99)
   target_link_libraries(cpkt_abi_smoke_shared PRIVATE
@@ -719,7 +730,11 @@ if(CPKT_BUILD_TESTS)
     add_test(NAME audio_sus_c89_example COMMAND cpkt_audio_sus_c89_example)
     add_test(NAME audio_vox_intro_c89_example
       COMMAND cpkt_audio_vox_intro_c89_example)
+    add_test(NAME sus_vox_intro_c89_example
+      COMMAND cpkt_sus_vox_intro_c89_example)
     set_tests_properties(audio_sus_c89_example PROPERTIES
+      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+    set_tests_properties(sus_vox_intro_c89_example PROPERTIES
       ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     add_test(
       NAME opcua_word_portability
