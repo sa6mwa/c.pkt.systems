@@ -4,7 +4,6 @@ set -euo pipefail
 SOURCE_DIR="${1:?usage: verify-clangd-surface.sh <source-dir> <build-dir>}"
 BUILD_DIR="${2:?usage: verify-clangd-surface.sh <source-dir> <build-dir>}"
 COMPILE_COMMANDS="${BUILD_DIR}/compile_commands.json"
-HEADER="${SOURCE_DIR}/include/cpkt/lua_runtime.h"
 
 if [[ ! -f "${COMPILE_COMMANDS}" ]]; then
   printf 'compile database not found: %s\n' "${COMPILE_COMMANDS}" >&2
@@ -20,77 +19,120 @@ require_compile_command() {
   fi
 }
 
-require_hover_comment() {
-  local symbol
-  symbol="$1"
-  awk -v symbol="${symbol}" '
-    index($0, symbol) {
-      for (i = NR - 1; i >= 1; --i) {
-        if (lines[i] ~ /^[[:space:]]*$/) {
-          continue;
-        }
-        if (lines[i] ~ /\*\/[[:space:]]*$/) {
-          found = 1;
-          exit 0;
-        }
-        printf("public symbol %s is missing an adjacent Doxygen comment\n", symbol) > "/dev/stderr";
-        exit 1;
-      }
-    }
-    { lines[NR] = $0 }
-    END {
-      if (!found) {
-        printf("public symbol %s was not found in %s\n", symbol, FILENAME) > "/dev/stderr";
-        exit 1;
-      }
-    }
-  ' "${HEADER}"
-}
+python3 - "$SOURCE_DIR" <<'PY'
+import pathlib
+import re
+import sys
+
+source_dir = pathlib.Path(sys.argv[1])
+
+
+def previous_nonblank_is_comment(lines, index):
+    i = index - 1
+    while i >= 0 and not lines[i].strip():
+        i -= 1
+    return i >= 0 and lines[i].strip().endswith("*/")
+
+
+def declaration_requires_comment(text):
+    stripped = text.lstrip()
+    if stripped.startswith(("typedef struct cpkt_", "typedef enum cpkt_")):
+        return True
+    if stripped.startswith("typedef ") and "(*cpkt_" in stripped:
+        return True
+    return stripped.startswith((
+        "cpkt_",
+        "const char *cpkt_",
+        "void *cpkt_",
+        "void cpkt_",
+        "int cpkt_",
+        "unsigned long cpkt_",
+    ))
+
+
+def function_name_from_definition(text):
+    compact = " ".join(text.split())
+    match = re.match(
+        r"^(?:const\s+char\s+\*|void\s+\*|void|int|unsigned\s+long|cpkt_[A-Za-z0-9_]+)\s+"
+        r"(cpkt_[A-Za-z0-9_]+)\s*\(",
+        compact,
+    )
+    if match:
+        return match.group(1)
+    return None
+
+
+def verify_header(path):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    depth = 0
+    start = None
+    chunks = []
+    for i, line in enumerate(lines):
+        if depth == 0 and start is None and line.strip() and not line.lstrip().startswith("#"):
+            start = i
+        depth += line.count("{") - line.count("}")
+        if start is not None and depth == 0 and ";" in line:
+            chunks.append((start, "\n".join(lines[start : i + 1])))
+            start = None
+    failures = []
+    for start_index, text in chunks:
+        if declaration_requires_comment(text) and not previous_nonblank_is_comment(lines, start_index):
+            failures.append((start_index + 1, text.splitlines()[0].strip()))
+    return failures
+
+
+def verify_source(path):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    failures = []
+    depth = 0
+    start = None
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if depth == 0 and start is None:
+            if stripped.startswith((
+                "cpkt_",
+                "const char *cpkt_",
+                "void *cpkt_",
+                "void cpkt_",
+                "int cpkt_",
+                "unsigned long cpkt_",
+            )):
+                start = i
+            elif re.match(r"^cpkt_[A-Za-z0-9_]+$", stripped):
+                start = i
+        if start is not None and "{" in line:
+            text = "\n".join(lines[start : i + 1])
+            name = function_name_from_definition(text)
+            if name and not previous_nonblank_is_comment(lines, start):
+                failures.append((start + 1, name))
+            start = None
+        depth += line.count("{") - line.count("}")
+        if depth == 0 and start is not None and ";" in line:
+            start = None
+    return failures
+
+
+all_failures = []
+for header in sorted((source_dir / "include" / "cpkt").glob("*.h")):
+    for line, symbol in verify_header(header):
+        all_failures.append((header, line, symbol))
+for source in sorted((source_dir / "src").glob("*.c")):
+    for line, symbol in verify_source(source):
+        all_failures.append((source, line, symbol))
+
+if all_failures:
+    for path, line, symbol in all_failures:
+        print(
+            f"{path}:{line}: public facade symbol is missing an adjacent Doxygen comment: {symbol}",
+            file=sys.stderr,
+        )
+    sys.exit(1)
+PY
 
 require_compile_command "examples/abi_smoke.c"
 require_compile_command "examples/lua-runtime-c89/main.c"
 require_compile_command "examples/lua-runtime-c89/host_module.c"
 require_compile_command "examples/opcua-c89/main.c"
-
-require_hover_comment "typedef struct cpkt_lua_runtime cpkt_lua_runtime;"
-require_hover_comment "typedef enum cpkt_lua_runtime_status"
-require_hover_comment "typedef enum cpkt_lua_runtime_flags"
-require_hover_comment "typedef enum cpkt_lua_runtime_libs"
-require_hover_comment "typedef int (*cpkt_lua_runtime_c_module_open_fn)"
-require_hover_comment "typedef void *(*cpkt_lua_runtime_alloc_fn)"
-require_hover_comment "typedef void *(*cpkt_lua_runtime_realloc_fn)"
-require_hover_comment "typedef void (*cpkt_lua_runtime_free_fn)"
-require_hover_comment "typedef struct cpkt_lua_runtime_allocator_config"
-require_hover_comment "const char *cpkt_lua_runtime_lua_version"
-require_hover_comment "const char *cpkt_lua_runtime_facade_version"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_new("
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_new_with_limit"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_new_with_allocator"
-require_hover_comment "void cpkt_lua_runtime_free"
-require_hover_comment "void cpkt_lua_runtime_set_context"
-require_hover_comment "void *cpkt_lua_runtime_context("
-require_hover_comment "void *cpkt_lua_runtime_context_from_state"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_openlibs"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_open_libs"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_traceback"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_instruction_limit"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_clear_instruction_limit"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_package_path"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_path"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_package_cpath"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_cpath"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_global_string"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_global_boolean"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_global_number"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_set_global_integer"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_register_c_module"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_register_lua_module"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_require"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_run_file"
-require_hover_comment "cpkt_lua_runtime_status cpkt_lua_runtime_run_buffer"
-require_hover_comment "const char *cpkt_lua_runtime_error"
-require_hover_comment "void cpkt_lua_runtime_clear_error"
-require_hover_comment "const char *cpkt_lua_runtime_status_string"
 
 if ! command -v clangd >/dev/null 2>&1; then
   printf 'SKIP clangd --check: clangd is not installed\n'
