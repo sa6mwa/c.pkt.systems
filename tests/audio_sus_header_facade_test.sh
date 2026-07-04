@@ -90,6 +90,8 @@ int main(void) {
   segmented_config.length_ms = 7000UL;
   segmented_config.keep_ms = 1500UL;
   segmented_config.keep_context = 1;
+  segmented_config.vox_threshold = 0.03f;
+  segmented_config.prebuffer_ms = 50UL;
   segmented_config.memory_spool_bytes = 1024UL * 1024UL;
   segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   segmented_config.audio_ctx = 0UL;
@@ -114,6 +116,11 @@ int main(void) {
 
   if (sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
     return 1;
+  }
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented_text) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_vox_segment) == 0) {
+    return 2;
   }
 
   return transcriber_config.threads + segmented_config.keep_context +
@@ -170,6 +177,8 @@ int main() {
   segmented_config.length_ms = 7000UL;
   segmented_config.keep_ms = 1500UL;
   segmented_config.keep_context = 1;
+  segmented_config.vox_threshold = 0.03f;
+  segmented_config.prebuffer_ms = 50UL;
   segmented_config.memory_spool_bytes = 1024UL * 1024UL;
   segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   return encoder_config.format + segmented_config.keep_context;

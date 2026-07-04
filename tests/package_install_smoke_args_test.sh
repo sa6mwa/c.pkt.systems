@@ -94,6 +94,17 @@ if ! grep -F -- 'cpkt_opcua_server_new_from_json(&server, json_config, sizeof(js
   printf 'package smoke no longer exercises the OPC UA JSON server constructor from a strict C89 consumer\n' >&2
   exit 1
 fi
+if grep -F -- 'cpkt_sus_realtime' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    grep -F -- 'transcribe_audio_decoder_realtime' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+  printf 'package smoke still references the retired SUS realtime API names\n' >&2
+  exit 1
+fi
+if ! grep -F -- 'cpkt_sus_segmented_config segmented_config' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    ! grep -F -- 'transcribe_audio_decoder_segmented_text' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    ! grep -F -- 'segmented_config.prebuffer_ms = 50UL' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+  printf 'package smoke no longer exercises current SUS segmented/prebuffer API from a strict C89 consumer\n' >&2
+  exit 1
+fi
 
 package_pc_dir="$work_root/package-pc"
 host_pc_dir="$work_root/host-pc"

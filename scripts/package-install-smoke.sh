@@ -384,6 +384,9 @@ assert_package_file "share/doc/c.pkt.systems/examples/audio-live-vox-c89/main.c"
 assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/build-pkg-config.sh"
 assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-live-vox-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-live-vox-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-live-vox-c89/main.c"
 assert_package_file "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/build-pkg-config.sh"
@@ -537,8 +540,8 @@ int main(void) {
   cpkt_sus_model_entry entry;
   cpkt_sus_model *model;
   cpkt_sus_model_config config;
-  cpkt_sus_realtime_config realtime_config;
-  cpkt_sus_realtime_event event;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_segmented_event event;
 
   if (cpkt_sus_backend_version() == 0 ||
       cpkt_sus_backend_system_info() == 0 ||
@@ -571,18 +574,24 @@ int main(void) {
     return 8;
   }
   memset(&config, 0, sizeof(config));
-  memset(&realtime_config, 0, sizeof(realtime_config));
+  memset(&segmented_config, 0, sizeof(segmented_config));
   memset(&event, 0, sizeof(event));
-  realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 1500UL;
-  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
-  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
+  segmented_config.mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.length_ms = 7000UL;
+  segmented_config.keep_ms = 1500UL;
+  segmented_config.vox_threshold = 0.03f;
+  segmented_config.prebuffer_ms = 50UL;
+  segmented_config.memory_spool_bytes = 1024UL * 1024UL;
+  segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   event.is_final = 1;
-  if (realtime_config.step_ms != 1000UL || event.is_final == 0) {
+  if (segmented_config.mode != CPKT_SUS_SEGMENT_MODE_CONTINUOUS ||
+      segmented_config.step_ms != 1000UL ||
+      segmented_config.prebuffer_ms != 50UL ||
+      event.is_final == 0) {
     return 12;
   }
-  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0 ||
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented_text) == 0 ||
       sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
     return 13;
   }
@@ -630,8 +639,8 @@ int main(void) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_model *model;
   cpkt_sus_model_config model_config;
-  cpkt_sus_realtime_config realtime_config;
-  cpkt_sus_realtime_event event;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_segmented_event event;
 
   if (cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3) == 0) {
     return 1;
@@ -651,20 +660,25 @@ int main(void) {
     return 5;
   }
   memset(&model_config, 0, sizeof(model_config));
-  memset(&realtime_config, 0, sizeof(realtime_config));
+  memset(&segmented_config, 0, sizeof(segmented_config));
   memset(&event, 0, sizeof(event));
-  realtime_config.step_ms = 1000UL;
-  realtime_config.length_ms = 7000UL;
-  realtime_config.keep_ms = 1500UL;
-  realtime_config.memory_spool_bytes = 1024UL * 1024UL;
-  realtime_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
+  segmented_config.mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.length_ms = 7000UL;
+  segmented_config.keep_ms = 1500UL;
+  segmented_config.vox_threshold = 0.03f;
+  segmented_config.prebuffer_ms = 50UL;
+  segmented_config.memory_spool_bytes = 1024UL * 1024UL;
+  segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
   event.step_index = 1UL;
-  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime) == 0 ||
-      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_realtime_text) == 0 ||
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented_text) == 0 ||
       sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
     return 8;
   }
-  if (event.step_index != 1UL) {
+  if (segmented_config.mode != CPKT_SUS_SEGMENT_MODE_CONTINUOUS ||
+      segmented_config.prebuffer_ms != 50UL ||
+      event.step_index != 1UL) {
     return 9;
   }
   model_config.model_path = "";
@@ -1548,6 +1562,26 @@ fi
 cpkt_run_checked "sus vox intro cmake example configure" cmake "${sus_vox_example_cmake_args[@]}"
 cpkt_run_checked "sus vox intro cmake example build" cmake --build "$sus_vox_example_cmake_build_dir"
 
+sus_live_vox_example_cmake_build_dir="$work_root/example-sus-live-vox-c89-cmake-build"
+sus_live_vox_example_cmake_args=(
+  -G "$cmake_generator" \
+  -S "$installed_examples_dir/sus-live-vox-c89" \
+  -B "$sus_live_vox_example_cmake_build_dir" \
+  -DCMAKE_C_COMPILER="$cc" \
+  "-DCMAKE_C_FLAGS=-Werror" \
+  -DCMAKE_PREFIX_PATH="$prefix" \
+  -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
+  -DCpktSus_DIR="$prefix/lib/cmake/CpktSus" \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+)
+if [ -n "$cmake_toolchain_file" ]; then
+  sus_live_vox_example_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
+  sus_live_vox_example_cmake_args+=("${cmake_toolchain_args[@]}")
+  sus_live_vox_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+fi
+cpkt_run_checked "sus live vox cmake example configure" cmake "${sus_live_vox_example_cmake_args[@]}"
+cpkt_run_checked "sus live vox cmake example build" cmake --build "$sus_live_vox_example_cmake_build_dir"
+
 pkg_config_libdir="$prefix/lib/pkgconfig"
 pkg_config_words() {
   cpkt_pkg_config --static --cflags --libs "$1"
@@ -1940,6 +1974,14 @@ CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $
   cpkt_run_checked "sus vox intro pkg-config example build" \
     "$installed_examples_dir/sus-vox-intro-c89/build-pkg-config.sh" "$sus_vox_example_pkg_config_output"
 
+sus_live_vox_example_pkg_config_output="$work_root/bin/cpkt_sus_live_vox_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "sus live vox pkg-config example build" \
+    "$installed_examples_dir/sus-live-vox-c89/build-pkg-config.sh" "$sus_live_vox_example_pkg_config_output"
+
 cpkt_pkg_config_smoke() {
   pc_name=$1
   source_name=$2
@@ -2006,10 +2048,12 @@ if [ -z "$run_prefix" ]; then
   "$audio_sus_example_pkg_config_output"
   "$audio_vox_example_cmake_build_dir/cpkt_audio_vox_intro_c89_example"
   "$audio_vox_example_pkg_config_output"
-  "$audio_live_vox_example_cmake_build_dir/cpkt_audio_live_vox_c89_example"
-  "$audio_live_vox_example_pkg_config_output"
+  "$audio_live_vox_example_cmake_build_dir/cpkt_audio_live_vox_c89_example" --smoke
+  "$audio_live_vox_example_pkg_config_output" --smoke
   "$sus_vox_example_cmake_build_dir/cpkt_sus_vox_intro_c89_example"
   "$sus_vox_example_pkg_config_output"
+  "$sus_live_vox_example_cmake_build_dir/cpkt_sus_live_vox_c89_example" --smoke
+  "$sus_live_vox_example_pkg_config_output" --smoke
 else
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_zlib"
@@ -2088,11 +2132,15 @@ else
   # shellcheck disable=SC2086
   $run_prefix "$audio_vox_example_pkg_config_output"
   # shellcheck disable=SC2086
-  $run_prefix "$audio_live_vox_example_cmake_build_dir/cpkt_audio_live_vox_c89_example"
+  $run_prefix "$audio_live_vox_example_cmake_build_dir/cpkt_audio_live_vox_c89_example" --smoke
   # shellcheck disable=SC2086
-  $run_prefix "$audio_live_vox_example_pkg_config_output"
+  $run_prefix "$audio_live_vox_example_pkg_config_output" --smoke
   # shellcheck disable=SC2086
   $run_prefix "$sus_vox_example_cmake_build_dir/cpkt_sus_vox_intro_c89_example"
   # shellcheck disable=SC2086
   $run_prefix "$sus_vox_example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$sus_live_vox_example_cmake_build_dir/cpkt_sus_live_vox_c89_example" --smoke
+  # shellcheck disable=SC2086
+  $run_prefix "$sus_live_vox_example_pkg_config_output" --smoke
 fi
