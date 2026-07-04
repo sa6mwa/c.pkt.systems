@@ -6,10 +6,28 @@
 #include <string.h>
 
 #include <curl/curl.h>
+#define MA_API static
+#define MA_NO_DEVICE_IO
+#define MA_NO_RESOURCE_MANAGER
+#define MA_NO_NODE_GRAPH
+#define MA_NO_ENGINE
+#define MA_NO_GENERATION
+#define MA_NO_RUNTIME_LINKING
+#define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
+
+#if defined(__GNUC__) || defined(__clang__)
+#define CPKT_AUDIO_EXPORT __attribute__((visibility("default")))
+#else
+#define CPKT_AUDIO_EXPORT
+#endif
 
 #define CPKT_AUDIO_URL_REWIND_BYTES 1048576U
 #define CPKT_AUDIO_URL_BUFFER_CHUNK 16384U
+#define CPKT_AUDIO_DECODER_MODE_MA 0
+#define CPKT_AUDIO_DECODER_MODE_DRMP3 1
+#define CPKT_AUDIO_MP3_INPUT_FRAMES MA_DR_MP3_MAX_PCM_FRAMES_PER_MP3_FRAME
+#define CPKT_AUDIO_MP3_BYTE_CHUNK 4096U
 
 struct cpkt_audio_url_source {
   CURLM *multi;
@@ -27,11 +45,26 @@ struct cpkt_audio_url_source {
 
 struct cpkt_audio_decoder_impl {
   ma_decoder decoder;
+  ma_dr_mp3dec mp3;
+  ma_data_converter converter;
   cpkt_audio_reader reader;
   struct cpkt_audio_url_source *url_source;
+  float *mp3_input;
+  unsigned char *mp3_bytes;
+  size_t mp3_byte_size;
+  size_t mp3_byte_cursor;
+  size_t mp3_byte_capacity;
+  ma_uint64 mp3_input_frames;
+  ma_uint64 mp3_input_cursor;
+  ma_uint32 mp3_channels;
+  ma_uint32 mp3_sample_rate;
   int source_format;
+  int mode;
   int owns_reader;
   int callback_error;
+  int mp3_eof;
+  int converter_initialized;
+  int decoder_initialized;
 };
 
 struct cpkt_audio_encoder_impl {
@@ -347,6 +380,199 @@ static size_t cpkt_audio_url_read(void *user, void *buffer,
   return to_copy;
 }
 
+static size_t cpkt_audio_drmp3_url_read(void *user, void *buffer,
+                                        size_t bytes_to_read) {
+  struct cpkt_audio_url_source *source;
+  size_t buffer_end;
+  size_t buffer_offset;
+  size_t available;
+  size_t to_copy;
+  int queued;
+
+  source = (struct cpkt_audio_url_source *)user;
+  if (source == NULL || buffer == NULL || bytes_to_read == 0U) {
+    return 0U;
+  }
+  while (!source->done && !source->failed) {
+    buffer_end = cpkt_audio_url_buffer_end(source);
+    if (source->buffer_cursor < buffer_end) {
+      break;
+    }
+    if (cpkt_audio_url_source_progress(source) != 0) {
+      break;
+    }
+    buffer_end = cpkt_audio_url_buffer_end(source);
+    if (source->buffer_cursor < buffer_end) {
+      break;
+    }
+    queued = 0;
+    if (curl_multi_poll(source->multi, NULL, 0U, 1000, &queued) != CURLM_OK) {
+      source->failed = 1;
+      break;
+    }
+  }
+  buffer_end = cpkt_audio_url_buffer_end(source);
+  if (source->buffer_cursor < source->buffer_base ||
+      source->buffer_cursor >= buffer_end) {
+    return 0U;
+  }
+  buffer_offset = source->buffer_cursor - source->buffer_base;
+  available = buffer_end - source->buffer_cursor;
+  to_copy = available < bytes_to_read ? available : bytes_to_read;
+  memcpy(buffer, source->buffer + buffer_offset, to_copy);
+  source->buffer_cursor += to_copy;
+  cpkt_audio_url_source_discard_consumed(source);
+  return to_copy;
+}
+
+static int cpkt_audio_mp3_buffer_reserve(struct cpkt_audio_decoder_impl *impl,
+                                         size_t extra) {
+  unsigned char *grown;
+  size_t needed;
+  size_t next_capacity;
+
+  if (impl == NULL || extra > ((size_t)-1) - impl->mp3_byte_size) {
+    return 1;
+  }
+  needed = impl->mp3_byte_size + extra;
+  if (needed <= impl->mp3_byte_capacity) {
+    return 0;
+  }
+  next_capacity = impl->mp3_byte_capacity == 0U ? CPKT_AUDIO_MP3_BYTE_CHUNK
+                                                : impl->mp3_byte_capacity;
+  while (next_capacity < needed) {
+    if (next_capacity > ((size_t)-1) / 2U) {
+      return 1;
+    }
+    next_capacity *= 2U;
+  }
+  grown = (unsigned char *)realloc(impl->mp3_bytes, next_capacity);
+  if (grown == NULL) {
+    return 1;
+  }
+  impl->mp3_bytes = grown;
+  impl->mp3_byte_capacity = next_capacity;
+  return 0;
+}
+
+static void
+cpkt_audio_mp3_buffer_compact(struct cpkt_audio_decoder_impl *impl) {
+  size_t remaining;
+
+  if (impl == NULL || impl->mp3_byte_cursor == 0U) {
+    return;
+  }
+  remaining = impl->mp3_byte_size - impl->mp3_byte_cursor;
+  if (remaining > 0U) {
+    memmove(impl->mp3_bytes, impl->mp3_bytes + impl->mp3_byte_cursor,
+            remaining);
+  }
+  impl->mp3_byte_size = remaining;
+  impl->mp3_byte_cursor = 0U;
+}
+
+static int cpkt_audio_mp3_skip_id3v2(struct cpkt_audio_decoder_impl *impl) {
+  size_t tag_size;
+
+  if (impl == NULL || impl->mp3_byte_size < 10U ||
+      memcmp(impl->mp3_bytes, "ID3", 3U) != 0) {
+    return 0;
+  }
+  if ((impl->mp3_bytes[6] & 0x80U) != 0U ||
+      (impl->mp3_bytes[7] & 0x80U) != 0U ||
+      (impl->mp3_bytes[8] & 0x80U) != 0U ||
+      (impl->mp3_bytes[9] & 0x80U) != 0U) {
+    return 1;
+  }
+  tag_size = ((size_t)impl->mp3_bytes[6] << 21U) |
+             ((size_t)impl->mp3_bytes[7] << 14U) |
+             ((size_t)impl->mp3_bytes[8] << 7U) |
+             (size_t)impl->mp3_bytes[9];
+  tag_size += 10U;
+  if ((impl->mp3_bytes[5] & 0x10U) != 0U) {
+    tag_size += 10U;
+  }
+  if (tag_size > impl->mp3_byte_size) {
+    return 0;
+  }
+  impl->mp3_byte_cursor = tag_size;
+  cpkt_audio_mp3_buffer_compact(impl);
+  return 0;
+}
+
+static void cpkt_audio_mp3_skip_to_sync(struct cpkt_audio_decoder_impl *impl) {
+  while (impl != NULL && impl->mp3_byte_size - impl->mp3_byte_cursor >= 2U) {
+    if (impl->mp3_bytes[impl->mp3_byte_cursor] == 0xffU &&
+        (impl->mp3_bytes[impl->mp3_byte_cursor + 1U] & 0xe0U) == 0xe0U) {
+      break;
+    }
+    impl->mp3_byte_cursor += 1U;
+  }
+  cpkt_audio_mp3_buffer_compact(impl);
+}
+
+static cpkt_audio_result
+cpkt_audio_mp3_decode_next_frame(struct cpkt_audio_decoder_impl *impl) {
+  unsigned char chunk[CPKT_AUDIO_MP3_BYTE_CHUNK];
+  ma_dr_mp3dec_frame_info frame_info;
+  int frame_count;
+  size_t bytes_read;
+  size_t available;
+
+  if (impl == NULL || impl->url_source == NULL || impl->mp3_input == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl->mp3_input_cursor = 0;
+  impl->mp3_input_frames = 0;
+
+  for (;;) {
+    if (cpkt_audio_mp3_skip_id3v2(impl) != 0) {
+      return CPKT_AUDIO_ERR_FORMAT;
+    }
+    cpkt_audio_mp3_skip_to_sync(impl);
+    available = impl->mp3_byte_size - impl->mp3_byte_cursor;
+    if (available > 0U) {
+      if (available > (size_t)INT_MAX) {
+        available = (size_t)INT_MAX;
+      }
+      memset(&frame_info, 0, sizeof(frame_info));
+      frame_count = ma_dr_mp3dec_decode_frame(
+          &impl->mp3, impl->mp3_bytes + impl->mp3_byte_cursor, (int)available,
+          impl->mp3_input, &frame_info);
+      if (frame_info.frame_bytes > 0) {
+        impl->mp3_byte_cursor += (size_t)frame_info.frame_bytes;
+        cpkt_audio_mp3_buffer_compact(impl);
+      }
+      if (frame_count > 0) {
+        impl->mp3_channels = (ma_uint32)frame_info.channels;
+        impl->mp3_sample_rate = (ma_uint32)frame_info.sample_rate;
+        impl->mp3_input_frames = (ma_uint64)frame_count;
+        return CPKT_AUDIO_OK;
+      }
+      if (frame_info.frame_bytes == 0 && impl->url_source->done) {
+        return CPKT_AUDIO_AT_END;
+      }
+    }
+
+    bytes_read = cpkt_audio_drmp3_url_read(impl->url_source, chunk,
+                                           sizeof(chunk));
+    if (bytes_read == 0U) {
+      if (impl->url_source->failed) {
+        return impl->mp3_input_frames > 0 ? CPKT_AUDIO_OK : CPKT_AUDIO_AT_END;
+      }
+      if (impl->url_source->done) {
+        return CPKT_AUDIO_AT_END;
+      }
+      continue;
+    }
+    if (cpkt_audio_mp3_buffer_reserve(impl, bytes_read) != 0) {
+      return CPKT_AUDIO_ERR_ALLOC;
+    }
+    memcpy(impl->mp3_bytes + impl->mp3_byte_size, chunk, bytes_read);
+    impl->mp3_byte_size += bytes_read;
+  }
+}
+
 static int cpkt_audio_url_seek(void *user, long offset, int origin) {
   struct cpkt_audio_url_source *source;
   long base;
@@ -636,6 +862,63 @@ cpkt_audio_decoder_read_f32_mono_16k_impl(cpkt_audio_decoder *self,
   }
 
   impl = (struct cpkt_audio_decoder_impl *)self->impl;
+  if (impl->mode == CPKT_AUDIO_DECODER_MODE_DRMP3) {
+    ma_uint64 total_out;
+    ma_result converter_result;
+
+    total_out = 0;
+    while (total_out < (ma_uint64)frame_capacity) {
+      ma_uint64 available_in;
+      ma_uint64 consumed_in;
+      ma_uint64 produced_out;
+
+      if (impl->mp3_input_cursor >= impl->mp3_input_frames) {
+        cpkt_audio_result decode_result;
+
+        impl->mp3_input_cursor = 0;
+        impl->mp3_input_frames = 0;
+        if (!impl->mp3_eof) {
+          decode_result = cpkt_audio_mp3_decode_next_frame(impl);
+          if (decode_result == CPKT_AUDIO_AT_END) {
+            impl->mp3_eof = 1;
+          } else if (decode_result != CPKT_AUDIO_OK) {
+            *frames_read = (size_t)total_out;
+            return decode_result;
+          }
+        }
+      }
+
+      available_in = impl->mp3_input_frames - impl->mp3_input_cursor;
+      consumed_in = available_in;
+      produced_out = (ma_uint64)frame_capacity - total_out;
+      converter_result = ma_data_converter_process_pcm_frames(
+          &impl->converter,
+          available_in > 0
+              ? impl->mp3_input +
+                    (impl->mp3_input_cursor * (ma_uint64)impl->mp3_channels)
+              : NULL,
+          &consumed_in, frames + total_out, &produced_out);
+      impl->mp3_input_cursor += consumed_in;
+      total_out += produced_out;
+      if (converter_result != MA_SUCCESS) {
+        *frames_read = (size_t)total_out;
+        return cpkt_audio_from_ma_result(converter_result);
+      }
+      if (total_out > 0) {
+        break;
+      }
+      if (produced_out == 0 && consumed_in == 0) {
+        break;
+      }
+    }
+
+    *frames_read = (size_t)total_out;
+    if (total_out > 0) {
+      return CPKT_AUDIO_OK;
+    }
+    return impl->mp3_eof ? CPKT_AUDIO_AT_END : CPKT_AUDIO_OK;
+  }
+
   requested = (ma_uint64)frame_capacity;
   if ((size_t)requested != frame_capacity) {
     return CPKT_AUDIO_ERR_ARG;
@@ -672,6 +955,13 @@ cpkt_audio_decoder_info_impl(const cpkt_audio_decoder *self,
   }
 
   impl = (struct cpkt_audio_decoder_impl *)self->impl;
+  if (impl->mode == CPKT_AUDIO_DECODER_MODE_DRMP3) {
+    info->source_format = impl->source_format;
+    info->output_channels = 1;
+    info->output_sample_rate = 16000;
+    info->output_frame_count = 0;
+    return CPKT_AUDIO_OK;
+  }
   result = ma_decoder_get_data_format(&impl->decoder, &format, &channels,
                                       &sample_rate, NULL, 0);
   if (result != MA_SUCCESS) {
@@ -697,8 +987,15 @@ static void cpkt_audio_decoder_destroy_impl(cpkt_audio_decoder *self) {
   }
   impl = (struct cpkt_audio_decoder_impl *)self->impl;
   if (impl != NULL) {
-    ma_decoder_uninit(&impl->decoder);
+    if (impl->decoder_initialized) {
+      ma_decoder_uninit(&impl->decoder);
+    }
+    if (impl->converter_initialized) {
+      ma_data_converter_uninit(&impl->converter, NULL);
+    }
     cpkt_audio_url_source_destroy(impl->url_source);
+    free(impl->mp3_input);
+    free(impl->mp3_bytes);
     free(impl);
   }
   free(self);
@@ -877,7 +1174,7 @@ cpkt_audio_ma_encoder_config(const cpkt_audio_encoder_config *config,
 }
 
 /** Opens a receiver-shell decoder for a filesystem input path. */
-cpkt_audio_result
+CPKT_AUDIO_EXPORT cpkt_audio_result
 cpkt_audio_decoder_open_file(cpkt_audio_decoder **out, const char *path,
                              const cpkt_audio_decoder_config *config) {
   cpkt_audio_decoder *decoder;
@@ -911,19 +1208,21 @@ cpkt_audio_decoder_open_file(cpkt_audio_decoder **out, const char *path,
     free(decoder);
     return cpkt_audio_from_ma_result(ma_status);
   }
+  impl->decoder_initialized = 1;
 
   *out = decoder;
   return CPKT_AUDIO_OK;
 }
 
 /** Opens a receiver-shell decoder for streaming URL input. */
-cpkt_audio_result
+CPKT_AUDIO_EXPORT cpkt_audio_result
 cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
                             const cpkt_audio_decoder_config *config) {
   cpkt_audio_decoder *decoder;
   struct cpkt_audio_decoder_impl *impl;
   struct cpkt_audio_url_source *source;
   cpkt_audio_reader reader;
+  ma_data_converter_config converter_config;
   ma_decoder_config ma_config;
   ma_result ma_status;
   cpkt_audio_result result;
@@ -956,6 +1255,48 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
   impl->url_source = source;
   impl->source_format = cpkt_audio_source_format_from_config(config);
 
+  if (impl->source_format == CPKT_AUDIO_FORMAT_MP3) {
+    impl->mode = CPKT_AUDIO_DECODER_MODE_DRMP3;
+    ma_dr_mp3dec_init(&impl->mp3);
+    impl->mp3_input =
+        (float *)malloc(sizeof(float) * MA_DR_MP3_MAX_SAMPLES_PER_FRAME);
+    if (impl->mp3_input == NULL) {
+      decoder->impl = NULL;
+      cpkt_audio_url_source_destroy(source);
+      free(impl);
+      free(decoder);
+      return CPKT_AUDIO_ERR_ALLOC;
+    }
+    result = cpkt_audio_mp3_decode_next_frame(impl);
+    if (result != CPKT_AUDIO_OK || impl->mp3_channels == 0 ||
+        impl->mp3_channels > 2 || impl->mp3_sample_rate == 0) {
+      decoder->impl = NULL;
+      cpkt_audio_url_source_destroy(source);
+      free(impl->mp3_input);
+      free(impl->mp3_bytes);
+      free(impl);
+      free(decoder);
+      return result == CPKT_AUDIO_OK ? CPKT_AUDIO_ERR_FORMAT : result;
+    }
+    converter_config = ma_data_converter_config_init(
+        ma_format_f32, ma_format_f32, impl->mp3_channels, 1,
+        impl->mp3_sample_rate, 16000);
+    ma_status = ma_data_converter_init(&converter_config, NULL,
+                                       &impl->converter);
+    if (ma_status != MA_SUCCESS) {
+      decoder->impl = NULL;
+      cpkt_audio_url_source_destroy(source);
+      free(impl->mp3_input);
+      free(impl->mp3_bytes);
+      free(impl);
+      free(decoder);
+      return cpkt_audio_from_ma_result(ma_status);
+    }
+    impl->converter_initialized = 1;
+    *out = decoder;
+    return CPKT_AUDIO_OK;
+  }
+
   ma_config = cpkt_audio_ma_decoder_config(config);
   ma_status = ma_decoder_init(cpkt_audio_reader_read, cpkt_audio_reader_seek,
                               impl, &ma_config, &impl->decoder);
@@ -968,13 +1309,14 @@ cpkt_audio_decoder_open_url(cpkt_audio_decoder **out, const char *url,
     free(decoder);
     return result;
   }
+  impl->decoder_initialized = 1;
 
   *out = decoder;
   return CPKT_AUDIO_OK;
 }
 
 /** Opens a receiver-shell decoder for callback-based input. */
-cpkt_audio_result
+CPKT_AUDIO_EXPORT cpkt_audio_result
 cpkt_audio_decoder_open_reader(cpkt_audio_decoder **out,
                                const cpkt_audio_reader *reader,
                                const cpkt_audio_decoder_config *config) {
@@ -1019,13 +1361,14 @@ cpkt_audio_decoder_open_reader(cpkt_audio_decoder **out,
     free(decoder);
     return result;
   }
+  impl->decoder_initialized = 1;
 
   *out = decoder;
   return CPKT_AUDIO_OK;
 }
 
 /** Opens a receiver-shell encoder for a filesystem output path. */
-cpkt_audio_result
+CPKT_AUDIO_EXPORT cpkt_audio_result
 cpkt_audio_encoder_open_file(cpkt_audio_encoder **out, const char *path,
                              const cpkt_audio_encoder_config *config) {
   cpkt_audio_encoder *encoder;
@@ -1064,7 +1407,7 @@ cpkt_audio_encoder_open_file(cpkt_audio_encoder **out, const char *path,
 }
 
 /** Opens a receiver-shell encoder for callback-based output. */
-cpkt_audio_result
+CPKT_AUDIO_EXPORT cpkt_audio_result
 cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
                                const cpkt_audio_writer *writer,
                                const cpkt_audio_encoder_config *config) {
@@ -1108,18 +1451,18 @@ cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
 }
 
 /** Reports decode support for a public audio format. */
-int cpkt_audio_format_can_decode(int format) {
+CPKT_AUDIO_EXPORT int cpkt_audio_format_can_decode(int format) {
   return format == CPKT_AUDIO_FORMAT_WAV || format == CPKT_AUDIO_FORMAT_FLAC ||
          format == CPKT_AUDIO_FORMAT_MP3;
 }
 
 /** Reports encode support for a public audio format. */
-int cpkt_audio_format_can_encode(int format) {
+CPKT_AUDIO_EXPORT int cpkt_audio_format_can_encode(int format) {
   return format == CPKT_AUDIO_FORMAT_WAV;
 }
 
 /** Converts an audio result code into a stable diagnostic string. */
-const char *cpkt_audio_result_string(cpkt_audio_result result) {
+CPKT_AUDIO_EXPORT const char *cpkt_audio_result_string(cpkt_audio_result result) {
   switch (result) {
   case CPKT_AUDIO_OK:
     return "ok";

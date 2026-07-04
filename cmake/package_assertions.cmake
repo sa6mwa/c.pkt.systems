@@ -1131,6 +1131,10 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "libgcc_s\\.so[^]]*"
     "libcpktsus GCC runtime dependency closure")
+  cpkt_assert_elf_lacks_needed(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
+    "libminiaudio\\.so[^]]*"
+    "libcpktaudio miniaudio backend closure")
   cpkt_assert_dynamic_exports_match(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
     "^cpkt_audio_"

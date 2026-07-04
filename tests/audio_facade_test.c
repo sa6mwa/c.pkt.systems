@@ -1,10 +1,19 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <signal.h>
 
 #include <cmocka.h>
 
@@ -148,6 +157,111 @@ static size_t decode_base64_fixture(const char *input, unsigned char *output,
   return out_size;
 }
 
+static int cpkt_test_send_all(int fd, const void *buffer, size_t size) {
+  const unsigned char *cursor;
+  ssize_t sent;
+
+  cursor = (const unsigned char *)buffer;
+  while (size > 0U) {
+    sent = send(fd, cursor, size, 0);
+    if (sent <= 0) {
+      return -1;
+    }
+    cursor += (size_t)sent;
+    size -= (size_t)sent;
+  }
+  return 0;
+}
+
+static int cpkt_test_start_prefix_http_server(const unsigned char *data,
+                                              size_t data_size,
+                                              unsigned short *port_out,
+                                              pid_t *pid_out) {
+  struct sockaddr_in address;
+  socklen_t address_length;
+  int listen_fd;
+  pid_t child;
+
+  if (data == NULL || port_out == NULL || pid_out == NULL) {
+    return -1;
+  }
+  *port_out = 0U;
+  *pid_out = (pid_t)-1;
+  listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (listen_fd < 0) {
+    return -1;
+  }
+  memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  address.sin_port = 0;
+  if (bind(listen_fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
+    close(listen_fd);
+    return -1;
+  }
+  if (listen(listen_fd, 1) != 0) {
+    close(listen_fd);
+    return -1;
+  }
+  address_length = (socklen_t)sizeof(address);
+  if (getsockname(listen_fd, (struct sockaddr *)&address, &address_length) !=
+      0) {
+    close(listen_fd);
+    return -1;
+  }
+
+  child = fork();
+  if (child < 0) {
+    close(listen_fd);
+    return -1;
+  }
+  if (child == 0) {
+    char request[512];
+    char header[256];
+    int client_fd;
+    size_t advertised_size;
+
+    client_fd = accept(listen_fd, NULL, NULL);
+    if (client_fd < 0) {
+      _exit(2);
+    }
+    (void)recv(client_fd, request, sizeof(request), 0);
+    advertised_size = data_size + 1048576U;
+    (void)sprintf(header,
+                  "HTTP/1.1 200 OK\r\n"
+                  "Content-Type: audio/mpeg\r\n"
+                  "Content-Length: %lu\r\n"
+                  "Connection: close\r\n"
+                  "\r\n",
+                  (unsigned long)advertised_size);
+    if (cpkt_test_send_all(client_fd, header, strlen(header)) != 0 ||
+        cpkt_test_send_all(client_fd, data, data_size) != 0) {
+      close(client_fd);
+      close(listen_fd);
+      _exit(3);
+    }
+    sleep(10);
+    close(client_fd);
+    close(listen_fd);
+    _exit(0);
+  }
+
+  close(listen_fd);
+  *port_out = ntohs(address.sin_port);
+  *pid_out = child;
+  return 0;
+}
+
+static void cpkt_test_stop_http_server(pid_t pid) {
+  int status;
+
+  if (pid <= 0) {
+    return;
+  }
+  (void)kill(pid, SIGTERM);
+  (void)waitpid(pid, &status, 0);
+}
+
 static int failing_seek(void *user, long offset, int origin) {
   (void)user;
   (void)offset;
@@ -242,6 +356,12 @@ static void assert_decoder_reads_f32_mono_16k(cpkt_audio_decoder *decoder,
                                               &frames_read),
                    CPKT_AUDIO_AT_END);
   assert_int_equal(frames_read, 0);
+}
+
+static double cpkt_test_elapsed_seconds(const struct timespec *start,
+                                        const struct timespec *end) {
+  return (double)(end->tv_sec - start->tv_sec) +
+         (double)(end->tv_nsec - start->tv_nsec) / 1000000000.0;
 }
 
 static void assert_decoder_reads_fixture_file(
@@ -448,6 +568,53 @@ static void test_decoder_reads_mp3_file_url_when_supported(void **state) {
   assert_int_equal(remove(path), 0);
 }
 
+static void test_decoder_http_url_streams_before_full_response(void **state) {
+  unsigned char mp3_fixture[1536];
+  unsigned char mp3_data[1536 * 16];
+  char url[128];
+  cpkt_audio_decoder_config config;
+  cpkt_audio_decoder *decoder;
+  float frames[512];
+  size_t frames_read;
+  struct timespec start_time;
+  struct timespec end_time;
+  unsigned short port;
+  pid_t server_pid;
+  size_t mp3_size;
+
+  (void)state;
+  memset(&config, 0, sizeof(config));
+  config.encoding = CPKT_AUDIO_ENCODING_MP3;
+  mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_fixture,
+                                   sizeof(mp3_fixture));
+  assert_true(mp3_size > 0);
+  for (frames_read = 0; frames_read < 16U; ++frames_read) {
+    memcpy(mp3_data + (frames_read * mp3_size), mp3_fixture, mp3_size);
+  }
+  mp3_size *= 16U;
+  assert_true(cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3));
+  assert_int_equal(
+      cpkt_test_start_prefix_http_server(mp3_data, mp3_size, &port,
+                                         &server_pid),
+      0);
+  (void)sprintf(url, "http://127.0.0.1:%u/fixture.mp3", (unsigned int)port);
+
+  decoder = NULL;
+  assert_int_equal(clock_gettime(CLOCK_MONOTONIC, &start_time), 0);
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, &config),
+                   CPKT_AUDIO_OK);
+  assert_non_null(decoder);
+  frames_read = 0;
+  assert_int_equal(decoder->read_f32_mono_16k(decoder, frames, 512U,
+                                             &frames_read),
+                   CPKT_AUDIO_OK);
+  assert_int_equal(clock_gettime(CLOCK_MONOTONIC, &end_time), 0);
+  assert_true(frames_read > 0U);
+  assert_true(cpkt_test_elapsed_seconds(&start_time, &end_time) < 5.0);
+  decoder->destroy(decoder);
+  cpkt_test_stop_http_server(server_pid);
+}
+
 static void test_encoder_writes_wav_file(void **state) {
   const char *path;
   cpkt_audio_encoder *encoder;
@@ -626,6 +793,7 @@ int main(void) {
       cmocka_unit_test(test_decoder_reads_flac_file_when_supported),
       cmocka_unit_test(test_decoder_reads_mp3_file_when_supported),
       cmocka_unit_test(test_decoder_reads_mp3_file_url_when_supported),
+      cmocka_unit_test(test_decoder_http_url_streams_before_full_response),
       cmocka_unit_test(test_encoder_writes_wav_file),
       cmocka_unit_test(test_encoder_writes_wav_callback_writer),
       cmocka_unit_test(test_encoder_callback_write_failure),

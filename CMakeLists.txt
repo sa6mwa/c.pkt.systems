@@ -327,13 +327,19 @@ endif()
 add_library(cpkt_audio_static STATIC src/audio.c)
 target_compile_features(cpkt_audio_static PRIVATE c_std_99)
 cpkt_add_repo_warning_errors(cpkt_audio_static)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(cpkt_audio_static PRIVATE -Wno-unused-function)
+endif()
 target_include_directories(cpkt_audio_static
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+  PRIVATE
+    "$<TARGET_PROPERTY:cpkt::miniaudio_static,INTERFACE_INCLUDE_DIRECTORIES>"
 )
 target_link_libraries(cpkt_audio_static PUBLIC
-  cpkt::miniaudio_static
   cpkt::curl_static
+  m
+  Threads::Threads
 )
 set_target_properties(cpkt_audio_static PROPERTIES
   OUTPUT_NAME cpktaudio
@@ -343,16 +349,23 @@ set_target_properties(cpkt_audio_static PROPERTIES
 add_library(cpkt_audio_shared SHARED src/audio.c)
 target_compile_features(cpkt_audio_shared PRIVATE c_std_99)
 cpkt_add_repo_warning_errors(cpkt_audio_shared)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(cpkt_audio_shared PRIVATE -Wno-unused-function)
+endif()
 target_include_directories(cpkt_audio_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+  PRIVATE
+    "$<TARGET_PROPERTY:cpkt::miniaudio_shared,INTERFACE_INCLUDE_DIRECTORIES>"
 )
 target_link_libraries(cpkt_audio_shared PUBLIC
-  cpkt::miniaudio_shared
   cpkt::curl_shared
+  m
+  Threads::Threads
 )
 set_target_properties(cpkt_audio_shared PROPERTIES
   OUTPUT_NAME cpktaudio
+  C_VISIBILITY_PRESET hidden
   POSITION_INDEPENDENT_CODE ON
   SOVERSION "${CPKT_AUDIO_ABI_VERSION}"
   VERSION "${PROJECT_VERSION}"
