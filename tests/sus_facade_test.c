@@ -634,6 +634,56 @@ static void test_cached_open_status_callback_can_abort(void **state) {
   (void)rmdir("cpkt-sus-abort-cache");
 }
 
+static void test_cached_open_download_begin_abort_cleans_temp(void **state) {
+  cpkt_sus_cache_config config;
+  cpkt_sus_model *model;
+  struct cpkt_test_cache_status_capture status;
+  char cwd[4096];
+  char source_url[4608];
+  unsigned long entry_count;
+
+  (void)state;
+  assert_non_null(getcwd(cwd, sizeof(cwd)));
+  assert_true(snprintf(source_url, sizeof(source_url),
+                       "file://%s/cpkt-sus-unused-source-model.bin",
+                       cwd) < (int)sizeof(source_url));
+
+  (void)remove("cpkt-sus-download-abort-cache/ggml-small.bin");
+  (void)rmdir("cpkt-sus-download-abort-cache");
+
+  memset(&config, 0, sizeof(config));
+  memset(&status, 0, sizeof(status));
+  config.model = "small";
+  config.cache_dir = "cpkt-sus-download-abort-cache";
+  config.source_url = source_url;
+  config.cpu_only = 1;
+  config.status_sink = cpkt_test_cache_status_sink;
+  config.status_user = &status;
+  status.fail_on_phase = CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN;
+
+  model = (cpkt_sus_model *)1;
+  assert_int_equal(cpkt_sus_model_open_cached(&model, &config),
+                   CPKT_SUS_ERR_CALLBACK);
+  assert_null(model);
+  assert_int_equal(status.count, 3);
+  assert_int_equal(status.phases[0], CPKT_SUS_CACHE_STATUS_LOOKUP);
+  assert_int_equal(status.phases[1], CPKT_SUS_CACHE_STATUS_MISS);
+  assert_int_equal(status.phases[2], CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN);
+  assert_string_equal(status.last_model, "small");
+  assert_string_equal(status.last_cache_path,
+                      "cpkt-sus-download-abort-cache/ggml-small.bin");
+  assert_string_equal(status.last_source_url, source_url);
+  assert_false(
+      cpkt_test_file_exists("cpkt-sus-download-abort-cache/ggml-small.bin"));
+  assert_int_equal(cpkt_test_dir_entry_count("cpkt-sus-download-abort-cache",
+                                             &entry_count),
+                   0);
+  assert_int_equal(entry_count, 0);
+
+  (void)remove("cpkt-sus-download-abort-cache/ggml-small.bin");
+  (void)rmdir("cpkt-sus-download-abort-cache");
+}
+
 static void test_cached_open_retries_invalid_existing_cache(void **state) {
   cpkt_sus_cache_config config;
   cpkt_sus_model *model;
@@ -707,6 +757,7 @@ int main(void) {
       cmocka_unit_test(test_cached_open_downloads_to_temp_before_rename),
       cmocka_unit_test(test_cached_open_cleans_up_failed_download),
       cmocka_unit_test(test_cached_open_status_callback_can_abort),
+      cmocka_unit_test(test_cached_open_download_begin_abort_cleans_temp),
       cmocka_unit_test(test_cached_open_retries_invalid_existing_cache),
       cmocka_unit_test(test_result_strings),
   };

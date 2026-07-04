@@ -848,6 +848,7 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
   result = cpkt_sus_emit_cache_status(
       config, CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN, entry, model_path, url);
   if (result != CPKT_SUS_OK) {
+    (void)remove(temp_path);
     free(temp_path);
     return result;
   }
