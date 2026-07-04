@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 
 #define CPKT_SUS_VOX_INTRO_URL                                               \
@@ -11,10 +12,12 @@
 #define CPKT_SUS_VOX_READ_FRAMES 4096UL
 #define CPKT_SUS_VOX_MEMORY_SPOOL_BYTES 65536UL
 #define CPKT_SUS_VOX_MAX_SPOOL_BYTES (1024UL * 1024UL * 1024UL)
+#define CPKT_SUS_VOX_PATH_MAX 4096
 
 struct cpkt_sus_vox_options {
   const char *audio_path;
   const char *url;
+  const char *dump_dir;
   const char *model_path;
   const char *model;
   const char *cache_dir;
@@ -33,6 +36,8 @@ struct cpkt_sus_vox_events {
   unsigned long event_count;
   unsigned long final_count;
   unsigned long last_text_length;
+  FILE *summary_file;
+  const struct cpkt_sus_vox_options *options;
 };
 
 static void cpkt_sus_vox_defaults(struct cpkt_sus_vox_options *options) {
@@ -81,25 +86,101 @@ static int cpkt_sus_vox_parse_float(const char *text, float *out) {
   return 1;
 }
 
-static void cpkt_sus_vox_print_text(const char *text, unsigned long length) {
+static void cpkt_sus_vox_print_text(FILE *out, const char *text,
+                                    unsigned long length) {
   unsigned long i;
   int ch;
 
-  fputc('"', stdout);
+  fputc('"', out);
   for (i = 0UL; i < length; ++i) {
     ch = (unsigned char)text[i];
     if (ch == '\\' || ch == '"') {
-      fputc('\\', stdout);
-      fputc(ch, stdout);
+      fputc('\\', out);
+      fputc(ch, out);
     } else if (ch == '\n' || ch == '\r' || ch == '\t') {
-      fputc(' ', stdout);
+      fputc(' ', out);
     } else if (ch >= 32 && ch < 127) {
-      fputc(ch, stdout);
+      fputc(ch, out);
     } else {
-      fputc('?', stdout);
+      fputc('?', out);
     }
   }
-  fputc('"', stdout);
+  fputc('"', out);
+}
+
+static int cpkt_sus_vox_join_path(char *out, size_t out_size, const char *dir,
+                                  const char *name) {
+  size_t dir_len;
+  size_t name_len;
+  int needs_slash;
+
+  if (out == NULL || out_size == 0U || dir == NULL || name == NULL) {
+    return 0;
+  }
+  dir_len = strlen(dir);
+  name_len = strlen(name);
+  needs_slash = dir_len > 0U && dir[dir_len - 1U] != '/';
+  if (dir_len + (needs_slash ? 1U : 0U) + name_len + 1U > out_size) {
+    return 0;
+  }
+  memcpy(out, dir, dir_len);
+  if (needs_slash) {
+    out[dir_len] = '/';
+  }
+  memcpy(out + dir_len + (needs_slash ? 1U : 0U), name, name_len);
+  out[dir_len + (needs_slash ? 1U : 0U) + name_len] = '\0';
+  return 1;
+}
+
+static void cpkt_sus_vox_emit(struct cpkt_sus_vox_events *events,
+                              const char *text) {
+  fputs(text, stdout);
+  if (events != NULL && events->summary_file != NULL) {
+    fputs(text, events->summary_file);
+  }
+}
+
+static void cpkt_sus_vox_emit_quoted(struct cpkt_sus_vox_events *events,
+                                     const char *text, unsigned long length) {
+  cpkt_sus_vox_print_text(stdout, text, length);
+  if (events != NULL && events->summary_file != NULL) {
+    cpkt_sus_vox_print_text(events->summary_file, text, length);
+  }
+}
+
+static int cpkt_sus_vox_write_text_file(
+    const struct cpkt_sus_vox_options *options, const char *name,
+    const char *text, unsigned long length) {
+  char path[CPKT_SUS_VOX_PATH_MAX];
+  FILE *file;
+
+  if (options == NULL || options->dump_dir == NULL) {
+    return 1;
+  }
+  if (!cpkt_sus_vox_join_path(path, sizeof(path), options->dump_dir, name)) {
+    return 0;
+  }
+  file = fopen(path, "wb");
+  if (file == NULL) {
+    return 0;
+  }
+  if (length > 0UL && fwrite(text, 1U, (size_t)length, file) != length) {
+    fclose(file);
+    return 0;
+  }
+  if (fputc('\n', file) == EOF || fclose(file) != 0) {
+    return 0;
+  }
+  return 1;
+}
+
+static int cpkt_sus_vox_write_segment_text(
+    const struct cpkt_sus_vox_options *options, unsigned long index,
+    const char *text, unsigned long length) {
+  char name[64];
+
+  sprintf(name, "segment-%04lu.txt", index);
+  return cpkt_sus_vox_write_text_file(options, name, text, length);
 }
 
 static unsigned long cpkt_sus_vox_elapsed_ms(clock_t started) {
@@ -137,8 +218,21 @@ static int cpkt_sus_vox_realtime_sink(const cpkt_sus_realtime_event *event,
          event->step_index, event->is_final,
          cpkt_sus_vox_elapsed_ms(events->started), event->text_length,
          delta_length);
-  cpkt_sus_vox_print_text(event->text + delta_offset, delta_length);
-  printf("\n");
+  if (events->summary_file != NULL) {
+    fprintf(events->summary_file,
+            "stream segment=%lu final=%d elapsed_ms=%lu total_chars=%lu "
+            "delta_chars=%lu text=",
+            event->step_index, event->is_final,
+            cpkt_sus_vox_elapsed_ms(events->started), event->text_length,
+            delta_length);
+  }
+  cpkt_sus_vox_emit_quoted(events, event->text + delta_offset, delta_length);
+  cpkt_sus_vox_emit(events, "\n");
+  if (!cpkt_sus_vox_write_segment_text(events->options, event->step_index,
+                                       event->text + delta_offset,
+                                       delta_length)) {
+    return 1;
+  }
   events->last_text_length = event->text_length;
   return 0;
 }
@@ -211,6 +305,23 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
   rc = 1;
   memset(&events, 0, sizeof(events));
   events.started = clock();
+  events.options = options;
+
+  if (options->dump_dir != NULL) {
+    char summary_path[CPKT_SUS_VOX_PATH_MAX];
+
+    (void)mkdir(options->dump_dir, 0700);
+    if (!cpkt_sus_vox_join_path(summary_path, sizeof(summary_path),
+                                options->dump_dir, "summary.txt")) {
+      fprintf(stderr, "dump path is too long\n");
+      goto cleanup;
+    }
+    events.summary_file = fopen(summary_path, "wb");
+    if (events.summary_file == NULL) {
+      fprintf(stderr, "failed to open summary dump: %s\n", summary_path);
+      goto cleanup;
+    }
+  }
 
   if (!cpkt_sus_vox_open_audio(&decoder, options)) {
     goto cleanup;
@@ -242,14 +353,30 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
 
   printf("source=%s model=%s cache_dir=%s language=%s threshold=%g hang_ms=%lu "
          "budget_ms=%lu read_frames=%lu memory_spool_bytes=%lu "
-         "max_spool_bytes=%lu cpu_only=%d\n",
+         "max_spool_bytes=%lu cpu_only=%d dump_dir=%s\n",
          options->audio_path != NULL ? options->audio_path : options->url,
          options->model_path != NULL ? options->model_path : options->model,
          options->cache_dir != NULL ? options->cache_dir : "(default)",
          options->language != NULL ? options->language : "auto",
          (double)options->threshold, options->hang_ms, options->budget_ms,
          options->read_frames, options->memory_spool_bytes,
-         options->max_spool_bytes, options->cpu_only);
+         options->max_spool_bytes, options->cpu_only,
+         options->dump_dir != NULL ? options->dump_dir : "(none)");
+  if (events.summary_file != NULL) {
+    fprintf(events.summary_file,
+            "source=%s model=%s cache_dir=%s language=%s threshold=%g "
+            "hang_ms=%lu budget_ms=%lu read_frames=%lu "
+            "memory_spool_bytes=%lu max_spool_bytes=%lu cpu_only=%d "
+            "dump_dir=%s\n",
+            options->audio_path != NULL ? options->audio_path : options->url,
+            options->model_path != NULL ? options->model_path : options->model,
+            options->cache_dir != NULL ? options->cache_dir : "(default)",
+            options->language != NULL ? options->language : "auto",
+            (double)options->threshold, options->hang_ms, options->budget_ms,
+            options->read_frames, options->memory_spool_bytes,
+            options->max_spool_bytes, options->cpu_only,
+            options->dump_dir != NULL ? options->dump_dir : "(none)");
+  }
 
   result = transcriber->transcribe_audio_decoder_realtime(transcriber, decoder,
                                                           &realtime_config);
@@ -269,12 +396,32 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
          events.event_count, events.final_count,
          cpkt_sus_vox_elapsed_ms(events.started),
          (unsigned long)strlen(final_text));
+  if (events.summary_file != NULL) {
+    fprintf(events.summary_file,
+            "summary segments=%lu final_events=%lu elapsed_ms=%lu "
+            "final_chars=%lu\n",
+            events.event_count, events.final_count,
+            cpkt_sus_vox_elapsed_ms(events.started),
+            (unsigned long)strlen(final_text));
+  }
   printf("final_text=");
-  cpkt_sus_vox_print_text(final_text, (unsigned long)strlen(final_text));
-  printf("\n");
+  if (events.summary_file != NULL) {
+    fputs("final_text=", events.summary_file);
+  }
+  cpkt_sus_vox_emit_quoted(&events, final_text,
+                           (unsigned long)strlen(final_text));
+  cpkt_sus_vox_emit(&events, "\n");
+  if (!cpkt_sus_vox_write_text_file(options, "final.txt", final_text,
+                                    (unsigned long)strlen(final_text))) {
+    fprintf(stderr, "failed to write final transcript dump\n");
+    goto cleanup;
+  }
   rc = 0;
 
 cleanup:
+  if (events.summary_file != NULL) {
+    fclose(events.summary_file);
+  }
   cpkt_sus_string_free(final_text);
   if (transcriber != NULL) {
     transcriber->destroy(transcriber);
@@ -294,6 +441,7 @@ static void cpkt_sus_vox_usage(FILE *out) {
   fprintf(out, "Options:\n");
   fprintf(out, "  --audio PATH                 Decode a local audio file.\n");
   fprintf(out, "  --url URL                    Stream an HTTP(S) audio URL.\n");
+  fprintf(out, "  --dump-dir DIR               Write summary and segment text files.\n");
   fprintf(out, "  --model NAME                 Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH            Load an explicit model file.\n");
   fprintf(out, "  --cache-dir DIR              Model cache directory.\n");
@@ -318,6 +466,8 @@ static int cpkt_sus_vox_parse_options(int argc, char **argv,
       options->audio_path = argv[++i];
     } else if (strcmp(argv[i], "--url") == 0 && i + 1 < argc) {
       options->url = argv[++i];
+    } else if (strcmp(argv[i], "--dump-dir") == 0 && i + 1 < argc) {
+      options->dump_dir = argv[++i];
     } else if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
       options->model = argv[++i];
     } else if (strcmp(argv[i], "--model-path") == 0 && i + 1 < argc) {

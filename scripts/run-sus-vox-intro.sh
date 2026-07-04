@@ -7,6 +7,7 @@ build_dir=${2:-"$repo_root/build/debug"}
 audio_url=${CPKT_SUS_VOX_INTRO_URL:-"https://pkt.systems/trajectory/assets/narration/intro/intro.mp3"}
 cache_root=${CPKT_SUS_VOX_INTRO_CACHE:-"${XDG_CACHE_HOME:-"$HOME/.cache"}/c.pkt.systems/examples/sus-vox-intro"}
 audio_path="$cache_root/intro.mp3"
+dump_dir=${CPKT_SUS_VOX_INTRO_DUMP_DIR:-"$repo_root/build/sus-vox-intro-dump"}
 model_cache=${CPKT_SUS_VOX_INTRO_MODEL_CACHE:-"$cache_root/models"}
 model=${CPKT_SUS_VOX_INTRO_MODEL:-tiny}
 language=${CPKT_SUS_VOX_INTRO_LANGUAGE:-en}
@@ -47,6 +48,8 @@ fi
 
 download_atomic "$audio_url" "$audio_path"
 mkdir -p "$model_cache"
+rm -rf "$dump_dir"
+mkdir -p "$dump_dir"
 
 external_root=$(sed -n 's/^CPKT_EXTERNAL_ROOT:PATH=//p' "$build_dir/CMakeCache.txt" | tail -n 1)
 if [ -z "$external_root" ]; then
@@ -62,12 +65,14 @@ else
 fi
 
 printf '[sus-vox-intro] audio=%s\n' "$audio_path"
+printf '[sus-vox-intro] dump-dir=%s\n' "$dump_dir"
 printf '[sus-vox-intro] model=%s model-cache=%s\n' "$model" "$model_cache"
 printf '[sus-vox-intro] threshold=%s hang-ms=%s budget-ms=%s\n' \
   "$threshold" "$hang_ms" "$budget_ms"
 
 "$example_bin" \
   --audio "$audio_path" \
+  --dump-dir "$dump_dir" \
   --model "$model" \
   --cache-dir "$model_cache" \
   --language "$language" \
