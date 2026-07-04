@@ -14,7 +14,7 @@ memory_spool_bytes=${CPKT_AUDIO_VOX_INTRO_MEMORY_SPOOL_BYTES:-65536}
 max_spool_bytes=${CPKT_AUDIO_VOX_INTRO_MAX_SPOOL_BYTES:-1073741824}
 assert_expected=${CPKT_AUDIO_VOX_INTRO_ASSERT:-auto}
 expected_segments=${CPKT_AUDIO_VOX_INTRO_EXPECTED_SEGMENTS:-7}
-expected_hard_cuts=${CPKT_AUDIO_VOX_INTRO_EXPECTED_HARD_CUTS:-0}
+expected_hard_cuts=${CPKT_AUDIO_VOX_INTRO_EXPECTED_HARD_CUTS:-6}
 expected_final_segments=${CPKT_AUDIO_VOX_INTRO_EXPECTED_FINAL_SEGMENTS:-1}
 
 download_atomic() {

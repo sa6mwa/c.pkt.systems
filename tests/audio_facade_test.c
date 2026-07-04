@@ -880,20 +880,20 @@ static void test_vox_hard_cuts_at_segment_budget(void **state) {
   vox->destroy(vox);
 }
 
-static void test_vox_budget_keeps_overflowing_mark_for_next_segment(
+static void test_vox_releases_at_hang_time_even_when_more_audio_fits(
     void **state) {
   struct vox_capture capture;
   cpkt_audio_vox_config config;
   cpkt_audio_vox *vox;
-  float frames[900];
+  float frames[1360];
   size_t i;
 
   (void)state;
   memset(&capture, 0, sizeof(capture));
   memset(&config, 0, sizeof(config));
   config.threshold = 0.1f;
-  config.release_silence_ms = 1000UL;
-  config.max_segment_ms = 50UL;
+  config.release_silence_ms = 10UL;
+  config.max_segment_ms = 100UL;
   config.min_segment_ms = 1UL;
   config.segment_sink = capture_vox_segment;
   config.segment_user = &capture;
@@ -901,25 +901,25 @@ static void test_vox_budget_keeps_overflowing_mark_for_next_segment(
   for (i = 0U; i < 600U; ++i) {
     frames[i] = 0.2f;
   }
-  for (; i < 700U; ++i) {
+  for (; i < 760U; ++i) {
     frames[i] = 0.0f;
   }
-  for (; i < 900U; ++i) {
+  for (; i < 1360U; ++i) {
     frames[i] = 0.2f;
   }
 
   vox = NULL;
   assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_OK);
   assert_non_null(vox);
-  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 900U),
+  assert_int_equal(vox->push_f32_mono_16k(vox, frames, 1360U),
                    CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 1UL);
   assert_int_equal(capture.hard_count, 0UL);
-  assert_int_equal(capture.frames[0], 700U);
+  assert_int_equal(capture.frames[0], 760U);
   assert_int_equal(vox->flush(vox), CPKT_AUDIO_OK);
   assert_int_equal(capture.count, 2UL);
   assert_int_equal(capture.final_count, 1UL);
-  assert_int_equal(capture.frames[1], 200U);
+  assert_int_equal(capture.frames[1], 600U);
   vox->destroy(vox);
 }
 
@@ -1121,7 +1121,7 @@ int main(void) {
       cmocka_unit_test(test_encoder_callback_write_failure),
       cmocka_unit_test(test_vox_releases_on_silence),
       cmocka_unit_test(test_vox_hard_cuts_at_segment_budget),
-      cmocka_unit_test(test_vox_budget_keeps_overflowing_mark_for_next_segment),
+      cmocka_unit_test(test_vox_releases_at_hang_time_even_when_more_audio_fits),
       cmocka_unit_test(test_vox_flush_drops_subminimum_post_cut_tail),
       cmocka_unit_test(test_vox_spills_and_hard_cuts_at_storage_budget),
       cmocka_unit_test(test_vox_rejects_invalid_and_reports_callback_failure),

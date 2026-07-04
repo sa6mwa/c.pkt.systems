@@ -82,7 +82,6 @@ struct cpkt_audio_vox_impl {
   size_t memory_frame_count;
   size_t total_frame_count;
   size_t speech_frame_count;
-  size_t mark_frame_count;
   size_t read_cursor;
   FILE *spool_file;
   unsigned long release_silence_frames;
@@ -93,16 +92,7 @@ struct cpkt_audio_vox_impl {
   unsigned long segment_index;
   float threshold;
   int open;
-  int has_mark;
   int callback_error;
-};
-
-struct cpkt_audio_vox_saved_frames {
-  float *frames;
-  size_t frame_capacity;
-  size_t memory_frame_count;
-  size_t total_frame_count;
-  FILE *spool_file;
 };
 
 static ma_encoding_format cpkt_audio_to_ma_encoding(int encoding) {
@@ -958,10 +948,8 @@ static void cpkt_audio_vox_reset_segment(struct cpkt_audio_vox_impl *impl) {
   impl->memory_frame_count = 0U;
   impl->total_frame_count = 0U;
   impl->speech_frame_count = 0U;
-  impl->mark_frame_count = 0U;
   impl->read_cursor = 0U;
   impl->silence_frames = 0UL;
-  impl->has_mark = 0;
   impl->open = 0;
 }
 
@@ -1101,216 +1089,14 @@ static cpkt_audio_result cpkt_audio_vox_append_frame(
   return CPKT_AUDIO_OK;
 }
 
-static cpkt_audio_result cpkt_audio_vox_read_frame_at(
-    struct cpkt_audio_vox_impl *impl, size_t index, float *frame) {
-  long offset;
-
-  if (impl == NULL || frame == NULL || index >= impl->total_frame_count) {
-    return CPKT_AUDIO_ERR_ARG;
-  }
-  if (impl->spool_file != NULL) {
-    if (index > (size_t)(LONG_MAX / (long)sizeof(float))) {
-      return CPKT_AUDIO_ERR_ARG;
-    }
-    offset = (long)(index * sizeof(float));
-    if (fflush(impl->spool_file) != 0 ||
-        fseek(impl->spool_file, offset, SEEK_SET) != 0 ||
-        fread(frame, sizeof(*frame), 1U, impl->spool_file) != 1U) {
-      return CPKT_AUDIO_ERR_IO;
-    }
-  } else {
-    if (index >= impl->memory_frame_count) {
-      return CPKT_AUDIO_ERR_ARG;
-    }
-    *frame = impl->frames[index];
-  }
-  return CPKT_AUDIO_OK;
-}
-
-static void
-cpkt_audio_vox_saved_destroy(struct cpkt_audio_vox_saved_frames *saved) {
-  if (saved == NULL) {
-    return;
-  }
-  if (saved->spool_file != NULL) {
-    fclose(saved->spool_file);
-  }
-  free(saved->frames);
-  memset(saved, 0, sizeof(*saved));
-}
-
-static cpkt_audio_result cpkt_audio_vox_saved_append(
-    struct cpkt_audio_vox_saved_frames *saved, float frame) {
-  if (saved == NULL || saved->frames == NULL) {
-    return CPKT_AUDIO_ERR_ARG;
-  }
-  if (saved->spool_file != NULL) {
-    if (fwrite(&frame, sizeof(frame), 1U, saved->spool_file) != 1U) {
-      return CPKT_AUDIO_ERR_IO;
-    }
-  } else if (saved->memory_frame_count < saved->frame_capacity) {
-    saved->frames[saved->memory_frame_count] = frame;
-    ++saved->memory_frame_count;
-  } else {
-    saved->spool_file = tmpfile();
-    if (saved->spool_file == NULL) {
-      return CPKT_AUDIO_ERR_IO;
-    }
-    if (saved->memory_frame_count > 0U &&
-        fwrite(saved->frames, sizeof(float), saved->memory_frame_count,
-               saved->spool_file) != saved->memory_frame_count) {
-      return CPKT_AUDIO_ERR_IO;
-    }
-    saved->memory_frame_count = 0U;
-    if (fwrite(&frame, sizeof(frame), 1U, saved->spool_file) != 1U) {
-      return CPKT_AUDIO_ERR_IO;
-    }
-  }
-  ++saved->total_frame_count;
-  return CPKT_AUDIO_OK;
-}
-
-static cpkt_audio_result cpkt_audio_vox_save_range(
-    struct cpkt_audio_vox_impl *impl,
-    struct cpkt_audio_vox_saved_frames *saved, size_t first, size_t count) {
-  size_t i;
-  cpkt_audio_result result;
-
-  if (saved != NULL) {
-    memset(saved, 0, sizeof(*saved));
-  }
-  if (impl == NULL || saved == NULL || first > impl->total_frame_count ||
-      count > impl->total_frame_count - first) {
-    return CPKT_AUDIO_ERR_ARG;
-  }
-  saved->frame_capacity = impl->frame_capacity;
-  saved->frames = (float *)malloc(sizeof(float) * saved->frame_capacity);
-  if (saved->frames == NULL) {
-    return CPKT_AUDIO_ERR_ALLOC;
-  }
-  for (i = 0U; i < count; ++i) {
-    float frame;
-
-    result = cpkt_audio_vox_read_frame_at(impl, first + i, &frame);
-    if (result != CPKT_AUDIO_OK) {
-      cpkt_audio_vox_saved_destroy(saved);
-      return result;
-    }
-    result = cpkt_audio_vox_saved_append(saved, frame);
-    if (result != CPKT_AUDIO_OK) {
-      cpkt_audio_vox_saved_destroy(saved);
-      return result;
-    }
-  }
-  if (saved->spool_file != NULL &&
-      (fflush(saved->spool_file) != 0 ||
-       fseek(saved->spool_file, 0L, SEEK_SET) != 0)) {
-    cpkt_audio_vox_saved_destroy(saved);
-    return CPKT_AUDIO_ERR_IO;
-  }
-  return CPKT_AUDIO_OK;
-}
-
-static cpkt_audio_result cpkt_audio_vox_saved_read_at(
-    struct cpkt_audio_vox_saved_frames *saved, size_t index, float *frame) {
-  long offset;
-
-  if (saved == NULL || frame == NULL || index >= saved->total_frame_count) {
-    return CPKT_AUDIO_ERR_ARG;
-  }
-  if (saved->spool_file != NULL) {
-    if (index > (size_t)(LONG_MAX / (long)sizeof(float))) {
-      return CPKT_AUDIO_ERR_ARG;
-    }
-    offset = (long)(index * sizeof(float));
-    if (fseek(saved->spool_file, offset, SEEK_SET) != 0 ||
-        fread(frame, sizeof(*frame), 1U, saved->spool_file) != 1U) {
-      return CPKT_AUDIO_ERR_IO;
-    }
-  } else {
-    if (index >= saved->memory_frame_count) {
-      return CPKT_AUDIO_ERR_ARG;
-    }
-    *frame = saved->frames[index];
-  }
-  return CPKT_AUDIO_OK;
-}
-
 static void cpkt_audio_vox_note_loudness(struct cpkt_audio_vox_impl *impl,
                                          int loud) {
   if (loud) {
-    if (impl->silence_frames > 0UL && impl->total_frame_count > 0U) {
-      impl->mark_frame_count = impl->total_frame_count - 1U;
-      impl->has_mark = 1;
-    }
     ++impl->speech_frame_count;
     impl->silence_frames = 0UL;
   } else if (impl->silence_frames < (unsigned long)-1) {
     ++impl->silence_frames;
   }
-}
-
-static cpkt_audio_result cpkt_audio_vox_restore_saved(
-    struct cpkt_audio_vox_impl *impl,
-    struct cpkt_audio_vox_saved_frames *saved) {
-  size_t i;
-  cpkt_audio_result result;
-
-  if (impl == NULL || saved == NULL) {
-    return CPKT_AUDIO_ERR_ARG;
-  }
-  if (saved->total_frame_count == 0U) {
-    return CPKT_AUDIO_OK;
-  }
-
-  impl->open = 1;
-  for (i = 0U; i < saved->total_frame_count; ++i) {
-    float frame;
-    int loud;
-
-    result = cpkt_audio_vox_saved_read_at(saved, i, &frame);
-    if (result != CPKT_AUDIO_OK) {
-      return result;
-    }
-    result = cpkt_audio_vox_append_frame(impl, frame);
-    if (result != CPKT_AUDIO_OK) {
-      return result;
-    }
-    loud = cpkt_audio_absf(frame) >= impl->threshold ? 1 : 0;
-    cpkt_audio_vox_note_loudness(impl, loud);
-  }
-  return CPKT_AUDIO_OK;
-}
-
-static cpkt_audio_result cpkt_audio_vox_emit_at_mark(
-    struct cpkt_audio_vox_impl *impl) {
-  struct cpkt_audio_vox_saved_frames saved;
-  size_t original_total;
-  size_t suffix_count;
-  cpkt_audio_result result;
-
-  if (impl == NULL || !impl->has_mark || impl->mark_frame_count == 0U ||
-      impl->mark_frame_count >= impl->total_frame_count ||
-      impl->mark_frame_count < impl->min_segment_frames) {
-    return cpkt_audio_vox_emit(impl, 1, 0);
-  }
-
-  original_total = impl->total_frame_count;
-  suffix_count = original_total - impl->mark_frame_count;
-  result =
-      cpkt_audio_vox_save_range(impl, &saved, impl->mark_frame_count,
-                                suffix_count);
-  if (result != CPKT_AUDIO_OK) {
-    return result;
-  }
-
-  impl->total_frame_count = impl->mark_frame_count;
-  result = cpkt_audio_vox_emit(impl, 0, 0);
-  if (result == CPKT_AUDIO_OK) {
-    result = cpkt_audio_vox_restore_saved(impl, &saved);
-  }
-  cpkt_audio_vox_saved_destroy(&saved);
-  return result;
 }
 
 static cpkt_audio_result
@@ -1343,9 +1129,7 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self,
       impl->memory_frame_count = 0U;
       impl->total_frame_count = 0U;
       impl->speech_frame_count = 0U;
-      impl->mark_frame_count = 0U;
       impl->read_cursor = 0U;
-      impl->has_mark = 0;
     }
 
     result = cpkt_audio_vox_append_frame(impl, frames[i]);
@@ -1371,7 +1155,7 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self,
       }
     } else if (impl->max_segment_frames != 0UL &&
                impl->total_frame_count >= impl->max_segment_frames) {
-      result = cpkt_audio_vox_emit_at_mark(impl);
+      result = cpkt_audio_vox_emit(impl, 1, 0);
       if (result != CPKT_AUDIO_OK) {
         return result;
       }
