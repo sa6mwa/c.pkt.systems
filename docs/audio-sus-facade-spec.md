@@ -504,9 +504,9 @@ Initial transcription options should expose only stable, high-value knobs:
 - translate vs transcribe;
 - timestamps on/off;
 - segmented decoder options: compatibility `step_ms`, VOX segment budget
-  `length_ms`, VOX release silence `keep_ms`, VOX threshold, VOX memory/disk
-  spool budgets, optional prompt-token context carryover, audio context, and max
-  tokens;
+  `length_ms`, VOX release silence `keep_ms`, VOX threshold, VOX prebuffer,
+  VOX memory/disk spool budgets, optional prompt-token context carryover, audio
+  context, and max tokens;
 - segmented transcript callbacks, a materialized revised-text helper, and a
   transcriber receiver method for copying the latest revised transcript after a
   streaming segmented call, all without buffering decoded audio;

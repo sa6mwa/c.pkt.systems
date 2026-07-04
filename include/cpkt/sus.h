@@ -307,6 +307,11 @@ typedef struct cpkt_sus_segmented_config {
   /** VOX threshold for mono f32 16 kHz PCM. Zero selects 0.001. */
   float vox_threshold;
   /**
+   * Audio retained before VOX opens, in milliseconds. Zero selects the audio
+   * VOX default, currently 10 ms.
+   */
+  unsigned long prebuffer_ms;
+  /**
    * Bytes kept in memory for one open VOX speech segment before spilling to an
    * anonymous temporary file. Zero selects the audio VOX default, currently
    * 1 MiB.

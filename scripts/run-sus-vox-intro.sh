@@ -15,6 +15,7 @@ threshold=${CPKT_SUS_VOX_INTRO_THRESHOLD:-0.03}
 hang_ms=${CPKT_SUS_VOX_INTRO_HANG_MS:-1500}
 budget_ms=${CPKT_SUS_VOX_INTRO_BUDGET_MS:-0}
 read_frames=${CPKT_SUS_VOX_INTRO_READ_FRAMES:-4096}
+prebuffer_ms=${CPKT_SUS_VOX_INTRO_PREBUFFER_MS:-50}
 
 download_atomic() {
   local url
@@ -67,8 +68,8 @@ fi
 printf '[sus-vox-intro] audio=%s\n' "$audio_path"
 printf '[sus-vox-intro] dump-dir=%s\n' "$dump_dir"
 printf '[sus-vox-intro] model=%s model-cache=%s\n' "$model" "$model_cache"
-printf '[sus-vox-intro] threshold=%s hang-ms=%s budget-ms=%s\n' \
-  "$threshold" "$hang_ms" "$budget_ms"
+printf '[sus-vox-intro] threshold=%s hang-ms=%s budget-ms=%s prebuffer-ms=%s\n' \
+  "$threshold" "$hang_ms" "$budget_ms" "$prebuffer_ms"
 
 "$example_bin" \
   --audio "$audio_path" \
@@ -80,4 +81,5 @@ printf '[sus-vox-intro] threshold=%s hang-ms=%s budget-ms=%s\n' \
   --hang-ms "$hang_ms" \
   --budget-ms "$budget_ms" \
   --read-frames "$read_frames" \
+  --prebuffer-ms "$prebuffer_ms" \
   --cpu-only "${CPKT_SUS_VOX_INTRO_CPU_ONLY:-1}"

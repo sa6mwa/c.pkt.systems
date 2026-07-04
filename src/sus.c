@@ -1790,6 +1790,7 @@ cpkt_sus_transcriber_transcribe_audio_decoder_segmented_impl(
   vox_config.release_silence_ms = keep_ms;
   vox_config.max_segment_ms = length_ms;
   vox_config.min_segment_ms = 100UL;
+  vox_config.prebuffer_ms = config != NULL ? config->prebuffer_ms : 0UL;
   vox_config.memory_spool_bytes =
       config != NULL ? config->memory_spool_bytes : 0UL;
   vox_config.max_spool_bytes = config != NULL ? config->max_spool_bytes : 0UL;

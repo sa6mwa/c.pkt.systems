@@ -26,6 +26,7 @@ struct cpkt_sus_vox_options {
   unsigned long hang_ms;
   unsigned long budget_ms;
   unsigned long read_frames;
+  unsigned long prebuffer_ms;
   unsigned long memory_spool_bytes;
   unsigned long max_spool_bytes;
   int cpu_only;
@@ -50,6 +51,7 @@ static void cpkt_sus_vox_defaults(struct cpkt_sus_vox_options *options) {
   options->hang_ms = 1500UL;
   options->budget_ms = 0UL;
   options->read_frames = CPKT_SUS_VOX_READ_FRAMES;
+  options->prebuffer_ms = 50UL;
   options->memory_spool_bytes = CPKT_SUS_VOX_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKT_SUS_VOX_MAX_SPOOL_BYTES;
   options->cpu_only = 1;
@@ -349,26 +351,29 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
   segmented_config.length_ms = options->budget_ms;
   segmented_config.keep_ms = options->hang_ms;
   segmented_config.vox_threshold = options->threshold;
+  segmented_config.prebuffer_ms = options->prebuffer_ms;
   segmented_config.memory_spool_bytes = options->memory_spool_bytes;
   segmented_config.max_spool_bytes = options->max_spool_bytes;
   segmented_config.segmented_sink = cpkt_sus_vox_segmented_sink;
   segmented_config.segmented_user = &events;
 
   printf("source=%s model=%s cache_dir=%s language=%s threshold=%g hang_ms=%lu "
-         "budget_ms=%lu read_frames=%lu memory_spool_bytes=%lu "
+         "budget_ms=%lu read_frames=%lu prebuffer_ms=%lu "
+         "memory_spool_bytes=%lu "
          "max_spool_bytes=%lu cpu_only=%d dump_dir=%s\n",
          options->audio_path != NULL ? options->audio_path : options->url,
          options->model_path != NULL ? options->model_path : options->model,
          options->cache_dir != NULL ? options->cache_dir : "(default)",
          options->language != NULL ? options->language : "auto",
          (double)options->threshold, options->hang_ms, options->budget_ms,
-         options->read_frames, options->memory_spool_bytes,
+         options->read_frames, options->prebuffer_ms,
+         options->memory_spool_bytes,
          options->max_spool_bytes, options->cpu_only,
          options->dump_dir != NULL ? options->dump_dir : "(none)");
   if (events.summary_file != NULL) {
     fprintf(events.summary_file,
             "source=%s model=%s cache_dir=%s language=%s threshold=%g "
-            "hang_ms=%lu budget_ms=%lu read_frames=%lu "
+            "hang_ms=%lu budget_ms=%lu read_frames=%lu prebuffer_ms=%lu "
             "memory_spool_bytes=%lu max_spool_bytes=%lu cpu_only=%d "
             "dump_dir=%s\n",
             options->audio_path != NULL ? options->audio_path : options->url,
@@ -376,7 +381,8 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
             options->cache_dir != NULL ? options->cache_dir : "(default)",
             options->language != NULL ? options->language : "auto",
             (double)options->threshold, options->hang_ms, options->budget_ms,
-            options->read_frames, options->memory_spool_bytes,
+            options->read_frames, options->prebuffer_ms,
+            options->memory_spool_bytes,
             options->max_spool_bytes, options->cpu_only,
             options->dump_dir != NULL ? options->dump_dir : "(none)");
   }
@@ -454,6 +460,7 @@ static void cpkt_sus_vox_usage(FILE *out) {
   fprintf(out, "  --budget-ms N                VOX segment budget; default 0, mode default.\n");
   fprintf(out, "  --simplex                    Use simplex turn mode instead of continuous.\n");
   fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
+  fprintf(out, "  --prebuffer-ms N             Audio retained before VOX opens.\n");
   fprintf(out, "  --cpu-only N                 1 for CPU-only, 0 for backend default.\n");
 }
 
@@ -496,6 +503,10 @@ static int cpkt_sus_vox_parse_options(int argc, char **argv,
       options->segment_mode = CPKT_SUS_SEGMENT_MODE_SIMPLEX;
     } else if (strcmp(argv[i], "--read-frames") == 0 && i + 1 < argc) {
       if (!cpkt_sus_vox_parse_ulong(argv[++i], &options->read_frames)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--prebuffer-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_sus_vox_parse_ulong(argv[++i], &options->prebuffer_ms)) {
         return 0;
       }
     } else if (strcmp(argv[i], "--cpu-only") == 0 && i + 1 < argc) {

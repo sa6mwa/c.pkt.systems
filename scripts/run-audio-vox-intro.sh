@@ -10,6 +10,7 @@ dump_dir=${CPKT_AUDIO_VOX_INTRO_DUMP_DIR:-"$repo_root/build/vox-intro-dump"}
 threshold=${CPKT_AUDIO_VOX_INTRO_THRESHOLD:-0.03}
 hang_ms=${CPKT_AUDIO_VOX_INTRO_HANG_MS:-1500}
 budget_ms=${CPKT_AUDIO_VOX_INTRO_BUDGET_MS:-7000}
+prebuffer_ms=${CPKT_AUDIO_VOX_INTRO_PREBUFFER_MS:-50}
 memory_spool_bytes=${CPKT_AUDIO_VOX_INTRO_MEMORY_SPOOL_BYTES:-65536}
 max_spool_bytes=${CPKT_AUDIO_VOX_INTRO_MAX_SPOOL_BYTES:-1073741824}
 assert_expected=${CPKT_AUDIO_VOX_INTRO_ASSERT:-auto}
@@ -51,8 +52,8 @@ else
 fi
 
 printf '[audio-vox-intro] dump-dir=%s\n' "$dump_dir"
-printf '[audio-vox-intro] threshold=%s hang-ms=%s budget-ms=%s\n' \
-  "$threshold" "$hang_ms" "$budget_ms"
+printf '[audio-vox-intro] threshold=%s hang-ms=%s budget-ms=%s prebuffer-ms=%s\n' \
+  "$threshold" "$hang_ms" "$budget_ms" "$prebuffer_ms"
 
 "$example_bin" \
   "${source_args[@]}" \
@@ -60,11 +61,12 @@ printf '[audio-vox-intro] threshold=%s hang-ms=%s budget-ms=%s\n' \
   --threshold "$threshold" \
   --hang-ms "$hang_ms" \
   --budget-ms "$budget_ms" \
+  --prebuffer-ms "$prebuffer_ms" \
   --memory-spool-bytes "$memory_spool_bytes" \
   --max-spool-bytes "$max_spool_bytes"
 
 if [ "$assert_expected" = "auto" ]; then
-  if [ "$threshold" = "0.03" ] && [ "$hang_ms" = "1500" ] && [ "$budget_ms" = "7000" ]; then
+  if [ "$threshold" = "0.03" ] && [ "$hang_ms" = "1500" ] && [ "$budget_ms" = "7000" ] && [ "$prebuffer_ms" = "50" ]; then
     assert_expected=1
   else
     assert_expected=0

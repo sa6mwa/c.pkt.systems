@@ -223,6 +223,8 @@ static void cpkt_sus_test_segmented_config(cpkt_sus_segmented_config *config) {
       cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_SEGMENTED_KEEP_MS", 1500UL);
   config->vox_threshold =
       cpkt_sus_test_env_float("CPKT_SUS_INTEGRATION_VOX_THRESHOLD", 0.03f);
+  config->prebuffer_ms = cpkt_sus_test_env_ulong(
+      "CPKT_SUS_INTEGRATION_VOX_PREBUFFER_MS", 50UL);
   config->memory_spool_bytes = cpkt_sus_test_env_ulong(
       "CPKT_SUS_INTEGRATION_MEMORY_SPOOL_BYTES", 65536UL);
   config->max_spool_bytes = cpkt_sus_test_env_ulong(
@@ -356,6 +358,7 @@ static int cpkt_sus_test_assert_vox_shape(
   vox_config.release_silence_ms = segmented_config->keep_ms;
   vox_config.max_segment_ms = segmented_config->length_ms;
   vox_config.min_segment_ms = 100UL;
+  vox_config.prebuffer_ms = segmented_config->prebuffer_ms;
   vox_config.memory_spool_bytes = segmented_config->memory_spool_bytes;
   vox_config.max_spool_bytes = segmented_config->max_spool_bytes;
   vox_config.segment_sink = cpkt_sus_test_vox_shape_sink;

@@ -25,6 +25,7 @@ struct cpkt_vox_options {
   float threshold;
   unsigned long hang_ms;
   unsigned long budget_ms;
+  unsigned long prebuffer_ms;
   unsigned long memory_spool_bytes;
   unsigned long max_spool_bytes;
 };
@@ -46,6 +47,7 @@ static void cpkt_vox_defaults(struct cpkt_vox_options *options) {
   options->threshold = 0.03f;
   options->hang_ms = 1500UL;
   options->budget_ms = 7000UL;
+  options->prebuffer_ms = 50UL;
   options->memory_spool_bytes = CPKT_VOX_MEMORY_SPOOL_BYTES;
   options->max_spool_bytes = CPKT_VOX_MAX_SPOOL_BYTES;
 }
@@ -340,6 +342,7 @@ static int cpkt_vox_print_usage(FILE *out) {
   fprintf(out, "  --threshold VALUE            VOX open/keep threshold.\n");
   fprintf(out, "  --hang-ms N                  Silence hang-time before release.\n");
   fprintf(out, "  --budget-ms N                Max duration; 0 is unbounded.\n");
+  fprintf(out, "  --prebuffer-ms N             Audio retained before VOX opens.\n");
   fprintf(out, "  --memory-spool-bytes N       RAM before VOX spills to disk.\n");
   fprintf(out, "  --max-spool-bytes N          Bytes before forced hard cut.\n");
   return 0;
@@ -369,6 +372,10 @@ static int cpkt_vox_parse_options(int argc, char **argv,
       }
     } else if (strcmp(argv[i], "--budget-ms") == 0 && i + 1 < argc) {
       if (!cpkt_vox_parse_ulong(argv[++i], &options->budget_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--prebuffer-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_vox_parse_ulong(argv[++i], &options->prebuffer_ms)) {
         return 0;
       }
     } else if (strcmp(argv[i], "--memory-spool-bytes") == 0 &&
@@ -452,6 +459,7 @@ static int cpkt_vox_run(const struct cpkt_vox_options *options) {
   vox_config.release_silence_ms = options->hang_ms;
   vox_config.max_segment_ms = options->budget_ms;
   vox_config.min_segment_ms = 100UL;
+  vox_config.prebuffer_ms = options->prebuffer_ms;
   vox_config.memory_spool_bytes = options->memory_spool_bytes;
   vox_config.max_spool_bytes = options->max_spool_bytes;
   vox_config.segment_sink = cpkt_vox_segment_sink;
@@ -464,9 +472,10 @@ static int cpkt_vox_run(const struct cpkt_vox_options *options) {
   }
   cpkt_vox_emit(&run,
                 "source=%s dump_dir=%s threshold=%g hang_ms=%lu "
-                "budget_ms=%lu memory_spool_bytes=%lu max_spool_bytes=%lu\n",
+                "budget_ms=%lu prebuffer_ms=%lu memory_spool_bytes=%lu "
+                "max_spool_bytes=%lu\n",
                 source, options->dump_dir, (double)options->threshold,
-                options->hang_ms, options->budget_ms,
+                options->hang_ms, options->budget_ms, options->prebuffer_ms,
                 options->memory_spool_bytes, options->max_spool_bytes);
   do {
     frames_read = 0U;
