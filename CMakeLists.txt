@@ -931,6 +931,11 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/sus_cpu_backend_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME sus_segmented_policy
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/sus_segmented_policy_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
         NAME receiver_style_examples
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/receiver_style_examples_test.sh"
