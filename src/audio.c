@@ -120,6 +120,8 @@ struct cpkt_audio_playback_impl {
   pid_t process_pid;
   int process_fd;
 #endif
+  volatile ma_uint64 pending_frames;
+  ma_uint64 process_frames_written;
   int mode;
   int device_initialized;
   int rb_initialized;
@@ -2319,6 +2321,11 @@ static void cpkt_audio_playback_callback(ma_device *device, void *output,
     }
     memcpy(dst, src, sizeof(float) * chunk);
     (void)ma_pcm_rb_commit_read(&impl->rb, chunk);
+    if (impl->pending_frames >= chunk) {
+      impl->pending_frames -= chunk;
+    } else {
+      impl->pending_frames = 0;
+    }
     dst += chunk;
     remaining -= chunk;
   }
@@ -2653,6 +2660,7 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
       return process_result;
     }
     impl->started = 1;
+    impl->process_frames_written = 0;
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2663,6 +2671,7 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
     return cpkt_audio_from_ma_result(result);
   }
   impl->started = 1;
+  impl->pending_frames = 0;
   return CPKT_AUDIO_OK;
 }
 
@@ -2678,6 +2687,12 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
   size_t byte_count;
   size_t byte_offset;
   ssize_t wrote;
+#if defined(__linux__)
+  cpkt_audio_result process_result;
+  const char *const aplay_argv[] = {"aplay", "-q", "-t", "raw", "-f",
+                                    "S16_LE", "-c", "1",  "-r", "16000",
+                                    NULL};
+#endif
 #endif
 
   if (frames_written != NULL) {
@@ -2694,7 +2709,19 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
   impl = (struct cpkt_audio_playback_impl *)self->impl;
   if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
 #if defined(__unix__) || defined(__APPLE__)
-    if (!impl->started || impl->process_fd < 0) {
+    if (!impl->started) {
+#if defined(__linux__)
+      process_result = cpkt_audio_process_spawn(
+          aplay_argv, 1, 0, &impl->process_pid, &impl->process_fd);
+      if (process_result != CPKT_AUDIO_OK) {
+        return process_result;
+      }
+      impl->started = 1;
+#else
+      return CPKT_AUDIO_ERR_IO;
+#endif
+    }
+    if (impl->process_fd < 0) {
       return CPKT_AUDIO_ERR_IO;
     }
     total_written = 0U;
@@ -2727,6 +2754,7 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
       total_written += frames_now;
     }
     *frames_written = total_written;
+    impl->process_frames_written += (ma_uint64)total_written;
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2749,6 +2777,7 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
     }
     memcpy(dst, frames + total_written, sizeof(float) * chunk);
     (void)ma_pcm_rb_commit_write(&impl->rb, chunk);
+    impl->pending_frames += chunk;
     total_written += chunk;
   }
   *frames_written = total_written;
@@ -2758,6 +2787,8 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
 static cpkt_audio_result
 cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
   struct cpkt_audio_playback_impl *impl;
+  ma_uint64 frames_written;
+  unsigned long wait_ms;
 #if defined(__unix__) || defined(__APPLE__)
   cpkt_audio_result result;
 #endif
@@ -2771,8 +2802,16 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
     if (!impl->started) {
       return CPKT_AUDIO_OK;
     }
+    frames_written = impl->process_frames_written;
     result = cpkt_audio_process_finish(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
+    impl->process_frames_written = 0;
+    if (result == CPKT_AUDIO_OK && frames_written > 0U) {
+      wait_ms = (unsigned long)((frames_written * 1000U) / 16000U);
+      if (wait_ms > 0UL) {
+        ma_sleep((ma_uint32)wait_ms);
+      }
+    }
     return result;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2781,6 +2820,10 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
   while (ma_pcm_rb_available_read(&impl->rb) > 0U) {
     ma_sleep(10);
   }
+  while (impl->pending_frames > 0U) {
+    ma_sleep(10);
+  }
+  ma_sleep(100);
   return CPKT_AUDIO_OK;
 }
 
@@ -2796,6 +2839,7 @@ cpkt_audio_playback_stop_impl(cpkt_audio_playback *self) {
 #if defined(__unix__) || defined(__APPLE__)
     cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
+    impl->process_frames_written = 0;
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2804,6 +2848,7 @@ cpkt_audio_playback_stop_impl(cpkt_audio_playback *self) {
   if (impl->started) {
     ma_device_stop(&impl->device);
     impl->started = 0;
+    impl->pending_frames = 0;
   }
   return CPKT_AUDIO_OK;
 }

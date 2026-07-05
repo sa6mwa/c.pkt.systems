@@ -774,6 +774,12 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_audio_process_capture_probe)
     target_link_libraries(cpkt_audio_process_capture_probe PRIVATE
       cpkt_audio_static)
+    add_executable(cpkt_audio_process_playback_probe
+      tests/audio_process_playback_probe.c)
+    target_compile_options(cpkt_audio_process_playback_probe PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_audio_process_playback_probe)
+    target_link_libraries(cpkt_audio_process_playback_probe PRIVATE
+      cpkt_audio_static)
     add_executable(cpkt_sus_facade_test tests/sus_facade_test.c)
     target_compile_options(cpkt_sus_facade_test PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_sus_facade_test)
@@ -792,6 +798,7 @@ if(CPKT_BUILD_TESTS)
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_audio_facade_test cpkt_deps)
       add_dependencies(cpkt_audio_process_capture_probe cpkt_deps)
+      add_dependencies(cpkt_audio_process_playback_probe cpkt_deps)
       add_dependencies(cpkt_sus_facade_test cpkt_deps)
       add_dependencies(cpkt_sus_audio_integration_test cpkt_deps)
     endif()
@@ -892,6 +899,11 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_process_capture_realtime_test.sh"
           "$<TARGET_FILE:cpkt_audio_process_capture_probe>")
+      add_test(
+        NAME audio_process_playback_turns
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/audio_process_playback_turns_test.sh"
+          "$<TARGET_FILE:cpkt_audio_process_playback_probe>")
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
       set_tests_properties(sus_facade_unit PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
