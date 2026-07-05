@@ -76,18 +76,11 @@ require_contains(
 )
 
 open_path = function_body("cpkt_sus_open_path")
-compat_open = function_body("cpkt_sus_open_model")
-compat_model_open = function_body("cpkt_sus_model_open_path")
 open_cached = function_body("cpkt_sus_open_cached")
-compat_model_cached = function_body("cpkt_sus_model_open_cached")
 download_to_file = function_body("cpkt_sus_download_to_file")
 fetch_cached_file = function_body("cpkt_sus_fetch_cached_file")
 
-for name, body in (
-    ("cpkt_sus_open_path", open_path),
-    ("cpkt_sus_open_model", compat_open),
-    ("cpkt_sus_model_open_path", compat_model_open),
-):
+for name, body in (("cpkt_sus_open_path", open_path),):
     require_lacks(body, "curl_", f"{name} must not call libcurl")
     require_lacks(
         body,
@@ -101,16 +94,16 @@ for name, body in (
     )
     require_lacks(body, "source_url", f"{name} must not consume cache source URLs")
 
-require_contains(
-    compat_open,
-    "return cpkt_sus_open_path(out, config);",
-    "compatibility constructor remains a direct preferred path-open wrapper",
-)
-require_contains(
-    compat_model_open,
-    "return cpkt_sus_open_path((cpkt_sus **)out, (const cpkt_sus_config *)config);",
-    "model compatibility constructor remains a direct preferred path-open wrapper",
-)
+for removed_symbol in (
+    "cpkt_sus_open_model",
+    "cpkt_sus_model_open_path",
+    "cpkt_sus_model_open_cached",
+    "cpkt_sus_model_create_transcriber",
+    "cpkt_sus_model_reset_transcript_spacing",
+):
+    require_lacks(source, removed_symbol, f"{removed_symbol} must not exist")
+    require_lacks(header, removed_symbol, f"{removed_symbol} must not be public")
+
 require_contains(
     open_path,
     "whisper_init_from_file_with_params",
@@ -148,10 +141,7 @@ for needle in ("curl_global_init", "curl_easy_perform"):
 
 for name, body in (
     ("cpkt_sus_open_path", open_path),
-    ("cpkt_sus_open_model", compat_open),
-    ("cpkt_sus_model_open_path", compat_model_open),
     ("cpkt_sus_open_cached", open_cached),
-    ("cpkt_sus_model_open_cached", compat_model_cached),
     ("cpkt_sus_fetch_cached_file", fetch_cached_file),
 ):
     require_lacks(

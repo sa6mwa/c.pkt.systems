@@ -359,8 +359,7 @@ miniaudio's built-in encoder surface or a deliberate dependency expansion.
 
 `cpkt_sus` is the overarching speech facade instance. Each instance owns one
 loaded whisper model and instance-level facade state such as transcript spacing
-policy. The instance creates transcriber sessions. `cpkt_sus_model` names are
-compatibility names only and are not the preferred public DX.
+policy. The instance creates transcriber sessions.
 
 ### Common Types
 

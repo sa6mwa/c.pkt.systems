@@ -31,7 +31,7 @@ struct cpkt_sus_model_impl {
 };
 
 struct cpkt_sus_transcriber_impl {
-  cpkt_sus_model *model;
+  cpkt_sus *model;
   cpkt_sus_transcriber_config config;
   whisper_token *prompt_tokens;
   size_t prompt_count;
@@ -795,7 +795,7 @@ cpkt_sus_verify_model_file(const char *path,
 }
 
 static cpkt_sus_result
-cpkt_sus_open_validated_cached_file(cpkt_sus_model **out, const char *path,
+cpkt_sus_open_validated_cached_file(cpkt_sus **out, const char *path,
                                     const struct cpkt_sus_catalog_entry *entry,
                                     const cpkt_sus_cache_config *config) {
   cpkt_sus_config model_config;
@@ -891,7 +891,7 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
   return result;
 }
 
-static cpkt_sus_result cpkt_sus_info_impl(const cpkt_sus_model *self,
+static cpkt_sus_result cpkt_sus_info_impl(const cpkt_sus *self,
                                           cpkt_sus_info *info) {
   struct cpkt_sus_model_impl *impl;
 
@@ -909,7 +909,7 @@ static cpkt_sus_result cpkt_sus_info_impl(const cpkt_sus_model *self,
   return CPKT_SUS_OK;
 }
 
-static void cpkt_sus_model_destroy_impl(cpkt_sus_model *self) {
+static void cpkt_sus_destroy_impl(cpkt_sus *self) {
   struct cpkt_sus_model_impl *impl;
 
   if (self == NULL) {
@@ -2007,7 +2007,7 @@ static void cpkt_sus_transcriber_destroy_impl(cpkt_sus_transcriber *self) {
 }
 
 static cpkt_sus_result
-cpkt_sus_model_reset_transcript_spacing_impl(cpkt_sus_model *self) {
+cpkt_sus_reset_transcript_spacing_impl(cpkt_sus *self) {
   struct cpkt_sus_model_impl *impl;
 
   if (self == NULL || self->impl == NULL) {
@@ -2019,8 +2019,8 @@ cpkt_sus_model_reset_transcript_spacing_impl(cpkt_sus_model *self) {
   return CPKT_SUS_OK;
 }
 
-static cpkt_sus_result cpkt_sus_model_create_transcriber_impl(
-    cpkt_sus_model *self, cpkt_sus_transcriber **out,
+static cpkt_sus_result cpkt_sus_create_transcriber_impl(
+    cpkt_sus *self, cpkt_sus_transcriber **out,
     const cpkt_sus_transcriber_config *config) {
   cpkt_sus_transcriber *transcriber;
   struct cpkt_sus_transcriber_impl *impl;
@@ -2136,10 +2136,10 @@ cpkt_sus_result cpkt_sus_open_path(cpkt_sus **out,
 
   model->impl = impl;
   model->info = cpkt_sus_info_impl;
-  model->create_transcriber = cpkt_sus_model_create_transcriber_impl;
+  model->create_transcriber = cpkt_sus_create_transcriber_impl;
   model->reset_transcript_spacing =
-      cpkt_sus_model_reset_transcript_spacing_impl;
-  model->destroy = cpkt_sus_model_destroy_impl;
+      cpkt_sus_reset_transcript_spacing_impl;
+  model->destroy = cpkt_sus_destroy_impl;
   *out = model;
   return CPKT_SUS_OK;
 }
@@ -2236,25 +2236,6 @@ cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
   return result;
 }
 
-/** Opens a compatibility speech model handle from a model path. */
-cpkt_sus_result cpkt_sus_open_model(cpkt_sus **out,
-                                    const cpkt_sus_config *config) {
-  return cpkt_sus_open_path(out, config);
-}
-
-/** Opens a compatibility speech model handle from a model path. */
-cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
-                                         const cpkt_sus_model_config *config) {
-  return cpkt_sus_open_path((cpkt_sus **)out, (const cpkt_sus_config *)config);
-}
-
-/** Opens a compatibility cache-backed model handle. */
-cpkt_sus_result
-cpkt_sus_model_open_cached(cpkt_sus_model **out,
-                           const cpkt_sus_cache_config *config) {
-  return cpkt_sus_open_cached((cpkt_sus **)out, config);
-}
-
 /** Creates a transcriber bound to an opened instance. */
 cpkt_sus_result cpkt_sus_create_transcriber(
     cpkt_sus *sus, cpkt_sus_transcriber **out,
@@ -2268,25 +2249,12 @@ cpkt_sus_result cpkt_sus_create_transcriber(
   return sus->create_transcriber(sus, out, config);
 }
 
-/** Creates a compatibility transcriber bound to an opened model. */
-cpkt_sus_result
-cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
-                                  cpkt_sus_transcriber **out,
-                                  const cpkt_sus_transcriber_config *config) {
-  return cpkt_sus_create_transcriber((cpkt_sus *)model, out, config);
-}
-
 /** Resets instance-level segmented transcript spacing state. */
 cpkt_sus_result cpkt_sus_reset_transcript_spacing(cpkt_sus *sus) {
   if (sus == NULL || sus->reset_transcript_spacing == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
   return sus->reset_transcript_spacing(sus);
-}
-
-/** Resets compatibility model-level segmented transcript spacing state. */
-cpkt_sus_result cpkt_sus_model_reset_transcript_spacing(cpkt_sus_model *model) {
-  return cpkt_sus_reset_transcript_spacing((cpkt_sus *)model);
 }
 
 /** Releases strings allocated by materialized transcription helpers. */

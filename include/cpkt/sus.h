@@ -7,8 +7,6 @@ extern "C" {
 
 /** Receiver instance for one loaded speech model and its facade state. */
 typedef struct cpkt_sus cpkt_sus;
-/** Compatibility name for the loaded speech facade instance. */
-typedef cpkt_sus cpkt_sus_model;
 /** Handle for a transcription instance bound to a loaded model. */
 typedef struct cpkt_sus_transcriber cpkt_sus_transcriber;
 /** Opaque audio decoder handle accepted by audio streaming helpers. */
@@ -61,9 +59,6 @@ typedef struct cpkt_sus_config {
    */
   int preserve_initial_space_after_first_transcriber;
 } cpkt_sus_config;
-
-/** Compatibility name for the path-open construction options. */
-typedef cpkt_sus_config cpkt_sus_model_config;
 
 /** Cache resolver status phases emitted while opening cached models. */
 typedef enum cpkt_sus_cache_status_phase {
@@ -478,14 +473,6 @@ void cpkt_sus_segmented_config_default(cpkt_sus_segmented_config *config);
 cpkt_sus_result cpkt_sus_open_path(cpkt_sus **out,
                                    const cpkt_sus_config *config);
 
-/** Compatibility wrapper for cpkt_sus_open_path. */
-cpkt_sus_result cpkt_sus_open_model(cpkt_sus **out,
-                                    const cpkt_sus_config *config);
-
-/** Compatibility wrapper for cpkt_sus_open_path. */
-cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
-                                         const cpkt_sus_model_config *config);
-
 /**
  * Opens a speech model through the explicit cache-backed resolver.
  *
@@ -499,20 +486,10 @@ cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
 cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
                                      const cpkt_sus_cache_config *config);
 
-/** Compatibility wrapper for cpkt_sus_open_cached. */
-cpkt_sus_result cpkt_sus_model_open_cached(cpkt_sus_model **out,
-                                           const cpkt_sus_cache_config *config);
-
 /** Creates a transcriber bound to an opened instance. */
 cpkt_sus_result cpkt_sus_create_transcriber(
     cpkt_sus *sus, cpkt_sus_transcriber **out,
     const cpkt_sus_transcriber_config *config);
-
-/** Compatibility wrapper for cpkt_sus_create_transcriber. */
-cpkt_sus_result
-cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
-                                  cpkt_sus_transcriber **out,
-                                  const cpkt_sus_transcriber_config *config);
 
 /**
  * Resets instance-level segmented transcript spacing state.
@@ -520,9 +497,6 @@ cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
  * This is the free-function wrapper for sus->reset_transcript_spacing.
  */
 cpkt_sus_result cpkt_sus_reset_transcript_spacing(cpkt_sus *sus);
-
-/** Compatibility wrapper for cpkt_sus_reset_transcript_spacing. */
-cpkt_sus_result cpkt_sus_model_reset_transcript_spacing(cpkt_sus_model *model);
 
 /** Releases strings allocated by cpkt_sus materialized-text helpers. */
 void cpkt_sus_string_free(char *text);
