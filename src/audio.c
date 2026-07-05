@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -2175,6 +2176,21 @@ static int cpkt_audio_process_elapsed_ms(unsigned long now,
   return 1;
 }
 
+static int cpkt_audio_wait_expired(unsigned long start_ms,
+                                   unsigned long timeout_ms) {
+  unsigned long now_ms;
+  unsigned long elapsed_ms;
+
+  if (timeout_ms == 0UL) {
+    return 0;
+  }
+  now_ms = cpkt_audio_process_now_ms();
+  if (!cpkt_audio_process_elapsed_ms(now_ms, start_ms, &elapsed_ms)) {
+    return 0;
+  }
+  return elapsed_ms >= timeout_ms;
+}
+
 static short cpkt_audio_s16le_to_short(const unsigned char *bytes) {
   unsigned int value;
 
@@ -2489,6 +2505,85 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
                                          total_read);
   }
   return CPKT_AUDIO_OK;
+}
+
+static cpkt_audio_result
+cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
+                                   unsigned long timeout_ms) {
+  struct cpkt_audio_capture_impl *impl;
+  unsigned long start_ms;
+#if defined(__unix__) || defined(__APPLE__)
+  const char *const arecord_argv[] = {"arecord", "-q", "-t", "raw", "-f",
+                                      "S16_LE",  "-c", "1",  "-r", "16000",
+                                      NULL};
+  unsigned long now_ms;
+  unsigned long elapsed_ms;
+  cpkt_audio_result process_result;
+  fd_set readfds;
+  struct timeval tv;
+  int ready;
+#endif
+
+  if (self == NULL || self->impl == NULL) {
+    return CPKT_AUDIO_ERR_ARG;
+  }
+  impl = (struct cpkt_audio_capture_impl *)self->impl;
+  if (!impl->started) {
+    return CPKT_AUDIO_ERR_IO;
+  }
+  start_ms = cpkt_audio_process_now_ms();
+
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+#if defined(__unix__) || defined(__APPLE__)
+    if (impl->process_fd < 0) {
+      return CPKT_AUDIO_ERR_IO;
+    }
+    now_ms = cpkt_audio_process_now_ms();
+    if (cpkt_audio_process_elapsed_ms(now_ms, impl->last_read_ms,
+                                      &elapsed_ms) &&
+        elapsed_ms > CPKT_AUDIO_PROCESS_IDLE_RESET_MS) {
+      cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
+      impl->started = 0;
+      impl->has_pending_byte = 0;
+      process_result = cpkt_audio_process_spawn(
+          arecord_argv, 0, 1, &impl->process_pid, &impl->process_fd);
+      if (process_result != CPKT_AUDIO_OK) {
+        return process_result;
+      }
+      impl->started = 1;
+      impl->last_read_ms = cpkt_audio_process_now_ms();
+    }
+    for (;;) {
+      FD_ZERO(&readfds);
+      FD_SET(impl->process_fd, &readfds);
+      tv.tv_sec = 0;
+      tv.tv_usec = 10000;
+      ready = select(impl->process_fd + 1, &readfds, NULL, NULL, &tv);
+      if (ready > 0 && FD_ISSET(impl->process_fd, &readfds)) {
+        impl->last_read_ms = cpkt_audio_process_now_ms();
+        return CPKT_AUDIO_OK;
+      }
+      if (ready < 0 && errno != EINTR) {
+        return CPKT_AUDIO_ERR_IO;
+      }
+      if (cpkt_audio_wait_expired(start_ms, timeout_ms)) {
+        return CPKT_AUDIO_TIMEOUT;
+      }
+    }
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
+  }
+
+  for (;;) {
+    if (ma_pcm_rb_available_read(&impl->rb) > 0U) {
+      return CPKT_AUDIO_OK;
+    }
+    if (cpkt_audio_wait_expired(start_ms, timeout_ms)) {
+      return CPKT_AUDIO_TIMEOUT;
+    }
+    ma_sleep(5);
+  }
 }
 
 static cpkt_audio_result
@@ -2830,6 +2925,7 @@ cpkt_audio_capture_alloc(cpkt_audio_capture **out,
 #endif
   capture->start = cpkt_audio_capture_start_impl;
   capture->read_f32_mono_16k = cpkt_audio_capture_read_f32_mono_16k_impl;
+  capture->wait_ready = cpkt_audio_capture_wait_ready_impl;
   capture->stop = cpkt_audio_capture_stop_impl;
   capture->destroy = cpkt_audio_capture_destroy_impl;
   *capture_out = capture;
@@ -3632,6 +3728,8 @@ cpkt_audio_result_string(cpkt_audio_result result) {
     return "audio backend error";
   case CPKT_AUDIO_AT_END:
     return "end of stream";
+  case CPKT_AUDIO_TIMEOUT:
+    return "timeout";
   default:
     return "unknown audio result";
   }

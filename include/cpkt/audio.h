@@ -38,7 +38,9 @@ typedef enum cpkt_audio_result {
   /** The backend returned an error not covered by a narrower result code. */
   CPKT_AUDIO_ERR_UPSTREAM = 5,
   /** The decoder reached the end of the input stream. */
-  CPKT_AUDIO_AT_END = 6
+  CPKT_AUDIO_AT_END = 6,
+  /** The requested wait operation reached its timeout. */
+  CPKT_AUDIO_TIMEOUT = 7
 } cpkt_audio_result;
 
 /** Origin values passed to custom reader seek callbacks. */
@@ -406,6 +408,15 @@ struct cpkt_audio_capture {
   cpkt_audio_result (*read_f32_mono_16k)(cpkt_audio_capture *self,
                                          float *frames, size_t frame_capacity,
                                          size_t *frames_read);
+  /**
+   * Blocks until capture has readable current-device audio.
+   *
+   * timeout_ms is a maximum wait in milliseconds. Zero waits indefinitely. The
+   * call does not consume frames; call read_f32_mono_16k afterwards to receive
+   * audio. CPKT_AUDIO_TIMEOUT means no frames became ready before the timeout.
+   */
+  cpkt_audio_result (*wait_ready)(cpkt_audio_capture *self,
+                                  unsigned long timeout_ms);
   /** Stops capture. Repeated calls are OK. */
   cpkt_audio_result (*stop)(cpkt_audio_capture *self);
   /** Releases the capture handle and all resources owned by it. */

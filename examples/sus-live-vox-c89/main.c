@@ -665,6 +665,15 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
         goto cleanup;
       }
     }
+    audio_result = capture->wait_ready(capture, 100UL);
+    if (audio_result == CPKT_AUDIO_TIMEOUT) {
+      continue;
+    }
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "capture wait failed: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
     frames_read = 0U;
     audio_result = capture->read_f32_mono_16k(
         capture, frames, CPKT_SUS_LIVE_READ_FRAMES, &frames_read);

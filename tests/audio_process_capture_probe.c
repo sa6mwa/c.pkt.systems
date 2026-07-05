@@ -37,6 +37,15 @@ static int read_one(cpkt_audio_capture *capture, int *sample_out) {
     return 0;
   }
   for (attempts = 0; attempts < 100; ++attempts) {
+    result = capture->wait_ready(capture, 100UL);
+    if (result == CPKT_AUDIO_TIMEOUT) {
+      continue;
+    }
+    if (result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "capture wait failed: %s\n",
+              cpkt_audio_result_string(result));
+      return 0;
+    }
     frames_read = 0U;
     result = capture->read_f32_mono_16k(capture, frames,
                                         sizeof(frames) / sizeof(frames[0]),

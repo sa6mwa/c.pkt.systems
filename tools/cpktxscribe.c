@@ -801,6 +801,15 @@ static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
 
   end_time = options->seconds != 0UL ? time(NULL) + (time_t)options->seconds : 0;
   while (options->seconds == 0UL || time(NULL) < end_time) {
+    audio_result = capture->wait_ready(capture, 100UL);
+    if (audio_result == CPKT_AUDIO_TIMEOUT) {
+      continue;
+    }
+    if (audio_result != CPKT_AUDIO_OK) {
+      fprintf(stderr, "capture wait failed: %s\n",
+              cpkt_audio_result_string(audio_result));
+      goto cleanup;
+    }
     frames_read = 0U;
     audio_result = capture->read_f32_mono_16k(capture, frames,
                                               sizeof(frames) / sizeof(frames[0]),
