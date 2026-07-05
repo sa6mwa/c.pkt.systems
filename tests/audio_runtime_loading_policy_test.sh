@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 2 ]; then
-  printf 'usage: audio_runtime_loading_policy_test.sh <libcpktaudio.a> <libcpktaudio.so>\n' >&2
+if [ "$#" -ne 3 ]; then
+  printf 'usage: audio_runtime_loading_policy_test.sh <libcpktaudio.a> <libcpktaudio.so> <audio.c>\n' >&2
   exit 2
 fi
 
 audio_static=$1
 audio_shared=$2
+audio_source=$3
 
 require_tool() {
   tool=$1
@@ -58,14 +59,36 @@ assert_shared_lacks_needed() {
   fi
 }
 
+assert_source_contains() {
+  file_path=$1
+  needle=$2
+  description=$3
+
+  if ! grep -F "$needle" "$file_path" >/dev/null 2>&1; then
+    printf 'audio runtime-loading policy source check failed: %s\n' "$description" >&2
+    printf 'missing: %s\n' "$needle" >&2
+    exit 1
+  fi
+}
+
 require_tool nm
 require_tool readelf
 require_tool grep
 require_file "$audio_static" "libcpktaudio static archive"
 require_file "$audio_shared" "libcpktaudio shared library"
+require_file "$audio_source" "audio facade implementation"
 
 assert_static_refs_dlopen "$audio_static"
 assert_shared_refs_dlopen "$audio_shared"
 assert_shared_lacks_needed "$audio_shared" 'libasound\.so[^]]*' ALSA
 assert_shared_lacks_needed "$audio_shared" 'libpulse[^]]*\.so[^]]*' PulseAudio
 assert_shared_lacks_needed "$audio_shared" 'libjack[^]]*\.so[^]]*' JACK
+assert_source_contains "$audio_source" \
+  'cpkt_audio_playback_wait_turn_elapsed(impl, impl->drain_latency_ms)' \
+  'native playback drain must wait for configured backend latency'
+assert_source_contains "$audio_source" \
+  ': 2000UL) +' \
+  'native playback drain latency must include default or configured buffer duration'
+assert_source_contains "$audio_source" \
+  'cpkt_audio_device_period_ms(config != NULL ? config->period_ms : 0UL)' \
+  'native playback drain latency must include configured period duration'

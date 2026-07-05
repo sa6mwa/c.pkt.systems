@@ -123,6 +123,7 @@ struct cpkt_audio_playback_impl {
   volatile ma_uint64 pending_frames;
   ma_uint64 turn_frames_written;
   unsigned long turn_started_ms;
+  unsigned long drain_latency_ms;
   int mode;
   int device_initialized;
   int rb_initialized;
@@ -2691,7 +2692,7 @@ static void cpkt_audio_playback_note_written(
 }
 
 static void cpkt_audio_playback_wait_turn_elapsed(
-    struct cpkt_audio_playback_impl *impl) {
+    struct cpkt_audio_playback_impl *impl, unsigned long extra_ms) {
   ma_uint64 frames_written;
   unsigned long started_ms;
   unsigned long now_ms;
@@ -2710,6 +2711,7 @@ static void cpkt_audio_playback_wait_turn_elapsed(
     return;
   }
   target_ms = (unsigned long)((frames_written * 1000U) / 16000U);
+  target_ms += extra_ms;
   if (target_ms == 0UL) {
     return;
   }
@@ -2853,7 +2855,7 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
     result = cpkt_audio_process_finish(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
     if (result == CPKT_AUDIO_OK) {
-      cpkt_audio_playback_wait_turn_elapsed(impl);
+      cpkt_audio_playback_wait_turn_elapsed(impl, 0UL);
     } else {
       impl->turn_frames_written = 0U;
       impl->turn_started_ms = 0UL;
@@ -2869,7 +2871,7 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
   while (impl->pending_frames > 0U) {
     ma_sleep(10);
   }
-  cpkt_audio_playback_wait_turn_elapsed(impl);
+  cpkt_audio_playback_wait_turn_elapsed(impl, impl->drain_latency_ms);
   return CPKT_AUDIO_OK;
 }
 
@@ -3535,6 +3537,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
       return CPKT_AUDIO_ERR_IO;
     }
     impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+    impl->drain_latency_ms = 0UL;
     *out = playback;
     return CPKT_AUDIO_OK;
 #else
@@ -3562,6 +3565,10 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
       cpkt_audio_device_period_ms(config != NULL ? config->period_ms : 0UL);
   ma_config.dataCallback = cpkt_audio_playback_callback;
   ma_config.pUserData = impl;
+  impl->drain_latency_ms =
+      (config != NULL && config->buffer_ms != 0UL ? config->buffer_ms
+                                                  : 2000UL) +
+      cpkt_audio_device_period_ms(config != NULL ? config->period_ms : 0UL);
 
   result = cpkt_audio_resolve_device_backend(requested_backend, &backend);
   if (result != CPKT_AUDIO_OK) {
@@ -3583,6 +3590,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
       ma_pcm_rb_uninit(&impl->rb);
       impl->rb_initialized = 0;
       impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+      impl->drain_latency_ms = 0UL;
       *out = playback;
       return CPKT_AUDIO_OK;
     }
