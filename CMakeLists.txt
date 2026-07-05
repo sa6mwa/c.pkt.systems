@@ -485,7 +485,10 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
     LINKER_LANGUAGE CXX
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_link_options(cpktxscribe PRIVATE -static -Wl,--gc-sections)
+    target_link_options(cpktxscribe PRIVATE -Wl,--gc-sections)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_link_options(cpktxscribe PRIVATE -static-libstdc++ -static-libgcc)
+    endif()
   endif()
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpktxscribe cpkt_deps)
@@ -494,6 +497,10 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
     add_test(
       NAME cpktxscribe_cache_status
       COMMAND ${CMAKE_SOURCE_DIR}/tests/cpktxscribe_cache_status_test.sh
+        $<TARGET_FILE:cpktxscribe>)
+    add_test(
+      NAME cpktxscribe_link_policy
+      COMMAND sh ${CMAKE_SOURCE_DIR}/tests/cpktxscribe_link_policy_test.sh
         $<TARGET_FILE:cpktxscribe>)
   endif()
 endif()

@@ -41,7 +41,7 @@ help:
 	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded facade fuzz smoke tests.'
 	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded facade fuzz tests.'
 	@printf '\nTools:\n'
-	@printf '  %-30s %s\n' 'cpktxscribe' 'Build static host audio transcription CLI under build/debug/tools/.'
+	@printf '  %-30s %s\n' 'cpktxscribe' 'Build host audio transcription CLI under build/debug/tools/.'
 	@printf '\nPackaging:\n'
 	@printf '  %-30s %s\n' 'package' 'Build package artifacts for all supported release targets.'
 	@printf '  %-30s %s\n' 'package-source' 'Build the source release archive.'
