@@ -95,6 +95,13 @@ typedef enum cpkt_audio_vox_state {
   CPKT_AUDIO_VOX_HARD_CUT = 3
 } cpkt_audio_vox_state;
 
+/** Capture state identifiers delivered to cpkt_audio_capture_state_sink. */
+typedef enum cpkt_audio_capture_state {
+  /** A capture read returned current-device frames and the handle is listening.
+   */
+  CPKT_AUDIO_CAPTURE_READY = 1
+} cpkt_audio_capture_state;
+
 /** Stream description for an opened decoder. */
 typedef struct cpkt_audio_stream_info {
   /** Detected or configured cpkt_audio_format for the source stream. */
@@ -133,6 +140,23 @@ typedef int (*cpkt_audio_seek_fn)(void *user, long offset, int origin);
  */
 typedef size_t (*cpkt_audio_write_fn)(void *user, const void *buffer,
                                       size_t bytes_to_write);
+
+/** Capture state event emitted by a default-device capture handle. */
+typedef struct cpkt_audio_capture_state_event {
+  /** cpkt_audio_capture_state value. */
+  int state;
+  /** Number of mono 16 kHz frames made available by this read. */
+  size_t frame_count;
+} cpkt_audio_capture_state_event;
+
+/**
+ * Receives capture lifecycle events.
+ *
+ * Return zero to continue. Returning non-zero fails the read that emitted the
+ * event with CPKT_AUDIO_ERR_IO.
+ */
+typedef int (*cpkt_audio_capture_state_sink)(
+    const cpkt_audio_capture_state_event *event, void *user);
 
 /** Callback reader used to decode from caller-owned storage or transport. */
 typedef struct cpkt_audio_reader {
@@ -182,6 +206,10 @@ typedef struct cpkt_audio_capture_config {
   unsigned long buffer_ms;
   /** Requested device callback period. Zero selects 20 ms. */
   unsigned long period_ms;
+  /** Optional capture event sink. NULL disables capture state callbacks. */
+  cpkt_audio_capture_state_sink state_sink;
+  /** Caller-owned value passed to state_sink. */
+  void *state_user;
 } cpkt_audio_capture_config;
 
 /** Playback construction options. Zero initializes to default output, mono 16

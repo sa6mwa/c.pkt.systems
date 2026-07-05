@@ -31,9 +31,12 @@ struct cpkt_live_vox_options {
 struct cpkt_live_vox_run {
   const struct cpkt_live_vox_options *options;
   cpkt_audio_playback *playback;
+  unsigned long pending_rx_segment;
   unsigned long segment_count;
   unsigned long hard_count;
   unsigned long final_count;
+  int pending_rx;
+  int pending_rx_has_segment;
   FILE *summary;
 };
 
@@ -177,14 +180,15 @@ static int cpkt_live_vox_state_sink(const cpkt_audio_vox_state_event *event,
     return 1;
   }
   if (event->state == CPKT_AUDIO_VOX_TX_ON) {
+    run->pending_rx = 0;
+    run->pending_rx_has_segment = 0;
     sprintf(line, "TX segment=%lu threshold=%.3f\n", event->segment_index,
             (double)event->threshold);
   } else if (event->state == CPKT_AUDIO_VOX_TX_OFF) {
-    if (run->playback != NULL) {
-      return 0;
-    }
-    sprintf(line, "RX segment=%lu hang_ms=%lu\n", event->segment_index,
-            run->options->hang_ms);
+    run->pending_rx = 1;
+    run->pending_rx_has_segment = 1;
+    run->pending_rx_segment = event->segment_index;
+    return 0;
   } else if (event->state == CPKT_AUDIO_VOX_HARD_CUT) {
     sprintf(line, "TX hard-cut segment=%lu max_segment_ms=%lu\n",
             event->segment_index, run->options->max_segment_ms);
@@ -209,7 +213,6 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   size_t frames_written;
   size_t total_frames;
   cpkt_audio_result result;
-  int emit_rx;
 
   run = (struct cpkt_live_vox_run *)user;
   if (run == NULL || segment == NULL) {
@@ -218,7 +221,6 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
 
   sprintf(name, "segment-%04lu.wav", segment->segment_index);
   encoder = NULL;
-  emit_rx = 0;
   path[0] = '\0';
   if (run->options->dump_dir != NULL) {
     if (!cpkt_live_vox_join_path(path, sizeof(path), run->options->dump_dir,
@@ -288,9 +290,6 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
     if (run->playback->drain(run->playback) != CPKT_AUDIO_OK) {
       return 1;
     }
-    if (!segment->hard_cut) {
-      emit_rx = 1;
-    }
   }
 
   ++run->segment_count;
@@ -328,10 +327,29 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
             segment->is_final, path);
     fflush(run->summary);
   }
-  if (emit_rx) {
-    sprintf(status, "RX segment=%lu\n", segment->segment_index);
-    cpkt_live_vox_emit(run, status);
+  return 0;
+}
+
+static int cpkt_live_vox_capture_state_sink(
+    const cpkt_audio_capture_state_event *event, void *user) {
+  struct cpkt_live_vox_run *run;
+  char line[80];
+
+  run = (struct cpkt_live_vox_run *)user;
+  if (run == NULL || event == NULL) {
+    return 1;
   }
+  if (event->state != CPKT_AUDIO_CAPTURE_READY || !run->pending_rx) {
+    return 0;
+  }
+  if (run->pending_rx_has_segment) {
+    sprintf(line, "RX segment=%lu\n", run->pending_rx_segment);
+  } else {
+    sprintf(line, "RX\n");
+  }
+  cpkt_live_vox_emit(run, line);
+  run->pending_rx = 0;
+  run->pending_rx_has_segment = 0;
   return 0;
 }
 
@@ -502,6 +520,8 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
   capture_config.backend = opts->backend;
   capture_config.buffer_ms = opts->buffer_ms;
   capture_config.period_ms = opts->period_ms;
+  capture_config.state_sink = cpkt_live_vox_capture_state_sink;
+  capture_config.state_user = &run;
   result = cpkt_audio_capture_open_default(&capture, &capture_config);
   if (result != CPKT_AUDIO_OK) {
     fprintf(stderr, "capture open failed: %s\n",
@@ -568,7 +588,8 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
     }
   }
 
-  cpkt_live_vox_emit(&run, "RX\n");
+  run.pending_rx = 1;
+  run.pending_rx_has_segment = 0;
   if (opts->ptt) {
     cpkt_live_vox_emit(&run, "PTT ready: space/p toggles TX, q quits\n");
   }

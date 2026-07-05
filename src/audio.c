@@ -96,6 +96,8 @@ struct cpkt_audio_encoder_impl {
 struct cpkt_audio_capture_impl {
   ma_device device;
   ma_pcm_rb rb;
+  cpkt_audio_capture_state_sink state_sink;
+  void *state_user;
 #if defined(__unix__) || defined(__APPLE__)
   pid_t process_pid;
   int process_fd;
@@ -2183,6 +2185,20 @@ static short cpkt_audio_s16le_to_short(const unsigned char *bytes) {
   return (short)value;
 }
 
+static cpkt_audio_result
+cpkt_audio_capture_emit_state(struct cpkt_audio_capture_impl *impl, int state,
+                              size_t frame_count) {
+  cpkt_audio_capture_state_event event;
+
+  if (impl == NULL || impl->state_sink == NULL) {
+    return CPKT_AUDIO_OK;
+  }
+  event.state = state;
+  event.frame_count = frame_count;
+  return impl->state_sink(&event, impl->state_user) == 0 ? CPKT_AUDIO_OK
+                                                         : CPKT_AUDIO_ERR_IO;
+}
+
 static void cpkt_audio_short_to_s16le(short sample, unsigned char *bytes) {
   unsigned int value;
 
@@ -2440,6 +2456,10 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
       }
     }
     *frames_read = total_read;
+    if (total_read > 0U) {
+      return cpkt_audio_capture_emit_state(impl, CPKT_AUDIO_CAPTURE_READY,
+                                           total_read);
+    }
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2464,6 +2484,10 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
     total_read += chunk;
   }
   *frames_read = total_read;
+  if (total_read > 0U) {
+    return cpkt_audio_capture_emit_state(impl, CPKT_AUDIO_CAPTURE_READY,
+                                         total_read);
+  }
   return CPKT_AUDIO_OK;
 }
 
@@ -3213,6 +3237,10 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
   result = cpkt_audio_capture_alloc(out, &capture, &impl);
   if (result != CPKT_AUDIO_OK) {
     return result;
+  }
+  if (config != NULL) {
+    impl->state_sink = config->state_sink;
+    impl->state_user = config->state_user;
   }
   if (cpkt_audio_backend_is_process(requested_backend)) {
 #if defined(__linux__)

@@ -39,9 +39,12 @@ struct cpkt_sus_live_run {
   const struct cpkt_sus_live_options *options;
   cpkt_sus_model *model;
   unsigned long current_segment_index;
+  unsigned long pending_rx_segment;
   unsigned long segment_count;
   unsigned long hard_count;
   unsigned long final_count;
+  int pending_rx;
+  int pending_rx_has_segment;
   FILE *summary;
 };
 
@@ -364,9 +367,14 @@ static int cpkt_sus_live_state_sink(const cpkt_audio_vox_state_event *event,
     return 1;
   }
   if (event->state == CPKT_AUDIO_VOX_TX_ON) {
+    run->pending_rx = 0;
+    run->pending_rx_has_segment = 0;
     sprintf(line, "TX segment=%lu threshold=%.3f\n", event->segment_index,
             (double)event->threshold);
   } else if (event->state == CPKT_AUDIO_VOX_TX_OFF) {
+    run->pending_rx = 1;
+    run->pending_rx_has_segment = 1;
+    run->pending_rx_segment = event->segment_index;
     return 0;
   } else if (event->state == CPKT_AUDIO_VOX_HARD_CUT) {
     sprintf(line, "TX hard-cut segment=%lu max_segment_ms=%lu\n",
@@ -440,10 +448,6 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   if (result != CPKT_SUS_OK) {
     return 1;
   }
-  if (!segment->hard_cut) {
-    sprintf(line, "RX segment=%lu\n", segment->segment_index);
-    cpkt_sus_live_emit(run, line);
-  }
   ++run->segment_count;
   if (segment->hard_cut) {
     ++run->hard_count;
@@ -451,6 +455,29 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   if (segment->is_final) {
     ++run->final_count;
   }
+  return 0;
+}
+
+static int cpkt_sus_live_capture_state_sink(
+    const cpkt_audio_capture_state_event *event, void *user) {
+  struct cpkt_sus_live_run *run;
+  char line[80];
+
+  run = (struct cpkt_sus_live_run *)user;
+  if (run == NULL || event == NULL) {
+    return 1;
+  }
+  if (event->state != CPKT_AUDIO_CAPTURE_READY || !run->pending_rx) {
+    return 0;
+  }
+  if (run->pending_rx_has_segment) {
+    sprintf(line, "RX segment=%lu\n", run->pending_rx_segment);
+  } else {
+    sprintf(line, "RX\n");
+  }
+  cpkt_sus_live_emit(run, line);
+  run->pending_rx = 0;
+  run->pending_rx_has_segment = 0;
   return 0;
 }
 
@@ -569,6 +596,8 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   capture_config.backend = opts->backend;
   capture_config.buffer_ms = opts->buffer_ms;
   capture_config.period_ms = opts->period_ms;
+  capture_config.state_sink = cpkt_sus_live_capture_state_sink;
+  capture_config.state_user = &run;
   audio_result = cpkt_audio_capture_open_default(&capture, &capture_config);
   if (audio_result != CPKT_AUDIO_OK) {
     fprintf(stderr, "capture open failed: %s\n",
@@ -613,7 +642,8 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
     }
   }
 
-  cpkt_sus_live_emit(&run, "RX\n");
+  run.pending_rx = 1;
+  run.pending_rx_has_segment = 0;
   if (opts->ptt) {
     cpkt_sus_live_emit(&run, "PTT ready: space/p toggles TX, q quits\n");
   }

@@ -3,6 +3,22 @@
 #include <stdio.h>
 #include <sys/select.h>
 
+static unsigned long ready_count = 0UL;
+static size_t last_ready_frames = 0U;
+
+static int capture_state_sink(const cpkt_audio_capture_state_event *event,
+                              void *user) {
+  (void)user;
+  if (event == NULL) {
+    return 1;
+  }
+  if (event->state == CPKT_AUDIO_CAPTURE_READY) {
+    ++ready_count;
+    last_ready_frames = event->frame_count;
+  }
+  return 0;
+}
+
 static void sleep_ms(unsigned long ms) {
   struct timeval tv;
 
@@ -53,6 +69,8 @@ int main(void) {
   config.backend = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
   config.buffer_ms = 0UL;
   config.period_ms = 0UL;
+  config.state_sink = capture_state_sink;
+  config.state_user = NULL;
 
   result = cpkt_audio_capture_open_default(&capture, &config);
   if (result != CPKT_AUDIO_OK) {
@@ -80,5 +98,9 @@ int main(void) {
   capture->destroy(capture);
 
   printf("first=%d second=%d\n", first_sample, second_sample);
+  if (ready_count < 2UL || last_ready_frames == 0U) {
+    fprintf(stderr, "capture ready event missing\n");
+    return 3;
+  }
   return second_sample > first_sample + 500 ? 0 : 2;
 }
