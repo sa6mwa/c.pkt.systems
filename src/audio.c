@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -47,6 +48,7 @@
 #define CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD 1
 #define CPKT_AUDIO_PROCESS_FRAME_CHUNK 1024U
 #define CPKT_AUDIO_PROCESS_IDLE_RESET_MS 500UL
+#define CPKT_AUDIO_CAPTURE_READY_FRAMES 1600U
 
 struct cpkt_audio_url_source {
   CURLM *multi;
@@ -2419,8 +2421,11 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
     }
     impl->last_read_ms = now_ms;
     total_read = 0U;
-    for (;;) {
-      byte_count = sizeof(bytes);
+    while (total_read < frame_capacity) {
+      byte_count = (frame_capacity - total_read) * 2U;
+      if (byte_count > sizeof(bytes)) {
+        byte_count = sizeof(bytes);
+      }
       if (impl->has_pending_byte) {
         pair[0] = impl->pending_byte;
         got = read(impl->process_fd, pair + 1, 1U);
@@ -2434,12 +2439,7 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
           break;
         }
         sample = (float)cpkt_audio_s16le_to_short(pair) / 32768.0f;
-        if (total_read < frame_capacity) {
-          frames[total_read++] = sample;
-        } else if (frame_capacity > 0U) {
-          memmove(frames, frames + 1U, sizeof(float) * (frame_capacity - 1U));
-          frames[frame_capacity - 1U] = sample;
-        }
+        frames[total_read++] = sample;
         impl->has_pending_byte = 0;
         continue;
       }
@@ -2455,15 +2455,10 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
       }
       byte_count = (size_t)got;
       byte_index = 0U;
-      while (byte_index + 1U < byte_count) {
+      while (byte_index + 1U < byte_count && total_read < frame_capacity) {
         sample =
             (float)cpkt_audio_s16le_to_short(bytes + byte_index) / 32768.0f;
-        if (total_read < frame_capacity) {
-          frames[total_read++] = sample;
-        } else if (frame_capacity > 0U) {
-          memmove(frames, frames + 1U, sizeof(float) * (frame_capacity - 1U));
-          frames[frame_capacity - 1U] = sample;
-        }
+        frames[total_read++] = sample;
         byte_index += 2U;
       }
       if (byte_index < byte_count) {
@@ -2521,6 +2516,7 @@ cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
   cpkt_audio_result process_result;
   fd_set readfds;
   struct timeval tv;
+  int queued_bytes;
   int ready;
 #endif
 
@@ -2554,12 +2550,18 @@ cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
       impl->last_read_ms = cpkt_audio_process_now_ms();
     }
     for (;;) {
+      queued_bytes = 0;
+      if (ioctl(impl->process_fd, FIONREAD, &queued_bytes) == 0 &&
+          queued_bytes >= (int)(CPKT_AUDIO_CAPTURE_READY_FRAMES * 2U)) {
+        return CPKT_AUDIO_OK;
+      }
       FD_ZERO(&readfds);
       FD_SET(impl->process_fd, &readfds);
       tv.tv_sec = 0;
       tv.tv_usec = 10000;
       ready = select(impl->process_fd + 1, &readfds, NULL, NULL, &tv);
-      if (ready > 0 && FD_ISSET(impl->process_fd, &readfds)) {
+      if (ready > 0 && FD_ISSET(impl->process_fd, &readfds) &&
+          CPKT_AUDIO_CAPTURE_READY_FRAMES == 0U) {
         impl->last_read_ms = cpkt_audio_process_now_ms();
         return CPKT_AUDIO_OK;
       }
@@ -2576,7 +2578,7 @@ cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
   }
 
   for (;;) {
-    if (ma_pcm_rb_available_read(&impl->rb) > 0U) {
+    if (ma_pcm_rb_available_read(&impl->rb) >= CPKT_AUDIO_CAPTURE_READY_FRAMES) {
       return CPKT_AUDIO_OK;
     }
     if (cpkt_audio_wait_expired(start_ms, timeout_ms)) {
