@@ -121,7 +121,8 @@ struct cpkt_audio_playback_impl {
   int process_fd;
 #endif
   volatile ma_uint64 pending_frames;
-  ma_uint64 process_frames_written;
+  ma_uint64 turn_frames_written;
+  unsigned long turn_started_ms;
   int mode;
   int device_initialized;
   int rb_initialized;
@@ -2660,7 +2661,8 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
       return process_result;
     }
     impl->started = 1;
-    impl->process_frames_written = 0;
+    impl->turn_frames_written = 0;
+    impl->turn_started_ms = 0UL;
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2672,7 +2674,54 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
   }
   impl->started = 1;
   impl->pending_frames = 0;
+  impl->turn_frames_written = 0;
+  impl->turn_started_ms = 0UL;
   return CPKT_AUDIO_OK;
+}
+
+static void cpkt_audio_playback_note_written(
+    struct cpkt_audio_playback_impl *impl, size_t frame_count) {
+  if (impl == NULL || frame_count == 0U) {
+    return;
+  }
+  if (impl->turn_frames_written == 0U) {
+    impl->turn_started_ms = cpkt_audio_process_now_ms();
+  }
+  impl->turn_frames_written += (ma_uint64)frame_count;
+}
+
+static void cpkt_audio_playback_wait_turn_elapsed(
+    struct cpkt_audio_playback_impl *impl) {
+  ma_uint64 frames_written;
+  unsigned long started_ms;
+  unsigned long now_ms;
+  unsigned long target_ms;
+  unsigned long elapsed_ms;
+  unsigned long wait_ms;
+
+  if (impl == NULL || impl->turn_frames_written == 0U) {
+    return;
+  }
+  frames_written = impl->turn_frames_written;
+  started_ms = impl->turn_started_ms;
+  impl->turn_frames_written = 0U;
+  impl->turn_started_ms = 0UL;
+  if (started_ms == 0UL) {
+    return;
+  }
+  target_ms = (unsigned long)((frames_written * 1000U) / 16000U);
+  if (target_ms == 0UL) {
+    return;
+  }
+  now_ms = cpkt_audio_process_now_ms();
+  if (!cpkt_audio_process_elapsed_ms(now_ms, started_ms, &elapsed_ms)) {
+    return;
+  }
+  if (elapsed_ms >= target_ms) {
+    return;
+  }
+  wait_ms = target_ms - elapsed_ms;
+  ma_sleep((ma_uint32)wait_ms);
 }
 
 static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
@@ -2754,7 +2803,6 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
       total_written += frames_now;
     }
     *frames_written = total_written;
-    impl->process_frames_written += (ma_uint64)total_written;
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2781,14 +2829,13 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
     total_written += chunk;
   }
   *frames_written = total_written;
+  cpkt_audio_playback_note_written(impl, total_written);
   return CPKT_AUDIO_OK;
 }
 
 static cpkt_audio_result
 cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
   struct cpkt_audio_playback_impl *impl;
-  ma_uint64 frames_written;
-  unsigned long wait_ms;
 #if defined(__unix__) || defined(__APPLE__)
   cpkt_audio_result result;
 #endif
@@ -2802,16 +2849,8 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
     if (!impl->started) {
       return CPKT_AUDIO_OK;
     }
-    frames_written = impl->process_frames_written;
     result = cpkt_audio_process_finish(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
-    impl->process_frames_written = 0;
-    if (result == CPKT_AUDIO_OK && frames_written > 0U) {
-      wait_ms = (unsigned long)((frames_written * 1000U) / 16000U);
-      if (wait_ms > 0UL) {
-        ma_sleep((ma_uint32)wait_ms);
-      }
-    }
     return result;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2823,7 +2862,7 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
   while (impl->pending_frames > 0U) {
     ma_sleep(10);
   }
-  ma_sleep(100);
+  cpkt_audio_playback_wait_turn_elapsed(impl);
   return CPKT_AUDIO_OK;
 }
 
@@ -2839,7 +2878,8 @@ cpkt_audio_playback_stop_impl(cpkt_audio_playback *self) {
 #if defined(__unix__) || defined(__APPLE__)
     cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
-    impl->process_frames_written = 0;
+    impl->turn_frames_written = 0U;
+    impl->turn_started_ms = 0UL;
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2849,6 +2889,8 @@ cpkt_audio_playback_stop_impl(cpkt_audio_playback *self) {
     ma_device_stop(&impl->device);
     impl->started = 0;
     impl->pending_frames = 0;
+    impl->turn_frames_written = 0U;
+    impl->turn_started_ms = 0UL;
   }
   return CPKT_AUDIO_OK;
 }
