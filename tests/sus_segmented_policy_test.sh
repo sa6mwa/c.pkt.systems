@@ -52,6 +52,15 @@ require_file_contains "$sus_header" \
 require_file_contains "$sus_header" \
   'Previous audio is never retranscribed; prompt tokens from the previous' \
   'streaming segmented transcription carries prompt tokens instead of audio'
+require_file_contains "$sus_header" \
+  'int preserve_initial_space_after_first_transcriber;' \
+  'model instances expose opt-in cross-transcriber initial-spacing policy'
+require_file_contains "$sus_header" \
+  'reset_transcript_spacing' \
+  'model instances expose reset for cross-transcriber initial-spacing state'
+require_file_contains "$sus_header" \
+  'cpkt_sus_model_reset_transcript_spacing' \
+  'free-function reset wrapper is part of the public API'
 
 require_file_contains "$sus_source" \
   'config->mode == CPKT_SUS_SEGMENT_MODE_CONTINUOUS' \
@@ -87,11 +96,20 @@ require_file_contains "$sus_source" \
   'vox_config.max_spool_bytes = config != NULL ? config->max_spool_bytes : 0UL;' \
   'SUS passes the hard spool cap into cpktaudio VOX'
 require_file_contains "$sus_source" \
-  "impl->revised_length == 0U &&" \
+  "impl->revised_length != 0U" \
   'segmented transcript normalization is scoped to the first emitted text only'
 require_file_contains "$sus_source" \
   "text[0] == ' '" \
   'segmented transcript normalization removes only one absolute initial space'
+require_file_contains "$sus_source" \
+  'preserve_initial_space_after_first_transcriber' \
+  'cross-transcriber initial-spacing policy is stored on the model instance'
+require_file_contains "$sus_source" \
+  'model_impl->segmented_initial_space_seen = 1;' \
+  'first segmented stream consumes the instance-level initial-space trim'
+require_file_contains "$sus_source" \
+  'impl->segmented_initial_space_seen = 0;' \
+  'reset clears the instance-level initial-spacing state'
 require_file_lacks "$sus_source" \
   'cpkt_sus_trim_ascii_space' \
   'segmented transcription must not trim whitespace from every Whisper segment'

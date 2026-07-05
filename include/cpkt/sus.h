@@ -54,6 +54,13 @@ typedef struct cpkt_sus_model_config {
   const char *model_path;
   /** Non-zero requests CPU-only execution when the backend supports it. */
   int cpu_only;
+  /**
+   * Non-zero preserves backend leading-spacing after the first segmented
+   * transcription stream created from this model instance. Zero keeps
+   * compatibility behavior and removes one literal leading space from the
+   * first committed segmented update of every transcriber.
+   */
+  int preserve_initial_space_after_first_transcriber;
 } cpkt_sus_model_config;
 
 /** Compatibility alias for the initial model-open configuration name. */
@@ -116,6 +123,13 @@ typedef struct cpkt_sus_cache_config {
   int offline;
   /** Non-zero requests CPU-only execution when the backend supports it. */
   int cpu_only;
+  /**
+   * Non-zero preserves backend leading-spacing after the first segmented
+   * transcription stream created from this model instance. Zero keeps
+   * compatibility behavior and removes one literal leading space from the
+   * first committed segmented update of every transcriber.
+   */
+  int preserve_initial_space_after_first_transcriber;
   /** Optional cache resolver status sink. */
   cpkt_sus_cache_status_sink status_sink;
   /** User value passed to status_sink. */
@@ -347,6 +361,14 @@ struct cpkt_sus_model {
   cpkt_sus_result (*create_transcriber)(
       cpkt_sus_model *self, cpkt_sus_transcriber **out,
       const cpkt_sus_transcriber_config *config);
+  /**
+   * Resets instance-level segmented transcript spacing state.
+   *
+   * When preserve_initial_space_after_first_transcriber is enabled on the
+   * model config, the next segmented transcriber stream behaves like the first
+   * stream again and removes one absolute initial backend space.
+   */
+  cpkt_sus_result (*reset_transcript_spacing)(cpkt_sus_model *self);
   /** Releases the loaded model and all resources owned by the handle. */
   void (*destroy)(cpkt_sus_model *self);
 };
@@ -451,6 +473,13 @@ cpkt_sus_result
 cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
                                   cpkt_sus_transcriber **out,
                                   const cpkt_sus_transcriber_config *config);
+
+/**
+ * Resets instance-level segmented transcript spacing state.
+ *
+ * This is the free-function wrapper for model->reset_transcript_spacing.
+ */
+cpkt_sus_result cpkt_sus_model_reset_transcript_spacing(cpkt_sus_model *model);
 
 /** Releases strings allocated by cpkt_sus materialized-text helpers. */
 void cpkt_sus_string_free(char *text);

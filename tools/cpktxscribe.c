@@ -680,6 +680,8 @@ static int cpktxscribe_open_model(cpkt_sus_model **out,
     memset(&path_config, 0, sizeof(path_config));
     path_config.model_path = options->model_path;
     path_config.cpu_only = options->cpu_only;
+    path_config.preserve_initial_space_after_first_transcriber =
+        options->capture ? 1 : 0;
     result = cpkt_sus_model_open_path(out, &path_config);
   } else {
     memset(&cache_config, 0, sizeof(cache_config));
@@ -690,6 +692,8 @@ static int cpktxscribe_open_model(cpkt_sus_model **out,
     cache_config.insecure_no_checksum = options->insecure_no_checksum;
     cache_config.offline = options->offline;
     cache_config.cpu_only = options->cpu_only;
+    cache_config.preserve_initial_space_after_first_transcriber =
+        options->capture ? 1 : 0;
     cache_config.status_sink = cpktxscribe_cache_status_sink;
     result = cpkt_sus_model_open_cached(out, &cache_config);
   }

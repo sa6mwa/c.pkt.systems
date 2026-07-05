@@ -26,6 +26,8 @@
 struct cpkt_sus_model_impl {
   struct whisper_context *context;
   int cpu_only;
+  int preserve_initial_space_after_first_transcriber;
+  int segmented_initial_space_seen;
 };
 
 struct cpkt_sus_transcriber_impl {
@@ -781,6 +783,9 @@ cpkt_sus_verify_model_file(const char *path,
   memset(&model_config, 0, sizeof(model_config));
   model_config.model_path = path;
   model_config.cpu_only = config != NULL ? config->cpu_only : 0;
+  model_config.preserve_initial_space_after_first_transcriber =
+      config != NULL ? config->preserve_initial_space_after_first_transcriber
+                     : 0;
   model = NULL;
   result = cpkt_sus_model_open_path(&model, &model_config);
   if (model != NULL) {
@@ -810,6 +815,8 @@ cpkt_sus_open_validated_cached_file(cpkt_sus_model **out, const char *path,
   memset(&model_config, 0, sizeof(model_config));
   model_config.model_path = path;
   model_config.cpu_only = config->cpu_only;
+  model_config.preserve_initial_space_after_first_transcriber =
+      config->preserve_initial_space_after_first_transcriber;
   return cpkt_sus_model_open_path(out, &model_config);
 }
 
@@ -1204,6 +1211,28 @@ static cpkt_sus_result
 cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
                                          const char *text, size_t text_len);
 
+static int
+cpkt_sus_transcriber_should_strip_initial_space(
+    struct cpkt_sus_transcriber_impl *impl) {
+  struct cpkt_sus_model_impl *model_impl;
+
+  if (impl == NULL || impl->revised_length != 0U || impl->model == NULL ||
+      impl->model->impl == NULL) {
+    return 0;
+  }
+
+  model_impl = (struct cpkt_sus_model_impl *)impl->model->impl;
+  if (!model_impl->preserve_initial_space_after_first_transcriber) {
+    return 1;
+  }
+  if (model_impl->segmented_initial_space_seen) {
+    return 0;
+  }
+
+  model_impl->segmented_initial_space_seen = 1;
+  return 1;
+}
+
 static cpkt_sus_result
 cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
                              const cpkt_sus_segmented_config *config,
@@ -1218,8 +1247,8 @@ cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
     return CPKT_SUS_OK;
   }
 
-  if (text != NULL && text_len > 0U && impl->revised_length == 0U &&
-      text[0] == ' ') {
+  if (text != NULL && text_len > 0U && text[0] == ' ' &&
+      cpkt_sus_transcriber_should_strip_initial_space(impl)) {
     ++text;
     --text_len;
   }
@@ -1977,6 +2006,19 @@ static void cpkt_sus_transcriber_destroy_impl(cpkt_sus_transcriber *self) {
   free(self);
 }
 
+static cpkt_sus_result
+cpkt_sus_model_reset_transcript_spacing_impl(cpkt_sus_model *self) {
+  struct cpkt_sus_model_impl *impl;
+
+  if (self == NULL || self->impl == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+
+  impl = (struct cpkt_sus_model_impl *)self->impl;
+  impl->segmented_initial_space_seen = 0;
+  return CPKT_SUS_OK;
+}
+
 static cpkt_sus_result cpkt_sus_model_create_transcriber_impl(
     cpkt_sus_model *self, cpkt_sus_transcriber **out,
     const cpkt_sus_transcriber_config *config) {
@@ -2061,10 +2103,14 @@ cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
     return CPKT_SUS_ERR_MODEL;
   }
   impl->cpu_only = config->cpu_only ? 1 : 0;
+  impl->preserve_initial_space_after_first_transcriber =
+      config->preserve_initial_space_after_first_transcriber ? 1 : 0;
 
   model->impl = impl;
   model->info = cpkt_sus_info_impl;
   model->create_transcriber = cpkt_sus_model_create_transcriber_impl;
+  model->reset_transcript_spacing =
+      cpkt_sus_model_reset_transcript_spacing_impl;
   model->destroy = cpkt_sus_model_destroy_impl;
   *out = model;
   return CPKT_SUS_OK;
@@ -2181,6 +2227,14 @@ cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
     return CPKT_SUS_ERR_ARG;
   }
   return model->create_transcriber(model, out, config);
+}
+
+/** Resets instance-level segmented transcript spacing state. */
+cpkt_sus_result cpkt_sus_model_reset_transcript_spacing(cpkt_sus_model *model) {
+  if (model == NULL || model->reset_transcript_spacing == NULL) {
+    return CPKT_SUS_ERR_ARG;
+  }
+  return model->reset_transcript_spacing(model);
 }
 
 /** Releases strings allocated by materialized transcription helpers. */
