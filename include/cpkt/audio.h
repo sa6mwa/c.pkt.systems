@@ -290,7 +290,7 @@ typedef int (*cpkt_audio_vox_state_sink)(
 
 /** VOX construction options. Zero initializes to speech-friendly defaults. */
 typedef struct cpkt_audio_vox_config {
-  /** RMS power threshold that opens or keeps VOX active. Zero selects 0.01. */
+  /** RMS power threshold that opens or keeps VOX active. Zero selects 0.06. */
   float threshold;
   /** Silence duration that releases VOX. Zero selects 1500 ms. */
   unsigned long release_silence_ms;

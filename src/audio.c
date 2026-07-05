@@ -3648,7 +3648,7 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   impl->frame_capacity = memory_spool_frames;
   impl->prebuffer_capacity = prebuffer_frames;
   impl->max_spool_frames = max_spool_frames;
-  impl->threshold = config->threshold > 0.0f ? config->threshold : 0.01f;
+  impl->threshold = config->threshold > 0.0f ? config->threshold : 0.06f;
 
   vox->impl = impl;
   vox->push_f32_mono_16k = cpkt_audio_vox_push_f32_mono_16k_impl;
