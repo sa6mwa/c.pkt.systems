@@ -75,15 +75,18 @@ require_contains(
     "public cache config documents network access as cache-only",
 )
 
-open_path = function_body("cpkt_sus_model_open_path")
+open_path = function_body("cpkt_sus_open_path")
 compat_open = function_body("cpkt_sus_open_model")
-open_cached = function_body("cpkt_sus_model_open_cached")
+compat_model_open = function_body("cpkt_sus_model_open_path")
+open_cached = function_body("cpkt_sus_open_cached")
+compat_model_cached = function_body("cpkt_sus_model_open_cached")
 download_to_file = function_body("cpkt_sus_download_to_file")
 fetch_cached_file = function_body("cpkt_sus_fetch_cached_file")
 
 for name, body in (
-    ("cpkt_sus_model_open_path", open_path),
+    ("cpkt_sus_open_path", open_path),
     ("cpkt_sus_open_model", compat_open),
+    ("cpkt_sus_model_open_path", compat_model_open),
 ):
     require_lacks(body, "curl_", f"{name} must not call libcurl")
     require_lacks(
@@ -100,8 +103,13 @@ for name, body in (
 
 require_contains(
     compat_open,
-    "return cpkt_sus_model_open_path((cpkt_sus_model **)out, config);",
-    "compatibility constructor remains a direct path-open wrapper",
+    "return cpkt_sus_open_path(out, config);",
+    "compatibility constructor remains a direct preferred path-open wrapper",
+)
+require_contains(
+    compat_model_open,
+    "return cpkt_sus_open_path((cpkt_sus **)out, (const cpkt_sus_config *)config);",
+    "model compatibility constructor remains a direct preferred path-open wrapper",
 )
 require_contains(
     open_path,
@@ -139,9 +147,11 @@ for needle in ("curl_global_init", "curl_easy_perform"):
     )
 
 for name, body in (
-    ("cpkt_sus_model_open_path", open_path),
+    ("cpkt_sus_open_path", open_path),
     ("cpkt_sus_open_model", compat_open),
-    ("cpkt_sus_model_open_cached", open_cached),
+    ("cpkt_sus_model_open_path", compat_model_open),
+    ("cpkt_sus_open_cached", open_cached),
+    ("cpkt_sus_model_open_cached", compat_model_cached),
     ("cpkt_sus_fetch_cached_file", fetch_cached_file),
 ):
     require_lacks(

@@ -21,7 +21,7 @@ paths = [
 patterns = [
     (
         re.compile(r"\bmodel->open_cached\s*\("),
-        "cached model opening is a constructor; use cpkt_sus_model_open_cached",
+        "cached speech instance opening is a constructor; use cpkt_sus_open_cached",
     ),
     (
         re.compile(r"\bcpkt_audio_decoder_(?:read_f32_mono_16k|info|destroy)\s*\("),
@@ -44,8 +44,16 @@ patterns = [
         "playback handle operations in docs/examples must use playback->method",
     ),
     (
-        re.compile(r"\bcpkt_sus_model_(?:info|create_transcriber|destroy)\s*\("),
-        "model handle operations in docs/examples must use model->method",
+        re.compile(r"\bcpkt_sus_model_(?:open_path|open_cached|info|create_transcriber|destroy)\s*\("),
+        "docs/examples must use the cpkt_sus instance API",
+    ),
+    (
+        re.compile(r"\bcpkt_sus_model\s+\*"),
+        "docs/examples must name the speech facade instance cpkt_sus",
+    ),
+    (
+        re.compile(r"\bcpkt_sus_model_config\b"),
+        "docs/examples must use cpkt_sus_config for path-open config",
     ),
     (
         re.compile(

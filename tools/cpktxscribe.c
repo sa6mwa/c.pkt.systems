@@ -64,7 +64,7 @@ struct cpktxscribe_stream {
 
 struct cpktxscribe_capture_run {
   const struct cpktxscribe_options *options;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   struct cpktxscribe_stream *stream;
 };
 
@@ -658,7 +658,7 @@ static int cpktxscribe_open_audio(cpkt_audio_decoder **out,
 static void cpktxscribe_fill_transcriber_config(
     cpkt_sus_transcriber_config *config,
     const struct cpktxscribe_options *options) {
-  memset(config, 0, sizeof(*config));
+  cpkt_sus_transcriber_config_default(config);
   config->threads = (int)options->threads;
   config->cpu_only = options->cpu_only;
   config->language = options->language;
@@ -670,21 +670,21 @@ static void cpktxscribe_fill_transcriber_config(
   }
 }
 
-static int cpktxscribe_open_model(cpkt_sus_model **out,
-                                  const struct cpktxscribe_options *options) {
-  cpkt_sus_model_config path_config;
+static int cpktxscribe_open_sus(cpkt_sus **out,
+                                const struct cpktxscribe_options *options) {
+  cpkt_sus_config path_config;
   cpkt_sus_cache_config cache_config;
   cpkt_sus_result result;
 
   if (options->model_path != NULL) {
-    memset(&path_config, 0, sizeof(path_config));
+    cpkt_sus_config_default(&path_config);
     path_config.model_path = options->model_path;
     path_config.cpu_only = options->cpu_only;
     path_config.preserve_initial_space_after_first_transcriber =
         options->capture ? 1 : 0;
-    result = cpkt_sus_model_open_path(out, &path_config);
+    result = cpkt_sus_open_path(out, &path_config);
   } else {
-    memset(&cache_config, 0, sizeof(cache_config));
+    cpkt_sus_cache_config_default(&cache_config);
     cache_config.model = options->model;
     cache_config.cache_dir = options->cache_dir;
     cache_config.sha256 = options->sha256;
@@ -695,7 +695,7 @@ static int cpktxscribe_open_model(cpkt_sus_model **out,
     cache_config.preserve_initial_space_after_first_transcriber =
         options->capture ? 1 : 0;
     cache_config.status_sink = cpktxscribe_cache_status_sink;
-    result = cpkt_sus_model_open_cached(out, &cache_config);
+    result = cpkt_sus_open_cached(out, &cache_config);
   }
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "model open failed: %s\n", cpkt_sus_result_string(result));
@@ -713,7 +713,7 @@ static int cpktxscribe_capture_segment_sink(cpkt_audio_vox_segment *segment,
   cpkt_sus_result result;
 
   run = (struct cpktxscribe_capture_run *)user;
-  if (run == NULL || run->model == NULL || run->stream == NULL ||
+  if (run == NULL || run->sus == NULL || run->stream == NULL ||
       segment == NULL) {
     return 1;
   }
@@ -728,13 +728,13 @@ static int cpktxscribe_capture_segment_sink(cpkt_audio_vox_segment *segment,
 
   transcriber = NULL;
   cpktxscribe_fill_transcriber_config(&transcriber_config, run->options);
-  result = run->model->create_transcriber(run->model, &transcriber,
-                                          &transcriber_config);
+  result = run->sus->create_transcriber(run->sus, &transcriber,
+                                        &transcriber_config);
   if (result != CPKT_SUS_OK) {
     return 1;
   }
 
-  memset(&segmented_config, 0, sizeof(segmented_config));
+  cpkt_sus_segmented_config_default(&segmented_config);
   segmented_config.keep_context = -1;
   segmented_config.audio_ctx = run->options->audio_ctx;
   segmented_config.max_tokens = run->options->max_tokens;
@@ -748,7 +748,7 @@ static int cpktxscribe_capture_segment_sink(cpkt_audio_vox_segment *segment,
 }
 
 static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
-                                   cpkt_sus_model *model,
+                                   cpkt_sus *sus,
                                    struct cpktxscribe_stream *stream) {
   cpkt_audio_capture *capture;
   cpkt_audio_vox *vox;
@@ -766,7 +766,7 @@ static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
   rc = 1;
   memset(&run, 0, sizeof(run));
   run.options = options;
-  run.model = model;
+  run.sus = sus;
   run.stream = stream;
 
   memset(&capture_config, 0, sizeof(capture_config));
@@ -861,7 +861,7 @@ cleanup:
 
 static int cpktxscribe_run(const struct cpktxscribe_options *options) {
   cpkt_audio_decoder *decoder;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config transcriber_config;
   cpkt_sus_segmented_config segmented_config;
@@ -870,7 +870,7 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
   int rc;
 
   decoder = NULL;
-  model = NULL;
+  sus = NULL;
   transcriber = NULL;
   rc = 1;
   memset(&stream, 0, sizeof(stream));
@@ -890,11 +890,11 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
             options->length_ms, options->read_frames, options->cpu_only);
   }
 
-  if (!cpktxscribe_open_model(&model, options)) {
+  if (!cpktxscribe_open_sus(&sus, options)) {
     goto cleanup;
   }
   if (options->capture) {
-    rc = cpktxscribe_run_capture(options, model, &stream);
+    rc = cpktxscribe_run_capture(options, sus, &stream);
     goto finish_output;
   }
   if (!cpktxscribe_open_audio(&decoder, options)) {
@@ -902,14 +902,14 @@ static int cpktxscribe_run(const struct cpktxscribe_options *options) {
   }
 
   cpktxscribe_fill_transcriber_config(&transcriber_config, options);
-  result = model->create_transcriber(model, &transcriber, &transcriber_config);
+  result = sus->create_transcriber(sus, &transcriber, &transcriber_config);
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "transcriber create failed: %s\n",
             cpkt_sus_result_string(result));
     goto cleanup;
   }
 
-  memset(&segmented_config, 0, sizeof(segmented_config));
+  cpkt_sus_segmented_config_default(&segmented_config);
   segmented_config.mode = options->segment_mode;
   segmented_config.read_frames = options->read_frames;
   segmented_config.length_ms = options->length_ms;
@@ -949,8 +949,8 @@ cleanup:
   if (transcriber != NULL) {
     transcriber->destroy(transcriber);
   }
-  if (model != NULL) {
-    model->destroy(model);
+  if (sus != NULL) {
+    sus->destroy(sus);
   }
   if (decoder != NULL) {
     decoder->destroy(decoder);

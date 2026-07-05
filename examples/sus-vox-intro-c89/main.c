@@ -266,23 +266,23 @@ static int cpkt_sus_vox_open_audio(cpkt_audio_decoder **out,
   return 1;
 }
 
-static int cpkt_sus_vox_open_model(cpkt_sus_model **out,
-                                   const struct cpkt_sus_vox_options *options) {
-  cpkt_sus_model_config path_config;
+static int cpkt_sus_vox_open_sus(cpkt_sus **out,
+                                 const struct cpkt_sus_vox_options *options) {
+  cpkt_sus_config path_config;
   cpkt_sus_cache_config cache_config;
   cpkt_sus_result result;
 
   if (options->model_path != NULL) {
-    memset(&path_config, 0, sizeof(path_config));
+    cpkt_sus_config_default(&path_config);
     path_config.model_path = options->model_path;
     path_config.cpu_only = options->cpu_only;
-    result = cpkt_sus_model_open_path(out, &path_config);
+    result = cpkt_sus_open_path(out, &path_config);
   } else {
-    memset(&cache_config, 0, sizeof(cache_config));
+    cpkt_sus_cache_config_default(&cache_config);
     cache_config.model = options->model;
     cache_config.cache_dir = options->cache_dir;
     cache_config.cpu_only = options->cpu_only;
-    result = cpkt_sus_model_open_cached(out, &cache_config);
+    result = cpkt_sus_open_cached(out, &cache_config);
   }
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "model open failed: %s\n", cpkt_sus_result_string(result));
@@ -293,7 +293,7 @@ static int cpkt_sus_vox_open_model(cpkt_sus_model **out,
 
 static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
   cpkt_audio_decoder *decoder;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config transcriber_config;
   cpkt_sus_segmented_config segmented_config;
@@ -303,7 +303,7 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
   int rc;
 
   decoder = NULL;
-  model = NULL;
+  sus = NULL;
   transcriber = NULL;
   final_text = NULL;
   rc = 1;
@@ -330,22 +330,22 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
   if (!cpkt_sus_vox_open_audio(&decoder, options)) {
     goto cleanup;
   }
-  if (!cpkt_sus_vox_open_model(&model, options)) {
+  if (!cpkt_sus_vox_open_sus(&sus, options)) {
     goto cleanup;
   }
 
-  memset(&transcriber_config, 0, sizeof(transcriber_config));
+  cpkt_sus_transcriber_config_default(&transcriber_config);
   transcriber_config.language = options->language;
   transcriber_config.cpu_only = options->cpu_only;
   transcriber_config.progress_sink = cpkt_sus_vox_progress_sink;
-  result = model->create_transcriber(model, &transcriber, &transcriber_config);
+  result = sus->create_transcriber(sus, &transcriber, &transcriber_config);
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "transcriber create failed: %s\n",
             cpkt_sus_result_string(result));
     goto cleanup;
   }
 
-  memset(&segmented_config, 0, sizeof(segmented_config));
+  cpkt_sus_segmented_config_default(&segmented_config);
   segmented_config.mode = options->segment_mode;
   segmented_config.read_frames = options->read_frames;
   segmented_config.length_ms = options->budget_ms;
@@ -435,8 +435,8 @@ cleanup:
   if (transcriber != NULL) {
     transcriber->destroy(transcriber);
   }
-  if (model != NULL) {
-    model->destroy(model);
+  if (sus != NULL) {
+    sus->destroy(sus);
   }
   if (decoder != NULL) {
     decoder->destroy(decoder);

@@ -232,7 +232,7 @@ static int cpkt_sus_test_open_audio_decoder(cpkt_audio_decoder **out,
 }
 
 static void cpkt_sus_test_segmented_config(cpkt_sus_segmented_config *config) {
-  memset(config, 0, sizeof(*config));
+  cpkt_sus_segmented_config_default(config);
   config->read_frames = cpkt_sus_test_env_ulong(
       "CPKT_SUS_INTEGRATION_SEGMENTED_READ_FRAMES", CPKT_SUS_TEST_READ_FRAMES);
   config->step_ms =
@@ -442,9 +442,9 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
+static int cpkt_sus_test_open_sus(cpkt_sus **out) {
   const char *model_path;
-  cpkt_sus_model_config path_config;
+  cpkt_sus_config path_config;
   cpkt_sus_cache_config cache_config;
   const char *cached_model;
   const char *cache_dir;
@@ -453,11 +453,11 @@ static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
 
   model_path = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_MODEL_PATH");
   if (model_path != NULL) {
-    memset(&path_config, 0, sizeof(path_config));
+    cpkt_sus_config_default(&path_config);
     path_config.model_path = model_path;
     path_config.cpu_only =
         cpkt_sus_test_env("CPKT_SUS_INTEGRATION_CPU_ONLY") != NULL ? 1 : 0;
-    return cpkt_sus_model_open_path(out, &path_config) == CPKT_SUS_OK ? 0 : 1;
+    return cpkt_sus_open_path(out, &path_config) == CPKT_SUS_OK ? 0 : 1;
   }
 
   if (cpkt_sus_test_env("CPKT_SUS_INTEGRATION_OPEN_CACHED") == NULL) {
@@ -466,7 +466,7 @@ static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
     return 77;
   }
 
-  memset(&cache_config, 0, sizeof(cache_config));
+  cpkt_sus_cache_config_default(&cache_config);
   cached_model = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_MODEL");
   cache_dir = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_CACHE_DIR");
   sha256 = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_SHA256");
@@ -477,10 +477,10 @@ static int cpkt_sus_test_open_model(cpkt_sus_model **out) {
   cache_config.source_url = source_url;
   cache_config.cpu_only =
       cpkt_sus_test_env("CPKT_SUS_INTEGRATION_CPU_ONLY") != NULL ? 1 : 0;
-  return cpkt_sus_model_open_cached(out, &cache_config) == CPKT_SUS_OK ? 0 : 1;
+  return cpkt_sus_open_cached(out, &cache_config) == CPKT_SUS_OK ? 0 : 1;
 }
 
-static int cpkt_sus_test_run_segmented(cpkt_sus_model *model,
+static int cpkt_sus_test_run_segmented(cpkt_sus *sus,
                                       const char *audio_path,
                                       const char *audio_url,
                                       struct cpkt_sus_test_segmented_events *events,
@@ -502,11 +502,11 @@ static int cpkt_sus_test_run_segmented(cpkt_sus_model *model,
     goto cleanup;
   }
 
-  memset(&config, 0, sizeof(config));
+  cpkt_sus_transcriber_config_default(&config);
   config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
   config.progress_sink = cpkt_sus_test_progress_sink;
   config.progress_user = progress;
-  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+  if (sus->create_transcriber(sus, &transcriber, &config) != CPKT_SUS_OK) {
     fprintf(stderr, "failed to create segmented transcriber\n");
     goto cleanup;
   }
@@ -555,7 +555,7 @@ cpkt_sus_test_direct_vox_transcribe_sink(cpkt_audio_vox_segment *segment,
 }
 
 static int cpkt_sus_test_run_direct_vox_segmented(
-    cpkt_sus_model *model, const char *audio_path, const char *audio_url,
+    cpkt_sus *sus, const char *audio_path, const char *audio_url,
     struct cpkt_sus_test_segmented_events *events, char **text_out) {
   cpkt_audio_decoder *decoder;
   cpkt_audio_vox *vox;
@@ -581,10 +581,10 @@ static int cpkt_sus_test_run_direct_vox_segmented(
     goto cleanup;
   }
 
-  memset(&transcriber_config, 0, sizeof(transcriber_config));
+  cpkt_sus_transcriber_config_default(&transcriber_config);
   transcriber_config.language =
       cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
-  if (model->create_transcriber(model, &transcriber, &transcriber_config) !=
+  if (sus->create_transcriber(sus, &transcriber, &transcriber_config) !=
       CPKT_SUS_OK) {
     fprintf(stderr, "failed to create direct VOX transcriber\n");
     goto cleanup;
@@ -672,7 +672,7 @@ cleanup:
 }
 
 static int cpkt_sus_test_run_segmented_exact_step_final_event(
-    cpkt_sus_model *model) {
+    cpkt_sus *sus) {
   struct cpkt_sus_test_exact_step_decoder decoder_state;
   struct cpkt_sus_test_segmented_events events;
   cpkt_sus_transcriber *transcriber;
@@ -691,13 +691,13 @@ static int cpkt_sus_test_run_segmented_exact_step_final_event(
   transcriber = NULL;
   rc = 1;
 
-  memset(&config, 0, sizeof(config));
+  cpkt_sus_transcriber_config_default(&config);
   config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
-  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+  if (sus->create_transcriber(sus, &transcriber, &config) != CPKT_SUS_OK) {
     goto cleanup;
   }
 
-  memset(&segmented_config, 0, sizeof(segmented_config));
+  cpkt_sus_segmented_config_default(&segmented_config);
   segmented_config.read_frames = CPKT_SUS_TEST_READ_FRAMES;
   segmented_config.step_ms = 1000UL;
   segmented_config.length_ms = 1000UL;
@@ -723,7 +723,7 @@ cleanup:
 }
 
 static int cpkt_sus_test_run_segmented_callback_failure(
-    cpkt_sus_model *model, const char *audio_path, const char *audio_url) {
+    cpkt_sus *sus, const char *audio_path, const char *audio_url) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
@@ -741,9 +741,9 @@ static int cpkt_sus_test_run_segmented_callback_failure(
     goto cleanup;
   }
 
-  memset(&config, 0, sizeof(config));
+  cpkt_sus_transcriber_config_default(&config);
   config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
-  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+  if (sus->create_transcriber(sus, &transcriber, &config) != CPKT_SUS_OK) {
     goto cleanup;
   }
 
@@ -768,7 +768,7 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_run_segmented_abort(cpkt_sus_model *model,
+static int cpkt_sus_test_run_segmented_abort(cpkt_sus *sus,
                                             const char *audio_path,
                                             const char *audio_url) {
   cpkt_audio_decoder *decoder;
@@ -788,11 +788,11 @@ static int cpkt_sus_test_run_segmented_abort(cpkt_sus_model *model,
     goto cleanup;
   }
 
-  memset(&config, 0, sizeof(config));
+  cpkt_sus_transcriber_config_default(&config);
   config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
   config.abort = cpkt_sus_test_abort_now;
   config.abort_user = &abort_count;
-  if (model->create_transcriber(model, &transcriber, &config) != CPKT_SUS_OK) {
+  if (sus->create_transcriber(sus, &transcriber, &config) != CPKT_SUS_OK) {
     goto cleanup;
   }
 
@@ -816,7 +816,7 @@ cleanup:
 }
 
 int main(void) {
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   struct cpkt_sus_test_segmented_events events;
   struct cpkt_sus_test_segmented_events direct_events;
   struct cpkt_sus_test_progress progress;
@@ -851,12 +851,12 @@ int main(void) {
     return 3;
   }
 
-  model = NULL;
-  open_result = cpkt_sus_test_open_model(&model);
+  sus = NULL;
+  open_result = cpkt_sus_test_open_sus(&sus);
   if (open_result == 77) {
     return 0;
   }
-  if (open_result != 0 || model == NULL) {
+  if (open_result != 0 || sus == NULL) {
     fprintf(stderr, "failed to open integration model\n");
     return 4;
   }
@@ -868,7 +868,7 @@ int main(void) {
   text = NULL;
   rc = 1;
 
-  if (cpkt_sus_test_run_segmented(model, audio_path, audio_url, &events,
+  if (cpkt_sus_test_run_segmented(sus, audio_path, audio_url, &events,
                                  &progress, &text) != 0) {
     fprintf(stderr, "segmented audio transcription failed\n");
     goto cleanup;
@@ -913,7 +913,7 @@ int main(void) {
   text = NULL;
   memset(&direct_events, 0, sizeof(direct_events));
   direct_events.expected = expected;
-  if (cpkt_sus_test_run_direct_vox_segmented(model, audio_path, audio_url,
+  if (cpkt_sus_test_run_direct_vox_segmented(sus, audio_path, audio_url,
                                              &direct_events, &text) != 0) {
     fprintf(stderr, "direct VOX segment transcription failed\n");
     goto cleanup;
@@ -948,18 +948,18 @@ int main(void) {
     goto cleanup;
   }
 
-  if (cpkt_sus_test_run_segmented_callback_failure(model, audio_path,
+  if (cpkt_sus_test_run_segmented_callback_failure(sus, audio_path,
                                                   audio_url) != 0) {
     fprintf(stderr, "segmented callback failure transcription failed\n");
     goto cleanup;
   }
 
-  if (cpkt_sus_test_run_segmented_abort(model, audio_path, audio_url) != 0) {
+  if (cpkt_sus_test_run_segmented_abort(sus, audio_path, audio_url) != 0) {
     fprintf(stderr, "segmented abort transcription failed\n");
     goto cleanup;
   }
 
-  if (cpkt_sus_test_run_segmented_exact_step_final_event(model) != 0) {
+  if (cpkt_sus_test_run_segmented_exact_step_final_event(sus) != 0) {
     fprintf(stderr, "exact-step segmented final event test failed\n");
     goto cleanup;
   }
@@ -968,8 +968,8 @@ int main(void) {
 
 cleanup:
   cpkt_sus_string_free(text);
-  if (model != NULL) {
-    model->destroy(model);
+  if (sus != NULL) {
+    sus->destroy(sus);
   }
   return rc;
 }

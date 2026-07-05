@@ -5,8 +5,10 @@
 extern "C" {
 #endif
 
-/** Handle for a loaded speech model. */
-typedef struct cpkt_sus_model cpkt_sus_model;
+/** Receiver instance for one loaded speech model and its facade state. */
+typedef struct cpkt_sus cpkt_sus;
+/** Compatibility name for the loaded speech facade instance. */
+typedef cpkt_sus cpkt_sus_model;
 /** Handle for a transcription instance bound to a loaded model. */
 typedef struct cpkt_sus_transcriber cpkt_sus_transcriber;
 /** Opaque audio decoder handle accepted by audio streaming helpers. */
@@ -19,9 +21,6 @@ typedef struct cpkt_audio_decoder cpkt_audio_decoder;
 /** Pullable audio VOX segment accepted by speech streaming helpers. */
 typedef struct cpkt_audio_vox_segment cpkt_audio_vox_segment;
 #endif
-/** Compatibility alias for the initial combined model handle name. */
-typedef cpkt_sus_model cpkt_sus;
-
 /** Result codes returned by the speech facade. */
 typedef enum cpkt_sus_result {
   /** Operation completed successfully. */
@@ -48,8 +47,8 @@ typedef enum cpkt_sus_result {
   CPKT_SUS_ABORTED = 10
 } cpkt_sus_result;
 
-/** Speech model construction options. */
-typedef struct cpkt_sus_model_config {
+/** Speech facade construction options for opening a model path. */
+typedef struct cpkt_sus_config {
   /** Path to a model file on disk. */
   const char *model_path;
   /** Non-zero requests CPU-only execution when the backend supports it. */
@@ -61,10 +60,10 @@ typedef struct cpkt_sus_model_config {
    * first committed segmented update of every transcriber.
    */
   int preserve_initial_space_after_first_transcriber;
-} cpkt_sus_model_config;
+} cpkt_sus_config;
 
-/** Compatibility alias for the initial model-open configuration name. */
-typedef cpkt_sus_model_config cpkt_sus_config;
+/** Compatibility name for the path-open construction options. */
+typedef cpkt_sus_config cpkt_sus_model_config;
 
 /** Cache resolver status phases emitted while opening cached models. */
 typedef enum cpkt_sus_cache_status_phase {
@@ -201,7 +200,7 @@ typedef void (*cpkt_sus_log_sink)(const cpkt_sus_log_event *event, void *user);
 
 /** Read-only curated cached-model catalog entry. */
 typedef struct cpkt_sus_model_entry {
-  /** Stable public model name accepted by cpkt_sus_model_open_cached. */
+  /** Stable public model name accepted by cpkt_sus_open_cached. */
   const char *name;
   /** Provider and repository identifier for the model artifact. */
   const char *provider;
@@ -351,26 +350,26 @@ typedef struct cpkt_sus_segmented_config {
   void *segmented_user;
 } cpkt_sus_segmented_config;
 
-/** Receiver shell for loaded model operations. */
-struct cpkt_sus_model {
+/** Receiver shell for speech facade instance operations. */
+struct cpkt_sus {
   /** Private implementation pointer. Callers must not inspect or modify it. */
   void *impl;
   /** Fills info with backend and execution details for this instance. */
-  cpkt_sus_result (*info)(const cpkt_sus_model *self, cpkt_sus_info *info);
-  /** Creates a transcriber bound to this model. */
+  cpkt_sus_result (*info)(const cpkt_sus *self, cpkt_sus_info *info);
+  /** Creates a transcriber bound to this instance. */
   cpkt_sus_result (*create_transcriber)(
-      cpkt_sus_model *self, cpkt_sus_transcriber **out,
+      cpkt_sus *self, cpkt_sus_transcriber **out,
       const cpkt_sus_transcriber_config *config);
   /**
    * Resets instance-level segmented transcript spacing state.
    *
    * When preserve_initial_space_after_first_transcriber is enabled on the
-   * model config, the next segmented transcriber stream behaves like the first
-   * stream again and removes one absolute initial backend space.
+   * instance config, the next segmented transcriber stream behaves like the
+   * first stream again and removes one absolute initial backend space.
    */
-  cpkt_sus_result (*reset_transcript_spacing)(cpkt_sus_model *self);
-  /** Releases the loaded model and all resources owned by the handle. */
-  void (*destroy)(cpkt_sus_model *self);
+  cpkt_sus_result (*reset_transcript_spacing)(cpkt_sus *self);
+  /** Releases the loaded model and all resources owned by the instance. */
+  void (*destroy)(cpkt_sus *self);
 };
 
 /** Receiver shell for transcription operations. */
@@ -437,10 +436,38 @@ struct cpkt_sus_transcriber {
    * must release *text_out with cpkt_sus_string_free.
    */
   cpkt_sus_result (*revised_text)(cpkt_sus_transcriber *self, char **text_out);
-  /** Releases the transcriber. The loaded model remains owned by its model
-   * handle. */
+  /** Releases the transcriber. The loaded model remains owned by its cpkt_sus
+   * instance. */
   void (*destroy)(cpkt_sus_transcriber *self);
 };
+
+/**
+ * Initializes path-open config with documented defaults.
+ *
+ * Passing NULL is allowed and has no effect.
+ */
+void cpkt_sus_config_default(cpkt_sus_config *config);
+
+/**
+ * Initializes cache-open config with documented defaults.
+ *
+ * Passing NULL is allowed and has no effect.
+ */
+void cpkt_sus_cache_config_default(cpkt_sus_cache_config *config);
+
+/**
+ * Initializes transcriber config with documented defaults.
+ *
+ * Passing NULL is allowed and has no effect.
+ */
+void cpkt_sus_transcriber_config_default(cpkt_sus_transcriber_config *config);
+
+/**
+ * Initializes segmented transcription config with documented defaults.
+ *
+ * Passing NULL is allowed and has no effect.
+ */
+void cpkt_sus_segmented_config_default(cpkt_sus_segmented_config *config);
 
 /**
  * Opens a speech facade instance from a model path.
@@ -448,10 +475,14 @@ struct cpkt_sus_transcriber {
  * On success, *out receives a handle that must be destroyed with its destroy
  * receiver. On failure, *out is set to NULL when out is non-NULL.
  */
+cpkt_sus_result cpkt_sus_open_path(cpkt_sus **out,
+                                   const cpkt_sus_config *config);
+
+/** Compatibility wrapper for cpkt_sus_open_path. */
 cpkt_sus_result cpkt_sus_open_model(cpkt_sus **out,
                                     const cpkt_sus_config *config);
 
-/** Opens a speech model from an explicit model path without network access. */
+/** Compatibility wrapper for cpkt_sus_open_path. */
 cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
                                          const cpkt_sus_model_config *config);
 
@@ -465,10 +496,19 @@ cpkt_sus_result cpkt_sus_model_open_path(cpkt_sus_model **out,
  * unless offline is non-zero. source_url may override the curated URL, but the
  * checksum rules still apply.
  */
+cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
+                                     const cpkt_sus_cache_config *config);
+
+/** Compatibility wrapper for cpkt_sus_open_cached. */
 cpkt_sus_result cpkt_sus_model_open_cached(cpkt_sus_model **out,
                                            const cpkt_sus_cache_config *config);
 
-/** Creates a transcriber bound to an opened model. */
+/** Creates a transcriber bound to an opened instance. */
+cpkt_sus_result cpkt_sus_create_transcriber(
+    cpkt_sus *sus, cpkt_sus_transcriber **out,
+    const cpkt_sus_transcriber_config *config);
+
+/** Compatibility wrapper for cpkt_sus_create_transcriber. */
 cpkt_sus_result
 cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
                                   cpkt_sus_transcriber **out,
@@ -477,8 +517,11 @@ cpkt_sus_model_create_transcriber(cpkt_sus_model *model,
 /**
  * Resets instance-level segmented transcript spacing state.
  *
- * This is the free-function wrapper for model->reset_transcript_spacing.
+ * This is the free-function wrapper for sus->reset_transcript_spacing.
  */
+cpkt_sus_result cpkt_sus_reset_transcript_spacing(cpkt_sus *sus);
+
+/** Compatibility wrapper for cpkt_sus_reset_transcript_spacing. */
 cpkt_sus_result cpkt_sus_model_reset_transcript_spacing(cpkt_sus_model *model);
 
 /** Releases strings allocated by cpkt_sus materialized-text helpers. */

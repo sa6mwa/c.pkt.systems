@@ -354,15 +354,20 @@ miniaudio's built-in encoder surface or a deliberate dependency expansion.
 
 ### Handles
 
-- `cpkt_sus_model`
+- `cpkt_sus`
 - `cpkt_sus_transcriber`
+
+`cpkt_sus` is the overarching speech facade instance. Each instance owns one
+loaded whisper model and instance-level facade state such as transcript spacing
+policy. The instance creates transcriber sessions. `cpkt_sus_model` names are
+compatibility names only and are not the preferred public DX.
 
 ### Common Types
 
 Expected public types:
 
 - `cpkt_sus_result`
-- `cpkt_sus_model_config`
+- `cpkt_sus_config`
 - `cpkt_sus_cache_config`
 - `cpkt_sus_cache_status_event`
 - `cpkt_sus_cache_status_sink`
@@ -371,6 +376,14 @@ Expected public types:
 - `cpkt_sus_segment_sink`
 - `cpkt_sus_progress_sink`
 - `cpkt_sus_abort_fn`
+
+Public config structs must be initialized through their default helpers before
+field overrides:
+
+- `cpkt_sus_config_default`
+- `cpkt_sus_cache_config_default`
+- `cpkt_sus_transcriber_config_default`
+- `cpkt_sus_segmented_config_default`
 
 ### Model Loading
 
@@ -493,7 +506,7 @@ Push-to-talk is the caller-driven sibling to VOX for live capture use:
 
 Initial transcription options should expose only stable, high-value knobs:
 
-- model handle;
+- `cpkt_sus` instance;
 - thread count;
 - `cpu_only`, default `0`, which forces `whisper_context_params.use_gpu = false`
   at runtime even when Vulkan or CUDA is compiled in later. In the first
@@ -621,8 +634,9 @@ Compatibility aliases:
 For example:
 
 ```c
+cpkt_sus_cache_config_default(&config);
 config.model = "small.sv";
-cpkt_sus_model_open_cached(&model, &config);
+cpkt_sus_open_cached(&sus, &config);
 ```
 
 This should select KBLab's Swedish-optimized GGML model, not its Transformers,

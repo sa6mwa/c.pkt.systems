@@ -74,10 +74,25 @@ cat > "$work_root/sus_header_c89.c" <<'EOF'
 #include <cpkt/sus.h>
 
 int main(void) {
+  cpkt_sus_config config;
+  cpkt_sus_cache_config cache_config;
   cpkt_sus_transcriber_config transcriber_config;
   cpkt_sus_segmented_config segmented_config;
   cpkt_sus_segmented_event event;
   cpkt_sus_model_entry entry;
+
+  cpkt_sus_config_default(&config);
+  cpkt_sus_cache_config_default(&cache_config);
+  cpkt_sus_transcriber_config_default(&transcriber_config);
+  cpkt_sus_segmented_config_default(&segmented_config);
+
+  config.model_path = "model.bin";
+  config.cpu_only = 1;
+  config.preserve_initial_space_after_first_transcriber = 1;
+
+  cache_config.model = "tiny";
+  cache_config.cpu_only = 1;
+  cache_config.preserve_initial_space_after_first_transcriber = 1;
 
   transcriber_config.threads = 1;
   transcriber_config.cpu_only = 1;
@@ -128,14 +143,19 @@ int main(void) {
   if (sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
     return 1;
   }
+  if (sizeof(((cpkt_sus *)0)->create_transcriber) == 0 ||
+      sizeof(((cpkt_sus *)0)->reset_transcript_spacing) == 0 ||
+      sizeof(((cpkt_sus *)0)->destroy) == 0) {
+    return 2;
+  }
   if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented) == 0 ||
       sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented_text) == 0 ||
       sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_vox_segment) == 0) {
-    return 2;
+    return 3;
   }
 
-  return transcriber_config.threads + segmented_config.keep_context +
-         event.is_final + entry.is_default;
+  return config.cpu_only + cache_config.cpu_only + transcriber_config.threads +
+         segmented_config.keep_context + event.is_final + entry.is_default;
 }
 EOF
 
@@ -164,10 +184,10 @@ cat > "$work_root/sus_then_audio_header_c89.c" <<'EOF'
 
 int main(void) {
   cpkt_audio_decoder *decoder;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   decoder = 0;
-  model = 0;
-  return decoder == 0 && model == 0 ? 0 : 1;
+  sus = 0;
+  return decoder == 0 && sus == 0 ? 0 : 1;
 }
 EOF
 

@@ -59,8 +59,20 @@ require_file_contains "$sus_header" \
   'reset_transcript_spacing' \
   'model instances expose reset for cross-transcriber initial-spacing state'
 require_file_contains "$sus_header" \
-  'cpkt_sus_model_reset_transcript_spacing' \
-  'free-function reset wrapper is part of the public API'
+  'cpkt_sus_result cpkt_sus_reset_transcript_spacing(cpkt_sus *sus);' \
+  'preferred instance reset wrapper is part of the public API'
+require_file_contains "$sus_header" \
+  'void cpkt_sus_config_default(cpkt_sus_config *config);' \
+  'path-open config has a public default initializer'
+require_file_contains "$sus_header" \
+  'void cpkt_sus_cache_config_default(cpkt_sus_cache_config *config);' \
+  'cache-open config has a public default initializer'
+require_file_contains "$sus_header" \
+  'void cpkt_sus_transcriber_config_default(cpkt_sus_transcriber_config *config);' \
+  'transcriber config has a public default initializer'
+require_file_contains "$sus_header" \
+  'void cpkt_sus_segmented_config_default(cpkt_sus_segmented_config *config);' \
+  'segmented config has a public default initializer'
 
 require_file_contains "$sus_source" \
   'config->mode == CPKT_SUS_SEGMENT_MODE_CONTINUOUS' \

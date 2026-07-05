@@ -210,20 +210,19 @@ static void test_backend_metadata(void **state) {
 
 static void test_log_callback_receives_backend_events(void **state) {
   struct cpkt_test_log_capture capture;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   cpkt_sus_config config;
 
   (void)state;
   memset(&capture, 0, sizeof(capture));
-  memset(&config, 0, sizeof(config));
+  cpkt_sus_config_default(&config);
   config.model_path = "cpkt-sus-missing-model.gguf";
   config.cpu_only = 1;
 
   cpkt_sus_log_set(cpkt_test_log_sink, &capture);
-  model = (cpkt_sus_model *)1;
-  assert_int_equal(cpkt_sus_model_open_path(&model, &config),
-                   CPKT_SUS_ERR_MODEL);
-  assert_null(model);
+  sus = (cpkt_sus *)1;
+  assert_int_equal(cpkt_sus_open_path(&sus, &config), CPKT_SUS_ERR_MODEL);
+  assert_null(sus);
   assert_true(capture.count > 0UL);
   assert_string_equal(capture.last_component, "whisper");
   assert_true(capture.last_level >= CPKT_SUS_LOG_NONE);
@@ -238,11 +237,11 @@ static void test_open_model_rejects_invalid_arguments(void **state) {
   cpkt_sus_config config;
 
   (void)state;
-  memset(&config, 0, sizeof(config));
+  cpkt_sus_config_default(&config);
 
   sus = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_model(NULL, &config), CPKT_SUS_ERR_ARG);
-  assert_int_equal(cpkt_sus_open_model(&sus, NULL), CPKT_SUS_ERR_ARG);
+  assert_int_equal(cpkt_sus_open_path(NULL, &config), CPKT_SUS_ERR_ARG);
+  assert_int_equal(cpkt_sus_open_path(&sus, NULL), CPKT_SUS_ERR_ARG);
   assert_null(sus);
 
   model = (cpkt_sus_model *)1;
@@ -250,7 +249,7 @@ static void test_open_model_rejects_invalid_arguments(void **state) {
   assert_null(model);
 
   sus = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_model(&sus, &config), CPKT_SUS_ERR_ARG);
+  assert_int_equal(cpkt_sus_open_path(&sus, &config), CPKT_SUS_ERR_ARG);
   assert_null(sus);
 
   model = (cpkt_sus_model *)1;
@@ -259,7 +258,7 @@ static void test_open_model_rejects_invalid_arguments(void **state) {
 
   config.model_path = "";
   sus = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_model(&sus, &config), CPKT_SUS_ERR_ARG);
+  assert_int_equal(cpkt_sus_open_path(&sus, &config), CPKT_SUS_ERR_ARG);
   assert_null(sus);
 
   model = (cpkt_sus_model *)1;
@@ -273,12 +272,12 @@ static void test_open_model_reports_load_failure(void **state) {
   cpkt_sus *sus;
 
   (void)state;
-  memset(&config, 0, sizeof(config));
+  cpkt_sus_config_default(&config);
   config.model_path = "cpkt-sus-missing-model.gguf";
   config.cpu_only = 1;
 
   sus = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_model(&sus, &config), CPKT_SUS_ERR_MODEL);
+  assert_int_equal(cpkt_sus_open_path(&sus, &config), CPKT_SUS_ERR_MODEL);
   assert_null(sus);
 
   model = (cpkt_sus_model *)1;
@@ -293,11 +292,45 @@ static void test_model_helpers_reject_invalid_arguments(void **state) {
   (void)state;
 
   transcriber = (cpkt_sus_transcriber *)1;
-  assert_int_equal(cpkt_sus_model_create_transcriber(NULL, &transcriber, NULL),
+  assert_int_equal(cpkt_sus_create_transcriber(NULL, &transcriber, NULL),
                    CPKT_SUS_ERR_ARG);
   assert_null(transcriber);
+  assert_int_equal(cpkt_sus_reset_transcript_spacing(NULL), CPKT_SUS_ERR_ARG);
 
   cpkt_sus_string_free(NULL);
+}
+
+static void test_config_default_helpers(void **state) {
+  cpkt_sus_config config;
+  cpkt_sus_cache_config cache_config;
+  cpkt_sus_transcriber_config transcriber_config;
+  cpkt_sus_segmented_config segmented_config;
+
+  (void)state;
+
+  memset(&config, 0xff, sizeof(config));
+  memset(&cache_config, 0xff, sizeof(cache_config));
+  memset(&transcriber_config, 0xff, sizeof(transcriber_config));
+  memset(&segmented_config, 0xff, sizeof(segmented_config));
+
+  cpkt_sus_config_default(&config);
+  cpkt_sus_cache_config_default(&cache_config);
+  cpkt_sus_transcriber_config_default(&transcriber_config);
+  cpkt_sus_segmented_config_default(&segmented_config);
+
+  assert_null(config.model_path);
+  assert_int_equal(config.cpu_only, 0);
+  assert_null(cache_config.model);
+  assert_null(cache_config.status_sink);
+  assert_null(transcriber_config.language);
+  assert_null(transcriber_config.progress_sink);
+  assert_int_equal(segmented_config.mode, CPKT_SUS_SEGMENT_MODE_SIMPLEX);
+  assert_int_equal(segmented_config.keep_context, 0);
+
+  cpkt_sus_config_default(NULL);
+  cpkt_sus_cache_config_default(NULL);
+  cpkt_sus_transcriber_config_default(NULL);
+  cpkt_sus_segmented_config_default(NULL);
 }
 
 static void test_model_catalog_queries(void **state) {
@@ -755,6 +788,7 @@ int main(void) {
       cmocka_unit_test(test_open_model_rejects_invalid_arguments),
       cmocka_unit_test(test_open_model_reports_load_failure),
       cmocka_unit_test(test_model_helpers_reject_invalid_arguments),
+      cmocka_unit_test(test_config_default_helpers),
       cmocka_unit_test(test_model_catalog_queries),
       cmocka_unit_test(test_cached_open_contract),
       cmocka_unit_test(test_cached_open_default_cache_dir_precedence),

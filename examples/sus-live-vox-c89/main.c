@@ -39,7 +39,7 @@ struct cpkt_sus_live_options {
 
 struct cpkt_sus_live_run {
   const struct cpkt_sus_live_options *options;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   unsigned long current_segment_index;
   unsigned long pending_rx_segment;
   unsigned long segment_count;
@@ -432,7 +432,7 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   cpkt_sus_result result;
 
   run = (struct cpkt_sus_live_run *)user;
-  if (run == NULL || run->model == NULL || segment == NULL) {
+  if (run == NULL || run->sus == NULL || segment == NULL) {
     return 1;
   }
   sprintf(line,
@@ -445,16 +445,16 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   cpkt_sus_live_emit(run, line);
 
   transcriber = NULL;
-  memset(&transcriber_config, 0, sizeof(transcriber_config));
+  cpkt_sus_transcriber_config_default(&transcriber_config);
   transcriber_config.language = run->options->language;
   transcriber_config.cpu_only = run->options->cpu_only;
-  result = run->model->create_transcriber(run->model, &transcriber,
-                                          &transcriber_config);
+  result = run->sus->create_transcriber(run->sus, &transcriber,
+                                        &transcriber_config);
   if (result != CPKT_SUS_OK) {
     return 1;
   }
 
-  memset(&segmented_config, 0, sizeof(segmented_config));
+  cpkt_sus_segmented_config_default(&segmented_config);
   segmented_config.keep_context = -1;
   segmented_config.segmented_sink = cpkt_sus_live_segmented_sink;
   segmented_config.segmented_user = run;
@@ -534,26 +534,26 @@ static cpkt_audio_result cpkt_sus_live_ptt_poll(cpkt_audio_ptt *ptt, int *tx) {
   }
 }
 
-static int cpkt_sus_live_open_model(cpkt_sus_model **out,
-                                    const struct cpkt_sus_live_options *opts) {
-  cpkt_sus_model_config path_config;
+static int cpkt_sus_live_open_sus(cpkt_sus **out,
+                                  const struct cpkt_sus_live_options *opts) {
+  cpkt_sus_config path_config;
   cpkt_sus_cache_config cache_config;
   cpkt_sus_result result;
 
   if (opts->model_path != NULL) {
-    memset(&path_config, 0, sizeof(path_config));
+    cpkt_sus_config_default(&path_config);
     path_config.model_path = opts->model_path;
     path_config.cpu_only = opts->cpu_only;
-    result = cpkt_sus_model_open_path(out, &path_config);
+    result = cpkt_sus_open_path(out, &path_config);
   } else {
-    memset(&cache_config, 0, sizeof(cache_config));
+    cpkt_sus_cache_config_default(&cache_config);
     cache_config.model = opts->model;
     cache_config.cache_dir = opts->cache_dir;
     cache_config.source_url = opts->source_url;
     cache_config.cpu_only = opts->cpu_only;
     cache_config.offline = opts->offline;
     cache_config.status_sink = cpkt_sus_live_cache_status_sink;
-    result = cpkt_sus_model_open_cached(out, &cache_config);
+    result = cpkt_sus_open_cached(out, &cache_config);
   }
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "model open failed: %s\n", cpkt_sus_result_string(result));
@@ -566,7 +566,7 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   cpkt_audio_capture *capture;
   cpkt_audio_vox *vox;
   cpkt_audio_ptt *ptt;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   cpkt_audio_capture_config capture_config;
   cpkt_audio_vox_config vox_config;
   cpkt_audio_ptt_config ptt_config;
@@ -584,7 +584,7 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   capture = NULL;
   vox = NULL;
   ptt = NULL;
-  model = NULL;
+  sus = NULL;
   rc = 1;
   ptt_tx = 0;
   memset(&run, 0, sizeof(run));
@@ -606,10 +606,10 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   }
 
   cpkt_sus_live_print_startup(opts);
-  if (!cpkt_sus_live_open_model(&model, opts)) {
+  if (!cpkt_sus_live_open_sus(&sus, opts)) {
     goto cleanup;
   }
-  run.model = model;
+  run.sus = sus;
 
   memset(&capture_config, 0, sizeof(capture_config));
   capture_config.backend = opts->backend;
@@ -773,8 +773,8 @@ cleanup:
     (void)capture->stop(capture);
     capture->destroy(capture);
   }
-  if (model != NULL) {
-    model->destroy(model);
+  if (sus != NULL) {
+    sus->destroy(sus);
   }
   if (run.summary != NULL) {
     fclose(run.summary);

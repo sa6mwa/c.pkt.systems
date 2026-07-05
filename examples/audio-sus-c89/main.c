@@ -28,24 +28,24 @@ static int cpkt_example_transcribe_file(const char *model_path,
                                         const char *audio_path,
                                         cpkt_sus_segment_mode segment_mode) {
   cpkt_audio_decoder *decoder;
-  cpkt_sus_model *model;
+  cpkt_sus *sus;
   cpkt_sus_transcriber *transcriber;
-  cpkt_sus_model_config model_config;
+  cpkt_sus_config config;
   cpkt_sus_transcriber_config transcriber_config;
   cpkt_sus_segmented_config segmented_config;
   char *text;
   int rc;
 
   decoder = NULL;
-  model = NULL;
+  sus = NULL;
   transcriber = NULL;
   text = NULL;
   rc = 1;
 
-  memset(&model_config, 0, sizeof(model_config));
-  model_config.model_path = model_path;
-  memset(&transcriber_config, 0, sizeof(transcriber_config));
-  memset(&segmented_config, 0, sizeof(segmented_config));
+  cpkt_sus_config_default(&config);
+  config.model_path = model_path;
+  cpkt_sus_transcriber_config_default(&transcriber_config);
+  cpkt_sus_segmented_config_default(&segmented_config);
   segmented_config.mode = segment_mode;
   segmented_config.read_frames = CPKT_EXAMPLE_READ_FRAMES;
   segmented_config.step_ms = 1000UL;
@@ -57,10 +57,10 @@ static int cpkt_example_transcribe_file(const char *model_path,
       CPKT_AUDIO_OK) {
     goto cleanup;
   }
-  if (cpkt_sus_model_open_path(&model, &model_config) != CPKT_SUS_OK) {
+  if (cpkt_sus_open_path(&sus, &config) != CPKT_SUS_OK) {
     goto cleanup;
   }
-  if (model->create_transcriber(model, &transcriber, &transcriber_config) !=
+  if (sus->create_transcriber(sus, &transcriber, &transcriber_config) !=
       CPKT_SUS_OK) {
     goto cleanup;
   }
@@ -80,8 +80,8 @@ cleanup:
   if (transcriber != NULL) {
     transcriber->destroy(transcriber);
   }
-  if (model != NULL) {
-    model->destroy(model);
+  if (sus != NULL) {
+    sus->destroy(sus);
   }
   if (decoder != NULL) {
     decoder->destroy(decoder);
