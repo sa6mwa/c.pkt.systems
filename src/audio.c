@@ -2803,6 +2803,7 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
       total_written += frames_now;
     }
     *frames_written = total_written;
+    cpkt_audio_playback_note_written(impl, total_written);
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2851,6 +2852,12 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
     }
     result = cpkt_audio_process_finish(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
+    if (result == CPKT_AUDIO_OK) {
+      cpkt_audio_playback_wait_turn_elapsed(impl);
+    } else {
+      impl->turn_frames_written = 0U;
+      impl->turn_started_ms = 0UL;
+    }
     return result;
 #else
     return CPKT_AUDIO_ERR_IO;

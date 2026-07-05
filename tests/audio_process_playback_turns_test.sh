@@ -20,6 +20,8 @@ EOS
 chmod +x "$tmp/bin/aplay"
 
 CPKT_FAKE_APLAY_COUNT="$tmp/count" \
+CPKT_AUDIO_PLAYBACK_PROBE_FRAMES=8000 \
+CPKT_AUDIO_PLAYBACK_PROBE_MIN_DRAIN_MS=350 \
 PATH="$tmp/bin:$PATH" \
 "$probe"
 
