@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -47,8 +46,7 @@
 #define CPKT_AUDIO_DEVICE_MODE_NATIVE 0
 #define CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD 1
 #define CPKT_AUDIO_PROCESS_FRAME_CHUNK 1024U
-#define CPKT_AUDIO_PROCESS_IDLE_RESET_MS 500UL
-#define CPKT_AUDIO_CAPTURE_READY_FRAMES 1600U
+#define CPKT_AUDIO_PROCESS_IDLE_RESET_MS 64UL
 
 struct cpkt_audio_url_source {
   CURLM *multi;
@@ -2516,7 +2514,6 @@ cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
   cpkt_audio_result process_result;
   fd_set readfds;
   struct timeval tv;
-  int queued_bytes;
   int ready;
 #endif
 
@@ -2550,19 +2547,12 @@ cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
       impl->last_read_ms = cpkt_audio_process_now_ms();
     }
     for (;;) {
-      queued_bytes = 0;
-      if (ioctl(impl->process_fd, FIONREAD, &queued_bytes) == 0 &&
-          queued_bytes >= (int)(CPKT_AUDIO_CAPTURE_READY_FRAMES * 2U)) {
-        return CPKT_AUDIO_OK;
-      }
       FD_ZERO(&readfds);
       FD_SET(impl->process_fd, &readfds);
       tv.tv_sec = 0;
       tv.tv_usec = 10000;
       ready = select(impl->process_fd + 1, &readfds, NULL, NULL, &tv);
-      if (ready > 0 && FD_ISSET(impl->process_fd, &readfds) &&
-          CPKT_AUDIO_CAPTURE_READY_FRAMES == 0U) {
-        impl->last_read_ms = cpkt_audio_process_now_ms();
+      if (ready > 0 && FD_ISSET(impl->process_fd, &readfds)) {
         return CPKT_AUDIO_OK;
       }
       if (ready < 0 && errno != EINTR) {
@@ -2578,7 +2568,7 @@ cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
   }
 
   for (;;) {
-    if (ma_pcm_rb_available_read(&impl->rb) >= CPKT_AUDIO_CAPTURE_READY_FRAMES) {
+    if (ma_pcm_rb_available_read(&impl->rb) > 0U) {
       return CPKT_AUDIO_OK;
     }
     if (cpkt_audio_wait_expired(start_ms, timeout_ms)) {
