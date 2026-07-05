@@ -623,6 +623,9 @@ if(CPKT_BUILD_TESTS)
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_audio_live_vox_static_c89_example cpkt_deps)
     endif()
+  else()
+    file(REMOVE
+      "${CMAKE_CURRENT_BINARY_DIR}/cpkt_audio_live_vox_static_c89_example${CMAKE_EXECUTABLE_SUFFIX}")
   endif()
 
   add_executable(cpkt_sus_vox_intro_c89_example
@@ -665,6 +668,9 @@ if(CPKT_BUILD_TESTS)
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_sus_live_vox_static_c89_example cpkt_deps)
     endif()
+  else()
+    file(REMOVE
+      "${CMAKE_CURRENT_BINARY_DIR}/cpkt_sus_live_vox_static_c89_example${CMAKE_EXECUTABLE_SUFFIX}")
   endif()
 
   add_executable(cpkt_abi_smoke_shared examples/abi_smoke.c)
