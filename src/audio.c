@@ -1966,6 +1966,11 @@ static int cpkt_audio_backend_is_process(int requested) {
     return 1;
   }
 #endif
+#ifdef CPKT_AUDIO_AUTO_PROCESS_DEVICE_IO
+  if (requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO) {
+    return 1;
+  }
+#endif
 #else
   (void)requested;
 #endif

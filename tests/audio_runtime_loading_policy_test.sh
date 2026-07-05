@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 3 ]; then
-  printf 'usage: audio_runtime_loading_policy_test.sh <libcpktaudio.a> <libcpktaudio.so> <audio.c>\n' >&2
+if [ "$#" -ne 4 ]; then
+  printf 'usage: audio_runtime_loading_policy_test.sh <libcpktaudio.a> <libcpktaudio.so> <audio.c> <CMakeLists.txt>\n' >&2
   exit 2
 fi
 
 audio_static=$1
 audio_shared=$2
 audio_source=$3
+cmake_source=$4
 
 require_tool() {
   tool=$1
@@ -77,6 +78,7 @@ require_tool grep
 require_file "$audio_static" "libcpktaudio static archive"
 require_file "$audio_shared" "libcpktaudio shared library"
 require_file "$audio_source" "audio facade implementation"
+require_file "$cmake_source" "CMake project file"
 
 assert_static_refs_dlopen "$audio_static"
 assert_shared_refs_dlopen "$audio_shared"
@@ -92,3 +94,9 @@ assert_source_contains "$audio_source" \
 assert_source_contains "$audio_source" \
   'cpkt_audio_device_period_ms(config != NULL ? config->period_ms : 0UL)' \
   'native playback drain latency must include configured period duration'
+assert_source_contains "$audio_source" \
+  'CPKT_AUDIO_AUTO_PROCESS_DEVICE_IO' \
+  'static process-device builds must have a compile-time AUTO-to-process policy'
+assert_source_contains "$cmake_source" \
+  'CPKT_AUDIO_AUTO_PROCESS_DEVICE_IO' \
+  'Linux static cpktaudio builds must select process device IO for AUTO'

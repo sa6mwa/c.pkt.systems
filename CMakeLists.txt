@@ -341,6 +341,10 @@ target_include_directories(cpkt_audio_static
 )
 target_compile_definitions(cpkt_audio_static PRIVATE
   CPKT_AUDIO_NATIVE_RUNTIME_DEVICE_IO)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_definitions(cpkt_audio_static PRIVATE
+    CPKT_AUDIO_AUTO_PROCESS_DEVICE_IO)
+endif()
 target_link_libraries(cpkt_audio_static PUBLIC
   cpkt::curl_static
   m
@@ -918,7 +922,8 @@ if(CPKT_BUILD_TESTS)
           bash "${CMAKE_SOURCE_DIR}/tests/audio_runtime_loading_policy_test.sh"
           "$<TARGET_FILE:cpkt_audio_static>"
           "$<TARGET_FILE:cpkt_audio_shared>"
-          "${CMAKE_SOURCE_DIR}/src/audio.c")
+          "${CMAKE_SOURCE_DIR}/src/audio.c"
+          "${CMAKE_SOURCE_DIR}/CMakeLists.txt")
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
       set_tests_properties(sus_facade_unit PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
