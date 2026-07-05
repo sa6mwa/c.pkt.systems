@@ -1153,27 +1153,6 @@ static int cpkt_sus_ascii_punctuation(char ch) {
          ch == '?' || ch == ')' || ch == ']' || ch == '}';
 }
 
-static void cpkt_sus_trim_ascii_space(const char **text, size_t *length) {
-  const char *value;
-  size_t value_length;
-
-  if (text == NULL || length == NULL || *text == NULL) {
-    return;
-  }
-  value = *text;
-  value_length = *length;
-  while (value_length > 0U && cpkt_sus_ascii_space(value[0])) {
-    ++value;
-    --value_length;
-  }
-  while (value_length > 0U &&
-         cpkt_sus_ascii_space(value[value_length - 1U])) {
-    --value_length;
-  }
-  *text = value;
-  *length = value_length;
-}
-
 static cpkt_sus_result
 cpkt_sus_build_segmented_text(char **out, struct whisper_context *context) {
   const char *segment_text;
@@ -1239,8 +1218,10 @@ cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
     return CPKT_SUS_OK;
   }
 
-  if (text != NULL && text_len > 0U) {
-    cpkt_sus_trim_ascii_space(&text, &text_len);
+  if (text != NULL && text_len > 0U && impl->revised_length == 0U &&
+      text[0] == ' ') {
+    ++text;
+    --text_len;
   }
   if (text != NULL && text_len > 0U) {
     result = cpkt_sus_transcriber_append_revised_text(impl, text, text_len);

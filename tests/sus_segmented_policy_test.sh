@@ -86,6 +86,15 @@ require_file_contains "$sus_source" \
 require_file_contains "$sus_source" \
   'vox_config.max_spool_bytes = config != NULL ? config->max_spool_bytes : 0UL;' \
   'SUS passes the hard spool cap into cpktaudio VOX'
+require_file_contains "$sus_source" \
+  "impl->revised_length == 0U &&" \
+  'segmented transcript normalization is scoped to the first emitted text only'
+require_file_contains "$sus_source" \
+  "text[0] == ' '" \
+  'segmented transcript normalization removes only one absolute initial space'
+require_file_lacks "$sus_source" \
+  'cpkt_sus_trim_ascii_space' \
+  'segmented transcription must not trim whitespace from every Whisper segment'
 require_file_lacks "$sus_source" \
   'config->step_ms' \
   'step_ms must not drive repeated fixed-step whisper inference'
