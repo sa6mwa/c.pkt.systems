@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
@@ -27,6 +28,7 @@ struct cpkt_sus_live_options {
   unsigned long max_segment_ms;
   unsigned long buffer_ms;
   unsigned long period_ms;
+  unsigned long meter_ms;
   const char *dump_dir;
   const char *model;
   const char *model_path;
@@ -46,6 +48,7 @@ struct cpkt_sus_live_run {
   int pending_rx;
   int pending_rx_has_segment;
   FILE *summary;
+  unsigned long last_meter_ms;
 };
 
 static struct termios cpkt_sus_live_saved_tty;
@@ -90,7 +93,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
   memset(opts, 0, sizeof(*opts));
   opts->cpu_only = 1;
   opts->seconds = 0UL;
-  opts->threshold_milli = 60UL;
+  opts->threshold_milli = 0UL;
   opts->hang_ms = 1500UL;
   opts->prebuffer_ms = 50UL;
   opts->max_segment_ms = 0UL;
@@ -103,7 +106,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
 
 static float cpkt_sus_live_threshold(const struct cpkt_sus_live_options *opts) {
   return opts->threshold_milli != 0UL ? (float)opts->threshold_milli / 1000.0f
-                                      : 0.06f;
+                                      : 0.01f;
 }
 
 static void cpkt_sus_live_sleep_ms(unsigned long ms) {
@@ -112,6 +115,20 @@ static void cpkt_sus_live_sleep_ms(unsigned long ms) {
   tv.tv_sec = (long)(ms / 1000UL);
   tv.tv_usec = (long)((ms % 1000UL) * 1000UL);
   (void)select(0, NULL, NULL, NULL, &tv);
+}
+
+static unsigned long cpkt_sus_live_now_ms(void) {
+  struct timeval tv;
+
+  if (gettimeofday(&tv, NULL) != 0) {
+    return 0UL;
+  }
+  return ((unsigned long)tv.tv_sec * 1000UL) +
+         ((unsigned long)tv.tv_usec / 1000UL);
+}
+
+static float cpkt_sus_live_absf(float value) {
+  return value < 0.0f ? -value : value;
 }
 
 static int cpkt_sus_live_parse_ulong(const char *text, unsigned long *out) {
@@ -557,6 +574,8 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
   char summary_path[CPKT_SUS_LIVE_PATH_MAX];
   float frames[CPKT_SUS_LIVE_READ_FRAMES];
   size_t frames_read;
+  size_t frame_index;
+  unsigned long now_ms;
   time_t end_time;
   cpkt_audio_result audio_result;
   int rc;
@@ -686,6 +705,29 @@ static int cpkt_sus_live_run(const struct cpkt_sus_live_options *opts) {
       cpkt_sus_live_sleep_ms(5UL);
       continue;
     }
+    if (opts->meter_ms != 0UL) {
+      float peak;
+      char line[120];
+
+      peak = 0.0f;
+      for (frame_index = 0U; frame_index < frames_read; ++frame_index) {
+        float level;
+
+        level = cpkt_sus_live_absf(frames[frame_index]);
+        if (level > peak) {
+          peak = level;
+        }
+      }
+      now_ms = cpkt_sus_live_now_ms();
+      if (run.last_meter_ms == 0UL ||
+          now_ms >= run.last_meter_ms + opts->meter_ms) {
+        sprintf(line, "LEVEL peak=%.4f threshold=%.4f frames=%lu\n",
+                (double)peak, (double)cpkt_sus_live_threshold(opts),
+                (unsigned long)frames_read);
+        cpkt_sus_live_emit(&run, line);
+        run.last_meter_ms = now_ms;
+      }
+    }
     audio_result = opts->ptt ? ptt->push_f32_mono_16k(ptt, frames, frames_read)
                              : vox->push_f32_mono_16k(vox, frames, frames_read);
     if (audio_result != CPKT_AUDIO_OK) {
@@ -750,7 +792,7 @@ static void cpkt_sus_live_usage(FILE *out) {
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
-          "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
+          "  --threshold-milli N         VOX threshold * 1000; default 10.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
           "  --prebuffer-ms N            VOX prebuffer; default 50.\n");
@@ -761,6 +803,8 @@ static void cpkt_sus_live_usage(FILE *out) {
   fprintf(
       out,
       "  --period-ms N               Device callback period; default 20.\n");
+  fprintf(out,
+          "  --meter-ms N                Print input peak level every N ms.\n");
   fprintf(out, "  --backend NAME              auto, process, coreaudio.\n");
   fprintf(out,
           "  --model NAME                Cached model name; default tiny.\n");
@@ -816,6 +860,10 @@ static int cpkt_sus_live_parse_options(int argc, char **argv,
       }
     } else if (strcmp(argv[i], "--period-ms") == 0 && i + 1 < argc) {
       if (!cpkt_sus_live_parse_ulong(argv[++i], &opts->period_ms)) {
+        return 0;
+      }
+    } else if (strcmp(argv[i], "--meter-ms") == 0 && i + 1 < argc) {
+      if (!cpkt_sus_live_parse_ulong(argv[++i], &opts->meter_ms)) {
         return 0;
       }
     } else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
