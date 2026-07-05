@@ -44,3 +44,9 @@ chmod +x "$tmp/bin/arecord"
 CPKT_FAKE_ARECORD_STATE="$tmp/generation" \
 PATH="$tmp/bin:$PATH" \
 "$probe"
+
+actual=$(cat "$tmp/generation")
+if [ "$actual" != "1" ]; then
+  printf 'expected one stable process capture generation, got %s\n' "$actual" >&2
+  exit 1
+fi

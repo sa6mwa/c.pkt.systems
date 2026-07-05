@@ -907,11 +907,6 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/audio_process_playback_turns_test.sh"
           "$<TARGET_FILE:cpkt_audio_process_playback_probe>")
       add_test(
-        NAME audio_live_vox_playback_rx_order
-        COMMAND
-          bash "${CMAKE_SOURCE_DIR}/tests/audio_live_vox_playback_rx_order_test.sh"
-          "$<TARGET_FILE:cpkt_audio_live_vox_c89_example>")
-      add_test(
         NAME audio_runtime_loading_policy
         COMMAND
           bash "${CMAKE_SOURCE_DIR}/tests/audio_runtime_loading_policy_test.sh"

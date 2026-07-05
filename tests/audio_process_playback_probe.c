@@ -94,10 +94,12 @@ int main(void) {
   cpkt_audio_result result;
   size_t frame_count;
   unsigned long min_drain_ms;
+  int start_only;
 
   playback = NULL;
   frame_count = env_size("CPKT_AUDIO_PLAYBACK_PROBE_FRAMES", 160U);
   min_drain_ms = env_ulong("CPKT_AUDIO_PLAYBACK_PROBE_MIN_DRAIN_MS", 0UL);
+  start_only = getenv("CPKT_AUDIO_PLAYBACK_PROBE_START_ONLY") != NULL ? 1 : 0;
   config.backend = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
   config.buffer_ms = 0UL;
   config.period_ms = 0UL;
@@ -114,6 +116,10 @@ int main(void) {
             cpkt_audio_result_string(result));
     playback->destroy(playback);
     return 1;
+  }
+  if (start_only) {
+    playback->destroy(playback);
+    return 0;
   }
   if (!write_segment(playback, frame_count, min_drain_ms) ||
       !write_segment(playback, frame_count, min_drain_ms)) {

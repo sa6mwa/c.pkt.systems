@@ -111,5 +111,5 @@ int main(void) {
     fprintf(stderr, "capture ready event missing\n");
     return 3;
   }
-  return second_sample > first_sample + 500 ? 0 : 2;
+  return second_sample == first_sample ? 0 : 2;
 }

@@ -20,8 +20,17 @@ EOS
 chmod +x "$tmp/bin/aplay"
 
 CPKT_FAKE_APLAY_COUNT="$tmp/count" \
+CPKT_AUDIO_PLAYBACK_PROBE_START_ONLY=1 \
+PATH="$tmp/bin:$PATH" \
+"$probe"
+
+if [ -f "$tmp/count" ]; then
+  printf 'process playback start spawned aplay before audio was written\n' >&2
+  exit 1
+fi
+
+CPKT_FAKE_APLAY_COUNT="$tmp/count" \
 CPKT_AUDIO_PLAYBACK_PROBE_FRAMES=8000 \
-CPKT_AUDIO_PLAYBACK_PROBE_MIN_DRAIN_MS=350 \
 PATH="$tmp/bin:$PATH" \
 "$probe"
 

@@ -134,6 +134,16 @@ static int cpkt_live_vox_parse_backend(const char *text, int *out) {
   return 1;
 }
 
+static const char *cpkt_live_vox_backend_name(int backend) {
+  if (backend == CPKT_AUDIO_DEVICE_BACKEND_PROCESS) {
+    return "process";
+  }
+  if (backend == CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO) {
+    return "coreaudio";
+  }
+  return "auto";
+}
+
 static int cpkt_live_vox_join_path(char *out, size_t out_size, const char *dir,
                                    const char *name) {
   size_t dir_len;
@@ -234,7 +244,8 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   }
 
   if (run->playback != NULL) {
-    sprintf(status, "PLAYBACK segment=%lu\n", segment_index);
+    sprintf(status, "PLAYBACK segment=%lu backend=%s\n", segment_index,
+            cpkt_live_vox_backend_name(run->options->backend));
     cpkt_live_vox_emit(run, status);
   }
 
@@ -286,6 +297,9 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
     if (run->playback->drain(run->playback) != CPKT_AUDIO_OK) {
       return 1;
     }
+    sprintf(status, "PLAYBACK-DONE segment=%lu backend=%s\n", segment_index,
+            cpkt_live_vox_backend_name(run->options->backend));
+    cpkt_live_vox_emit(run, status);
   }
   ++run->segment_count;
   if (segment->hard_cut) {
