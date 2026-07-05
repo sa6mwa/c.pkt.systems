@@ -106,7 +106,7 @@ static void cpkt_sus_live_defaults(struct cpkt_sus_live_options *opts) {
 
 static float cpkt_sus_live_threshold(const struct cpkt_sus_live_options *opts) {
   return opts->threshold_milli != 0UL ? (float)opts->threshold_milli / 1000.0f
-                                      : 0.06f;
+                                      : 0.05f;
 }
 
 static void cpkt_sus_live_sleep_ms(unsigned long ms) {
@@ -792,7 +792,7 @@ static void cpkt_sus_live_usage(FILE *out) {
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
-          "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
+          "  --threshold-milli N         VOX threshold * 1000; default 50.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
           "  --prebuffer-ms N            VOX prebuffer; default 50.\n");

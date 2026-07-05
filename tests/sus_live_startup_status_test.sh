@@ -37,7 +37,7 @@ if [ "$rc" -eq 0 ]; then
   exit 1
 fi
 
-if ! grep -F -- "status source=default-capture mode=vox model_path=$missing_model language=en threshold=0.060 hang_ms=1500 prebuffer_ms=50" "$output" >/dev/null 2>&1; then
+if ! grep -F -- "status source=default-capture mode=vox model_path=$missing_model language=en threshold=0.050 hang_ms=1500 prebuffer_ms=50" "$output" >/dev/null 2>&1; then
   printf 'sus live example did not print the startup status line before model load\n' >&2
   cat "$output" >&2
   exit 1
@@ -67,7 +67,7 @@ if [ "$rc" -eq 0 ]; then
   exit 1
 fi
 
-if ! grep -F -- "status source=default-capture mode=vox model=tiny cache=$cache_dir/ggml-tiny.bin cache_state=missing-offline language=en threshold=0.060 hang_ms=1500 prebuffer_ms=50" "$cache_output" >/dev/null 2>&1; then
+if ! grep -F -- "status source=default-capture mode=vox model=tiny cache=$cache_dir/ggml-tiny.bin cache_state=missing-offline language=en threshold=0.050 hang_ms=1500 prebuffer_ms=50" "$cache_output" >/dev/null 2>&1; then
   printf 'sus live example did not print the initial cached-model status line\n' >&2
   cat "$cache_output" >&2
   exit 1
@@ -103,7 +103,7 @@ if [ "$rc" -eq 0 ]; then
   exit 1
 fi
 
-if ! grep -F -- "status source=default-capture mode=vox model=tiny cache=$download_dir/ggml-tiny.bin cache_state=download language=en threshold=0.060 hang_ms=1500 prebuffer_ms=50" "$download_output" >/dev/null 2>&1; then
+if ! grep -F -- "status source=default-capture mode=vox model=tiny cache=$download_dir/ggml-tiny.bin cache_state=download language=en threshold=0.050 hang_ms=1500 prebuffer_ms=50" "$download_output" >/dev/null 2>&1; then
   printf 'sus live example did not print the initial download status line\n' >&2
   cat "$download_output" >&2
   exit 1

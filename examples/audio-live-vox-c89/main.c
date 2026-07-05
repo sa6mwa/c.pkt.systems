@@ -424,7 +424,7 @@ static void cpkt_live_vox_usage(FILE *out) {
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
-          "  --threshold-milli N         VOX threshold * 1000; default 60.\n");
+          "  --threshold-milli N         VOX threshold * 1000; default 50.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
   fprintf(out,
           "  --prebuffer-ms N            VOX prebuffer; default 50.\n");
@@ -683,7 +683,7 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
                 (double)peak,
                 (double)(opts->threshold_milli != 0UL
                              ? cpkt_live_vox_threshold(opts)
-                             : 0.06f),
+                             : 0.05f),
                 (unsigned long)frames_read);
         cpkt_live_vox_emit(&run, line);
         run.last_meter_ms = now_ms;
