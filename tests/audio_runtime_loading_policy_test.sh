@@ -72,6 +72,18 @@ assert_source_contains() {
   fi
 }
 
+assert_source_lacks() {
+  file_path=$1
+  needle=$2
+  description=$3
+
+  if grep -F "$needle" "$file_path" >/dev/null 2>&1; then
+    printf 'audio runtime-loading policy source check failed: %s\n' "$description" >&2
+    printf 'unexpected: %s\n' "$needle" >&2
+    exit 1
+  fi
+}
+
 require_tool nm
 require_tool readelf
 require_tool grep
@@ -97,6 +109,15 @@ assert_source_contains "$audio_source" \
 assert_source_contains "$audio_source" \
   'CPKT_AUDIO_AUTO_PROCESS_DEVICE_IO' \
   'static process-device builds must have a compile-time AUTO-to-process policy'
+assert_source_contains "$audio_source" \
+  'CPKT_AUDIO_DEVICE_MODE_PROCESS' \
+  'process backend mode must be backend-neutral for capture and playback'
+assert_source_lacks "$audio_source" \
+  'CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD' \
+  'process backend mode must not retain capture-specific naming'
+assert_source_lacks "$audio_source" \
+  'last_read_ms' \
+  'process capture must not retain unused readiness timestamp state'
 assert_source_contains "$cmake_source" \
   'CPKT_AUDIO_AUTO_PROCESS_DEVICE_IO' \
   'Linux static cpktaudio builds must select process device IO for AUTO'

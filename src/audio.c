@@ -44,7 +44,7 @@
 #define CPKT_AUDIO_MP3_INPUT_FRAMES MA_DR_MP3_MAX_PCM_FRAMES_PER_MP3_FRAME
 #define CPKT_AUDIO_MP3_BYTE_CHUNK 4096U
 #define CPKT_AUDIO_DEVICE_MODE_NATIVE 0
-#define CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD 1
+#define CPKT_AUDIO_DEVICE_MODE_PROCESS 1
 #define CPKT_AUDIO_PROCESS_FRAME_CHUNK 1024U
 
 struct cpkt_audio_url_source {
@@ -103,7 +103,6 @@ struct cpkt_audio_capture_impl {
   int process_fd;
 #endif
   unsigned char pending_byte;
-  unsigned long last_read_ms;
   int mode;
   int device_initialized;
   int rb_initialized;
@@ -2355,7 +2354,7 @@ cpkt_audio_capture_start_impl(cpkt_audio_capture *self) {
   if (impl->started) {
     return CPKT_AUDIO_OK;
   }
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__linux__)
     process_result = cpkt_audio_process_spawn(
         arecord_argv, 0, 1, &impl->process_pid, &impl->process_fd);
@@ -2363,7 +2362,6 @@ cpkt_audio_capture_start_impl(cpkt_audio_capture *self) {
       return process_result;
     }
     impl->started = 1;
-    impl->last_read_ms = cpkt_audio_process_now_ms();
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2389,7 +2387,6 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
   size_t byte_count;
   size_t byte_index;
   ssize_t got;
-  unsigned long now_ms;
   float sample;
 #endif
 
@@ -2405,13 +2402,11 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
   }
 
   impl = (struct cpkt_audio_capture_impl *)self->impl;
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
     if (!impl->started || impl->process_fd < 0) {
       return CPKT_AUDIO_OK;
     }
-    now_ms = cpkt_audio_process_now_ms();
-    impl->last_read_ms = now_ms;
     total_read = 0U;
     while (total_read < frame_capacity) {
       byte_count = (frame_capacity - total_read) * 2U;
@@ -2514,7 +2509,7 @@ cpkt_audio_capture_wait_ready_impl(cpkt_audio_capture *self,
   }
   start_ms = cpkt_audio_process_now_ms();
 
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
     if (impl->process_fd < 0) {
       return CPKT_AUDIO_ERR_IO;
@@ -2559,11 +2554,10 @@ cpkt_audio_capture_stop_impl(cpkt_audio_capture *self) {
     return CPKT_AUDIO_ERR_ARG;
   }
   impl = (struct cpkt_audio_capture_impl *)self->impl;
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
     cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
-    impl->last_read_ms = 0UL;
     return CPKT_AUDIO_OK;
 #else
     return CPKT_AUDIO_ERR_IO;
@@ -2584,7 +2578,7 @@ static void cpkt_audio_capture_destroy_impl(cpkt_audio_capture *self) {
   }
   impl = (struct cpkt_audio_capture_impl *)self->impl;
   if (impl != NULL) {
-    if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+    if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
       cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
 #endif
@@ -2612,7 +2606,7 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
   if (impl->started) {
     return CPKT_AUDIO_OK;
   }
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__linux__)
     impl->turn_frames_written = 0;
     impl->turn_started_ms = 0UL;
@@ -2710,7 +2704,7 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
   }
 
   impl = (struct cpkt_audio_playback_impl *)self->impl;
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
     if (!impl->started) {
 #if defined(__linux__)
@@ -2799,7 +2793,7 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
     return CPKT_AUDIO_ERR_ARG;
   }
   impl = (struct cpkt_audio_playback_impl *)self->impl;
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
     if (!impl->started) {
       return CPKT_AUDIO_OK;
@@ -2831,7 +2825,7 @@ cpkt_audio_playback_stop_impl(cpkt_audio_playback *self) {
     return CPKT_AUDIO_ERR_ARG;
   }
   impl = (struct cpkt_audio_playback_impl *)self->impl;
-  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+  if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
     cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
     impl->started = 0;
@@ -2860,7 +2854,7 @@ static void cpkt_audio_playback_destroy_impl(cpkt_audio_playback *self) {
   }
   impl = (struct cpkt_audio_playback_impl *)self->impl;
   if (impl != NULL) {
-    if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD) {
+    if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
       cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
 #endif
@@ -3382,7 +3376,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
       free(capture);
       return CPKT_AUDIO_ERR_IO;
     }
-    impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+    impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS;
     *out = capture;
     return CPKT_AUDIO_OK;
 #else
@@ -3430,7 +3424,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_capture_open_default(
         cpkt_audio_process_command_exists("arecord")) {
       ma_pcm_rb_uninit(&impl->rb);
       impl->rb_initialized = 0;
-      impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+      impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS;
       *out = capture;
       return CPKT_AUDIO_OK;
     }
@@ -3484,7 +3478,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
       free(playback);
       return CPKT_AUDIO_ERR_IO;
     }
-    impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+    impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS;
     impl->drain_latency_ms = 0UL;
     *out = playback;
     return CPKT_AUDIO_OK;
@@ -3537,7 +3531,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result cpkt_audio_playback_open_default(
         cpkt_audio_process_command_exists("aplay")) {
       ma_pcm_rb_uninit(&impl->rb);
       impl->rb_initialized = 0;
-      impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD;
+      impl->mode = CPKT_AUDIO_DEVICE_MODE_PROCESS;
       impl->drain_latency_ms = 0UL;
       *out = playback;
       return CPKT_AUDIO_OK;
