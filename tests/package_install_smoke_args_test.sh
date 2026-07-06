@@ -72,7 +72,7 @@ for expected_compile_options in \
   'source_flags=$common_c89_flags' \
   'target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
   'target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
-  'target_compile_options($executable_name PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
+  'target_compile_options(\${executable_name} PRIVATE -Wall -Wextra -Wpedantic -Werror)' \
   'COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")' \
   'COMPILE_OPTIONS "-std=c99;-Wall;-Wextra;-Wpedantic;-Werror")'
 do
