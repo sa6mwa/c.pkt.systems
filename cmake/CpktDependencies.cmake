@@ -361,6 +361,7 @@ function(cpkt_add_nghttp2)
         --host=${autotools_host}
         --enable-shared
         --enable-static
+        --with-pic
         --enable-lib-only
         ${nghttp2_post_configure_command}
       BUILD_COMMAND make -C lib -j${CPKT_DEPENDENCY_BUILD_JOBS}
