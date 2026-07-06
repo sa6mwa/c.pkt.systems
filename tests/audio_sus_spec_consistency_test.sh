@@ -37,9 +37,14 @@ if grep -F 'default `small`' "$spec" >/dev/null 2>&1; then
   printf 'audio/sus spec still documents small as a default model\n' >&2
   exit 1
 fi
+if grep -F 'strcmp(entry.name, "small")' "$package_smoke" >/dev/null 2>&1; then
+  printf 'package smoke still expects small as the default model\n' >&2
+  exit 1
+fi
 
 assert_file_contains "$spec" 'The shell and the library resolver both default to `tiny`' 'audio/sus spec'
 assert_file_contains "$spec" 'The default cached model is `tiny`' 'audio/sus spec'
+assert_file_contains "$package_smoke" 'strcmp(entry.name, "tiny")' 'package install smoke'
 assert_file_contains "$spec" '`cpkt_sus_log_set`, which adapts whisper.cpp' 'audio/sus spec'
 
 if ! grep -F 'assert_words_count "$sus_words" "-lcpktaudio" 1' "$package_smoke" >/dev/null 2>&1; then

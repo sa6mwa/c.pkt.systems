@@ -566,7 +566,7 @@ int main(void) {
   if (cpkt_sus_model_catalog_default(&entry) != CPKT_SUS_OK) {
     return 5;
   }
-  if (entry.name == 0 || strcmp(entry.name, "small") != 0) {
+  if (entry.name == 0 || strcmp(entry.name, "tiny") != 0) {
     return 6;
   }
   if (cpkt_sus_model_catalog_find("kb-whisper-small", &entry) != CPKT_SUS_OK) {
