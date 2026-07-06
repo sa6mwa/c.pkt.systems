@@ -12,6 +12,9 @@ spec=$source_dir/docs/audio-sus-facade-spec.md
 package_assertions=$source_dir/cmake/package_assertions.cmake
 package_bundle=$source_dir/cmake/package_bundle.cmake
 package_smoke=$source_dir/scripts/package-install-smoke.sh
+small_default_catalog_fragment='ggml-small.bin\t'
+small_default_flag_fragment='\tf16\t1'
+tiny_catalog_fragment='ggml-tiny.bin\thttps://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin'
 
 assert_file_contains() {
   file=$1
@@ -35,11 +38,15 @@ if ! grep -F 'public dependency on `libcpktaudio`' "$spec" >/dev/null 2>&1; then
 fi
 
 if grep -F 'default `small`' "$spec" >/dev/null 2>&1; then
-  printf 'audio/sus spec still documents small as a default model\n' >&2
+  printf 'audio/sus spec documents small as a default model\n' >&2
   exit 1
 fi
 if grep -F 'strcmp(entry.name, "small")' "$package_smoke" >/dev/null 2>&1; then
-  printf 'package smoke still expects small as the default model\n' >&2
+  printf 'package smoke expects small as the default model\n' >&2
+  exit 1
+fi
+if grep -F "$small_default_catalog_fragment" "$package_assertions" | grep -F "$small_default_flag_fragment" >/dev/null 2>&1; then
+  printf 'package assertions expect small as the default model\n' >&2
   exit 1
 fi
 
@@ -52,6 +59,7 @@ assert_file_contains "$readme" '`--cache-dir DIR`' 'README'
 assert_file_contains "$readme" '`cpkt_audio` is a C89 facade over miniaudio' 'README'
 assert_file_contains "$readme" '`cpkt_sus` is a C89 facade over a CPU-only whisper.cpp/ggml build' 'README'
 assert_file_contains "$package_smoke" 'strcmp(entry.name, "tiny")' 'package install smoke'
+assert_file_contains "$package_assertions" "$tiny_catalog_fragment" 'package assertion script'
 assert_file_contains "$spec" '`cpkt_sus_log_set`, which adapts whisper.cpp' 'audio/sus spec'
 
 if ! grep -F 'assert_words_count "$sus_words" "-lcpktaudio" 1' "$package_smoke" >/dev/null 2>&1; then
