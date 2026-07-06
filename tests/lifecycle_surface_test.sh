@@ -145,6 +145,18 @@ require_file_contains \
   'CMake-driven dependency configure steps can share a lifecycle wrapper'
 require_file_contains \
   cmake/CpktDependencies.cmake \
+  'PKG_CONFIG_LIBDIR=\$\{_pkg_config_libdir\}' \
+  'cross dependency configure steps isolate pkg-config metadata to bundled dependency prefixes'
+require_file_contains \
+  cmake/CpktDependencies.cmake \
+  'CONFIGURE_COMMAND \$\{cmake_configure_command\}' \
+  'libxml2 configure uses the wrapped CMake configure command'
+require_file_contains \
+  cmake/CpktDependencies.cmake \
+  '-DBUILD_SHARED_LIBS=OFF' \
+  'libxml2 static configure remains static-only'
+require_file_contains \
+  cmake/CpktDependencies.cmake \
   '-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY' \
   'cross CMake dependency configure checks do not require target linker execution'
 require_file_contains \

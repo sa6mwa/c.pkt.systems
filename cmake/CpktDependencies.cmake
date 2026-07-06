@@ -110,8 +110,45 @@ function(cpkt_get_external_cxx_flags out_var)
   set(${out_var} "${_flags}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_append_external_pkg_config_env_args out_var)
+  set(_args ${${out_var}})
+  set(_pkg_config_dirs "")
+  foreach(_prefix_var IN ITEMS
+      CPKT_ZLIB_PREFIX
+      CPKT_OPENSSL_static_PREFIX
+      CPKT_OPENSSL_shared_PREFIX
+      CPKT_NGHTTP2_static_PREFIX
+      CPKT_NGHTTP2_shared_PREFIX
+      CPKT_LIBSSH2_PREFIX
+      CPKT_LIBXML2_PREFIX
+      CPKT_LUA_PREFIX
+      CPKT_MQTTC_PREFIX
+      CPKT_OPEN62541_PREFIX)
+    if(DEFINED ${_prefix_var} AND NOT "${${_prefix_var}}" STREQUAL "")
+      list(APPEND _pkg_config_dirs
+        "${${_prefix_var}}/lib/pkgconfig"
+        "${${_prefix_var}}/share/pkgconfig")
+    endif()
+  endforeach()
+
+  if(_pkg_config_dirs)
+    list(REMOVE_DUPLICATES _pkg_config_dirs)
+    string(JOIN ":" _pkg_config_libdir ${_pkg_config_dirs})
+  else()
+    set(_pkg_config_libdir "${CPKT_EXTERNAL_ROOT}/.pkgconfig-empty")
+  endif()
+  file(MAKE_DIRECTORY "${CPKT_EXTERNAL_ROOT}/.pkgconfig-empty")
+
+  list(APPEND _args
+    PKG_CONFIG_PATH=
+    PKG_CONFIG_DIR=
+    PKG_CONFIG_LIBDIR=${_pkg_config_libdir})
+  set(${out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_append_darwin_external_env_args out_var)
   set(_args ${${out_var}})
+  cpkt_append_external_pkg_config_env_args(_args)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _args
       PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
@@ -844,6 +881,7 @@ function(cpkt_add_libxml2)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_configure_command(cmake_configure_command)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   find_package(Iconv REQUIRED)
@@ -939,7 +977,7 @@ function(cpkt_add_libxml2)
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS cpkt_zlib_project
-      CMAKE_ARGS
+      CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=ON
         ${libxml2_common_cmake_args}
         -DZLIB_LIBRARY=${CPKT_ZLIB_SHARED_LIBRARY}
@@ -963,7 +1001,7 @@ function(cpkt_add_libxml2)
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS ${project_name_shared}
-      CMAKE_ARGS
+      CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=OFF
         ${libxml2_common_cmake_args}
         -DZLIB_LIBRARY=${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}
