@@ -13,7 +13,8 @@ callbacks, model-cache policy, lifetime rules, and tests while keeping all
 backend state and backend ABI details private.
 
 This spec is intentionally iterative. It captures the current production
-decisions so implementation can begin against a concrete target.
+decisions and release contract so the public headers, package metadata, examples,
+and receiver-shell CLI stay aligned.
 
 ## Goals
 
@@ -269,7 +270,10 @@ threads only when not used concurrently. Multiple independent handles may exist
 and run concurrently in separate threads subject to upstream miniaudio and
 whisper.cpp constraints.
 
-No facade-level global mutable state is allowed. Curated model tables may be
+Facade-level global mutable state is avoided except where the upstream runtime
+surface is itself process-global. The current explicit exception is
+`cpkt_sus_log_set`, which adapts whisper.cpp's process-wide log hook and is
+documented as process-wide in the public header. Curated model tables may be
 static read-only data.
 
 ## cpkt_audio Surface
@@ -403,7 +407,7 @@ Model loading must support:
 Current implementation status:
 
 - explicit-path loading is implemented;
-- cache-backed loading resolves curated model names, default `small`, explicit
+- cache-backed loading resolves curated model names, default `tiny`, explicit
   cache directories, XDG/HOME cache directories, existing local cache files,
   pinned checksums, user checksum overrides, and explicit insecure checksum
   bypass;
@@ -423,6 +427,11 @@ Opening from a path must not perform network access.
 Opening from cache may perform network access only because the caller selected
 the cached route. The function name and documentation must make this side effect
 clear.
+
+The `cpktxscribe` receiver shell uses the same cache resolver and exposes
+`--cache-dir DIR`, which maps directly to `cpkt_sus_cache_config.cache_dir`.
+The shell and the library resolver both default to `tiny` for fast, good-enough
+first-run behavior. Both routes use the same cache directory precedence.
 
 Whisper.cpp has a callback-based model loader, but `open_cached` should
 materialize model files on disk. The cache is part of the product behavior:
@@ -601,7 +610,7 @@ Initial OpenAI-derived whisper.cpp GGML entries:
 - `large-v3-turbo`
 - `large-v3-turbo:q5_0`
 
-The default cached model is `small`, the multilingual OpenAI-derived
+The default cached model is `tiny`, the multilingual OpenAI-derived
 whisper.cpp GGML model.
 
 Initial KBLab Swedish-optimized GGML entries:
@@ -661,9 +670,10 @@ cache path maps to the same source URL and checksum.
 Cache directory precedence:
 
 1. explicit `cache_dir` in `cpkt_sus_cache_config`;
-2. `$XDG_CACHE_HOME/cpkt/susurro/models`;
-3. `$HOME/.cache/cpkt/susurro/models`;
-4. platform-specific fallback only if the repository already has or introduces
+2. `cpktxscribe --cache-dir DIR`, which fills `cpkt_sus_cache_config.cache_dir`;
+3. `$XDG_CACHE_HOME/cpkt/susurro/models`;
+4. `$HOME/.cache/cpkt/susurro/models`;
+5. platform-specific fallback only if the repository already has or introduces
    a tested cpkt path helper.
 
 Downloaded models must be written atomically:

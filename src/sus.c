@@ -109,7 +109,7 @@ static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
     {"tiny", "ggerganov/whisper.cpp", "ggml-tiny.bin",
      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
      "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21",
-     77691713UL, "MIT", "f16", 0},
+     77691713UL, "MIT", "f16", 1},
     {"tiny.en", "ggerganov/whisper.cpp", "ggml-tiny.en.bin",
      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
      "ggml-tiny.en.bin",
@@ -148,7 +148,7 @@ static const struct cpkt_sus_catalog_entry cpkt_sus_catalog[] = {
      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
      "ggml-small.bin",
      "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b",
-     487601967UL, "MIT", "f16", 1},
+     487601967UL, "MIT", "f16", 0},
     {"small.en", "ggerganov/whisper.cpp", "ggml-small.en.bin",
      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
      "ggml-small.en.bin",
@@ -320,7 +320,7 @@ static long cpkt_sus_i64_to_long(int64_t value) {
   return (long)value;
 }
 
-static const char *cpkt_sus_default_model_name(void) { return "small"; }
+static const char *cpkt_sus_default_model_name(void) { return "tiny"; }
 
 static unsigned long cpkt_sus_catalog_count_internal(void) {
   return (unsigned long)(sizeof(cpkt_sus_catalog) /

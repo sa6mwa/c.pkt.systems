@@ -102,7 +102,7 @@ static int cpkt_example_smoke(void) {
   if (cpkt_sus_model_catalog_default(&entry) != CPKT_SUS_OK) {
     return 3;
   }
-  if (entry.name == NULL || strcmp(entry.name, "small") != 0) {
+  if (entry.name == NULL || strcmp(entry.name, "tiny") != 0) {
     return 4;
   }
   return 0;

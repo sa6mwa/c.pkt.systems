@@ -1,5 +1,5 @@
 name	provider	filename	source_url	sha256	size_bytes	license	quantization	is_default
-tiny	ggerganov/whisper.cpp	ggml-tiny.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin	be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21	77691713	MIT	f16	0
+tiny	ggerganov/whisper.cpp	ggml-tiny.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin	be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21	77691713	MIT	f16	1
 tiny.en	ggerganov/whisper.cpp	ggml-tiny.en.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin	921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f	77704715	MIT	f16	0
 tiny:q5_1	ggerganov/whisper.cpp	ggml-tiny-q5_1.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin	818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7	32152673	MIT	q5_1	0
 tiny.en:q5_1	ggerganov/whisper.cpp	ggml-tiny.en-q5_1.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-q5_1.bin	c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b	32166155	MIT	q5_1	0
@@ -7,7 +7,7 @@ base	ggerganov/whisper.cpp	ggml-base.bin	https://huggingface.co/ggerganov/whispe
 base.en	ggerganov/whisper.cpp	ggml-base.en.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin	a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002	147964211	MIT	f16	0
 base:q5_1	ggerganov/whisper.cpp	ggml-base-q5_1.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin	422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898	59707625	MIT	q5_1	0
 base.en:q5_1	ggerganov/whisper.cpp	ggml-base.en-q5_1.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin	4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f	59721011	MIT	q5_1	0
-small	ggerganov/whisper.cpp	ggml-small.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin	1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b	487601967	MIT	f16	1
+small	ggerganov/whisper.cpp	ggml-small.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin	1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b	487601967	MIT	f16	0
 small.en	ggerganov/whisper.cpp	ggml-small.en.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin	c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d	487614201	MIT	f16	0
 small:q5_1	ggerganov/whisper.cpp	ggml-small-q5_1.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin	ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb	190085487	MIT	q5_1	0
 small.en:q5_1	ggerganov/whisper.cpp	ggml-small.en-q5_1.bin	https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin	bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30	190098681	MIT	q5_1	0

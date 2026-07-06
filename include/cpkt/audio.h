@@ -79,7 +79,10 @@ typedef enum cpkt_audio_format {
 
 /** Optional device backend selection for capture and playback. */
 typedef enum cpkt_audio_device_backend {
-  /** Let the facade select the best available backend for the platform. */
+  /**
+   * Let the facade select the platform backend. Linux static builds select the
+   * process backend; shared builds may try native runtime loading first.
+   */
   CPKT_AUDIO_DEVICE_BACKEND_AUTO = 0,
   /** Spawn a platform audio command and stream raw PCM over pipes. */
   CPKT_AUDIO_DEVICE_BACKEND_PROCESS = 1,
@@ -199,8 +202,7 @@ typedef struct cpkt_audio_encoder_config {
   unsigned long channels;
 } cpkt_audio_encoder_config;
 
-/** Capture construction options. Zero initializes to default mic, mono 16 kHz.
- */
+/** Capture construction options. Zero initializes to default mic, mono 16 kHz. */
 typedef struct cpkt_audio_capture_config {
   /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
   int backend;
@@ -214,8 +216,7 @@ typedef struct cpkt_audio_capture_config {
   void *state_user;
 } cpkt_audio_capture_config;
 
-/** Playback construction options. Zero initializes to default output, mono 16
- * kHz. */
+/** Playback construction options. Zero initializes to default output, mono 16 kHz. */
 typedef struct cpkt_audio_playback_config {
   /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
   int backend;
@@ -227,8 +228,7 @@ typedef struct cpkt_audio_playback_config {
 
 #ifndef CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
 #define CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
-/** Pullable VOX segment delivered when speech releases or a budget is reached.
- */
+/** Pullable VOX segment delivered when speech releases or a budget is reached. */
 typedef struct cpkt_audio_vox_segment cpkt_audio_vox_segment;
 #endif
 
@@ -254,7 +254,7 @@ struct cpkt_audio_vox_segment {
   long t1;
   /** Zero-based segment number emitted by this VOX instance. */
   unsigned long segment_index;
-  /** Non-zero when the segment was closed by max_segment_ms, not silence. */
+  /** Non-zero when a duration or spool budget closed the segment. */
   int hard_cut;
   /** Non-zero when this segment was emitted during flush/end-of-stream. */
   int is_final;
@@ -384,10 +384,14 @@ struct cpkt_audio_encoder {
    */
   cpkt_audio_result (*write_f32)(cpkt_audio_encoder *self, const float *frames,
                                  size_t frame_count, size_t *frames_written);
-  /** Finalizes the encoded stream. Safe to call once; repeated calls are OK. */
-  cpkt_audio_result (*close)(cpkt_audio_encoder *self);
-  /** Finalizes and releases the encoder and all resources owned by the handle.
+  /**
+   * Finalizes the encoded stream.
+   *
+   * Safe to call more than once. Returns CPKT_AUDIO_ERR_IO if the writer
+   * failed while the backend patched or flushed the output.
    */
+  cpkt_audio_result (*close)(cpkt_audio_encoder *self);
+  /** Finalizes and releases the encoder and all resources owned by the handle. */
   void (*destroy)(cpkt_audio_encoder *self);
 };
 
@@ -434,7 +438,7 @@ struct cpkt_audio_playback {
    *
    * frames_written is set before return when arguments are valid. The call
    * waits for bounded ring-buffer space instead of materializing the full
-   * stream.
+   * stream. Calling this before start returns CPKT_AUDIO_ERR_IO.
    */
   cpkt_audio_result (*write_f32_mono_16k)(cpkt_audio_playback *self,
                                           const float *frames,
@@ -465,7 +469,7 @@ struct cpkt_audio_vox {
    * Ends the stream and emits any open speech segment as a final segment.
    */
   cpkt_audio_result (*flush)(cpkt_audio_vox *self);
-  /** Releases the VOX handle and its bounded in-memory segment buffer. */
+  /** Releases the VOX handle and any memory or temporary-file segment storage. */
   void (*destroy)(cpkt_audio_vox *self);
 };
 
@@ -488,7 +492,7 @@ struct cpkt_audio_ptt {
   cpkt_audio_result (*release)(cpkt_audio_ptt *self);
   /** Ends the stream and emits any open PTT segment as final. */
   cpkt_audio_result (*flush)(cpkt_audio_ptt *self);
-  /** Releases the PTT handle and its bounded segment buffer. */
+  /** Releases the PTT handle and any memory or temporary-file segment storage. */
   void (*destroy)(cpkt_audio_ptt *self);
 };
 

@@ -337,18 +337,18 @@ static void test_model_catalog_queries(void **state) {
 
   memset(&entry, 0, sizeof(entry));
   assert_int_equal(cpkt_sus_model_catalog_default(&entry), CPKT_SUS_OK);
-  assert_string_equal(entry.name, "small");
+  assert_string_equal(entry.name, "tiny");
   assert_string_equal(entry.provider, "ggerganov/whisper.cpp");
-  assert_string_equal(entry.filename, "ggml-small.bin");
+  assert_string_equal(entry.filename, "ggml-tiny.bin");
   assert_string_equal(entry.quantization, "f16");
   assert_true(entry.is_default != 0);
   assert_string_equal(
       entry.sha256,
-      "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b");
+      "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21");
 
   memset(&entry, 0, sizeof(entry));
   assert_int_equal(cpkt_sus_model_catalog_find("", &entry), CPKT_SUS_OK);
-  assert_string_equal(entry.name, "small");
+  assert_string_equal(entry.name, "tiny");
 
   memset(&entry, 0, sizeof(entry));
   assert_int_equal(cpkt_sus_model_catalog_find("kb-whisper-small", &entry),

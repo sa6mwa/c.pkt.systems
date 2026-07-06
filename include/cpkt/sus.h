@@ -104,11 +104,21 @@ typedef int (*cpkt_sus_cache_status_sink)(
 typedef struct cpkt_sus_cache_config {
   /** Public model name such as "small" or a provider-specific alias. */
   const char *model;
-  /** Optional cache directory. NULL selects the documented cpkt cache path. */
+  /**
+   * Optional model cache directory.
+   *
+   * NULL or empty selects $XDG_CACHE_HOME/cpkt/susurro/models, then
+   * $HOME/.cache/cpkt/susurro/models.
+   */
   const char *cache_dir;
   /** Optional lowercase hex SHA-256 override for the selected model. */
   const char *sha256;
-  /** Optional source URL override for controlled mirrors or tests. */
+  /**
+   * Optional source URL override for controlled mirrors or tests.
+   *
+   * Checksum validation still uses sha256 when provided, otherwise the curated
+   * checksum for the selected model.
+   */
   const char *source_url;
   /** Non-zero disables checksum enforcement. This is insecure and off by
    * default. */
@@ -152,10 +162,9 @@ typedef struct cpkt_sus_segment {
   long t1;
 } cpkt_sus_segment;
 
-/** Committed streaming transcript state delivered after a VOX segment closes.
- */
+/** Committed streaming transcript state delivered after a VOX segment closes. */
 typedef struct cpkt_sus_segmented_event {
-  /** Current session transcript owned by the facade during the callback. */
+  /** Cumulative session transcript owned by the facade during the callback. */
   const char *text;
   /** Transcript text length in bytes, excluding the terminating NUL. */
   unsigned long text_length;
@@ -476,12 +485,12 @@ cpkt_sus_result cpkt_sus_open_path(cpkt_sus **out,
 /**
  * Opens a speech model through the explicit cache-backed resolver.
  *
- * A NULL or empty model name selects the default "small" multilingual model.
- * The resolver checks an existing cache entry at cache_dir, XDG_CACHE_HOME, or
+ * A NULL or empty model name selects the default "tiny" multilingual model.
+ * The resolver checks an existing cache entry in cache_dir, XDG_CACHE_HOME, or
  * HOME/.cache, verifies SHA-256 unless insecure_no_checksum is non-zero, and
- * then loads the model. Missing cache entries are downloaded through libcurl
- * unless offline is non-zero. source_url may override the curated URL, but the
- * checksum rules still apply.
+ * then loads the model. Missing cache entries are downloaded through the
+ * facade's network fetcher unless offline is non-zero. source_url may override
+ * the curated URL, but the checksum rules still apply.
  */
 cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
                                      const cpkt_sus_cache_config *config);
@@ -527,7 +536,7 @@ cpkt_sus_result cpkt_sus_model_catalog_entry(unsigned long index,
  */
 cpkt_sus_result cpkt_sus_model_catalog_find(const char *name,
                                             cpkt_sus_model_entry *entry);
-/** Copies the default curated cached-model catalog entry. */
+/** Copies the default curated cached-model catalog entry, currently "tiny". */
 cpkt_sus_result cpkt_sus_model_catalog_default(cpkt_sus_model_entry *entry);
 
 /** Returns the linked backend version string. */

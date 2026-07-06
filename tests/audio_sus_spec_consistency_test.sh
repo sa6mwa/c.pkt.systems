@@ -33,6 +33,15 @@ if ! grep -F 'public dependency on `libcpktaudio`' "$spec" >/dev/null 2>&1; then
   exit 1
 fi
 
+if grep -F 'default `small`' "$spec" >/dev/null 2>&1; then
+  printf 'audio/sus spec still documents small as a default model\n' >&2
+  exit 1
+fi
+
+assert_file_contains "$spec" 'The shell and the library resolver both default to `tiny`' 'audio/sus spec'
+assert_file_contains "$spec" 'The default cached model is `tiny`' 'audio/sus spec'
+assert_file_contains "$spec" '`cpkt_sus_log_set`, which adapts whisper.cpp' 'audio/sus spec'
+
 if ! grep -F 'assert_words_count "$sus_words" "-lcpktaudio" 1' "$package_smoke" >/dev/null 2>&1; then
   printf 'package smoke does not verify cpkt-sus.pc emits -lcpktaudio exactly once\n' >&2
   exit 1

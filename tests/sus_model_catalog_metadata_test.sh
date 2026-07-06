@@ -95,8 +95,8 @@ if compiled_rows != metadata_rows:
     )
 
 defaults = [row["name"] for row in metadata_rows if row["is_default"] == "1"]
-if defaults != ["small"]:
-    raise SystemExit(f"expected exactly one default model named small, got {defaults}")
+if defaults != ["tiny"]:
+    raise SystemExit(f"expected exactly one default model named tiny, got {defaults}")
 
 for row in metadata_rows:
     if not row["source_url"].startswith("https://huggingface.co/"):
