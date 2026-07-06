@@ -9,22 +9,29 @@ RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-li
 E2E_SUS_PRESET ?= release
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release test test-debug test-all debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix release source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix finalize-slice release print-release-version format source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
 	@printf 'Core:\n'
+	@printf '  %-30s %s\n' 'help' 'Show this command index.'
 	@printf '  %-30s %s\n' 'deps-debug' 'Configure the host debug dependency/build graph.'
 	@printf '  %-30s %s\n' 'deps-release' 'Configure all shipped Linux release dependency/build graphs.'
 	@printf '  %-30s %s\n' 'deps-cross' 'Configure cross release dependency/build graphs.'
 	@printf '  %-30s %s\n' 'build' 'Configure and build all shipped Linux dependency bundles.'
 	@printf '  %-30s %s\n' 'build-debug' 'Build the host debug preset.'
 	@printf '  %-30s %s\n' 'build-release' 'Build all shipped Linux release bundles.'
+	@printf '  %-30s %s\n' 'build-host' 'Alias for build-debug.'
+	@printf '  %-30s %s\n' 'cross-build' 'Alias for build-release.'
 	@printf '  %-30s %s\n' 'debug' 'Build and test the host debug preset.'
 	@printf '\nTests:\n'
 	@printf '  %-30s %s\n' 'test' 'Run ABI/link smoke tests for built Linux bundles.'
 	@printf '  %-30s %s\n' 'test-debug' 'Run the host debug tests.'
+	@printf '  %-30s %s\n' 'test-host' 'Alias for test-debug.'
+	@printf '  %-30s %s\n' 'test-cross' 'Run release preset tests for cross-capable targets.'
+	@printf '  %-30s %s\n' 'cross-test' 'Alias for test-cross.'
 	@printf '  %-30s %s\n' 'test-all' 'Run the full local confidence gate.'
+	@printf '  %-30s %s\n' 'test-install-tree' 'Run install-tree package consumer smoke tests.'
 	@printf '  %-30s %s\n' 'examples' 'Build and smoke-test source-tree examples.'
 	@printf '  %-30s %s\n' 'clangd-surface' 'Verify compile_commands and public hover comments for examples.'
 	@printf '  %-30s %s\n' 'e2e-sus' 'Run opt-in sus audio e2e with cached remote MP3 and tiny model.'
@@ -54,7 +61,10 @@ help:
 	@printf '  %-30s %s\n' 'prerelease' 'Run deterministic local pre-release confidence.'
 	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run expensive local pre-release confidence.'
 	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, checksum, and verify all release artifacts.'
+	@printf '  %-30s %s\n' 'finalize-slice' 'Format and run the narrow local pre-commit gate.'
 	@printf '  %-30s %s\n' 'release' 'Clean, build, package, and verify the final local release gate.'
+	@printf '  %-30s %s\n' 'print-release-version' 'Print the version used by package and release artifacts.'
+	@printf '  %-30s %s\n' 'format' 'Format project-owned C and header files with clang-format.'
 	@printf '\nCleanup:\n'
 	@printf '  %-30s %s\n' 'clean' 'Remove generated build, cache, and dist output.'
 	@printf '  %-30s %s\n' 'clean-dist' 'Remove only release artifacts under dist/.'
@@ -78,24 +88,31 @@ deps-cross:
 	fi
 
 build:
-	@for preset in $(RELEASE_PRESETS); do \
-		$(CMAKE) --preset "$$preset"; \
-		$(CMAKE) --build --preset "$$preset"; \
-	done
+	bash ./scripts/build.sh release
 
 build-debug:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug
+	bash ./scripts/build.sh debug
 
 build-release: build
 
-test: build
-	@for preset in $(RELEASE_PRESETS); do \
-		$(CTEST) --preset "$$preset"; \
-	done
+build-host: build-debug
 
-test-debug: build-debug
-	$(CTEST) --preset debug
+cross-build: build-release
+
+test:
+	bash ./scripts/test.sh release
+
+test-debug:
+	bash ./scripts/test.sh debug
+
+test-host: test-debug
+
+test-cross:
+	bash ./scripts/test.sh release
+
+cross-test: test-cross
+
+test-install-tree: package-verify
 
 test-all: debug clangd-surface asan tsan msan fuzz-smoke
 
@@ -175,35 +192,23 @@ msan:
 	$(CTEST) --preset msan
 
 fuzz-smoke:
-	$(CMAKE) --preset fuzz
+	bash ./scripts/configure-preset.sh --fresh fuzz
 	$(CMAKE) --build --preset fuzz
 	build/fuzz/cpkt_lua_runtime_fuzz -runs=256
-	$(CMAKE) --preset opcua-fuzz
+	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
 	$(CMAKE) --build --preset opcua-fuzz
 	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=256
 
 fuzz:
-	$(CMAKE) --preset fuzz
+	bash ./scripts/configure-preset.sh --fresh fuzz
 	$(CMAKE) --build --preset fuzz
 	build/fuzz/cpkt_lua_runtime_fuzz -runs=100000
-	$(CMAKE) --preset opcua-fuzz
+	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
 	$(CMAKE) --build --preset opcua-fuzz
 	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=100000
 
 package:
-	@for preset in $(RELEASE_PRESETS); do \
-		$(CMAKE) --preset "$$preset"; \
-		$(CMAKE) --build --preset "$$preset"; \
-		$(CTEST) --preset "$$preset"; \
-		$(CMAKE) --build --preset "package-$$preset"; \
-	done
-	@if bash ./scripts/osxcross_available.sh; then \
-		$(CMAKE) --preset arm64-apple-darwin-release; \
-		$(CMAKE) --build --preset arm64-apple-darwin-release; \
-		$(CMAKE) --build --preset package-arm64-apple-darwin-release; \
-	else \
-		printf '[package] skipping arm64-apple-darwin-release: osxcross toolchain not available\n'; \
-	fi
+	bash ./scripts/package.sh
 
 package-source:
 	bash ./scripts/package-source.sh
@@ -225,7 +230,16 @@ prerelease: debug clangd-surface asan fuzz-smoke
 
 prerelease-hardening: prerelease tsan msan release-matrix
 
-release-matrix: package package-source package-verify
+release-matrix: package package-source package-checksums package-verify
+
+finalize-slice: format debug clangd-surface
+
+print-release-version:
+	@bash ./scripts/release-version.sh "$$(pwd)"
+
+format:
+	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format\n' >&2; exit 1; }
+	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
 
 release: clean release-matrix
 
@@ -235,7 +249,7 @@ verify-source-archive:
 	bash ./scripts/source-archive-verify.sh "dist/c.pkt.systems-$$(bash ./scripts/release-version.sh "$$(pwd)").tar.gz"
 
 clean:
-	rm -rf build .cache dist
+	bash ./scripts/clean.sh all
 
 clean-dist:
-	rm -rf dist
+	bash ./scripts/clean.sh dist

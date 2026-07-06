@@ -22,6 +22,7 @@ else
 fi
 
 bash "$repo_root/tests/package_install_smoke_args_test.sh"
+bash "$repo_root/tests/lifecycle_surface_test.sh"
 bash "$repo_root/tests/osxcross_linker_route_test.sh"
 bash "$repo_root/tests/package_assertions_darwin_tool_lookup_test.sh"
 bash "$repo_root/tests/darwin_dependency_install_name_test.sh"

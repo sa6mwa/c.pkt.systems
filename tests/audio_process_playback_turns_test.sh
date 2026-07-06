@@ -1,7 +1,11 @@
 #!/bin/sh
 set -eu
 
-probe=$1
+if [ "$#" -lt 1 ]; then
+  printf 'usage: audio_process_playback_turns_test.sh [runner ...] <probe>\n' >&2
+  exit 2
+fi
+
 tmp=${TMPDIR:-/tmp}/cpkt-audio-process-playback-$$
 mkdir -p "$tmp/bin"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
@@ -22,7 +26,7 @@ chmod +x "$tmp/bin/aplay"
 CPKT_FAKE_APLAY_COUNT="$tmp/count" \
 CPKT_AUDIO_PLAYBACK_PROBE_START_ONLY=1 \
 PATH="$tmp/bin:$PATH" \
-"$probe"
+"$@"
 
 if [ -f "$tmp/count" ]; then
   printf 'process playback start spawned aplay before audio was written\n' >&2
@@ -32,7 +36,7 @@ fi
 CPKT_FAKE_APLAY_COUNT="$tmp/count" \
 CPKT_AUDIO_PLAYBACK_PROBE_FRAMES=8000 \
 PATH="$tmp/bin:$PATH" \
-"$probe"
+"$@"
 
 actual=$(cat "$tmp/count")
 if [ "$actual" != "2" ]; then
@@ -50,7 +54,7 @@ chmod +x "$tmp/bin/aplay"
 CPKT_AUDIO_PLAYBACK_PROBE_EXPECT_FAILURE=1 \
 CPKT_FAKE_APLAY_COUNT="$tmp/count" \
 PATH="$tmp/bin:$PATH" \
-"$probe"
+"$@"
 
 cat >"$tmp/bin/aplay" <<'EOS'
 #!/bin/sh
@@ -62,4 +66,4 @@ CPKT_AUDIO_PLAYBACK_PROBE_EXPECT_FAILURE=1 \
 CPKT_AUDIO_PLAYBACK_PROBE_FRAMES=262144 \
 CPKT_FAKE_APLAY_COUNT="$tmp/count" \
 PATH="$tmp/bin:$PATH" \
-"$probe"
+"$@"

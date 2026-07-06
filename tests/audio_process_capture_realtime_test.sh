@@ -1,7 +1,11 @@
 #!/bin/sh
 set -eu
 
-probe=$1
+if [ "$#" -lt 1 ]; then
+  printf 'usage: audio_process_capture_realtime_test.sh [runner ...] <probe>\n' >&2
+  exit 2
+fi
+
 tmp=${TMPDIR:-/tmp}/cpkt-audio-process-capture-$$
 mkdir -p "$tmp/bin"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
@@ -43,7 +47,7 @@ chmod +x "$tmp/bin/arecord"
 
 CPKT_FAKE_ARECORD_STATE="$tmp/generation" \
 PATH="$tmp/bin:$PATH" \
-"$probe"
+"$@"
 
 actual=$(cat "$tmp/generation")
 if [ "$actual" != "1" ]; then

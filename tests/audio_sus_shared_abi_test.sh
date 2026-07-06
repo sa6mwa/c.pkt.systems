@@ -60,6 +60,9 @@ assert_exports_prefix() {
 
   while IFS= read -r symbol; do
     [ -n "$symbol" ] || continue
+    case "$symbol" in
+      _init|_fini) continue ;;
+    esac
     count=$((count + 1))
     case "$symbol" in
       "$prefix"*) ;;

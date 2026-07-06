@@ -53,6 +53,11 @@ endfunction()
 
 cpkt_target_executables_runnable(CPKT_CAN_RUN_TARGET_EXECUTABLES)
 
+set(CPKT_TEST_EXECUTABLE_PREFIX)
+if(CMAKE_CROSSCOMPILING AND CMAKE_CROSSCOMPILING_EMULATOR)
+  set(CPKT_TEST_EXECUTABLE_PREFIX ${CMAKE_CROSSCOMPILING_EMULATOR})
+endif()
+
 function(cpkt_add_repo_warning_errors target_name)
   get_target_property(_cpkt_target_type ${target_name} TYPE)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
@@ -497,6 +502,7 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
     add_test(
       NAME cpktxscribe_cache_status
       COMMAND ${CMAKE_SOURCE_DIR}/tests/cpktxscribe_cache_status_test.sh
+        ${CPKT_TEST_EXECUTABLE_PREFIX}
         $<TARGET_FILE:cpktxscribe>)
     add_test(
       NAME cpktxscribe_link_policy
@@ -654,8 +660,6 @@ if(CPKT_BUILD_TESTS)
     examples/sus-live-vox-c89/main.c)
   target_compile_options(cpkt_sus_live_vox_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_sus_live_vox_c89_example)
-  set_target_properties(cpkt_sus_live_vox_c89_example PROPERTIES
-    LINKER_LANGUAGE CXX)
   target_link_libraries(cpkt_sus_live_vox_c89_example PRIVATE
     cpkt_audio_shared
     cpkt_sus_shared)
@@ -917,7 +921,10 @@ if(CPKT_BUILD_TESTS)
       NAME sus_live_startup_status
       COMMAND
         "${CMAKE_SOURCE_DIR}/tests/sus_live_startup_status_test.sh"
+        ${CPKT_TEST_EXECUTABLE_PREFIX}
         "$<TARGET_FILE:cpkt_sus_live_vox_c89_example>")
+    set_tests_properties(audio_live_vox_c89_example PROPERTIES
+      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_audio_shared>:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     set_tests_properties(audio_sus_c89_example PROPERTIES
       ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     set_tests_properties(sus_vox_intro_c89_example PROPERTIES
@@ -958,11 +965,13 @@ if(CPKT_BUILD_TESTS)
         NAME audio_process_capture_realtime
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_process_capture_realtime_test.sh"
+          ${CPKT_TEST_EXECUTABLE_PREFIX}
           "$<TARGET_FILE:cpkt_audio_process_capture_probe>")
       add_test(
         NAME audio_process_playback_turns
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_process_playback_turns_test.sh"
+          ${CPKT_TEST_EXECUTABLE_PREFIX}
           "$<TARGET_FILE:cpkt_audio_process_playback_probe>")
       add_test(
         NAME audio_runtime_loading_policy
@@ -1064,6 +1073,13 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/package_assertions_elf_runpath_test.sh")
       set_tests_properties(package_assertions_elf_runpath PROPERTIES
         LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
+        NAME lifecycle_surface
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/lifecycle_surface_test.sh")
+      set_tests_properties(lifecycle_surface PROPERTIES
+        LABELS "packaging;smoke"
         TIMEOUT 30)
       add_test(
         NAME receiver_style_examples

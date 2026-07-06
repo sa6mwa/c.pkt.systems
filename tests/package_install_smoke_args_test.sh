@@ -54,6 +54,12 @@ if grep -F -- 'CPKT_EXAMPLE_CFLAGS="$pkg_config_toolchain_flags' "$repo_root/scr
   printf 'package smoke still passes Darwin link-only toolchain flags to compile commands\n' >&2
   exit 1
 fi
+if ! grep -F -- 'cpkt_append_runtime_library_dir "$cc" libgcc_s.so.1' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    ! grep -F -- 'cpkt_append_runtime_library_dir "$cxx" libstdc++.so.6' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    ! grep -F -- 'LD_LIBRARY_PATH="$prefix/lib${runtime_library_path:+:$runtime_library_path}' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+  printf 'package smoke no longer adds selected toolchain runtime libraries when running Linux install consumers\n' >&2
+  exit 1
+fi
 
 for expected_compile_options in \
   'common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"' \
@@ -73,6 +79,25 @@ done
 if ! grep -F -- 'installed_examples_dir="$prefix/share/doc/c.pkt.systems/examples"' \
     "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
   printf 'package smoke no longer builds examples from the extracted SDK docs tree\n' >&2
+  exit 1
+fi
+if ! grep -F -- '-Dminiaudio_DIR="$prefix/lib/cmake/miniaudio"' \
+    "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+  printf 'package smoke no longer resolves the installed miniaudio CMake package explicitly\n' >&2
+  exit 1
+fi
+if ! awk '
+  /^example_cmake_args=\(/ { in_block = 1 }
+  in_block && /-Dminiaudio_DIR="\$prefix\/lib\/cmake\/miniaudio"/ { found = 1 }
+  in_block && /^\)/ { in_block = 0 }
+  END { exit found ? 0 : 1 }
+' "$repo_root/scripts/package-install-smoke.sh"; then
+  printf 'package smoke no longer resolves miniaudio for the installed cmake-consumer example\n' >&2
+  exit 1
+fi
+if ! grep -F -- '-DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio"' \
+    "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+  printf 'package smoke no longer resolves the installed CpktAudio CMake package explicitly\n' >&2
   exit 1
 fi
 if grep -F -- '-S "$repo_root/examples/' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||

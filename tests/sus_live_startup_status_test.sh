@@ -1,12 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
-if [ "$#" -ne 1 ]; then
-  printf 'usage: sus_live_startup_status_test.sh <cpkt_sus_live_vox_c89_example>\n' >&2
+if [ "$#" -lt 1 ]; then
+  printf 'usage: sus_live_startup_status_test.sh [runner ...] <cpkt_sus_live_vox_c89_example>\n' >&2
   exit 2
 fi
 
-example=$1
 missing_model=${TMPDIR:-/tmp}/cpkt-sus-live-startup-missing-model.bin
 output=${TMPDIR:-/tmp}/cpkt-sus-live-startup-status.out
 cache_dir=${TMPDIR:-/tmp}/cpkt-sus-live-startup-cache.$$
@@ -27,7 +26,7 @@ mkdir -p "$cache_dir"
 mkdir -p "$download_dir"
 
 set +e
-"$example" --model-path "$missing_model" --seconds 0 >"$output" 2>&1
+"$@" --model-path "$missing_model" --seconds 0 >"$output" 2>&1
 rc=$?
 set -e
 
@@ -56,7 +55,7 @@ if grep -F -- 'RX' "$output" >/dev/null 2>&1; then
 fi
 
 set +e
-"$example" --offline --cache-dir "$cache_dir" --model tiny --seconds 0 \
+"$@" --offline --cache-dir "$cache_dir" --model tiny --seconds 0 \
   >"$cache_output" 2>&1
 rc=$?
 set -e
@@ -92,7 +91,7 @@ if grep -F -- 'RX' "$cache_output" >/dev/null 2>&1; then
 fi
 
 set +e
-"$example" --cache-dir "$download_dir" --model tiny \
+"$@" --cache-dir "$download_dir" --model tiny \
   --source-url "$missing_source" --seconds 0 >"$download_output" 2>&1
 rc=$?
 set -e

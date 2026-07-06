@@ -1,12 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
-if [ "$#" -ne 1 ]; then
-  printf 'usage: cpktxscribe_cache_status_test.sh <cpktxscribe>\n' >&2
+if [ "$#" -lt 1 ]; then
+  printf 'usage: cpktxscribe_cache_status_test.sh [runner ...] <cpktxscribe>\n' >&2
   exit 2
 fi
 
-tool=$1
 work_root=${TMPDIR:-/tmp}/cpktxscribe-cache-status-test.$$
 audio_path=$work_root/input.wav
 cache_dir=$work_root/cache
@@ -39,7 +38,7 @@ with wave.open(path, "wb") as wav:
 PY
 
 set +e
-"$tool" --offline --cache-dir "$cache_dir" --model tiny "$audio_path" \
+"$@" --offline --cache-dir "$cache_dir" --model tiny "$audio_path" \
   >"$stdout_path" 2>"$stderr_path"
 rc=$?
 set -e

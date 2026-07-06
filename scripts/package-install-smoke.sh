@@ -183,6 +183,37 @@ case "$target_id" in
     fi
     ;;
 esac
+runtime_library_path=
+cpkt_append_runtime_library_dir() {
+  compiler=$1
+  library_name=$2
+  if ! library_path=$("$compiler" -print-file-name="$library_name" 2>/dev/null); then
+    return 0
+  fi
+  case "$library_path" in
+    /*)
+      if [ -f "$library_path" ]; then
+        library_dir=$(CDPATH= cd -- "$(dirname -- "$library_path")" && pwd)
+        case ":$runtime_library_path:" in
+          *":$library_dir:"*) ;;
+          *)
+            if [ -n "$runtime_library_path" ]; then
+              runtime_library_path="$runtime_library_path:$library_dir"
+            else
+              runtime_library_path=$library_dir
+            fi
+            ;;
+        esac
+      fi
+      ;;
+  esac
+}
+case "$target_id" in
+  *-linux-*)
+    cpkt_append_runtime_library_dir "$cc" libgcc_s.so.1
+    cpkt_append_runtime_library_dir "$cxx" libstdc++.so.6
+    ;;
+esac
 
 if [ "${CPKT_PACKAGE_INSTALL_SMOKE_PRINT_CMAKE_TOOLCHAIN_ARGS:-0}" = 1 ]; then
   printf '%s\n' -G
@@ -1269,8 +1300,10 @@ cmake_args=(
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -Dminiaudio_DIR="$prefix/lib/cmake/miniaudio" \
   -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
   -DCpktSus_DIR="$prefix/lib/cmake/CpktSus" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
@@ -1458,6 +1491,7 @@ example_cmake_args=(
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -Dminiaudio_DIR="$prefix/lib/cmake/miniaudio" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
@@ -2022,17 +2056,18 @@ if [ "$run_consumers" -eq 0 ]; then
   exit 0
 fi
 
+case "$target_id" in
+  *-linux-*)
+    if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+      LD_LIBRARY_PATH="$prefix/lib${runtime_library_path:+:$runtime_library_path}:$LD_LIBRARY_PATH"
+    else
+      LD_LIBRARY_PATH="$prefix/lib${runtime_library_path:+:$runtime_library_path}"
+    fi
+    export LD_LIBRARY_PATH
+    ;;
+esac
+
 if [ -z "$run_prefix" ]; then
-  case "$target_id" in
-    *-linux-*)
-      if [ -n "${LD_LIBRARY_PATH:-}" ]; then
-        LD_LIBRARY_PATH="$prefix/lib:$LD_LIBRARY_PATH"
-      else
-        LD_LIBRARY_PATH="$prefix/lib"
-      fi
-      export LD_LIBRARY_PATH
-      ;;
-  esac
   "$cmake_build_dir/cpkt_cmake_zlib"
   "$cmake_build_dir/cpkt_cmake_nghttp2"
   "$cmake_build_dir/cpkt_cmake_crypto"
