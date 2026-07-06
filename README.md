@@ -285,7 +285,11 @@ SDK facades:
 for decoders, encoders, capture, playback, VOX, and PTT without exposing
 miniaudio headers or backend types. Decoders produce float32 mono 16 kHz PCM for
 speech workflows and support file, HTTP/HTTPS URL, and callback-reader inputs.
-The first advertised encoder format is WAV.
+The first advertised encoder format is WAV. Capture and playback accept
+`auto`, `process`, `coreaudio`, and `native` backend selections. On Linux,
+static `auto` uses the process backend by default while explicit `native`
+retains miniaudio runtime loading; shared Linux builds may try native runtime
+loading first and fall back to process when the native open fails.
 
 `cpkt_sus` is a C89 facade over a CPU-only whisper.cpp/ggml build. It ships as a
 separate ABI-0 facade from `cpkt_audio`, while depending on `cpkt_audio` for
