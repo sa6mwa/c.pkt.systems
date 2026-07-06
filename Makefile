@@ -195,6 +195,8 @@ fuzz-smoke:
 	bash ./scripts/configure-preset.sh --fresh fuzz
 	$(CMAKE) --build --preset fuzz
 	build/fuzz/cpkt_lua_runtime_fuzz -runs=256
+	bash ./scripts/configure-preset.sh debug
+	$(CMAKE) --build --preset debug --target cpkt_opcua_static
 	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
 	$(CMAKE) --build --preset opcua-fuzz
 	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=256
@@ -203,6 +205,8 @@ fuzz:
 	bash ./scripts/configure-preset.sh --fresh fuzz
 	$(CMAKE) --build --preset fuzz
 	build/fuzz/cpkt_lua_runtime_fuzz -runs=100000
+	bash ./scripts/configure-preset.sh debug
+	$(CMAKE) --build --preset debug --target cpkt_opcua_static
 	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
 	$(CMAKE) --build --preset opcua-fuzz
 	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=100000

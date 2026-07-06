@@ -386,12 +386,14 @@ make msan
 make fuzz-smoke
 ```
 
-`asan` also enables UBSan. These sanitizer and fuzz gates compile only
-repo-owned facade code and the mock Lua sink; they do not build, instrument, or
-test bundled upstream dependencies. `fuzz-smoke` builds the libFuzzer target and
-runs a bounded smoke pass against that mock-backed facade target. These
-instrumentation builds live under `build/asan`, `build/tsan`, `build/msan`, and
-`build/fuzz`; release package targets do not enable sanitizer or fuzzing
+`asan` also enables UBSan. These sanitizer and fuzz gates instrument repo-owned
+facade targets and the mock Lua sink; they do not build, instrument, or fuzz
+bundled upstream dependencies. `fuzz-smoke` runs bounded smoke passes against
+the mock-backed Lua runtime fuzzer and the public OPC UA facade fuzzer. The OPC
+UA fuzzer reuses the normal debug dependency install tree for linkage instead
+of creating a Clang-owned third-party dependency tree. These instrumentation
+builds live under `build/asan`, `build/tsan`, `build/msan`, `build/fuzz`, and
+`build/opcua-fuzz`; release package targets do not enable sanitizer or fuzzing
 instrumentation.
 
 `make clangd-surface` configures the debug compile database, verifies that the

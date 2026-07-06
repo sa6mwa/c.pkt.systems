@@ -60,6 +60,12 @@ if ! grep -F -- 'cpkt_append_runtime_library_dir "$cc" libgcc_s.so.1' "$repo_roo
   printf 'package smoke no longer adds selected toolchain runtime libraries when running Linux install consumers\n' >&2
   exit 1
 fi
+if ! grep -F -- 'target_command_env=("LD_LIBRARY_PATH=$osxcross_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    ! grep -F -- 'cpkt_cmake_build_checked "cmake aggregate consumer build" "$cmake_build_dir"' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    ! grep -F -- 'command_prefix=(env "${target_command_env[@]}")' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+  printf 'package smoke no longer runs Darwin target commands with the osxcross runtime library path\n' >&2
+  exit 1
+fi
 
 for expected_compile_options in \
   'common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"' \

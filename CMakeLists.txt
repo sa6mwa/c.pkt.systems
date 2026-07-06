@@ -12,6 +12,11 @@ endif()
 
 project(c_pkt_systems VERSION "${CPKT_PROJECT_VERSION}" LANGUAGES C CXX)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CPKT_OSXCROSS_ROOT)
+  set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK
+    "${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}")
+endif()
+
 include(CTest)
 include(ProcessorCount)
 
@@ -20,6 +25,7 @@ find_package(Threads REQUIRED)
 
 option(CPKT_BUILD_DEPENDENCIES "Download and build pinned third-party dependencies." ON)
 option(CPKT_BUILD_TESTS "Build ABI/link smoke tests for published dependency artifacts." ON)
+option(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE "Honor explicitly provided dependency roots even when they differ from this compiler's default cache key." OFF)
 option(CPKT_ENABLE_FUZZING "Build libFuzzer facade fuzz targets." OFF)
 option(CPKT_FACADE_ONLY "Build only repo-owned facade hardening targets." OFF)
 option(CPKT_SUS_CPU_ONLY "Build the cpkt_sus whisper.cpp dependency set with CPU backends only." ON)
@@ -266,7 +272,9 @@ else()
 endif()
 if(NOT DEFINED CPKT_EXTERNAL_ROOT
     OR "${CPKT_EXTERNAL_ROOT}" STREQUAL "${_cpkt_legacy_external_root}"
-    OR (_cpkt_external_root_under_legacy EQUAL 0 AND NOT "${CPKT_EXTERNAL_ROOT}" STREQUAL "${_cpkt_default_external_root}"))
+    OR (NOT CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
+      AND _cpkt_external_root_under_legacy EQUAL 0
+      AND NOT "${CPKT_EXTERNAL_ROOT}" STREQUAL "${_cpkt_default_external_root}"))
   set(CPKT_EXTERNAL_ROOT "${_cpkt_default_external_root}" CACHE PATH "Version-keyed install root for dependency artifacts." FORCE)
 endif()
 if(DEFINED CPKT_DEPENDENCY_BUILD_ROOT)
@@ -276,7 +284,9 @@ else()
 endif()
 if(NOT DEFINED CPKT_DEPENDENCY_BUILD_ROOT
     OR "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${_cpkt_legacy_dependency_build_root}"
-    OR (_cpkt_dependency_build_root_under_legacy EQUAL 0 AND NOT "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${_cpkt_default_dependency_build_root}"))
+    OR (NOT CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
+      AND _cpkt_dependency_build_root_under_legacy EQUAL 0
+      AND NOT "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${_cpkt_default_dependency_build_root}"))
   set(CPKT_DEPENDENCY_BUILD_ROOT "${_cpkt_default_dependency_build_root}" CACHE PATH "Version-keyed build root for dependency artifacts." FORCE)
 endif()
 
@@ -1079,6 +1089,21 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/lifecycle_surface_test.sh")
       set_tests_properties(lifecycle_surface PROPERTIES
+        LABELS "packaging;smoke"
+        TIMEOUT 30)
+      add_test(
+        NAME package_install_smoke_args
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/package_install_smoke_args_test.sh")
+      set_tests_properties(package_install_smoke_args PROPERTIES
+        LABELS "packaging;smoke"
+        TIMEOUT 30)
+      add_test(
+        NAME mqttc_linker_flags
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/mqttc_linker_flags_test.sh")
+      set_tests_properties(mqttc_linker_flags PROPERTIES
         LABELS "packaging;smoke"
         TIMEOUT 30)
       add_test(

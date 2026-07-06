@@ -9,7 +9,7 @@ if ! grep -F -- 'separate_arguments(mqttc_shared_extra_link_flags NATIVE_COMMAND
   exit 1
 fi
 
-if ! grep -F -- 'COMMAND ${CMAKE_C_COMPILER} ${mqttc_shared_link_flags} ${mqttc_shared_extra_link_flags} -o "${mqttc_shared_library}"' "$dependencies_cmake" >/dev/null 2>&1; then
+if ! grep -F -- '${CMAKE_C_COMPILER} ${mqttc_shared_link_flags} ${mqttc_shared_extra_link_flags} -o "${mqttc_shared_library}"' "$dependencies_cmake" >/dev/null 2>&1; then
   printf 'MQTT-C shared link rule does not use CMAKE_SHARED_LINKER_FLAGS\n' >&2
   exit 1
 fi

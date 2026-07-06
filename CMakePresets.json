@@ -91,7 +91,8 @@
       "inherits": "debug",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang",
-        "CPKT_BUILD_DEPENDENCIES": "ON",
+        "CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE": "ON",
+        "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "OFF",
         "CPKT_ENABLE_FUZZING": "ON"
       }

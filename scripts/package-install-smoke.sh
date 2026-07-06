@@ -21,6 +21,7 @@ example_runtime_ldflags=
 cmake_generator="Unix Makefiles"
 cmake_toolchain_file=
 cmake_toolchain_args=()
+target_command_env=()
 
 cpkt_infer_cxx_from_cc() {
   case "$1" in
@@ -149,6 +150,7 @@ case "$target_id" in
     osxcross_root=${OSXCROSS_ROOT:-"$HOME/.local/cross/osxcross"}
     osxcross_host=${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}
     cc=${CC:-"$osxcross_root/bin/$osxcross_host-clang"}
+    target_command_env=("LD_LIBRARY_PATH=$osxcross_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")
     run_prefix=
     run_consumers=0
     static_extra_libs=
@@ -276,7 +278,13 @@ cpkt_run_checked() {
   shift
   log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
 
-  if ! "$@" >"$log_file" 2>&1; then
+  if [ "${#target_command_env[@]}" -gt 0 ]; then
+    command_prefix=(env "${target_command_env[@]}")
+  else
+    command_prefix=()
+  fi
+
+  if ! "${command_prefix[@]}" "$@" >"$log_file" 2>&1; then
     printf '%s failed\n' "$description" >&2
     cat "$log_file" >&2
     exit 1
@@ -294,7 +302,13 @@ cpkt_run_shell_checked() {
   command_text=$2
   log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
 
-  if ! sh -c "$command_text" >"$log_file" 2>&1; then
+  if [ "${#target_command_env[@]}" -gt 0 ]; then
+    command_prefix=(env "${target_command_env[@]}")
+  else
+    command_prefix=()
+  fi
+
+  if ! "${command_prefix[@]}" sh -c "$command_text" >"$log_file" 2>&1; then
     printf '%s failed\n' "$description" >&2
     cat "$log_file" >&2
     exit 1
@@ -305,6 +319,12 @@ cpkt_run_shell_checked() {
     exit 1
   fi
   cat "$log_file"
+}
+
+cpkt_cmake_build_checked() {
+  description=$1
+  build_dir=$2
+  cpkt_run_checked "$description" cmake --build "$build_dir"
 }
 
 (cd "$work_root" && cmake -E tar xf "$archive")
@@ -1315,7 +1335,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "cmake aggregate consumer configure" cmake "${cmake_args[@]}"
-cpkt_run_checked "cmake aggregate consumer build" cmake --build "$cmake_build_dir"
+cpkt_cmake_build_checked "cmake aggregate consumer build" "$cmake_build_dir"
 
 assert_words_contain() {
   words=$1
@@ -1449,7 +1469,7 @@ EOF
     direct_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
   fi
   cpkt_run_checked "cmake direct ${package_name} configure" cmake "${direct_cmake_args[@]}"
-  cpkt_run_checked "cmake direct ${package_name} build" cmake --build "$direct_build_dir"
+  cpkt_cmake_build_checked "cmake direct ${package_name} build" "$direct_build_dir"
 }
 
 cpkt_cmake_direct_dir_smoke Libssh2 "$prefix/lib/cmake/libssh2" cpkt_direct_libssh2 cpkt_libssh2.c Libssh2::libssh2
@@ -1501,7 +1521,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "example cmake consumer configure" cmake "${example_cmake_args[@]}"
-cpkt_run_checked "example cmake consumer build" cmake --build "$example_cmake_build_dir"
+cpkt_cmake_build_checked "example cmake consumer build" "$example_cmake_build_dir"
 
 lua_runtime_example_cmake_build_dir="$work_root/example-lua-runtime-c89-cmake-build"
 lua_runtime_example_cmake_args=(
@@ -1520,7 +1540,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   lua_runtime_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "lua runtime cmake example configure" cmake "${lua_runtime_example_cmake_args[@]}"
-cpkt_run_checked "lua runtime cmake example build" cmake --build "$lua_runtime_example_cmake_build_dir"
+cpkt_cmake_build_checked "lua runtime cmake example build" "$lua_runtime_example_cmake_build_dir"
 
 opcua_example_cmake_build_dir="$work_root/example-opcua-c89-cmake-build"
 opcua_example_cmake_args=(
@@ -1539,7 +1559,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   opcua_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "opcua cmake example configure" cmake "${opcua_example_cmake_args[@]}"
-cpkt_run_checked "opcua cmake example build" cmake --build "$opcua_example_cmake_build_dir"
+cpkt_cmake_build_checked "opcua cmake example build" "$opcua_example_cmake_build_dir"
 
 audio_sus_example_cmake_build_dir="$work_root/example-audio-sus-c89-cmake-build"
 audio_sus_example_cmake_args=(
@@ -1559,7 +1579,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   audio_sus_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "audio sus cmake example configure" cmake "${audio_sus_example_cmake_args[@]}"
-cpkt_run_checked "audio sus cmake example build" cmake --build "$audio_sus_example_cmake_build_dir"
+cpkt_cmake_build_checked "audio sus cmake example build" "$audio_sus_example_cmake_build_dir"
 
 audio_vox_example_cmake_build_dir="$work_root/example-audio-vox-intro-c89-cmake-build"
 audio_vox_example_cmake_args=(
@@ -1578,7 +1598,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   audio_vox_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "audio vox intro cmake example configure" cmake "${audio_vox_example_cmake_args[@]}"
-cpkt_run_checked "audio vox intro cmake example build" cmake --build "$audio_vox_example_cmake_build_dir"
+cpkt_cmake_build_checked "audio vox intro cmake example build" "$audio_vox_example_cmake_build_dir"
 
 audio_live_vox_example_cmake_build_dir="$work_root/example-audio-live-vox-c89-cmake-build"
 audio_live_vox_example_cmake_args=(
@@ -1597,7 +1617,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   audio_live_vox_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "audio live vox cmake example configure" cmake "${audio_live_vox_example_cmake_args[@]}"
-cpkt_run_checked "audio live vox cmake example build" cmake --build "$audio_live_vox_example_cmake_build_dir"
+cpkt_cmake_build_checked "audio live vox cmake example build" "$audio_live_vox_example_cmake_build_dir"
 
 sus_vox_example_cmake_build_dir="$work_root/example-sus-vox-intro-c89-cmake-build"
 sus_vox_example_cmake_args=(
@@ -1617,7 +1637,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   sus_vox_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "sus vox intro cmake example configure" cmake "${sus_vox_example_cmake_args[@]}"
-cpkt_run_checked "sus vox intro cmake example build" cmake --build "$sus_vox_example_cmake_build_dir"
+cpkt_cmake_build_checked "sus vox intro cmake example build" "$sus_vox_example_cmake_build_dir"
 
 sus_live_vox_example_cmake_build_dir="$work_root/example-sus-live-vox-c89-cmake-build"
 sus_live_vox_example_cmake_args=(
@@ -1637,7 +1657,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   sus_live_vox_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "sus live vox cmake example configure" cmake "${sus_live_vox_example_cmake_args[@]}"
-cpkt_run_checked "sus live vox cmake example build" cmake --build "$sus_live_vox_example_cmake_build_dir"
+cpkt_cmake_build_checked "sus live vox cmake example build" "$sus_live_vox_example_cmake_build_dir"
 
 pkg_config_libdir="$prefix/lib/pkgconfig"
 pkg_config_words() {
