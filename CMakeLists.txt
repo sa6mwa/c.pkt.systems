@@ -713,12 +713,45 @@ if(CPKT_BUILD_TESTS)
   add_executable(cpkt_whisper_smoke_shared examples/whisper_smoke.c)
   target_compile_options(cpkt_whisper_smoke_shared PRIVATE -std=c99)
   target_link_libraries(cpkt_whisper_smoke_shared PRIVATE cpkt::whisper_shared)
+  add_library(cpkt_static_archive_pic_smoke_core SHARED examples/abi_smoke.c)
+  target_compile_options(cpkt_static_archive_pic_smoke_core PRIVATE -std=c99)
+  target_link_libraries(cpkt_static_archive_pic_smoke_core PRIVATE
+    cpkt::curl_static
+    cpkt::libxml2_static
+    cpkt::lua_static
+    cpkt::miniaudio_static
+    cpkt::open62541_static
+  )
+  add_library(cpkt_static_archive_pic_smoke_mqttc SHARED examples/mqttc_smoke.c)
+  target_compile_options(cpkt_static_archive_pic_smoke_mqttc PRIVATE -std=c99)
+  target_link_libraries(cpkt_static_archive_pic_smoke_mqttc PRIVATE cpkt::mqttc_static)
+  add_library(cpkt_static_archive_pic_smoke_whisper SHARED examples/whisper_smoke.c)
+  target_compile_options(cpkt_static_archive_pic_smoke_whisper PRIVATE -std=c99)
+  target_link_libraries(cpkt_static_archive_pic_smoke_whisper PRIVATE cpkt::whisper_static)
+  set_target_properties(cpkt_static_archive_pic_smoke_whisper PROPERTIES
+    LINKER_LANGUAGE CXX)
+  add_library(cpkt_static_archive_pic_smoke_facades SHARED
+    tests/static_archive_pic_smoke.c)
+  target_compile_options(cpkt_static_archive_pic_smoke_facades PRIVATE -std=c99)
+  target_include_directories(cpkt_static_archive_pic_smoke_facades PRIVATE
+    "${CMAKE_SOURCE_DIR}/include")
+  target_link_libraries(cpkt_static_archive_pic_smoke_facades PRIVATE
+    cpkt_lua_runtime_static
+    cpkt_audio_static
+    cpkt_sus_static
+    cpkt_opcua_static)
+  set_target_properties(cpkt_static_archive_pic_smoke_facades PROPERTIES
+    LINKER_LANGUAGE CXX)
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpkt_abi_smoke_shared cpkt_deps)
     add_dependencies(cpkt_abi_smoke_static cpkt_deps)
     add_dependencies(cpkt_mqttc_smoke_shared cpkt_deps)
     add_dependencies(cpkt_mqttc_smoke_static cpkt_deps)
     add_dependencies(cpkt_whisper_smoke_shared cpkt_deps)
+    add_dependencies(cpkt_static_archive_pic_smoke_core cpkt_deps)
+    add_dependencies(cpkt_static_archive_pic_smoke_mqttc cpkt_deps)
+    add_dependencies(cpkt_static_archive_pic_smoke_whisper cpkt_deps)
+    add_dependencies(cpkt_static_archive_pic_smoke_facades cpkt_deps)
   endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -904,6 +937,14 @@ if(CPKT_BUILD_TESTS)
     add_test(NAME mqttc_example_shared COMMAND cpkt_mqttc_smoke_shared)
     add_test(NAME mqttc_example_static COMMAND cpkt_mqttc_smoke_static)
     add_test(NAME whisper_example_shared COMMAND cpkt_whisper_smoke_shared)
+    add_test(
+      NAME static_archive_pic_link
+      COMMAND
+        "${CMAKE_SOURCE_DIR}/tests/static_archive_pic_link_test.sh"
+        "$<TARGET_FILE:cpkt_static_archive_pic_smoke_core>"
+        "$<TARGET_FILE:cpkt_static_archive_pic_smoke_mqttc>"
+        "$<TARGET_FILE:cpkt_static_archive_pic_smoke_whisper>"
+        "$<TARGET_FILE:cpkt_static_archive_pic_smoke_facades>")
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       set_tests_properties(whisper_example_shared PROPERTIES
         ENVIRONMENT "DYLD_LIBRARY_PATH=${CPKT_EXTERNAL_ROOT}/whisper/install/lib")
