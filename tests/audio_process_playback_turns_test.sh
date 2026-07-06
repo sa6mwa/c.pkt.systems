@@ -39,3 +39,27 @@ if [ "$actual" != "2" ]; then
   printf 'expected two process playback turns, got %s\n' "$actual" >&2
   exit 1
 fi
+
+cat >"$tmp/bin/aplay" <<'EOS'
+#!/bin/sh
+cat >/dev/null
+exit 7
+EOS
+chmod +x "$tmp/bin/aplay"
+
+CPKT_AUDIO_PLAYBACK_PROBE_EXPECT_FAILURE=1 \
+CPKT_FAKE_APLAY_COUNT="$tmp/count" \
+PATH="$tmp/bin:$PATH" \
+"$probe"
+
+cat >"$tmp/bin/aplay" <<'EOS'
+#!/bin/sh
+exit 7
+EOS
+chmod +x "$tmp/bin/aplay"
+
+CPKT_AUDIO_PLAYBACK_PROBE_EXPECT_FAILURE=1 \
+CPKT_AUDIO_PLAYBACK_PROBE_FRAMES=262144 \
+CPKT_FAKE_APLAY_COUNT="$tmp/count" \
+PATH="$tmp/bin:$PATH" \
+"$probe"

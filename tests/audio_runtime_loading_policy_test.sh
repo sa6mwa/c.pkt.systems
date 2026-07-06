@@ -101,6 +101,9 @@ assert_source_contains "$audio_source" \
   'cpkt_audio_playback_wait_turn_elapsed(impl, impl->drain_latency_ms)' \
   'native playback drain must wait for configured backend latency'
 assert_source_contains "$audio_source" \
+  'if (!impl->started) {' \
+  'native playback writes must fail before start instead of waiting for ring-buffer space forever'
+assert_source_contains "$audio_source" \
   ': 2000UL) +' \
   'native playback drain latency must include default or configured buffer duration'
 assert_source_contains "$audio_source" \
@@ -112,6 +115,12 @@ assert_source_contains "$audio_source" \
 assert_source_contains "$audio_source" \
   'CPKT_AUDIO_DEVICE_MODE_PROCESS' \
   'process backend mode must be backend-neutral for capture and playback'
+assert_source_contains "$audio_source" \
+  '#if !defined(__APPLE__)' \
+  'SIGPIPE drain must not call sigtimedwait on Darwin'
+assert_source_contains "$audio_source" \
+  '(void)sigtimedwait(&blocked, NULL, &timeout)' \
+  'Linux process playback must consume generated SIGPIPE after EPIPE'
 assert_source_lacks "$audio_source" \
   'CPKT_AUDIO_DEVICE_MODE_PROCESS_ARECORD' \
   'process backend mode must not retain capture-specific naming'

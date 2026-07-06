@@ -8,11 +8,13 @@
 #if defined(__unix__) || defined(__APPLE__)
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <signal.h>
 #include <sys/select.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -829,7 +831,7 @@ cpkt_audio_mp3_decode_next_frame(struct cpkt_audio_decoder_impl *impl) {
         cpkt_audio_drmp3_url_read(impl->url_source, chunk, sizeof(chunk));
     if (bytes_read == 0U) {
       if (impl->url_source->failed) {
-        return impl->mp3_input_frames > 0 ? CPKT_AUDIO_OK : CPKT_AUDIO_AT_END;
+        return CPKT_AUDIO_ERR_IO;
       }
       if (impl->url_source->done) {
         return CPKT_AUDIO_AT_END;
@@ -1588,6 +1590,11 @@ static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
       return MA_IO_ERROR;
     }
     if (nread == 0) {
+      if (impl != NULL && impl->url_source != NULL &&
+          impl->url_source->failed) {
+        impl->callback_error = 1;
+        return MA_IO_ERROR;
+      }
       break;
     }
     total_read += nread;
@@ -1776,6 +1783,9 @@ cpkt_audio_decoder_read_f32_mono_16k_impl(cpkt_audio_decoder *self,
   result =
       ma_decoder_read_pcm_frames(&impl->decoder, frames, requested, &actual);
   *frames_read = (size_t)actual;
+  if (impl->url_source != NULL && impl->url_source->failed && actual == 0) {
+    return CPKT_AUDIO_ERR_IO;
+  }
   if (result != MA_SUCCESS && result != MA_AT_END && impl->callback_error) {
     return CPKT_AUDIO_ERR_IO;
   }
@@ -2080,7 +2090,10 @@ static cpkt_audio_result cpkt_audio_process_finish(pid_t *pid, int *fd) {
     for (;;) {
       if (waitpid(*pid, &status, 0) >= 0) {
         *pid = (pid_t)-1;
-        return CPKT_AUDIO_OK;
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+          return CPKT_AUDIO_OK;
+        }
+        return CPKT_AUDIO_ERR_IO;
       }
       if (errno != EINTR) {
         *pid = (pid_t)-1;
@@ -2089,6 +2102,50 @@ static cpkt_audio_result cpkt_audio_process_finish(pid_t *pid, int *fd) {
     }
   }
   return CPKT_AUDIO_OK;
+}
+
+static ssize_t cpkt_audio_process_write(int fd, const void *buffer,
+                                        size_t size) {
+#if defined(SIGPIPE)
+  sigset_t blocked;
+  sigset_t previous;
+  sigset_t pending;
+#if !defined(__APPLE__)
+  struct timespec timeout;
+#endif
+  ssize_t result;
+  int had_pending_sigpipe;
+  int saved_errno;
+
+  if (sigemptyset(&blocked) != 0 || sigaddset(&blocked, SIGPIPE) != 0) {
+    return write(fd, buffer, size);
+  }
+  if (pthread_sigmask(SIG_BLOCK, &blocked, &previous) != 0) {
+    return write(fd, buffer, size);
+  }
+
+  had_pending_sigpipe = 0;
+  if (sigpending(&pending) == 0) {
+    had_pending_sigpipe = sigismember(&pending, SIGPIPE) == 1 ? 1 : 0;
+  }
+
+  result = write(fd, buffer, size);
+  saved_errno = errno;
+#if !defined(__APPLE__)
+  if (result < 0 && saved_errno == EPIPE && !had_pending_sigpipe) {
+    timeout.tv_sec = 0;
+    timeout.tv_nsec = 0;
+    (void)sigtimedwait(&blocked, NULL, &timeout);
+  }
+#else
+  (void)had_pending_sigpipe;
+#endif
+  (void)pthread_sigmask(SIG_SETMASK, &previous, NULL);
+  errno = saved_errno;
+  return result;
+#else
+  return write(fd, buffer, size);
+#endif
 }
 
 static cpkt_audio_result cpkt_audio_process_spawn(const char *const argv[],
@@ -2735,8 +2792,8 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
       byte_count = frames_now * 2U;
       byte_offset = 0U;
       while (byte_offset < byte_count) {
-        wrote = write(impl->process_fd, bytes + byte_offset,
-                      byte_count - byte_offset);
+        wrote = cpkt_audio_process_write(impl->process_fd, bytes + byte_offset,
+                                         byte_count - byte_offset);
         if (wrote < 0) {
           if (errno == EINTR) {
             continue;
@@ -2756,6 +2813,9 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
 #else
     return CPKT_AUDIO_ERR_IO;
 #endif
+  }
+  if (!impl->started) {
+    return CPKT_AUDIO_ERR_IO;
   }
   total_written = 0U;
   while (total_written < frame_count) {

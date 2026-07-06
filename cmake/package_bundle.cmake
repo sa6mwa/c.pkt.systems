@@ -51,6 +51,8 @@ set(_stage_root "${_stage_parent}/${_archive_stem}")
 set(_archive_path "${CPKT_DIST_DIR}/${_archive_stem}.tar.gz")
 set(_checksums_path "${CPKT_DIST_DIR}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECKSUMS")
 set(_cpkt_static_library_suffix ".a")
+set(_cpkt_whisper_package_version "${CPKT_WHISPER_VERSION}")
+string(REGEX REPLACE "^v" "" _cpkt_whisper_package_version "${_cpkt_whisper_package_version}")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_shared_library_suffix ".dylib")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
@@ -231,6 +233,12 @@ set(_cpkt_cxx_libgcc_static_pc_lib "")
 if(EXISTS "${_stage_root}/lib/cpkt-cxx/libgcc.a")
   set(_cpkt_cxx_libgcc_static_pc_lib "\${libdir}/cpkt-cxx/libgcc.a")
 endif()
+set(_cpkt_whisper_static_cxx_runtime_libs "")
+set(_cpkt_whisper_static_cxx_runtime_pc_libs "")
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_whisper_static_cxx_runtime_libs "c++")
+  set(_cpkt_whisper_static_cxx_runtime_pc_libs "-lc++")
+endif()
 
 function(cpkt_write_config_version package_dir config_stem package_version)
   file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/${package_dir}")
@@ -261,10 +269,12 @@ set(_cpkt_libxml2_static_iconv_pc_libs "")
 set(_cpkt_libxml2_static_iconv_cmake_libs "Iconv::Iconv")
 set(_cpkt_libxml2_shared_iconv_cmake_libs "Iconv::Iconv")
 set(_cpkt_lua_static_private_pc_libs "-lm")
+set(_cpkt_audio_static_private_pc_libs "-lm -pthread")
 set(_cpkt_open62541_static_private_pc_libs "-lm")
 if(CPKT_TARGET_ID MATCHES "-linux-")
   set(_cpkt_libxml2_static_private_pc_libs "-ldl -lm -pthread")
   set(_cpkt_lua_static_private_pc_libs "-lm -ldl")
+  set(_cpkt_audio_static_private_pc_libs "-ldl -lm -pthread")
   set(_cpkt_open62541_static_private_pc_libs "-lm -lrt")
 elseif(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_libxml2_static_iconv_pc_libs "-liconv")
@@ -590,7 +600,7 @@ file(WRITE "${_stage_root}/lib/cmake/CpktAudio/CpktAudioConfig.cmake"
   "  set_target_properties(cpkt::audio PROPERTIES\n"
   "    IMPORTED_LOCATION \"\${_cpkt_audio_prefix}/lib/libcpktaudio${_cpkt_static_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_audio_prefix}/include\"\n"
-  "    INTERFACE_LINK_LIBRARIES \"CURL::libcurl;m;Threads::Threads\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"CURL::libcurl;m;\${CMAKE_DL_LIBS};Threads::Threads\"\n"
   "  )\n"
   "endif()\n"
   "if(NOT TARGET cpkt::audio_shared)\n"
@@ -610,7 +620,7 @@ file(WRITE "${_stage_root}/lib/cmake/whisper/whisperConfig.cmake"
   "find_dependency(Threads REQUIRED)\n"
   "get_filename_component(_cpkt_whisper_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
   "set(whisper_FOUND TRUE)\n"
-  "set(whisper_VERSION \"${CPKT_WHISPER_VERSION}\")\n"
+  "set(whisper_VERSION \"${_cpkt_whisper_package_version}\")\n"
   "set(_cpkt_cxx_stdlib_static \"\${_cpkt_whisper_prefix}/lib/cpkt-cxx/libstdc++.a\")\n"
   "if(NOT EXISTS \"\${_cpkt_cxx_stdlib_static}\")\n"
   "  set(_cpkt_cxx_stdlib_static \"\")\n"
@@ -645,7 +655,7 @@ file(WRITE "${_stage_root}/lib/cmake/whisper/whisperConfig.cmake"
   "  set_target_properties(whisper::whisper PROPERTIES\n"
   "    IMPORTED_LOCATION \"\${_cpkt_whisper_prefix}/lib/libwhisper${_cpkt_static_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_whisper_prefix}/include\"\n"
-  "    INTERFACE_LINK_LIBRARIES \"ggml::ggml;ggml::base;ggml::cpu;Threads::Threads;m;\${_cpkt_cxx_stdlib_static};\${_cpkt_cxx_libgcc_static}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"ggml::ggml;ggml::base;ggml::cpu;Threads::Threads;m;\${_cpkt_cxx_stdlib_static};\${_cpkt_cxx_libgcc_static};${_cpkt_whisper_static_cxx_runtime_libs}\"\n"
   "  )\n"
   "endif()\n"
   "if(NOT TARGET cpkt::whisper_shared)\n"
@@ -656,7 +666,7 @@ file(WRITE "${_stage_root}/lib/cmake/whisper/whisperConfig.cmake"
   "  )\n"
   "endif()\n"
 )
-cpkt_write_config_version("whisper" "whisper" "${CPKT_WHISPER_VERSION}")
+cpkt_write_config_version("whisper" "whisper" "${_cpkt_whisper_package_version}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktSus")
 file(WRITE "${_stage_root}/lib/cmake/CpktSus/CpktSusConfig.cmake"
@@ -671,7 +681,7 @@ file(WRITE "${_stage_root}/lib/cmake/CpktSus/CpktSusConfig.cmake"
   "find_dependency(OpenSSL CONFIG REQUIRED)\n"
   "find_dependency(CURL CONFIG REQUIRED)\n"
   "set(CpktSus_FOUND TRUE)\n"
-  "set(CpktSus_VERSION \"${CPKT_WHISPER_VERSION}\")\n"
+  "set(CpktSus_VERSION \"${_cpkt_whisper_package_version}\")\n"
   "if(NOT TARGET cpkt::sus)\n"
   "  add_library(cpkt::sus STATIC IMPORTED)\n"
   "  set_target_properties(cpkt::sus PROPERTIES\n"
@@ -689,7 +699,7 @@ file(WRITE "${_stage_root}/lib/cmake/CpktSus/CpktSusConfig.cmake"
   "  )\n"
   "endif()\n"
 )
-cpkt_write_config_version("CpktSus" "CpktSus" "${CPKT_WHISPER_VERSION}")
+cpkt_write_config_version("CpktSus" "CpktSus" "${_cpkt_whisper_package_version}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/open62541")
 file(WRITE "${_stage_root}/lib/cmake/open62541/open62541Config.cmake"
@@ -942,7 +952,7 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-audio.pc"
   "Version: ${CPKT_MINIAUDIO_VERSION}\n"
   "Requires.private: libcurl\n"
   "Libs: -L\${libdir} -lcpktaudio\n"
-  "Libs.private: -lm -pthread\n"
+  "Libs.private: ${_cpkt_audio_static_private_pc_libs}\n"
   "Cflags: -I\${includedir}\n"
 )
 file(WRITE "${_stage_root}/lib/pkgconfig/whisper.pc"
@@ -953,9 +963,9 @@ file(WRITE "${_stage_root}/lib/pkgconfig/whisper.pc"
   "\n"
   "Name: whisper.cpp\n"
   "Description: whisper.cpp from c.pkt.systems\n"
-  "Version: ${CPKT_WHISPER_VERSION}\n"
+  "Version: ${_cpkt_whisper_package_version}\n"
   "Libs: -L\${libdir} -lwhisper\n"
-  "Libs.private: -lggml -lggml-base -lggml-cpu ${_cpkt_cxx_stdlib_static_pc_lib} ${_cpkt_cxx_libgcc_static_pc_lib} -lm -pthread\n"
+  "Libs.private: -lggml -lggml-base -lggml-cpu ${_cpkt_cxx_stdlib_static_pc_lib} ${_cpkt_cxx_libgcc_static_pc_lib} ${_cpkt_whisper_static_cxx_runtime_pc_libs} -lm -pthread\n"
   "Cflags: -I\${includedir}\n"
 )
 file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-sus.pc"
@@ -966,7 +976,7 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-sus.pc"
   "\n"
   "Name: cpkt-sus\n"
   "Description: C89-safe whisper.cpp facade from c.pkt.systems\n"
-  "Version: ${CPKT_WHISPER_VERSION}\n"
+  "Version: ${_cpkt_whisper_package_version}\n"
   "Requires: cpkt-audio\n"
   "Requires.private: whisper libcurl libcrypto\n"
   "Libs: -L\${libdir} -lcpktsus\n"

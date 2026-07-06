@@ -96,6 +96,12 @@ require_file_contains "$sus_source" \
   'state.use_prompt = (config == NULL || config->keep_context >= 0) ? 1 : 0;' \
   'prompt carry is enabled by default and disabled only by negative keep_context'
 require_file_contains "$sus_source" \
+  'cpkt_sus_segmented_text_replace(state, event->text,' \
+  'materialized segmented text must keep the latest cumulative event text'
+require_file_contains "$sus_source" \
+  'state->length = text_len;' \
+  'materialized segmented text length must match the latest cumulative event'
+require_file_contains "$sus_source" \
   'vox_config.max_segment_ms = length_ms;' \
   'segmented policy is delegated to cpktaudio VOX max_segment_ms'
 require_file_contains "$sus_source" \
@@ -128,3 +134,6 @@ require_file_lacks "$sus_source" \
 require_file_lacks "$sus_source" \
   'config->step_ms' \
   'step_ms must not drive repeated fixed-step whisper inference'
+require_file_lacks "$sus_source" \
+  'cpkt_sus_segmented_text_apply' \
+  'materialized segmented text must not append cumulative event text'

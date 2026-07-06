@@ -1286,30 +1286,6 @@ struct cpkt_sus_segmented_text_state {
   cpkt_sus_result result;
 };
 
-static int cpkt_sus_char_equal_ci(char left, char right) {
-  if (left >= 'A' && left <= 'Z') {
-    left = (char)(left - 'A' + 'a');
-  }
-  if (right >= 'A' && right <= 'Z') {
-    right = (char)(right - 'A' + 'a');
-  }
-  return left == right;
-}
-
-static size_t cpkt_sus_common_prefix_ci(const char *left, size_t left_len,
-                                        const char *right, size_t right_len) {
-  size_t i;
-  size_t limit;
-
-  limit = left_len < right_len ? left_len : right_len;
-  for (i = 0U; i < limit; ++i) {
-    if (!cpkt_sus_char_equal_ci(left[i], right[i])) {
-      break;
-    }
-  }
-  return i;
-}
-
 static cpkt_sus_result cpkt_sus_text_reserve(char **text, size_t *capacity,
                                              size_t needed) {
   char *grown;
@@ -1338,83 +1314,25 @@ static cpkt_sus_result cpkt_sus_text_reserve(char **text, size_t *capacity,
 }
 
 static cpkt_sus_result
-cpkt_sus_segmented_text_apply_storage(char **text, size_t *length,
-                                     size_t *capacity, const char *hypothesis,
-                                     size_t hypothesis_len) {
-  size_t best_start;
-  size_t best_common;
-  size_t start;
-  size_t min_common;
-  size_t search_start;
+cpkt_sus_segmented_text_replace(struct cpkt_sus_segmented_text_state *state,
+                                const char *text, size_t text_len) {
   size_t needed;
   cpkt_sus_result result;
 
-  if (text == NULL || length == NULL || capacity == NULL ||
-      hypothesis == NULL) {
+  if (state == NULL || text == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
-  if (hypothesis_len == 0U) {
-    return CPKT_SUS_OK;
-  }
-  if (*length == 0U) {
-    needed = hypothesis_len + 1U;
-    result = cpkt_sus_text_reserve(text, capacity, needed);
-    if (result != CPKT_SUS_OK) {
-      return result;
-    }
-    memcpy(*text, hypothesis, hypothesis_len);
-    (*text)[hypothesis_len] = '\0';
-    *length = hypothesis_len;
-    return CPKT_SUS_OK;
-  }
-
-  best_start = *length;
-  best_common = 0U;
-  min_common = hypothesis_len < 16U ? hypothesis_len : 16U;
-  search_start = *length > 4096U ? *length - 4096U : 0U;
-  for (start = search_start; start < *length; ++start) {
-    size_t common;
-
-    common = cpkt_sus_common_prefix_ci(*text + start, *length - start,
-                                       hypothesis, hypothesis_len);
-    if (common > best_common) {
-      best_common = common;
-      best_start = start;
-    }
-  }
-
-  if (best_common >= min_common) {
-    needed = best_start + hypothesis_len + 1U;
-    result = cpkt_sus_text_reserve(text, capacity, needed);
-    if (result != CPKT_SUS_OK) {
-      return result;
-    }
-    memcpy(*text + best_start, hypothesis, hypothesis_len);
-    *length = best_start + hypothesis_len;
-    (*text)[*length] = '\0';
-    return CPKT_SUS_OK;
-  }
-
-  needed = *length + hypothesis_len + 1U;
-  result = cpkt_sus_text_reserve(text, capacity, needed);
+  needed = text_len + 1U;
+  result = cpkt_sus_text_reserve(&state->text, &state->capacity, needed);
   if (result != CPKT_SUS_OK) {
     return result;
   }
-  memcpy(*text + *length, hypothesis, hypothesis_len);
-  *length += hypothesis_len;
-  (*text)[*length] = '\0';
-  return CPKT_SUS_OK;
-}
-
-static cpkt_sus_result
-cpkt_sus_segmented_text_apply(struct cpkt_sus_segmented_text_state *state,
-                             const char *hypothesis, size_t hypothesis_len) {
-  if (state == NULL) {
-    return CPKT_SUS_ERR_ARG;
+  if (text_len > 0U) {
+    memcpy(state->text, text, text_len);
   }
-  return cpkt_sus_segmented_text_apply_storage(&state->text, &state->length,
-                                              &state->capacity, hypothesis,
-                                              hypothesis_len);
+  state->text[text_len] = '\0';
+  state->length = text_len;
+  return CPKT_SUS_OK;
 }
 
 static void cpkt_sus_transcriber_reset_revised_text(
@@ -1475,8 +1393,8 @@ static int cpkt_sus_segmented_text_sink(const cpkt_sus_segmented_event *event,
   if (state == NULL || event == NULL || event->text == NULL) {
     return 1;
   }
-  result = cpkt_sus_segmented_text_apply(state, event->text,
-                                        (size_t)event->text_length);
+  result = cpkt_sus_segmented_text_replace(state, event->text,
+                                           (size_t)event->text_length);
   if (result != CPKT_SUS_OK) {
     state->result = result;
     return 1;

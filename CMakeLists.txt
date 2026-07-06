@@ -1047,6 +1047,11 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/static_dependency_pic_policy_test.sh")
       add_test(
+        NAME linux_toolchain_sysroot_policy
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/linux_toolchain_sysroot_policy_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
         NAME privacy_scan_failure
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/privacy_scan_failure_test.sh")

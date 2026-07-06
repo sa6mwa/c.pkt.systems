@@ -68,7 +68,7 @@ require_file_contains "$bundle" \
   '\${_cpkt_cxx_stdlib_static};\${_cpkt_cxx_libgcc_static}' \
   'CMake imported targets must place packaged C++ runtime archives in the link closure'
 require_file_contains "$bundle" \
-  'Libs.private: -lggml -lggml-base -lggml-cpu ${_cpkt_cxx_stdlib_static_pc_lib} ${_cpkt_cxx_libgcc_static_pc_lib} -lm -pthread' \
+  'Libs.private: -lggml -lggml-base -lggml-cpu ${_cpkt_cxx_stdlib_static_pc_lib} ${_cpkt_cxx_libgcc_static_pc_lib} ${_cpkt_whisper_static_cxx_runtime_pc_libs} -lm -pthread' \
   'pkg-config static metadata must emit packaged C++ runtime archives'
 
 require_file_contains "$assertions" \

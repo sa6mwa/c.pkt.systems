@@ -540,8 +540,8 @@ cat > "$cmake_source_dir/cpkt_sus_facade_strict.c" <<'EOF'
 
 int main(void) {
   cpkt_sus_model_entry entry;
-  cpkt_sus_model *model;
-  cpkt_sus_model_config config;
+  cpkt_sus *model;
+  cpkt_sus_config config;
   cpkt_sus_segmented_config segmented_config;
   cpkt_sus_segmented_event event;
 
@@ -598,8 +598,8 @@ int main(void) {
     return 13;
   }
   config.model_path = "";
-  model = (cpkt_sus_model *)1;
-  if (cpkt_sus_model_open_path(&model, &config) != CPKT_SUS_ERR_ARG) {
+  model = (cpkt_sus *)1;
+  if (cpkt_sus_open_path(&model, &config) != CPKT_SUS_ERR_ARG) {
     return 9;
   }
   if (model != 0) {
@@ -639,8 +639,8 @@ cat > "$cmake_source_dir/cpkt_audio_sus_facade_strict.c" <<'EOF'
 
 int main(void) {
   cpkt_audio_decoder *decoder;
-  cpkt_sus_model *model;
-  cpkt_sus_model_config model_config;
+  cpkt_sus *model;
+  cpkt_sus_config model_config;
   cpkt_sus_segmented_config segmented_config;
   cpkt_sus_segmented_event event;
 
@@ -684,8 +684,8 @@ int main(void) {
     return 9;
   }
   model_config.model_path = "";
-  model = (cpkt_sus_model *)1;
-  if (cpkt_sus_model_open_path(&model, &model_config) != CPKT_SUS_ERR_ARG) {
+  model = (cpkt_sus *)1;
+  if (cpkt_sus_open_path(&model, &model_config) != CPKT_SUS_ERR_ARG) {
     return 6;
   }
   if (model != 0) {

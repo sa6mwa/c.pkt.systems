@@ -99,10 +99,50 @@ if grep -F -- 'cpkt_sus_realtime' "$repo_root/scripts/package-install-smoke.sh" 
   printf 'package smoke still references the retired SUS realtime API names\n' >&2
   exit 1
 fi
+if grep -F -- 'cpkt_sus_model *' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    grep -F -- 'cpkt_sus_model_config' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+    grep -F -- 'cpkt_sus_model_open_path' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+  printf 'package smoke still references retired SUS constructor type or function names\n' >&2
+  exit 1
+fi
 if ! grep -F -- 'cpkt_sus_segmented_config segmented_config' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
     ! grep -F -- 'transcribe_audio_decoder_segmented_text' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
     ! grep -F -- 'segmented_config.prebuffer_ms = 50UL' "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
   printf 'package smoke no longer exercises current SUS segmented/prebuffer API from a strict C89 consumer\n' >&2
+  exit 1
+fi
+if ! grep -F -- 'INTERFACE_LINK_LIBRARIES \"CURL::libcurl;m;\${CMAKE_DL_LIBS};Threads::Threads\"' \
+    "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1; then
+  printf 'CpktAudio package metadata no longer preserves libdl for static audio consumers\n' >&2
+  exit 1
+fi
+if ! grep -F -- 'set(_cpkt_audio_static_private_pc_libs "-ldl -lm -pthread")' \
+    "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+    ! grep -F -- 'Libs.private: ${_cpkt_audio_static_private_pc_libs}' \
+      "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1; then
+  printf 'cpkt-audio pkg-config metadata no longer preserves Linux libdl for static consumers\n' >&2
+  exit 1
+fi
+if ! grep -F -- 'string(REGEX REPLACE "^v" "" _cpkt_whisper_package_version' \
+    "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+    ! grep -F -- 'cpkt_write_config_version("whisper" "whisper" "${_cpkt_whisper_package_version}")' \
+      "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+    ! grep -F -- 'cpkt_write_config_version("CpktSus" "CpktSus" "${_cpkt_whisper_package_version}")' \
+      "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+    ! grep -F -- 'Version: ${_cpkt_whisper_package_version}' \
+      "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1; then
+  printf 'whisper/SUS package metadata no longer strips the upstream tag prefix for consumer versions\n' >&2
+  exit 1
+fi
+if ! grep -F -- 'set(_cpkt_whisper_static_cxx_runtime_libs "c++")' \
+    "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+    ! grep -F -- 'set(_cpkt_whisper_static_cxx_runtime_pc_libs "-lc++")' \
+      "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+    ! grep -F -- ';\${_cpkt_cxx_libgcc_static};${_cpkt_whisper_static_cxx_runtime_libs}' \
+      "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+    ! grep -F -- '${_cpkt_whisper_static_cxx_runtime_pc_libs} -lm -pthread' \
+      "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1; then
+  printf 'whisper/SUS static metadata no longer exports Darwin C++ runtime requirements\n' >&2
   exit 1
 fi
 

@@ -189,8 +189,10 @@ static int cpkt_test_send_all(int fd, const void *buffer, size_t size) {
   return 0;
 }
 
-static int cpkt_test_start_prefix_http_server(const unsigned char *data,
+static int
+cpkt_test_start_http_server_with_extra_length(const unsigned char *data,
                                               size_t data_size,
+                                              size_t extra_length,
                                               unsigned short *port_out,
                                               pid_t *pid_out) {
   struct sockaddr_in address;
@@ -242,7 +244,7 @@ static int cpkt_test_start_prefix_http_server(const unsigned char *data,
       _exit(2);
     }
     (void)recv(client_fd, request, sizeof(request), 0);
-    advertised_size = data_size + 1048576U;
+    advertised_size = data_size + extra_length;
     (void)sprintf(header,
                   "HTTP/1.1 200 OK\r\n"
                   "Content-Type: audio/mpeg\r\n"
@@ -266,6 +268,22 @@ static int cpkt_test_start_prefix_http_server(const unsigned char *data,
   *port_out = ntohs(address.sin_port);
   *pid_out = child;
   return 0;
+}
+
+static int cpkt_test_start_prefix_http_server(const unsigned char *data,
+                                              size_t data_size,
+                                              unsigned short *port_out,
+                                              pid_t *pid_out) {
+  return cpkt_test_start_http_server_with_extra_length(
+      data, data_size, 1048576U, port_out, pid_out);
+}
+
+static int cpkt_test_start_exact_http_server(const unsigned char *data,
+                                             size_t data_size,
+                                             unsigned short *port_out,
+                                             pid_t *pid_out) {
+  return cpkt_test_start_http_server_with_extra_length(data, data_size, 0U,
+                                                       port_out, pid_out);
 }
 
 static void cpkt_test_stop_http_server(pid_t pid) {
@@ -636,6 +654,106 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
   cpkt_test_stop_http_server(server_pid);
 }
 
+static void test_decoder_http_mp3_url_reports_interrupted_transfer(void **state) {
+  unsigned char mp3_fixture[1536];
+  unsigned char mp3_data[1536 * 4];
+  char url[128];
+  cpkt_audio_decoder *decoder;
+  float frames[512];
+  size_t frames_read;
+  unsigned short port;
+  pid_t server_pid;
+  size_t mp3_size;
+  size_t i;
+  cpkt_audio_result result;
+
+  (void)state;
+  mp3_size = decode_base64_fixture(test_mp3_mono_44100_base64, mp3_fixture,
+                                   sizeof(mp3_fixture));
+  assert_true(mp3_size > 0);
+  for (i = 0U; i < 4U; ++i) {
+    memcpy(mp3_data + (i * mp3_size), mp3_fixture, mp3_size);
+  }
+  mp3_size *= 4U;
+
+  assert_int_equal(cpkt_test_start_prefix_http_server(mp3_data, mp3_size, &port,
+                                                      &server_pid),
+                   0);
+  (void)sprintf(url, "http://127.0.0.1:%u/interrupted.mp3",
+                (unsigned int)port);
+
+  decoder = NULL;
+  assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, NULL),
+                   CPKT_AUDIO_OK);
+  assert_non_null(decoder);
+  frames_read = 0U;
+  assert_int_equal(
+      decoder->read_f32_mono_16k(decoder, frames, 512U, &frames_read),
+      CPKT_AUDIO_OK);
+  assert_true(frames_read > 0U);
+
+  cpkt_test_stop_http_server(server_pid);
+  result = CPKT_AUDIO_OK;
+  for (i = 0U; i < 128U && result == CPKT_AUDIO_OK; ++i) {
+    frames_read = 0U;
+    result = decoder->read_f32_mono_16k(decoder, frames, 512U, &frames_read);
+  }
+  assert_int_equal(result, CPKT_AUDIO_ERR_IO);
+  decoder->destroy(decoder);
+}
+
+static void test_decoder_http_wav_url_reports_interrupted_transfer(void **state) {
+  unsigned char wav_data[4096];
+  char url[128];
+  cpkt_audio_decoder *decoder;
+  float frames[512];
+  size_t frames_read;
+  unsigned short port;
+  pid_t server_pid;
+  size_t i;
+  cpkt_audio_result result;
+
+  (void)state;
+  memset(wav_data, 0, sizeof(wav_data));
+  memcpy(wav_data, test_wav_mono_8000, sizeof(test_wav_mono_8000));
+  for (i = 44U; i < sizeof(wav_data); i += 2U) {
+    wav_data[i] = (unsigned char)(i & 0xffU);
+  }
+  wav_data[4] = 0x24U;
+  wav_data[5] = 0x7dU;
+  wav_data[6] = 0x00U;
+  wav_data[7] = 0x00U;
+  wav_data[40] = 0x00U;
+  wav_data[41] = 0x7dU;
+  wav_data[42] = 0x00U;
+  wav_data[43] = 0x00U;
+
+  assert_int_equal(cpkt_test_start_prefix_http_server(
+                       wav_data, sizeof(wav_data), &port, &server_pid),
+                   0);
+  (void)sprintf(url, "http://127.0.0.1:%u/interrupted.wav",
+                (unsigned int)port);
+
+  decoder = NULL;
+  result = cpkt_audio_decoder_open_url(&decoder, url, NULL);
+  if (result == CPKT_AUDIO_ERR_IO) {
+    assert_null(decoder);
+    cpkt_test_stop_http_server(server_pid);
+    return;
+  }
+  assert_int_equal(result, CPKT_AUDIO_OK);
+  assert_non_null(decoder);
+
+  cpkt_test_stop_http_server(server_pid);
+  result = CPKT_AUDIO_OK;
+  for (i = 0U; i < 128U && result == CPKT_AUDIO_OK; ++i) {
+    frames_read = 0U;
+    result = decoder->read_f32_mono_16k(decoder, frames, 512U, &frames_read);
+  }
+  assert_int_equal(result, CPKT_AUDIO_ERR_IO);
+  decoder->destroy(decoder);
+}
+
 static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
   unsigned char mp3_fixture[1536];
   unsigned char mp3_data[11000];
@@ -663,8 +781,8 @@ static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
   mp3_data[9] = (unsigned char)(tag_payload_size & 0x7fU);
   memcpy(mp3_data + 10U + tag_payload_size, mp3_fixture, mp3_size);
 
-  assert_int_equal(cpkt_test_start_prefix_http_server(mp3_data, total_size,
-                                                      &port, &server_pid),
+  assert_int_equal(cpkt_test_start_exact_http_server(mp3_data, total_size, &port,
+                                                     &server_pid),
                    0);
   (void)sprintf(url, "http://127.0.0.1:%u/large-id3.mp3", (unsigned int)port);
 
@@ -1402,6 +1520,8 @@ int main(void) {
       cmocka_unit_test(test_decoder_reads_mp3_file_when_supported),
       cmocka_unit_test(test_decoder_reads_mp3_file_url_when_supported),
       cmocka_unit_test(test_decoder_http_url_streams_before_full_response),
+      cmocka_unit_test(test_decoder_http_mp3_url_reports_interrupted_transfer),
+      cmocka_unit_test(test_decoder_http_wav_url_reports_interrupted_transfer),
       cmocka_unit_test(test_decoder_http_url_waits_for_large_id3_tag),
       cmocka_unit_test(test_encoder_writes_wav_file),
       cmocka_unit_test(test_encoder_writes_wav_callback_writer),
