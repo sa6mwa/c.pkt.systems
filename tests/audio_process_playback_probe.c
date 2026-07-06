@@ -118,6 +118,33 @@ static int observe_playback_failure(cpkt_audio_playback *playback,
   return 0;
 }
 
+static int expect_write_before_start_failure(cpkt_audio_playback *playback,
+                                             size_t frame_count) {
+  float *frames;
+  size_t frames_written;
+  cpkt_audio_result result;
+  size_t i;
+
+  frames = (float *)malloc(sizeof(float) * frame_count);
+  if (frames == NULL) {
+    fprintf(stderr, "playback probe allocation failed\n");
+    return 0;
+  }
+  for (i = 0U; i < frame_count; ++i) {
+    frames[i] = 0.1f;
+  }
+  frames_written = frame_count;
+  result = playback->write_f32_mono_16k(playback, frames, frame_count,
+                                        &frames_written);
+  free(frames);
+  if (result == CPKT_AUDIO_ERR_IO && frames_written == 0U) {
+    return 1;
+  }
+  fprintf(stderr, "write before start returned %s frames=%lu\n",
+          cpkt_audio_result_string(result), (unsigned long)frames_written);
+  return 0;
+}
+
 int main(void) {
   cpkt_audio_playback *playback;
   cpkt_audio_playback_config config;
@@ -126,6 +153,7 @@ int main(void) {
   unsigned long min_drain_ms;
   int start_only;
   int expect_failure;
+  int expect_write_before_start;
 
   playback = NULL;
   frame_count = env_size("CPKT_AUDIO_PLAYBACK_PROBE_FRAMES", 160U);
@@ -133,6 +161,8 @@ int main(void) {
   start_only = getenv("CPKT_AUDIO_PLAYBACK_PROBE_START_ONLY") != NULL ? 1 : 0;
   expect_failure =
       getenv("CPKT_AUDIO_PLAYBACK_PROBE_EXPECT_FAILURE") != NULL ? 1 : 0;
+  expect_write_before_start =
+      getenv("CPKT_AUDIO_PLAYBACK_EXPECT_WRITE_BEFORE_START") != NULL ? 1 : 0;
   config.backend = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
   config.buffer_ms = 0UL;
   config.period_ms = 0UL;
@@ -142,6 +172,14 @@ int main(void) {
     fprintf(stderr, "playback open failed: %s\n",
             cpkt_audio_result_string(result));
     return 1;
+  }
+  if (expect_write_before_start) {
+    if (!expect_write_before_start_failure(playback, frame_count)) {
+      playback->destroy(playback);
+      return 1;
+    }
+    playback->destroy(playback);
+    return 0;
   }
   result = playback->start(playback);
   if (result != CPKT_AUDIO_OK) {

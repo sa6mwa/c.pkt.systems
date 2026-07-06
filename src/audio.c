@@ -2498,7 +2498,9 @@ cpkt_audio_capture_read_f32_mono_16k_impl(cpkt_audio_capture *self,
         return CPKT_AUDIO_ERR_IO;
       }
       if (got == 0) {
-        break;
+        cpkt_audio_process_stop(&impl->process_pid, &impl->process_fd);
+        impl->started = 0;
+        return CPKT_AUDIO_ERR_IO;
       }
       byte_count = (size_t)got;
       byte_index = 0U;
@@ -2668,6 +2670,7 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
   }
   if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__linux__)
+    impl->started = 1;
     impl->turn_frames_written = 0;
     impl->turn_started_ms = 0UL;
     return CPKT_AUDIO_OK;
@@ -2767,17 +2770,19 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
   if (impl->mode == CPKT_AUDIO_DEVICE_MODE_PROCESS) {
 #if defined(__unix__) || defined(__APPLE__)
     if (!impl->started) {
+      return CPKT_AUDIO_ERR_IO;
+    }
 #if defined(__linux__)
+    if (impl->process_fd < 0) {
       process_result = cpkt_audio_process_spawn(
           aplay_argv, 1, 0, &impl->process_pid, &impl->process_fd);
       if (process_result != CPKT_AUDIO_OK) {
         return process_result;
       }
-      impl->started = 1;
-#else
-      return CPKT_AUDIO_ERR_IO;
-#endif
     }
+#else
+    return CPKT_AUDIO_ERR_IO;
+#endif
     if (impl->process_fd < 0) {
       return CPKT_AUDIO_ERR_IO;
     }
@@ -2862,7 +2867,6 @@ cpkt_audio_playback_drain_impl(cpkt_audio_playback *self) {
       return CPKT_AUDIO_OK;
     }
     result = cpkt_audio_process_finish(&impl->process_pid, &impl->process_fd);
-    impl->started = 0;
     impl->turn_frames_written = 0U;
     impl->turn_started_ms = 0UL;
     return result;
@@ -3667,6 +3671,7 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   prebuffer_frames = (size_t)prebuffer_frames_ul;
   if (memory_spool_frames == 0U || max_spool_frames == 0U ||
       memory_spool_frames > ((size_t)-1) / sizeof(float) ||
+      min_frames > (unsigned long)max_spool_frames ||
       (unsigned long)prebuffer_frames != prebuffer_frames_ul ||
       (prebuffer_frames != 0U &&
        prebuffer_frames > ((size_t)-1) / sizeof(float))) {
@@ -3759,7 +3764,8 @@ cpkt_audio_ptt_open(cpkt_audio_ptt **out, const cpkt_audio_ptt_config *config) {
   memory_spool_frames = (size_t)(memory_spool_bytes / sizeof(float));
   max_spool_frames = (size_t)(max_spool_bytes / sizeof(float));
   if (memory_spool_frames == 0U || max_spool_frames == 0U ||
-      memory_spool_frames > ((size_t)-1) / sizeof(float)) {
+      memory_spool_frames > ((size_t)-1) / sizeof(float) ||
+      min_frames > (unsigned long)max_spool_frames) {
     return CPKT_AUDIO_ERR_ARG;
   }
 

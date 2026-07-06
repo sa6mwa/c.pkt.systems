@@ -561,17 +561,22 @@ static cpkt_sus_result cpkt_sus_mkdirs(const char *path) {
   return result;
 }
 
-static cpkt_sus_result cpkt_sus_temp_path_for(char **out,
+static cpkt_sus_result cpkt_sus_temp_path_for(char **out, FILE **file_out,
                                               const char *model_path) {
   static const char suffix[] = ".tmp.XXXXXX";
   size_t path_len;
   char *temp_path;
+  FILE *file;
   int fd;
 
   if (out != NULL) {
     *out = NULL;
   }
-  if (out == NULL || model_path == NULL || model_path[0] == '\0') {
+  if (file_out != NULL) {
+    *file_out = NULL;
+  }
+  if (out == NULL || file_out == NULL || model_path == NULL ||
+      model_path[0] == '\0') {
     return CPKT_SUS_ERR_ARG;
   }
 
@@ -591,13 +596,16 @@ static cpkt_sus_result cpkt_sus_temp_path_for(char **out,
     free(temp_path);
     return CPKT_SUS_ERR_IO;
   }
-  if (close(fd) != 0) {
+  file = fdopen(fd, "wb");
+  if (file == NULL) {
+    (void)close(fd);
     (void)remove(temp_path);
     free(temp_path);
     return CPKT_SUS_ERR_IO;
   }
 
   *out = temp_path;
+  *file_out = file;
   return CPKT_SUS_OK;
 }
 
@@ -719,13 +727,12 @@ static size_t cpkt_sus_curl_write(void *buffer, size_t size, size_t nmemb,
   return written;
 }
 
-static cpkt_sus_result cpkt_sus_download_to_file(const char *url,
-                                                 const char *path) {
+static cpkt_sus_result cpkt_sus_download_to_file(const char *url, FILE *file) {
   struct cpkt_sus_download_sink sink;
   CURL *curl;
   CURLcode code;
 
-  if (url == NULL || url[0] == '\0' || path == NULL || path[0] == '\0') {
+  if (url == NULL || url[0] == '\0' || file == NULL) {
     return CPKT_SUS_ERR_ARG;
   }
 
@@ -734,14 +741,10 @@ static cpkt_sus_result cpkt_sus_download_to_file(const char *url,
   }
 
   memset(&sink, 0, sizeof(sink));
-  sink.file = fopen(path, "wb");
-  if (sink.file == NULL) {
-    return CPKT_SUS_ERR_IO;
-  }
+  sink.file = file;
 
   curl = curl_easy_init();
   if (curl == NULL) {
-    fclose(sink.file);
     return CPKT_SUS_ERR_NETWORK;
   }
 
@@ -761,9 +764,6 @@ static cpkt_sus_result cpkt_sus_download_to_file(const char *url,
     sink.failed = 1;
   }
   if (fsync(fileno(sink.file)) != 0) {
-    sink.failed = 1;
-  }
-  if (fclose(sink.file) != 0) {
     sink.failed = 1;
   }
 
@@ -826,6 +826,7 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
                            const cpkt_sus_cache_config *config) {
   const char *url;
   char *temp_path;
+  FILE *temp_file;
   cpkt_sus_result result;
 
   if (model_path == NULL || cache_dir == NULL || entry == NULL ||
@@ -842,7 +843,8 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
   }
 
   temp_path = NULL;
-  result = cpkt_sus_temp_path_for(&temp_path, model_path);
+  temp_file = NULL;
+  result = cpkt_sus_temp_path_for(&temp_path, &temp_file, model_path);
   if (result != CPKT_SUS_OK) {
     return result;
   }
@@ -855,11 +857,16 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
   result = cpkt_sus_emit_cache_status(
       config, CPKT_SUS_CACHE_STATUS_DOWNLOAD_BEGIN, entry, model_path, url);
   if (result != CPKT_SUS_OK) {
+    (void)fclose(temp_file);
     (void)remove(temp_path);
     free(temp_path);
     return result;
   }
-  result = cpkt_sus_download_to_file(url, temp_path);
+  result = cpkt_sus_download_to_file(url, temp_file);
+  if (fclose(temp_file) != 0 && result == CPKT_SUS_OK) {
+    result = CPKT_SUS_ERR_IO;
+  }
+  temp_file = NULL;
   if (result == CPKT_SUS_OK) {
     result = cpkt_sus_emit_cache_status(
         config, CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE, entry, model_path,
@@ -1774,9 +1781,8 @@ cpkt_sus_transcriber_transcribe_audio_decoder_segmented_impl(
   }
   if (!state.final_emitted) {
     sus_result = cpkt_sus_emit_segmented_event(
-        impl, config, NULL, 0U,
-        state.segment_count == 0UL ? 0UL : state.segment_count - 1UL,
-        state.last_t0, state.last_t1, 1);
+        impl, config, NULL, 0U, state.segment_count, state.last_t0,
+        state.last_t1, 1);
     if (sus_result != CPKT_SUS_OK) {
       goto cleanup;
     }

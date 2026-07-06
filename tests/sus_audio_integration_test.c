@@ -14,6 +14,8 @@ struct cpkt_sus_test_segmented_events {
   const char *expected;
   unsigned long count;
   unsigned long final_count;
+  unsigned long last_step_index;
+  unsigned long final_step_index;
   long last_t0;
   long last_t1;
   int saw_timestamp;
@@ -34,6 +36,7 @@ struct cpkt_sus_test_vox_shape {
 struct cpkt_sus_test_exact_step_decoder {
   cpkt_audio_decoder decoder;
   unsigned long total_frames;
+  unsigned long speech_frames;
   unsigned long cursor;
   float sample_value;
 };
@@ -122,7 +125,9 @@ cpkt_sus_test_segmented_sink(const cpkt_sus_segmented_event *event, void *user) 
   }
   if (event->is_final) {
     ++events->final_count;
+    events->final_step_index = event->step_index;
   }
+  events->last_step_index = event->step_index;
   copy_size = (size_t)event->text_length;
   if (copy_size >= sizeof(events->text)) {
     copy_size = sizeof(events->text) - 1U;
@@ -194,7 +199,9 @@ cpkt_sus_test_exact_step_read(cpkt_audio_decoder *decoder, float *frames,
     to_write = (size_t)remaining;
   }
   for (i = 0U; i < to_write; ++i) {
-    frames[i] = state->sample_value;
+    frames[i] = state->cursor + (unsigned long)i < state->speech_frames
+                    ? state->sample_value
+                    : 0.0f;
   }
   state->cursor += (unsigned long)to_write;
   *frames_read = to_write;
@@ -685,6 +692,7 @@ static int cpkt_sus_test_run_segmented_exact_step_final_event(
   decoder_state.decoder.impl = &decoder_state;
   decoder_state.decoder.read_f32_mono_16k = cpkt_sus_test_exact_step_read;
   decoder_state.total_frames = 16000UL;
+  decoder_state.speech_frames = decoder_state.total_frames;
   decoder_state.sample_value = 0.2f;
 
   memset(&events, 0, sizeof(events));
@@ -710,6 +718,67 @@ static int cpkt_sus_test_run_segmented_exact_step_final_event(
   if (result != CPKT_SUS_OK || events.count == 0UL ||
       events.final_count == 0UL) {
     fprintf(stderr, "exact-step segmented EOF did not emit a final event\n");
+    goto cleanup;
+  }
+
+  rc = 0;
+
+cleanup:
+  if (transcriber != NULL) {
+    transcriber->destroy(transcriber);
+  }
+  return rc;
+}
+
+static int cpkt_sus_test_run_segmented_trailing_silence_final_step(
+    cpkt_sus *sus) {
+  struct cpkt_sus_test_exact_step_decoder decoder_state;
+  struct cpkt_sus_test_segmented_events events;
+  cpkt_sus_transcriber *transcriber;
+  cpkt_sus_transcriber_config config;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_result result;
+  int rc;
+
+  memset(&decoder_state, 0, sizeof(decoder_state));
+  decoder_state.decoder.impl = &decoder_state;
+  decoder_state.decoder.read_f32_mono_16k = cpkt_sus_test_exact_step_read;
+  decoder_state.total_frames = 32000UL;
+  decoder_state.speech_frames = 16000UL;
+  decoder_state.sample_value = 0.2f;
+
+  memset(&events, 0, sizeof(events));
+  transcriber = NULL;
+  rc = 1;
+
+  cpkt_sus_transcriber_config_default(&config);
+  config.language = cpkt_sus_test_env("CPKT_SUS_INTEGRATION_LANGUAGE");
+  if (sus->create_transcriber(sus, &transcriber, &config) != CPKT_SUS_OK) {
+    goto cleanup;
+  }
+
+  cpkt_sus_segmented_config_default(&segmented_config);
+  segmented_config.read_frames = CPKT_SUS_TEST_READ_FRAMES;
+  segmented_config.length_ms = 0UL;
+  segmented_config.keep_ms = 500UL;
+  segmented_config.vox_threshold = 0.03f;
+  segmented_config.segmented_sink = cpkt_sus_test_segmented_sink;
+  segmented_config.segmented_user = &events;
+
+  result = transcriber->transcribe_audio_decoder_segmented(
+      transcriber, &decoder_state.decoder, &segmented_config);
+  if (result != CPKT_SUS_OK || events.count < 2UL ||
+      events.final_count != 1UL) {
+    fprintf(stderr,
+            "trailing-silence segmented EOF did not emit a synthetic final "
+            "event\n");
+    goto cleanup;
+  }
+  if (events.final_step_index != events.count - 1UL) {
+    fprintf(stderr,
+            "trailing-silence final step_index undercounted: expected=%lu "
+            "actual=%lu\n",
+            events.count - 1UL, events.final_step_index);
     goto cleanup;
   }
 
@@ -961,6 +1030,10 @@ int main(void) {
 
   if (cpkt_sus_test_run_segmented_exact_step_final_event(sus) != 0) {
     fprintf(stderr, "exact-step segmented final event test failed\n");
+    goto cleanup;
+  }
+  if (cpkt_sus_test_run_segmented_trailing_silence_final_step(sus) != 0) {
+    fprintf(stderr, "trailing-silence segmented final step test failed\n");
     goto cleanup;
   }
 

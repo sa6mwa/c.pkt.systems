@@ -1270,6 +1270,12 @@ test_vox_rejects_invalid_and_reports_callback_failure(void **state) {
 
   config.segment_sink = capture_vox_segment;
   config.segment_user = &capture;
+  config.min_segment_ms = 100UL;
+  config.max_spool_bytes = 1599UL * (unsigned long)sizeof(float);
+  assert_int_equal(cpkt_audio_vox_open(&vox, &config), CPKT_AUDIO_ERR_ARG);
+  assert_null(vox);
+
+  config.max_spool_bytes = 0UL;
   config.max_segment_ms = 1UL;
   config.min_segment_ms = 1UL;
   capture.fail = 1;
@@ -1408,6 +1414,11 @@ static void test_ptt_rejects_invalid_arguments(void **state) {
   config.segment_user = &capture;
   config.min_segment_ms = 100UL;
   config.max_segment_ms = 1UL;
+  assert_int_equal(cpkt_audio_ptt_open(&ptt, &config), CPKT_AUDIO_ERR_ARG);
+  assert_null(ptt);
+
+  config.max_segment_ms = 0UL;
+  config.max_spool_bytes = 1599UL * (unsigned long)sizeof(float);
   assert_int_equal(cpkt_audio_ptt_open(&ptt, &config), CPKT_AUDIO_ERR_ARG);
   assert_null(ptt);
 }

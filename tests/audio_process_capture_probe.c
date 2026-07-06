@@ -1,6 +1,7 @@
 #include <cpkt/audio.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/select.h>
 
 static unsigned long ready_count = 0UL;
@@ -69,10 +70,12 @@ int main(void) {
   cpkt_audio_capture *capture;
   cpkt_audio_capture_config config;
   cpkt_audio_result result;
+  int expect_eof;
   int first_sample;
   int second_sample;
 
   capture = NULL;
+  expect_eof = getenv("CPKT_AUDIO_EXPECT_CAPTURE_EOF") != NULL ? 1 : 0;
   first_sample = 0;
   second_sample = 0;
   config.backend = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
@@ -93,6 +96,29 @@ int main(void) {
             cpkt_audio_result_string(result));
     capture->destroy(capture);
     return 1;
+  }
+  if (expect_eof) {
+    float frames[16];
+    size_t frames_read;
+
+    frames_read = 0U;
+    result = capture->wait_ready(capture, 1000UL);
+    if (result != CPKT_AUDIO_OK && result != CPKT_AUDIO_TIMEOUT) {
+      fprintf(stderr, "capture EOF wait failed too early: %s\n",
+              cpkt_audio_result_string(result));
+      capture->destroy(capture);
+      return 1;
+    }
+    result = capture->read_f32_mono_16k(capture, frames,
+                                        sizeof(frames) / sizeof(frames[0]),
+                                        &frames_read);
+    capture->destroy(capture);
+    if (result != CPKT_AUDIO_ERR_IO || frames_read != 0U) {
+      fprintf(stderr, "expected capture EOF to report I/O error, got %s frames=%lu\n",
+              cpkt_audio_result_string(result), (unsigned long)frames_read);
+      return 4;
+    }
+    return 0;
   }
   if (!read_one(capture, &first_sample)) {
     capture->destroy(capture);

@@ -126,8 +126,18 @@ require_contains(
 )
 require_contains(
     fetch_cached_file,
-    "cpkt_sus_download_to_file(url, temp_path)",
+    "cpkt_sus_download_to_file(url, temp_file)",
     "cache fetch path owns model download",
+)
+require_contains(
+    source,
+    'fdopen(fd, "wb")',
+    "cache downloads must keep the mkstemp file descriptor open",
+)
+require_lacks(
+    download_to_file,
+    'fopen(path, "wb")',
+    "cache downloads must not reopen the mkstemp path",
 )
 
 for needle in ("curl_global_init", "curl_easy_perform"):

@@ -54,3 +54,13 @@ if [ "$actual" != "1" ]; then
   printf 'expected one stable process capture generation, got %s\n' "$actual" >&2
   exit 1
 fi
+
+cat >"$tmp/bin/arecord" <<'EOS'
+#!/bin/sh
+exit 0
+EOS
+chmod +x "$tmp/bin/arecord"
+
+CPKT_AUDIO_EXPECT_CAPTURE_EOF=1 \
+PATH="$tmp/bin:$PATH" \
+"$@"
