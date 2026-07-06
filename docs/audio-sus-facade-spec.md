@@ -117,9 +117,10 @@ Initial miniaudio build intent:
   native runtime loading first, without link-time `libasound`, PulseAudio, or
   JACK requirements, and fall back to the process backend when native open
   fails. Linux static builds default `auto` to the process backend, which spawns
-  platform audio commands with explicit argv and streams raw PCM over pipes.
-  `process` is an explicit backend selection for debugging and static-path
-  verification. A future Darwin notarized-app mode may deliberately disable
+  platform audio commands with explicit argv and streams raw PCM over pipes,
+  while retaining an explicit `native` backend selection for miniaudio runtime
+  loading. `process` is an explicit backend selection for debugging and
+  static-path verification. A future Darwin notarized-app mode may deliberately disable
   runtime loading and link CoreFoundation/CoreAudio/AudioToolbox frameworks, but
   the default SDK should keep runtime backend loading enabled.
 - Disable engine, resource manager, node graph, generation, and other playback

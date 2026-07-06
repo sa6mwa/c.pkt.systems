@@ -32,7 +32,7 @@ assert_static_refs_dlopen() {
   file_path=$1
 
   if ! nm -u "$file_path" | grep -E '[[:space:]]U[[:space:]]+dlopen($|@)' >/dev/null 2>&1; then
-    printf 'libcpktaudio.a does not reference dlopen; native runtime loading is not compiled into the static facade\n' >&2
+    printf 'libcpktaudio.a does not reference dlopen; explicit native runtime loading is not compiled into the static facade\n' >&2
     nm -u "$file_path" >&2
     exit 1
   fi
@@ -112,6 +112,9 @@ assert_source_contains "$audio_source" \
 assert_source_contains "$audio_source" \
   'CPKT_AUDIO_AUTO_PROCESS_DEVICE_IO' \
   'static process-device builds must have a compile-time AUTO-to-process policy'
+assert_source_contains "$audio_source" \
+  'CPKT_AUDIO_DEVICE_BACKEND_NATIVE' \
+  'static builds must retain an explicit native runtime-loading backend'
 assert_source_contains "$audio_source" \
   'CPKT_AUDIO_DEVICE_MODE_PROCESS' \
   'process backend mode must be backend-neutral for capture and playback'

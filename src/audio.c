@@ -1934,6 +1934,8 @@ static void cpkt_audio_encoder_destroy_impl(cpkt_audio_encoder *self) {
 
 static ma_backend cpkt_audio_to_ma_backend(int backend) {
   switch (backend) {
+  case CPKT_AUDIO_DEVICE_BACKEND_NATIVE:
+    return ma_backend_null;
   case CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO:
 #if defined(__APPLE__)
     return ma_backend_coreaudio;
@@ -1950,9 +1952,11 @@ static cpkt_audio_result cpkt_audio_resolve_device_backend(int requested,
   if (out == NULL) {
     return CPKT_AUDIO_ERR_ARG;
   }
-  if (requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO) {
+  if (requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO ||
+      requested == CPKT_AUDIO_DEVICE_BACKEND_NATIVE) {
 #if defined(__APPLE__)
-    *out = ma_backend_coreaudio;
+    *out = requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO ? ma_backend_coreaudio
+                                                       : ma_backend_null;
 #else
     *out = ma_backend_null;
 #endif
@@ -1988,8 +1992,7 @@ static int cpkt_audio_backend_is_process(int requested) {
 
 static int cpkt_audio_backend_can_process(int requested) {
 #if defined(__linux__)
-  return requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO ||
-         requested == CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
+  return requested == CPKT_AUDIO_DEVICE_BACKEND_AUTO;
 #else
   (void)requested;
   return 0;

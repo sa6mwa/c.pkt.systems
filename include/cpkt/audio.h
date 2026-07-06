@@ -87,7 +87,9 @@ typedef enum cpkt_audio_device_backend {
   /** Spawn a platform audio command and stream raw PCM over pipes. */
   CPKT_AUDIO_DEVICE_BACKEND_PROCESS = 1,
   /** Darwin Core Audio backend. */
-  CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO = 2
+  CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO = 2,
+  /** Use the native runtime-loaded platform backend. */
+  CPKT_AUDIO_DEVICE_BACKEND_NATIVE = 3
 } cpkt_audio_device_backend;
 
 /** VOX state transition identifiers delivered to cpkt_audio_vox_state_sink. */

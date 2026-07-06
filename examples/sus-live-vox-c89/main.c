@@ -157,6 +157,8 @@ static int cpkt_sus_live_parse_backend(const char *text, int *out) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
   } else if (strcmp(text, "coreaudio") == 0) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO;
+  } else if (strcmp(text, "native") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_NATIVE;
   } else {
     return 0;
   }
@@ -805,7 +807,7 @@ static void cpkt_sus_live_usage(FILE *out) {
       "  --period-ms N               Device callback period; default 20.\n");
   fprintf(out,
           "  --meter-ms N                Print input peak level every N ms.\n");
-  fprintf(out, "  --backend NAME              auto, process, coreaudio.\n");
+  fprintf(out, "  --backend NAME              auto, process, coreaudio, native.\n");
   fprintf(out,
           "  --model NAME                Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH           Load an explicit model file.\n");

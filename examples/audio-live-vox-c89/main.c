@@ -145,6 +145,8 @@ static int cpkt_live_vox_parse_backend(const char *text, int *out) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_PROCESS;
   } else if (strcmp(text, "coreaudio") == 0) {
     *out = CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO;
+  } else if (strcmp(text, "native") == 0) {
+    *out = CPKT_AUDIO_DEVICE_BACKEND_NATIVE;
   } else {
     return 0;
   }
@@ -157,6 +159,9 @@ static const char *cpkt_live_vox_backend_name(int backend) {
   }
   if (backend == CPKT_AUDIO_DEVICE_BACKEND_COREAUDIO) {
     return "coreaudio";
+  }
+  if (backend == CPKT_AUDIO_DEVICE_BACKEND_NATIVE) {
+    return "native";
   }
   return "auto";
 }
@@ -437,7 +442,7 @@ static void cpkt_live_vox_usage(FILE *out) {
       "  --period-ms N               Device callback period; default 20.\n");
   fprintf(out,
           "  --meter-ms N                Print input peak level every N ms.\n");
-  fprintf(out, "  --backend NAME              auto, process, coreaudio.\n");
+  fprintf(out, "  --backend NAME              auto, process, coreaudio, native.\n");
   fprintf(out, "  --dump-dir DIR              Optional WAV dump directory.\n");
   fprintf(out, "  --smoke                     Run no-device smoke check.\n");
 }
