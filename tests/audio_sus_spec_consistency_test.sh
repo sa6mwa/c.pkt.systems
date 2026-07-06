@@ -7,6 +7,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 source_dir=$1
+readme=$source_dir/README.md
 spec=$source_dir/docs/audio-sus-facade-spec.md
 package_assertions=$source_dir/cmake/package_assertions.cmake
 package_bundle=$source_dir/cmake/package_bundle.cmake
@@ -44,6 +45,12 @@ fi
 
 assert_file_contains "$spec" 'The shell and the library resolver both default to `tiny`' 'audio/sus spec'
 assert_file_contains "$spec" 'The default cached model is `tiny`' 'audio/sus spec'
+assert_file_contains "$readme" 'NULL or empty cached-model name defaults to' 'README'
+assert_file_contains "$readme" '`tiny`' 'README'
+assert_file_contains "$readme" '`cpktxscribe` shell exposes the same' 'README'
+assert_file_contains "$readme" '`--cache-dir DIR`' 'README'
+assert_file_contains "$readme" '`cpkt_audio` is a C89 facade over miniaudio' 'README'
+assert_file_contains "$readme" '`cpkt_sus` is a C89 facade over a CPU-only whisper.cpp/ggml build' 'README'
 assert_file_contains "$package_smoke" 'strcmp(entry.name, "tiny")' 'package install smoke'
 assert_file_contains "$spec" '`cpkt_sus_log_set`, which adapts whisper.cpp' 'audio/sus spec'
 

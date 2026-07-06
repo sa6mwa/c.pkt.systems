@@ -11,6 +11,8 @@ The project builds release artifacts for:
 - curl
 - libxml2
 - Lua
+- miniaudio, behind the strict C89 `cpkt_audio` facade
+- whisper.cpp/ggml, behind the strict C89 `cpkt_sus` facade
 - MQTT-C
 - open62541
 - cmocka, for test builds on Linux targets
@@ -57,7 +59,8 @@ builds/runs the facade-only local tests from the extracted tree.
 To build only the source archive:
 
 ```sh
-make source-archive
+make package-source
+make package-source-smoke
 ```
 
 To verify existing archives:
@@ -95,6 +98,10 @@ lib/cmake/Lua/LuaConfig.cmake
 lib/cmake/Lua/LuaConfigVersion.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake
+lib/cmake/CpktAudio/CpktAudioConfig.cmake
+lib/cmake/CpktAudio/CpktAudioConfigVersion.cmake
+lib/cmake/CpktSus/CpktSusConfig.cmake
+lib/cmake/CpktSus/CpktSusConfigVersion.cmake
 lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake
 lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake
 lib/cmake/mqtt-c/mqtt-cConfig.cmake
@@ -112,6 +119,8 @@ lib/pkgconfig/libxml-2.0.pc
 lib/pkgconfig/lua.pc
 lib/pkgconfig/lua5.5.pc
 lib/pkgconfig/cpkt-lua-runtime.pc
+lib/pkgconfig/cpkt-audio.pc
+lib/pkgconfig/cpkt-sus.pc
 lib/pkgconfig/cpkt-opcua.pc
 lib/pkgconfig/mqtt-c.pc
 lib/pkgconfig/open62541.pc
@@ -146,6 +155,8 @@ CURL::libcurl
 LibXml2::LibXml2
 Lua::Lua
 cpkt::lua_runtime
+cpkt::audio
+cpkt::sus
 MQTT-C::mqttc
 open62541::open62541
 cpkt::opcua
@@ -210,6 +221,15 @@ PKG_CONFIG_LIBDIR=/path/to/c.pkt.systems-<version>-<target>/lib/pkgconfig \
   pkg-config --static --cflags --libs mqtt-c
 ```
 
+The strict C89 audio and local speech facades are available through
+`cpkt-audio.pc` and `cpkt-sus.pc`:
+
+```sh
+PKG_CONFIG_PATH= \
+PKG_CONFIG_LIBDIR=/path/to/c.pkt.systems-<version>-<target>/lib/pkgconfig \
+  pkg-config --static --cflags --libs cpkt-sus
+```
+
 The repository includes a representative pkg-config consumer:
 
 ```sh
@@ -251,6 +271,36 @@ Consumers can:
 The facade does not expose a general stack/value API. Consumers that need stack
 operations, returned Lua values, metatables, userdata manipulation, or other
 full embedding details should use `Lua::Lua` directly from C99-or-newer source.
+
+Strict C89 applications that need audio decoding, URL-backed audio streams,
+capture/playback, VOX/PTT segmentation, or local speech-to-text should use the
+SDK facades:
+
+```text
+#include <cpkt/audio.h>
+#include <cpkt/sus.h>
+```
+
+`cpkt_audio` is a C89 facade over miniaudio. It exposes receiver-style handles
+for decoders, encoders, capture, playback, VOX, and PTT without exposing
+miniaudio headers or backend types. Decoders produce float32 mono 16 kHz PCM for
+speech workflows and support file, HTTP/HTTPS URL, and callback-reader inputs.
+The first advertised encoder format is WAV.
+
+`cpkt_sus` is a C89 facade over a CPU-only whisper.cpp/ggml build. It ships as a
+separate ABI-0 facade from `cpkt_audio`, while depending on `cpkt_audio` for
+decoder and VOX integration. The public cache resolver uses curated GGML model
+entries with pinned checksums. A NULL or empty cached-model name defaults to
+`tiny`; callers can override the cache location with
+`cpkt_sus_cache_config.cache_dir`, and the `cpktxscribe` shell exposes the same
+setting as `--cache-dir DIR`.
+
+Use `find_package(CpktAudio CONFIG REQUIRED)` and link `cpkt::audio`, or use
+`pkg-config --static --libs cpkt-audio`. Use
+`find_package(CpktSus CONFIG REQUIRED)` and link `cpkt::sus`, or use
+`pkg-config --static --libs cpkt-sus`. The repository includes strict C89
+examples under `examples/audio-*` and `examples/sus-*`, plus the `cpktxscribe`
+CLI for cached-model transcription.
 
 The upstream open62541 API is shipped as its native C99/C++98-compatible header
 surface under `include/open62541/`. Strict C89 applications should use the SDK
