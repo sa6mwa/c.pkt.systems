@@ -714,16 +714,18 @@ static int cpkt_live_vox_run(const struct cpkt_live_vox_options *opts) {
   if (playback != NULL) {
     (void)playback->drain(playback);
   }
-  fprintf(stdout, "summary segments=%lu hard=%lu final=%lu", run.segment_count,
-          run.hard_count, run.final_count);
+  fprintf(stdout, "summary segments=%lu hard=%lu final=%lu captured_frames=%lu",
+          run.segment_count, run.hard_count, run.final_count, captured_frames);
   if (opts->dump_dir != NULL) {
     fprintf(stdout, " dump_dir=%s", opts->dump_dir);
   }
   fputc('\n', stdout);
   if (run.summary != NULL) {
     fprintf(run.summary,
-            "summary segments=%lu hard=%lu final=%lu dump_dir=%s\n",
-            run.segment_count, run.hard_count, run.final_count, opts->dump_dir);
+            "summary segments=%lu hard=%lu final=%lu captured_frames=%lu "
+            "dump_dir=%s\n",
+            run.segment_count, run.hard_count, run.final_count, captured_frames,
+            opts->dump_dir);
   }
   rc = 0;
 
