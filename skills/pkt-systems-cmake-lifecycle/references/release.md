@@ -59,7 +59,7 @@ Review gate:
 
 - Run an independent local Codex review on the candidate branch with `codex review --base <release-branch>`.
 - Use `codex review --uncommitted` only outside the release flow during a separate fix iteration.
-- After squashing onto the local release branch, use `codex review --commit HEAD` when a final commit-level review is useful before tagging.
+- Do not run a second Codex review after squashing onto the local release branch when the squash commit contains the same code already reviewed against `<release-branch>`. The squash changes commit topology, not the reviewed tree content.
 - Treat actionable findings as blockers and stop the release process.
 - Do not address review findings during the release process. Report them and wait for the engineer to start or approve a separate fix iteration.
 
