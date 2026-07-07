@@ -242,6 +242,7 @@ static cpkt_opcua_result cpkt_read_file_bytes(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_variable_under(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -3392,14 +3393,18 @@ static UA_StatusCode cpkt_method_callback(
   return UA_STATUSCODE_GOOD;
 }
 
+/** Returns the linked open62541 version string. */
 const char *cpkt_opcua_open62541_version(void) { return UA_OPEN62541_VERSION; }
 
+/** Returns the public OPC UA facade ABI version string. */
 const char *cpkt_opcua_facade_version(void) { return CPKT_OPCUA_FACADE_VERSION; }
 
+/** Converts an upstream status code into its stable diagnostic name. */
 const char *cpkt_opcua_status_name(cpkt_opcua_status status) {
   return UA_StatusCode_name((UA_StatusCode)status);
 }
 
+/** Converts an OPC UA facade result code into a stable diagnostic string. */
 const char *cpkt_opcua_result_string(cpkt_opcua_result result) {
   switch (result) {
     case CPKT_OPCUA_OK:
@@ -3577,6 +3582,7 @@ static int cpkt_base64_decode(
   return 1;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_node_id cpkt_opcua_node_id_null(void) {
   cpkt_opcua_node_id node_id;
   node_id.namespace_index = 0;
@@ -3589,6 +3595,7 @@ cpkt_opcua_node_id cpkt_opcua_node_id_null(void) {
   return node_id;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_node_id cpkt_opcua_node_id_numeric(
     unsigned short namespace_index,
     unsigned long identifier) {
@@ -3600,6 +3607,7 @@ cpkt_opcua_node_id cpkt_opcua_node_id_numeric(
   return node_id;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_node_id cpkt_opcua_node_id_string(
     unsigned short namespace_index,
     const char *identifier) {
@@ -3611,6 +3619,7 @@ cpkt_opcua_node_id cpkt_opcua_node_id_string(
   return node_id;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_node_id cpkt_opcua_node_id_guid(
     unsigned short namespace_index,
     const unsigned char guid[16]) {
@@ -3624,6 +3633,7 @@ cpkt_opcua_node_id cpkt_opcua_node_id_guid(
   return node_id;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_node_id cpkt_opcua_node_id_byte_string(
     unsigned short namespace_index,
     const unsigned char *identifier,
@@ -3637,6 +3647,7 @@ cpkt_opcua_node_id cpkt_opcua_node_id_byte_string(
   return node_id;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 int cpkt_opcua_node_id_equal(cpkt_opcua_node_id a, cpkt_opcua_node_id b) {
   if (a.namespace_index != b.namespace_index || a.identifier_type != b.identifier_type) {
     return 0;
@@ -3671,6 +3682,7 @@ int cpkt_opcua_node_id_equal(cpkt_opcua_node_id a, cpkt_opcua_node_id b) {
   return 0;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_node_id_print(
     cpkt_opcua_node_id node_id,
     char *buffer,
@@ -3754,6 +3766,7 @@ cpkt_opcua_result cpkt_opcua_node_id_print(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_node_id_parse(
     const char *text,
     cpkt_opcua_node_id *node_id_out,
@@ -3850,6 +3863,7 @@ cpkt_opcua_result cpkt_opcua_node_id_parse(
   return CPKT_OPCUA_ERR_ARG;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_local(cpkt_opcua_node_id node_id) {
   cpkt_opcua_expanded_node_id expanded;
 
@@ -3860,6 +3874,7 @@ cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_local(cpkt_opcua_node_id
   return expanded;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_uri(
     const char *namespace_uri,
     size_t namespace_uri_length,
@@ -3872,6 +3887,7 @@ cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_uri(
   return expanded;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_server(
     unsigned long server_index,
     cpkt_opcua_node_id node_id) {
@@ -3882,6 +3898,7 @@ cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_server(
   return expanded;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_server_uri(
     unsigned long server_index,
     const char *namespace_uri,
@@ -3894,6 +3911,7 @@ cpkt_opcua_expanded_node_id cpkt_opcua_expanded_node_id_server_uri(
   return expanded;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 int cpkt_opcua_expanded_node_id_equal(
     cpkt_opcua_expanded_node_id a,
     cpkt_opcua_expanded_node_id b) {
@@ -3910,6 +3928,7 @@ int cpkt_opcua_expanded_node_id_equal(
   return memcmp(a.namespace_uri, b.namespace_uri, a.namespace_uri_length) == 0 ? 1 : 0;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_expanded_node_id_print(
     cpkt_opcua_expanded_node_id node_id,
     char *buffer,
@@ -3977,6 +3996,7 @@ cpkt_opcua_result cpkt_opcua_expanded_node_id_print(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_expanded_node_id_parse(
     const char *text,
     cpkt_opcua_expanded_node_id *node_id_out,
@@ -4067,6 +4087,7 @@ cpkt_opcua_result cpkt_opcua_expanded_node_id_parse(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_guid_print(
     const unsigned char guid[16],
     char *buffer,
@@ -4102,6 +4123,7 @@ cpkt_opcua_result cpkt_opcua_guid_print(
   return cpkt_copy_c_string_to_buffer(text, buffer, buffer_size, required_size_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_guid_parse(
     const char *text,
     unsigned char guid_out[16]) {
@@ -4111,6 +4133,7 @@ cpkt_opcua_result cpkt_opcua_guid_parse(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_qualified_name_print(
     unsigned short namespace_index,
     const char *name,
@@ -4148,6 +4171,7 @@ cpkt_opcua_result cpkt_opcua_qualified_name_print(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_qualified_name_parse(
     const char *text,
     unsigned short *namespace_index_out,
@@ -4198,6 +4222,7 @@ cpkt_opcua_result cpkt_opcua_qualified_name_parse(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_localized_text_print(
     const char *locale,
     size_t locale_length,
@@ -4242,6 +4267,7 @@ cpkt_opcua_result cpkt_opcua_localized_text_print(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_localized_text_parse(
     const char *input,
     char *buffer,
@@ -4315,6 +4341,7 @@ cpkt_opcua_result cpkt_opcua_localized_text_parse(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_clear(cpkt_opcua_value *value) {
   if (value == NULL) {
     return;
@@ -4364,6 +4391,7 @@ void cpkt_opcua_value_clear(cpkt_opcua_value *value) {
   value->datetime_value.low32 = 0;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_boolean(cpkt_opcua_value *value, int boolean_value) {
   cpkt_opcua_value_clear(value);
   if (value != NULL) {
@@ -4372,6 +4400,7 @@ void cpkt_opcua_value_boolean(cpkt_opcua_value *value, int boolean_value) {
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_integer(cpkt_opcua_value *value, long integer_value) {
   cpkt_opcua_value_clear(value);
   if (value != NULL) {
@@ -4380,6 +4409,7 @@ void cpkt_opcua_value_integer(cpkt_opcua_value *value, long integer_value) {
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_double(cpkt_opcua_value *value, double double_value) {
   cpkt_opcua_value_clear(value);
   if (value != NULL) {
@@ -4388,6 +4418,7 @@ void cpkt_opcua_value_double(cpkt_opcua_value *value, double double_value) {
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_string(
     cpkt_opcua_value *value,
     const char *string_value,
@@ -4400,6 +4431,7 @@ void cpkt_opcua_value_string(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_byte_string(
     cpkt_opcua_value *value,
     const unsigned char *bytes_value,
@@ -4412,6 +4444,7 @@ void cpkt_opcua_value_byte_string(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_guid(
     cpkt_opcua_value *value,
     const unsigned char guid[16]) {
@@ -4424,6 +4457,7 @@ void cpkt_opcua_value_guid(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_status(
     cpkt_opcua_value *value,
     cpkt_opcua_status status_value) {
@@ -4434,6 +4468,7 @@ void cpkt_opcua_value_status(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_qualified_name(
     cpkt_opcua_value *value,
     unsigned short namespace_index,
@@ -4448,6 +4483,7 @@ void cpkt_opcua_value_qualified_name(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_localized_text(
     cpkt_opcua_value *value,
     const char *locale,
@@ -4464,6 +4500,7 @@ void cpkt_opcua_value_localized_text(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_uint64(
     cpkt_opcua_value *value,
     unsigned long high32,
@@ -4476,6 +4513,7 @@ void cpkt_opcua_value_uint64(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_datetime(
     cpkt_opcua_value *value,
     long high32,
@@ -4488,6 +4526,7 @@ void cpkt_opcua_value_datetime(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_uint64_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_uint64 *values,
@@ -4500,6 +4539,7 @@ void cpkt_opcua_value_uint64_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_datetime_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_datetime *values,
@@ -4512,6 +4552,7 @@ void cpkt_opcua_value_datetime_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_status_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_status *values,
@@ -4524,6 +4565,7 @@ void cpkt_opcua_value_status_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_guid_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_guid *values,
@@ -4536,6 +4578,7 @@ void cpkt_opcua_value_guid_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_qualified_name_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_qualified_name_view *values,
@@ -4548,6 +4591,7 @@ void cpkt_opcua_value_qualified_name_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_localized_text_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_localized_text_view *values,
@@ -4560,6 +4604,7 @@ void cpkt_opcua_value_localized_text_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_boolean_array(
     cpkt_opcua_value *value,
     const int *values,
@@ -4572,6 +4617,7 @@ void cpkt_opcua_value_boolean_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_integer_array(
     cpkt_opcua_value *value,
     const long *values,
@@ -4584,6 +4630,7 @@ void cpkt_opcua_value_integer_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_double_array(
     cpkt_opcua_value *value,
     const double *values,
@@ -4596,6 +4643,7 @@ void cpkt_opcua_value_double_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_string_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_string_view *values,
@@ -4608,6 +4656,7 @@ void cpkt_opcua_value_string_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_value_byte_string_array(
     cpkt_opcua_value *value,
     const cpkt_opcua_byte_string_view *values,
@@ -4620,6 +4669,7 @@ void cpkt_opcua_value_byte_string_array(
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_data_value_clear(cpkt_opcua_data_value *data_value) {
   if (data_value == NULL) {
     return;
@@ -4636,6 +4686,7 @@ void cpkt_opcua_data_value_clear(cpkt_opcua_data_value *data_value) {
   data_value->server_timestamp.low32 = 0;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_browse_options_default(cpkt_opcua_browse_options *options) {
   if (options == NULL) {
     return;
@@ -4649,6 +4700,7 @@ void cpkt_opcua_browse_options_default(cpkt_opcua_browse_options *options) {
   options->max_references = 0;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_monitor_options_default(cpkt_opcua_monitor_options *options) {
   if (options == NULL) {
     return;
@@ -4660,6 +4712,7 @@ void cpkt_opcua_monitor_options_default(cpkt_opcua_monitor_options *options) {
   options->deadband_value = 0.0;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_mqtt_connection_options_default(cpkt_opcua_mqtt_connection_options *options) {
   if (options == NULL) {
     return;
@@ -4670,6 +4723,7 @@ void cpkt_opcua_mqtt_connection_options_default(cpkt_opcua_mqtt_connection_optio
   options->enabled = 1;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_pubsub_writer_group_options_default(
     cpkt_opcua_pubsub_writer_group_options *options) {
   if (options == NULL) {
@@ -4679,6 +4733,7 @@ void cpkt_opcua_pubsub_writer_group_options_default(
   options->enabled = 1;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_pubsub_data_set_writer_options_default(
     cpkt_opcua_pubsub_data_set_writer_options *options) {
   if (options == NULL) {
@@ -4689,6 +4744,7 @@ void cpkt_opcua_pubsub_data_set_writer_options_default(
   options->enabled = 1;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_pubsub_reader_group_options_default(
     cpkt_opcua_pubsub_reader_group_options *options) {
   if (options == NULL) {
@@ -4698,6 +4754,7 @@ void cpkt_opcua_pubsub_reader_group_options_default(
   options->enabled = 1;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_pubsub_data_set_reader_options_default(
     cpkt_opcua_pubsub_data_set_reader_options *options) {
   if (options == NULL) {
@@ -4707,6 +4764,7 @@ void cpkt_opcua_pubsub_data_set_reader_options_default(
   options->enabled = 1;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_new(
     cpkt_opcua_server **out,
     unsigned short port) {
@@ -4762,6 +4820,7 @@ static cpkt_opcua_result cpkt_opcua_server_wrap_native(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_new_from_json(
     cpkt_opcua_server **out,
     const unsigned char *json,
@@ -4797,6 +4856,7 @@ cpkt_opcua_result cpkt_opcua_server_new_from_json(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_new_from_json_file(
     cpkt_opcua_server **out,
     const char *path,
@@ -4817,6 +4877,7 @@ cpkt_opcua_result cpkt_opcua_server_new_from_json_file(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_server_free(cpkt_opcua_server *server) {
   struct cpkt_opcua_method_context *method;
   struct cpkt_opcua_method_context *next;
@@ -4844,6 +4905,7 @@ void cpkt_opcua_server_free(cpkt_opcua_server *server) {
   free(server);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_startup(
     cpkt_opcua_server *server,
     cpkt_opcua_status *status_out) {
@@ -4868,6 +4930,7 @@ cpkt_opcua_result cpkt_opcua_server_startup(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_iterate(
     cpkt_opcua_server *server,
     int wait_internal,
@@ -4883,6 +4946,7 @@ cpkt_opcua_result cpkt_opcua_server_iterate(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_shutdown(
     cpkt_opcua_server *server,
     cpkt_opcua_status *status_out) {
@@ -4907,6 +4971,7 @@ cpkt_opcua_result cpkt_opcua_server_shutdown(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_endpoint_url(
     const cpkt_opcua_server *server,
     char *buffer,
@@ -4943,6 +5008,7 @@ cpkt_opcua_result cpkt_opcua_server_endpoint_url(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_set_endpoint(
     cpkt_opcua_server *server,
     const char *hostname,
@@ -4999,6 +5065,7 @@ cpkt_opcua_result cpkt_opcua_server_set_endpoint(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_set_application_identity(
     cpkt_opcua_server *server,
     const char *application_uri,
@@ -5035,6 +5102,7 @@ cpkt_opcua_result cpkt_opcua_server_set_application_identity(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_native_config(
     cpkt_opcua_server *server,
     cpkt_opcua_server_native_config_fn fn,
@@ -5055,6 +5123,7 @@ cpkt_opcua_result cpkt_opcua_server_native_config(
   return callback_status == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_file_config_native_config(
     cpkt_opcua_server *server,
     cpkt_opcua_server_native_config_fn fn,
@@ -5063,6 +5132,7 @@ cpkt_opcua_result cpkt_opcua_server_file_config_native_config(
   return cpkt_opcua_server_native_config(server, fn, user, status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_security_plugin_native_config(
     cpkt_opcua_server *server,
     cpkt_opcua_server_native_config_fn fn,
@@ -5071,6 +5141,7 @@ cpkt_opcua_result cpkt_opcua_server_security_plugin_native_config(
   return cpkt_opcua_server_native_config(server, fn, user, status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_set_default_security(
     cpkt_opcua_server *server,
     int secure_only,
@@ -5160,6 +5231,7 @@ cpkt_opcua_result cpkt_opcua_server_set_default_security(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_set_access_control(
     cpkt_opcua_server *server,
     int allow_anonymous,
@@ -5268,6 +5340,7 @@ static UA_StatusCode cpkt_opcua_access_control_login_callback(
       server->access_login_user);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_set_access_control_callback(
     cpkt_opcua_server *server,
     int allow_anonymous,
@@ -5315,6 +5388,7 @@ cpkt_opcua_result cpkt_opcua_server_set_access_control_callback(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_variable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5332,6 +5406,7 @@ cpkt_opcua_result cpkt_opcua_server_add_variable(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_object(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5373,6 +5448,7 @@ cpkt_opcua_result cpkt_opcua_server_add_object(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_variable_under(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5431,6 +5507,7 @@ cpkt_opcua_result cpkt_opcua_server_add_variable_under(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_object_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5473,6 +5550,7 @@ cpkt_opcua_result cpkt_opcua_server_add_object_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_variable_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5530,6 +5608,7 @@ cpkt_opcua_result cpkt_opcua_server_add_variable_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_reference_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5577,6 +5656,7 @@ cpkt_opcua_result cpkt_opcua_server_add_reference_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_data_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5619,6 +5699,7 @@ cpkt_opcua_result cpkt_opcua_server_add_data_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_view(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5666,6 +5747,7 @@ cpkt_opcua_result cpkt_opcua_server_add_view(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_method(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5783,6 +5865,7 @@ cpkt_opcua_result cpkt_opcua_server_add_method(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_method_many(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5905,6 +5988,7 @@ cpkt_opcua_result cpkt_opcua_server_add_method_many(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_namespace(
     cpkt_opcua_server *server,
     const char *namespace_uri,
@@ -5924,6 +6008,7 @@ cpkt_opcua_result cpkt_opcua_server_add_namespace(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_delete_node(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -5946,6 +6031,7 @@ cpkt_opcua_result cpkt_opcua_server_delete_node(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_reference(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -5964,6 +6050,7 @@ cpkt_opcua_result cpkt_opcua_server_add_reference(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_reference_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -6000,6 +6087,7 @@ cpkt_opcua_result cpkt_opcua_server_add_reference_ex(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_delete_reference(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -6018,6 +6106,7 @@ cpkt_opcua_result cpkt_opcua_server_delete_reference(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_delete_reference_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -6055,6 +6144,7 @@ cpkt_opcua_result cpkt_opcua_server_delete_reference_ex(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_browse_children(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id parent_node_id,
@@ -6067,6 +6157,7 @@ cpkt_opcua_result cpkt_opcua_server_browse_children(
   return cpkt_opcua_server_browse_children_ex(server, parent_node_id, &options, fn, user, status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_browse_children_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id parent_node_id,
@@ -6096,6 +6187,7 @@ cpkt_opcua_result cpkt_opcua_server_browse_children_ex(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_browse_children_page(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id parent_node_id,
@@ -6141,6 +6233,7 @@ cpkt_opcua_result cpkt_opcua_server_browse_children_page(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_browse_next(
     cpkt_opcua_server *server,
     const unsigned char *continuation_point,
@@ -6188,6 +6281,7 @@ cpkt_opcua_result cpkt_opcua_server_browse_next(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_translate_browse_path(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id start_node_id,
@@ -6225,6 +6319,7 @@ cpkt_opcua_result cpkt_opcua_server_translate_browse_path(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6258,6 +6353,7 @@ cpkt_opcua_result cpkt_opcua_server_read(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_native_variant(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6290,6 +6386,7 @@ cpkt_opcua_result cpkt_opcua_server_read_native_variant(
   return callback_status == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_CALLBACK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_native_data_value(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6318,6 +6415,7 @@ cpkt_opcua_result cpkt_opcua_server_read_native_data_value(
   return callback_status == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_CALLBACK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_data_value(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6385,6 +6483,7 @@ static cpkt_opcua_result cpkt_server_read_array_variant(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_boolean_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6404,6 +6503,7 @@ cpkt_opcua_result cpkt_opcua_server_read_boolean_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_integer_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6423,6 +6523,7 @@ cpkt_opcua_result cpkt_opcua_server_read_integer_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_uint64_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6442,6 +6543,7 @@ cpkt_opcua_result cpkt_opcua_server_read_uint64_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_datetime_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6461,6 +6563,7 @@ cpkt_opcua_result cpkt_opcua_server_read_datetime_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_status_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6480,6 +6583,7 @@ cpkt_opcua_result cpkt_opcua_server_read_status_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_guid_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6499,6 +6603,7 @@ cpkt_opcua_result cpkt_opcua_server_read_guid_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6518,6 +6623,7 @@ cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_localized_text_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6537,6 +6643,7 @@ cpkt_opcua_result cpkt_opcua_server_read_localized_text_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_double_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6556,6 +6663,7 @@ cpkt_opcua_result cpkt_opcua_server_read_double_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_string_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6575,6 +6683,7 @@ cpkt_opcua_result cpkt_opcua_server_read_string_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_byte_string_array(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6631,6 +6740,7 @@ static cpkt_opcua_result cpkt_server_read_index_range_variant(
   return copy_status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_ALLOC;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_boolean_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6657,6 +6767,7 @@ cpkt_opcua_result cpkt_opcua_server_read_boolean_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_integer_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6683,6 +6794,7 @@ cpkt_opcua_result cpkt_opcua_server_read_integer_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_double_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6709,6 +6821,7 @@ cpkt_opcua_result cpkt_opcua_server_read_double_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_uint64_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6735,6 +6848,7 @@ cpkt_opcua_result cpkt_opcua_server_read_uint64_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_datetime_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6761,6 +6875,7 @@ cpkt_opcua_result cpkt_opcua_server_read_datetime_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_status_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6787,6 +6902,7 @@ cpkt_opcua_result cpkt_opcua_server_read_status_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_guid_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6813,6 +6929,7 @@ cpkt_opcua_result cpkt_opcua_server_read_guid_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6839,6 +6956,7 @@ cpkt_opcua_result cpkt_opcua_server_read_qualified_name_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_localized_text_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6865,6 +6983,7 @@ cpkt_opcua_result cpkt_opcua_server_read_localized_text_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_string_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6912,6 +7031,7 @@ cpkt_opcua_result cpkt_opcua_server_read_string_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_byte_string_array_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6959,6 +7079,7 @@ cpkt_opcua_result cpkt_opcua_server_read_byte_string_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_index_range(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -6995,6 +7116,7 @@ cpkt_opcua_result cpkt_opcua_server_write_index_range(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_node_id(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7055,6 +7177,7 @@ cpkt_opcua_result cpkt_opcua_server_read_node_id(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_node_class(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7086,6 +7209,7 @@ cpkt_opcua_result cpkt_opcua_server_read_node_class(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_browse_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7129,6 +7253,7 @@ cpkt_opcua_result cpkt_opcua_server_read_browse_name(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_display_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7165,6 +7290,7 @@ cpkt_opcua_result cpkt_opcua_server_read_display_name(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_description(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7201,6 +7327,7 @@ cpkt_opcua_result cpkt_opcua_server_read_description(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_display_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7225,6 +7352,7 @@ cpkt_opcua_result cpkt_opcua_server_write_display_name(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_description(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7249,6 +7377,7 @@ cpkt_opcua_result cpkt_opcua_server_write_description(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_write_mask(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7279,6 +7408,7 @@ cpkt_opcua_result cpkt_opcua_server_read_write_mask(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_user_write_mask(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7292,6 +7422,7 @@ cpkt_opcua_result cpkt_opcua_server_read_user_write_mask(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_write_mask(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7317,6 +7448,7 @@ cpkt_opcua_result cpkt_opcua_server_write_write_mask(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_is_abstract(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7347,6 +7479,7 @@ cpkt_opcua_result cpkt_opcua_server_read_is_abstract(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_is_abstract(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7369,6 +7502,7 @@ cpkt_opcua_result cpkt_opcua_server_write_is_abstract(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_symmetric(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7399,6 +7533,7 @@ cpkt_opcua_result cpkt_opcua_server_read_symmetric(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_symmetric(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7412,6 +7547,7 @@ cpkt_opcua_result cpkt_opcua_server_write_symmetric(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_inverse_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7448,6 +7584,7 @@ cpkt_opcua_result cpkt_opcua_server_read_inverse_name(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_inverse_name(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7472,6 +7609,7 @@ cpkt_opcua_result cpkt_opcua_server_write_inverse_name(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_contains_no_loops(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7503,6 +7641,7 @@ cpkt_opcua_result cpkt_opcua_server_read_contains_no_loops(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_contains_no_loops(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7516,6 +7655,7 @@ cpkt_opcua_result cpkt_opcua_server_write_contains_no_loops(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_event_notifier(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7546,6 +7686,7 @@ cpkt_opcua_result cpkt_opcua_server_read_event_notifier(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_event_notifier(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7571,6 +7712,7 @@ cpkt_opcua_result cpkt_opcua_server_write_event_notifier(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_data_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7618,6 +7760,7 @@ cpkt_opcua_result cpkt_opcua_server_read_data_type(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_data_type(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7643,6 +7786,7 @@ cpkt_opcua_result cpkt_opcua_server_write_data_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_value_rank(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7673,6 +7817,7 @@ cpkt_opcua_result cpkt_opcua_server_read_value_rank(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_value_rank(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7698,6 +7843,7 @@ cpkt_opcua_result cpkt_opcua_server_write_value_rank(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_array_dimensions(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7752,6 +7898,7 @@ cpkt_opcua_result cpkt_opcua_server_read_array_dimensions(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_array_dimensions(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7794,6 +7941,7 @@ cpkt_opcua_result cpkt_opcua_server_write_array_dimensions(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_access_level(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7824,6 +7972,7 @@ cpkt_opcua_result cpkt_opcua_server_read_access_level(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_user_access_level(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7837,6 +7986,7 @@ cpkt_opcua_result cpkt_opcua_server_read_user_access_level(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_access_level(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7864,6 +8014,7 @@ cpkt_opcua_result cpkt_opcua_server_write_access_level(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_access_level_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7894,6 +8045,7 @@ cpkt_opcua_result cpkt_opcua_server_read_access_level_ex(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_access_level_ex(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7919,6 +8071,7 @@ cpkt_opcua_result cpkt_opcua_server_write_access_level_ex(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_minimum_sampling_interval(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7953,6 +8106,7 @@ cpkt_opcua_result cpkt_opcua_server_read_minimum_sampling_interval(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_minimum_sampling_interval(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -7978,6 +8132,7 @@ cpkt_opcua_result cpkt_opcua_server_write_minimum_sampling_interval(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_historizing(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -8008,6 +8163,7 @@ cpkt_opcua_result cpkt_opcua_server_read_historizing(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_historizing(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -8030,6 +8186,7 @@ cpkt_opcua_result cpkt_opcua_server_write_historizing(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_executable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -8060,6 +8217,7 @@ cpkt_opcua_result cpkt_opcua_server_read_executable(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_user_executable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -8073,6 +8231,7 @@ cpkt_opcua_result cpkt_opcua_server_read_user_executable(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_executable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -8095,6 +8254,7 @@ cpkt_opcua_result cpkt_opcua_server_write_executable(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_method_argument_count(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id method_node_id,
@@ -8124,6 +8284,7 @@ cpkt_opcua_result cpkt_opcua_server_read_method_argument_count(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_read_method_argument(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id method_node_id,
@@ -8171,6 +8332,7 @@ cpkt_opcua_result cpkt_opcua_server_read_method_argument(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id node_id,
@@ -8201,6 +8363,7 @@ cpkt_opcua_result cpkt_opcua_server_write(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_server_event_free(cpkt_opcua_server_event *event) {
   if (event != NULL) {
     UA_KeyValueMap_clear(&event->fields);
@@ -8211,6 +8374,7 @@ void cpkt_opcua_server_event_free(cpkt_opcua_server_event *event) {
   }
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_create_event(
     cpkt_opcua_node_id source_node_id,
     cpkt_opcua_node_id event_type_id,
@@ -8257,6 +8421,7 @@ cpkt_opcua_result cpkt_opcua_server_create_event(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_event_set_field(
     cpkt_opcua_server_event *event,
     unsigned short namespace_index,
@@ -8289,6 +8454,7 @@ cpkt_opcua_result cpkt_opcua_server_event_set_field(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_event_trigger(
     cpkt_opcua_server *server,
     cpkt_opcua_server_event *event,
@@ -8341,6 +8507,7 @@ cpkt_opcua_result cpkt_opcua_server_event_trigger(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_trigger_event(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id source_node_id,
@@ -8398,6 +8565,7 @@ cpkt_opcua_result cpkt_opcua_server_trigger_event(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_native(
     cpkt_opcua_server *server,
     cpkt_opcua_server_native_fn fn,
@@ -8408,6 +8576,7 @@ cpkt_opcua_result cpkt_opcua_server_native(
   return fn(server->server, user) == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_pubsub_native(
     cpkt_opcua_server *server,
     cpkt_opcua_server_native_fn fn,
@@ -8473,6 +8642,7 @@ static cpkt_opcua_result cpkt_pubsub_map_set_boolean(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_ALLOC;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_mqtt_pubsub_connection(
     cpkt_opcua_server *server,
     const cpkt_opcua_mqtt_connection_options *options,
@@ -8557,6 +8727,7 @@ cpkt_opcua_result cpkt_opcua_server_add_mqtt_pubsub_connection(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_published_dataset(
     cpkt_opcua_server *server,
     const char *name,
@@ -8601,6 +8772,7 @@ cpkt_opcua_result cpkt_opcua_server_add_published_dataset(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_published_variable(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id published_dataset_id,
@@ -8658,6 +8830,7 @@ cpkt_opcua_result cpkt_opcua_server_add_published_variable(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_writer_group(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id connection_id,
@@ -8709,6 +8882,7 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_writer_group(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_writer(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id writer_group_id,
@@ -8769,6 +8943,7 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_writer(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_reader_group(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id connection_id,
@@ -8818,6 +8993,7 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_reader_group(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_reader(
     cpkt_opcua_server *server,
     cpkt_opcua_node_id reader_group_id,
@@ -8876,6 +9052,7 @@ cpkt_opcua_result cpkt_opcua_server_add_pubsub_data_set_reader(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_write_pubsub_configuration(
     cpkt_opcua_server *server,
     unsigned char *buffer,
@@ -8922,6 +9099,7 @@ cpkt_opcua_result cpkt_opcua_server_write_pubsub_configuration(
 #endif
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_load_pubsub_configuration(
     cpkt_opcua_server *server,
     const unsigned char *buffer,
@@ -8956,6 +9134,7 @@ cpkt_opcua_result cpkt_opcua_server_load_pubsub_configuration(
 #endif
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_history_native(
     cpkt_opcua_server *server,
     cpkt_opcua_server_native_fn fn,
@@ -8963,6 +9142,7 @@ cpkt_opcua_result cpkt_opcua_server_history_native(
   return cpkt_opcua_server_native(server, fn, user);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_new(cpkt_opcua_client **out) {
   cpkt_opcua_client *client;
   UA_StatusCode status;
@@ -8990,6 +9170,7 @@ cpkt_opcua_result cpkt_opcua_client_new(cpkt_opcua_client **out) {
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 void cpkt_opcua_client_free(cpkt_opcua_client *client) {
   struct cpkt_opcua_monitor_context *monitor;
   struct cpkt_opcua_monitor_context *next;
@@ -9017,6 +9198,7 @@ void cpkt_opcua_client_free(cpkt_opcua_client *client) {
   free(client);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_connect(
     cpkt_opcua_client *client,
     const char *endpoint_url,
@@ -9035,6 +9217,7 @@ cpkt_opcua_result cpkt_opcua_client_connect(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_connect_username(
     cpkt_opcua_client *client,
     const char *endpoint_url,
@@ -9057,6 +9240,7 @@ cpkt_opcua_result cpkt_opcua_client_connect_username(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_native_config(
     cpkt_opcua_client *client,
     cpkt_opcua_client_native_config_fn fn,
@@ -9077,6 +9261,7 @@ cpkt_opcua_result cpkt_opcua_client_native_config(
   return callback_status == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_security_plugin_native_config(
     cpkt_opcua_client *client,
     cpkt_opcua_client_native_config_fn fn,
@@ -9085,6 +9270,7 @@ cpkt_opcua_result cpkt_opcua_client_security_plugin_native_config(
   return cpkt_opcua_client_native_config(client, fn, user, status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_set_default_encryption(
     cpkt_opcua_client *client,
     const unsigned char *certificate,
@@ -9147,6 +9333,7 @@ cpkt_opcua_result cpkt_opcua_client_set_default_encryption(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_disconnect(
     cpkt_opcua_client *client,
     cpkt_opcua_status *status_out) {
@@ -9164,6 +9351,7 @@ cpkt_opcua_result cpkt_opcua_client_disconnect(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_run_iterate(
     cpkt_opcua_client *client,
     unsigned long timeout_ms,
@@ -9182,6 +9370,7 @@ cpkt_opcua_result cpkt_opcua_client_run_iterate(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_get_namespace_index(
     cpkt_opcua_client *client,
     const char *namespace_uri,
@@ -9213,6 +9402,7 @@ cpkt_opcua_result cpkt_opcua_client_get_namespace_index(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_get_namespace_uri(
     cpkt_opcua_client *client,
     unsigned short namespace_index,
@@ -9247,6 +9437,7 @@ cpkt_opcua_result cpkt_opcua_client_get_namespace_uri(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_get_endpoint_count(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -9280,6 +9471,7 @@ cpkt_opcua_result cpkt_opcua_client_get_endpoint_count(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_get_endpoint_url(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -9368,6 +9560,7 @@ static cpkt_opcua_result cpkt_client_find_servers(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_find_server_count(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -9387,6 +9580,7 @@ cpkt_opcua_result cpkt_opcua_client_find_server_count(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_find_server_application_uri(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -9422,6 +9616,7 @@ cpkt_opcua_result cpkt_opcua_client_find_server_application_uri(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_find_server_application_name(
     cpkt_opcua_client *client,
     const char *server_url,
@@ -9457,6 +9652,7 @@ cpkt_opcua_result cpkt_opcua_client_find_server_application_name(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9490,6 +9686,7 @@ cpkt_opcua_result cpkt_opcua_client_read(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_native_variant(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9522,6 +9719,7 @@ cpkt_opcua_result cpkt_opcua_client_read_native_variant(
   return callback_status == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_CALLBACK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_native_data_value(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9564,6 +9762,7 @@ cpkt_opcua_result cpkt_opcua_client_read_native_data_value(
   return callback_status == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_CALLBACK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_data_value(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9620,6 +9819,7 @@ cpkt_opcua_result cpkt_opcua_client_read_data_value(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_history_read_raw(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9709,6 +9909,7 @@ static cpkt_opcua_result cpkt_client_read_array_variant(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_boolean_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9728,6 +9929,7 @@ cpkt_opcua_result cpkt_opcua_client_read_boolean_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_integer_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9747,6 +9949,7 @@ cpkt_opcua_result cpkt_opcua_client_read_integer_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_uint64_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9766,6 +9969,7 @@ cpkt_opcua_result cpkt_opcua_client_read_uint64_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_datetime_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9785,6 +9989,7 @@ cpkt_opcua_result cpkt_opcua_client_read_datetime_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_status_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9804,6 +10009,7 @@ cpkt_opcua_result cpkt_opcua_client_read_status_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_guid_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9823,6 +10029,7 @@ cpkt_opcua_result cpkt_opcua_client_read_guid_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9842,6 +10049,7 @@ cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_localized_text_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9861,6 +10069,7 @@ cpkt_opcua_result cpkt_opcua_client_read_localized_text_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_double_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9880,6 +10089,7 @@ cpkt_opcua_result cpkt_opcua_client_read_double_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_string_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9899,6 +10109,7 @@ cpkt_opcua_result cpkt_opcua_client_read_string_array(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_byte_string_array(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9973,6 +10184,7 @@ static cpkt_opcua_result cpkt_client_read_index_range_variant(
   return copy_status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_ALLOC;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_boolean_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -9999,6 +10211,7 @@ cpkt_opcua_result cpkt_opcua_client_read_boolean_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_integer_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10025,6 +10238,7 @@ cpkt_opcua_result cpkt_opcua_client_read_integer_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_double_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10051,6 +10265,7 @@ cpkt_opcua_result cpkt_opcua_client_read_double_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_uint64_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10077,6 +10292,7 @@ cpkt_opcua_result cpkt_opcua_client_read_uint64_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_datetime_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10103,6 +10319,7 @@ cpkt_opcua_result cpkt_opcua_client_read_datetime_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_status_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10129,6 +10346,7 @@ cpkt_opcua_result cpkt_opcua_client_read_status_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_guid_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10155,6 +10373,7 @@ cpkt_opcua_result cpkt_opcua_client_read_guid_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10181,6 +10400,7 @@ cpkt_opcua_result cpkt_opcua_client_read_qualified_name_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_localized_text_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10207,6 +10427,7 @@ cpkt_opcua_result cpkt_opcua_client_read_localized_text_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_string_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10254,6 +10475,7 @@ cpkt_opcua_result cpkt_opcua_client_read_string_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_byte_string_array_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10301,6 +10523,7 @@ cpkt_opcua_result cpkt_opcua_client_read_byte_string_array_range(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_index_range(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10349,6 +10572,7 @@ cpkt_opcua_result cpkt_opcua_client_write_index_range(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_node_id(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10409,6 +10633,7 @@ cpkt_opcua_result cpkt_opcua_client_read_node_id(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_node_class(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10440,6 +10665,7 @@ cpkt_opcua_result cpkt_opcua_client_read_node_class(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_browse_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10483,6 +10709,7 @@ cpkt_opcua_result cpkt_opcua_client_read_browse_name(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_display_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10519,6 +10746,7 @@ cpkt_opcua_result cpkt_opcua_client_read_display_name(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_description(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10555,6 +10783,7 @@ cpkt_opcua_result cpkt_opcua_client_read_description(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_display_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10579,6 +10808,7 @@ cpkt_opcua_result cpkt_opcua_client_write_display_name(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_description(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10603,6 +10833,7 @@ cpkt_opcua_result cpkt_opcua_client_write_description(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_write_mask(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10633,6 +10864,7 @@ cpkt_opcua_result cpkt_opcua_client_read_write_mask(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_user_write_mask(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10663,6 +10895,7 @@ cpkt_opcua_result cpkt_opcua_client_read_user_write_mask(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_write_mask(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10690,6 +10923,7 @@ cpkt_opcua_result cpkt_opcua_client_write_write_mask(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_is_abstract(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10720,6 +10954,7 @@ cpkt_opcua_result cpkt_opcua_client_read_is_abstract(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_is_abstract(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10744,6 +10979,7 @@ cpkt_opcua_result cpkt_opcua_client_write_is_abstract(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_symmetric(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10774,6 +11010,7 @@ cpkt_opcua_result cpkt_opcua_client_read_symmetric(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_symmetric(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10798,6 +11035,7 @@ cpkt_opcua_result cpkt_opcua_client_write_symmetric(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_inverse_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10834,6 +11072,7 @@ cpkt_opcua_result cpkt_opcua_client_read_inverse_name(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_inverse_name(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10858,6 +11097,7 @@ cpkt_opcua_result cpkt_opcua_client_write_inverse_name(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_contains_no_loops(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10889,6 +11129,7 @@ cpkt_opcua_result cpkt_opcua_client_read_contains_no_loops(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_contains_no_loops(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10913,6 +11154,7 @@ cpkt_opcua_result cpkt_opcua_client_write_contains_no_loops(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_event_notifier(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10943,6 +11185,7 @@ cpkt_opcua_result cpkt_opcua_client_read_event_notifier(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_event_notifier(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -10970,6 +11213,7 @@ cpkt_opcua_result cpkt_opcua_client_write_event_notifier(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_data_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11017,6 +11261,7 @@ cpkt_opcua_result cpkt_opcua_client_read_data_type(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_data_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11042,6 +11287,7 @@ cpkt_opcua_result cpkt_opcua_client_write_data_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_value_rank(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11072,6 +11318,7 @@ cpkt_opcua_result cpkt_opcua_client_read_value_rank(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_value_rank(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11099,6 +11346,7 @@ cpkt_opcua_result cpkt_opcua_client_write_value_rank(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_array_dimensions(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11147,6 +11395,7 @@ cpkt_opcua_result cpkt_opcua_client_read_array_dimensions(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_array_dimensions(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11181,6 +11430,7 @@ cpkt_opcua_result cpkt_opcua_client_write_array_dimensions(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_access_level(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11211,6 +11461,7 @@ cpkt_opcua_result cpkt_opcua_client_read_access_level(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_user_access_level(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11241,6 +11492,7 @@ cpkt_opcua_result cpkt_opcua_client_read_user_access_level(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_access_level(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11268,6 +11520,7 @@ cpkt_opcua_result cpkt_opcua_client_write_access_level(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_access_level_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11298,6 +11551,7 @@ cpkt_opcua_result cpkt_opcua_client_read_access_level_ex(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_access_level_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11325,6 +11579,7 @@ cpkt_opcua_result cpkt_opcua_client_write_access_level_ex(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_minimum_sampling_interval(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11359,6 +11614,7 @@ cpkt_opcua_result cpkt_opcua_client_read_minimum_sampling_interval(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_minimum_sampling_interval(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11386,6 +11642,7 @@ cpkt_opcua_result cpkt_opcua_client_write_minimum_sampling_interval(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_historizing(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11416,6 +11673,7 @@ cpkt_opcua_result cpkt_opcua_client_read_historizing(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_historizing(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11440,6 +11698,7 @@ cpkt_opcua_result cpkt_opcua_client_write_historizing(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_executable(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11470,6 +11729,7 @@ cpkt_opcua_result cpkt_opcua_client_read_executable(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_user_executable(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11500,6 +11760,7 @@ cpkt_opcua_result cpkt_opcua_client_read_user_executable(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_executable(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11524,6 +11785,7 @@ cpkt_opcua_result cpkt_opcua_client_write_executable(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_method_argument_count(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id method_node_id,
@@ -11553,6 +11815,7 @@ cpkt_opcua_result cpkt_opcua_client_read_method_argument_count(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_method_argument(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id method_node_id,
@@ -11600,6 +11863,7 @@ cpkt_opcua_result cpkt_opcua_client_read_method_argument(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11630,6 +11894,7 @@ cpkt_opcua_result cpkt_opcua_client_write(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_object(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11670,6 +11935,7 @@ cpkt_opcua_result cpkt_opcua_client_add_object(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_variable(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11687,6 +11953,7 @@ cpkt_opcua_result cpkt_opcua_client_add_variable(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_variable_under(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11744,6 +12011,7 @@ cpkt_opcua_result cpkt_opcua_client_add_variable_under(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_object_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11785,6 +12053,7 @@ cpkt_opcua_result cpkt_opcua_client_add_object_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_variable_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11840,6 +12109,7 @@ cpkt_opcua_result cpkt_opcua_client_add_variable_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_reference_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11886,6 +12156,7 @@ cpkt_opcua_result cpkt_opcua_client_add_reference_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_data_type(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11927,6 +12198,7 @@ cpkt_opcua_result cpkt_opcua_client_add_data_type(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_view(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11973,6 +12245,7 @@ cpkt_opcua_result cpkt_opcua_client_add_view(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_delete_node(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -11995,6 +12268,7 @@ cpkt_opcua_result cpkt_opcua_client_delete_node(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_reference(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id source_node_id,
@@ -12013,6 +12287,7 @@ cpkt_opcua_result cpkt_opcua_client_add_reference(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_reference_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id source_node_id,
@@ -12051,6 +12326,7 @@ cpkt_opcua_result cpkt_opcua_client_add_reference_ex(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_delete_reference(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id source_node_id,
@@ -12069,6 +12345,7 @@ cpkt_opcua_result cpkt_opcua_client_delete_reference(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_delete_reference_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id source_node_id,
@@ -12106,6 +12383,7 @@ cpkt_opcua_result cpkt_opcua_client_delete_reference_ex(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_browse_children(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id parent_node_id,
@@ -12118,6 +12396,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children(
   return cpkt_opcua_client_browse_children_ex(client, parent_node_id, &options, fn, user, status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_browse_children_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id parent_node_id,
@@ -12147,6 +12426,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children_ex(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_browse_children_page(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id parent_node_id,
@@ -12192,6 +12472,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children_page(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_browse_next(
     cpkt_opcua_client *client,
     const unsigned char *continuation_point,
@@ -12239,6 +12520,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_next(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_translate_browse_path(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id start_node_id,
@@ -12276,6 +12558,7 @@ cpkt_opcua_result cpkt_opcua_client_translate_browse_path(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_call_method(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id object_node_id,
@@ -12360,6 +12643,7 @@ cpkt_opcua_result cpkt_opcua_client_call_method(
   return result;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_call_method_many(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id object_node_id,
@@ -12643,6 +12927,7 @@ static void cpkt_async_add_node_callback(
   cpkt_async_finish(context);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_read_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -12701,6 +12986,7 @@ cpkt_opcua_result cpkt_opcua_client_read_async(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_write_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -12762,6 +13048,7 @@ cpkt_opcua_result cpkt_opcua_client_write_async(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_browse_children_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id parent_node_id,
@@ -12829,6 +13116,7 @@ cpkt_opcua_result cpkt_opcua_client_browse_children_async(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_call_method_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id object_node_id,
@@ -12925,6 +13213,7 @@ cpkt_opcua_result cpkt_opcua_client_call_method_async(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_object_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -13004,6 +13293,7 @@ cpkt_opcua_result cpkt_opcua_client_add_object_async(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_add_variable_async(
     cpkt_opcua_client *client,
     cpkt_opcua_node_id node_id,
@@ -13093,6 +13383,7 @@ cpkt_opcua_result cpkt_opcua_client_add_variable_async(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_create_subscription(
     cpkt_opcua_client *client,
     double publishing_interval_ms,
@@ -13132,6 +13423,7 @@ cpkt_opcua_result cpkt_opcua_client_create_subscription(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_delete_subscription(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13151,6 +13443,7 @@ cpkt_opcua_result cpkt_opcua_client_delete_subscription(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_modify_subscription(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13405,6 +13698,7 @@ static void cpkt_init_event_select_clause(
   select_clause->attributeId = UA_ATTRIBUTEID_VALUE;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_monitor_value(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13429,6 +13723,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_value(
       status_out);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_monitor_value_ex(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13527,6 +13822,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_value_ex(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_monitor_events(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13610,6 +13906,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_events(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_monitor_event_fields(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13726,6 +14023,7 @@ cpkt_opcua_result cpkt_opcua_client_monitor_event_fields(
   return CPKT_OPCUA_OK;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_set_monitoring_mode(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13773,6 +14071,7 @@ cpkt_opcua_result cpkt_opcua_client_set_monitoring_mode(
   return item_status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_delete_monitored_item(
     cpkt_opcua_client *client,
     cpkt_opcua_subscription_id subscription_id,
@@ -13798,6 +14097,7 @@ cpkt_opcua_result cpkt_opcua_client_delete_monitored_item(
   return status == UA_STATUSCODE_GOOD ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_native(
     cpkt_opcua_client *client,
     cpkt_opcua_client_native_fn fn,
@@ -13808,6 +14108,7 @@ cpkt_opcua_result cpkt_opcua_client_native(
   return fn(client->client, user) == 0 ? CPKT_OPCUA_OK : CPKT_OPCUA_ERR_UPSTREAM;
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_async_native(
     cpkt_opcua_client *client,
     cpkt_opcua_client_native_fn fn,
@@ -13815,6 +14116,7 @@ cpkt_opcua_result cpkt_opcua_client_async_native(
   return cpkt_opcua_client_native(client, fn, user);
 }
 
+/** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_history_native(
     cpkt_opcua_client *client,
     cpkt_opcua_client_native_fn fn,

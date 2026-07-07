@@ -82,11 +82,109 @@ function(cpkt_get_external_c_flags out_var)
       " -fmacro-prefix-map=${CPKT_EXTERNAL_ROOT}=deps"
     )
   endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    string(APPEND _flags " -include stdint.h -include sys/types.h")
+  endif()
   if(NOT "${CMAKE_C_FLAGS}" STREQUAL "")
     set(_flags "${CMAKE_C_FLAGS} ${_flags}")
   endif()
   string(STRIP "${_flags}" _flags)
   set(${out_var} "${_flags}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_get_external_cxx_flags out_var)
+  set(_flags "-O2 -DNDEBUG -g0")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "^(AppleClang|Clang|GNU)$")
+    string(APPEND _flags
+      " -fmacro-prefix-map=${CPKT_DEPENDENCY_BUILD_ROOT}=deps-build"
+      " -fmacro-prefix-map=${CPKT_EXTERNAL_ROOT}=deps"
+    )
+  endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    string(APPEND _flags " -include stdint.h -include sys/types.h")
+  endif()
+  if(NOT "${CMAKE_CXX_FLAGS}" STREQUAL "")
+    set(_flags "${CMAKE_CXX_FLAGS} ${_flags}")
+  endif()
+  string(STRIP "${_flags}" _flags)
+  set(${out_var} "${_flags}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_append_external_pkg_config_env_args out_var)
+  set(_args ${${out_var}})
+  set(_pkg_config_dirs "")
+  foreach(_prefix_var IN ITEMS
+      CPKT_ZLIB_PREFIX
+      CPKT_OPENSSL_static_PREFIX
+      CPKT_OPENSSL_shared_PREFIX
+      CPKT_NGHTTP2_static_PREFIX
+      CPKT_NGHTTP2_shared_PREFIX
+      CPKT_LIBSSH2_PREFIX
+      CPKT_LIBXML2_PREFIX
+      CPKT_LUA_PREFIX
+      CPKT_MQTTC_PREFIX
+      CPKT_OPEN62541_PREFIX)
+    if(DEFINED ${_prefix_var} AND NOT "${${_prefix_var}}" STREQUAL "")
+      list(APPEND _pkg_config_dirs
+        "${${_prefix_var}}/lib/pkgconfig"
+        "${${_prefix_var}}/share/pkgconfig")
+    endif()
+  endforeach()
+
+  if(_pkg_config_dirs)
+    list(REMOVE_DUPLICATES _pkg_config_dirs)
+    string(JOIN ":" _pkg_config_libdir ${_pkg_config_dirs})
+  else()
+    set(_pkg_config_libdir "${CPKT_EXTERNAL_ROOT}/.pkgconfig-empty")
+  endif()
+  file(MAKE_DIRECTORY "${CPKT_EXTERNAL_ROOT}/.pkgconfig-empty")
+
+  list(APPEND _args
+    PKG_CONFIG_PATH=
+    PKG_CONFIG_DIR=
+    PKG_CONFIG_LIBDIR=${_pkg_config_libdir})
+  set(${out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_append_darwin_external_env_args out_var)
+  set(_args ${${out_var}})
+  cpkt_append_external_pkg_config_env_args(_args)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND _args
+      PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
+      LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}
+    )
+    if(CMAKE_LINKER)
+      list(APPEND _args LDFLAGS=-fuse-ld=${CMAKE_LINKER})
+    endif()
+  endif()
+  set(${out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_get_external_cmake_step_commands build_out_var install_out_var)
+  set(_build_command ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS})
+  set(_install_command ${CMAKE_COMMAND} --install .)
+  set(_env_args "")
+  cpkt_append_darwin_external_env_args(_env_args)
+  if(_env_args)
+    set(_build_command ${CMAKE_COMMAND} -E env ${_env_args} ${_build_command})
+    set(_install_command ${CMAKE_COMMAND} -E env ${_env_args} ${_install_command})
+  endif()
+  set(${build_out_var} "${_build_command}" PARENT_SCOPE)
+  set(${install_out_var} "${_install_command}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_get_external_cmake_configure_command out_var)
+  set(_configure_command ${CMAKE_COMMAND} -S <SOURCE_DIR> -B <BINARY_DIR>)
+  if(CMAKE_GENERATOR)
+    list(APPEND _configure_command -G "${CMAKE_GENERATOR}")
+  endif()
+  set(_env_args "")
+  cpkt_append_darwin_external_env_args(_env_args)
+  if(_env_args)
+    set(_configure_command ${CMAKE_COMMAND} -E env ${_env_args} ${_configure_command})
+  endif()
+  set(${out_var} "${_configure_command}" PARENT_SCOPE)
 endfunction()
 
 function(cpkt_get_strip_dependency_install_command out_var install_dir)
@@ -123,6 +221,9 @@ function(cpkt_append_common_external_cmake_args out_var)
   if(CMAKE_TOOLCHAIN_FILE)
     list(APPEND _args -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
   endif()
+  if(CMAKE_CROSSCOMPILING)
+    list(APPEND _args -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY)
+  endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _args
@@ -133,6 +234,18 @@ function(cpkt_append_common_external_cmake_args out_var)
 
   cpkt_get_external_c_flags(_cpkt_external_c_flags)
   list(APPEND _args -DCMAKE_C_FLAGS=${_cpkt_external_c_flags})
+
+  set(${out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_append_common_external_cxx_cmake_args out_var)
+  cpkt_append_common_external_cmake_args(_args)
+  list(APPEND _args
+    -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+  )
+
+  cpkt_get_external_cxx_flags(_cpkt_external_cxx_flags)
+  list(APPEND _args -DCMAKE_CXX_FLAGS=${_cpkt_external_cxx_flags})
 
   set(${out_var} "${_args}" PARENT_SCOPE)
 endfunction()
@@ -177,10 +290,11 @@ function(cpkt_add_openssl)
     RANLIB=${CMAKE_RANLIB}
   )
   cpkt_get_external_c_flags(openssl_cflags)
-  list(APPEND openssl_env_args CFLAGS=${openssl_cflags})
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_LINKER)
-    list(APPEND openssl_env_args LDFLAGS=-fuse-ld=${CMAKE_LINKER})
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    string(REPLACE " -include stdint.h -include sys/types.h" "" openssl_cflags "${openssl_cflags}")
   endif()
+  list(APPEND openssl_env_args CFLAGS=${openssl_cflags})
+  cpkt_append_darwin_external_env_args(openssl_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
     ExternalProject_Add(${project_name}
@@ -207,8 +321,8 @@ function(cpkt_add_openssl)
           --openssldir=${openssl_dir}
           --libdir=lib
         ${openssl_post_configure_command}
-      BUILD_COMMAND ${build_command}
-      INSTALL_COMMAND ${install_command}
+      BUILD_COMMAND ${CMAKE_COMMAND} -E env ${openssl_env_args} ${build_command}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E env ${openssl_env_args} ${install_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS
         "${install_dir}/lib/libcrypto${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -303,15 +417,12 @@ function(cpkt_add_nghttp2)
   cpkt_get_external_c_flags(nghttp2_cflags)
   list(APPEND nghttp2_env_args CFLAGS=${nghttp2_cflags})
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_LINKER)
-    list(APPEND nghttp2_env_args
-      PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
-      LDFLAGS=-fuse-ld=${CMAKE_LINKER}
-    )
     set(nghttp2_post_configure_command
       COMMAND ${CMAKE_COMMAND}
         -DCPKT_DARWIN_INSTALL_NAME_FILE=${build_dir}/libtool
         -P ${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake)
   endif()
+  cpkt_append_darwin_external_env_args(nghttp2_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
     ExternalProject_Add(${project_name}
@@ -334,10 +445,11 @@ function(cpkt_add_nghttp2)
         --host=${autotools_host}
         --enable-shared
         --enable-static
+        --with-pic
         --enable-lib-only
         ${nghttp2_post_configure_command}
-      BUILD_COMMAND make -C lib -j${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND make -C lib install
+      BUILD_COMMAND ${CMAKE_COMMAND} -E env ${nghttp2_env_args} make -C lib -j${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E env ${nghttp2_env_args} make -C lib install
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS
         "${install_dir}/lib/libnghttp2${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -385,6 +497,7 @@ function(cpkt_add_zlib)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
 
@@ -427,8 +540,8 @@ function(cpkt_add_zlib)
         -DZLIB_BUILD_TESTING=OFF
         -DZLIB_INSTALL=ON
         ${common_cmake_args}
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS
         "${zlib_static_library}"
@@ -481,6 +594,7 @@ function(cpkt_add_libssh2)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
 
@@ -566,8 +680,8 @@ function(cpkt_add_libssh2)
       DEPENDS
         ${openssl_project}
         cpkt_zlib_project
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS
         "${libssh2_static_library}"
@@ -630,11 +744,13 @@ function(cpkt_add_curl)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(curl_install_rpath "@loader_path")
-    set(curl_platform_cmake_args "")
+    set(curl_platform_cmake_args
+      -DENABLE_THREADED_RESOLVER=OFF)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(curl_install_rpath "$ORIGIN")
     set(curl_platform_cmake_args
@@ -647,6 +763,53 @@ function(cpkt_add_curl)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND curl_static_platform_libs "-framework CoreFoundation" "-framework SystemConfiguration")
   endif()
+  cpkt_get_external_cmake_configure_command(cmake_configure_command)
+  set(curl_cmake_args
+    -DCMAKE_INSTALL_PREFIX=${install_dir}
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DCMAKE_DEBUG_POSTFIX=
+    -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DCMAKE_INSTALL_RPATH=${curl_install_rpath}
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+    -DCMAKE_BUILD_RPATH=
+    -DCMAKE_SKIP_INSTALL_RPATH=OFF
+    ${curl_platform_cmake_args}
+    -DBUILD_SHARED_LIBS=ON
+    -DBUILD_STATIC_LIBS=ON
+    -DSHARE_LIB_OBJECT=ON
+    -DBUILD_CURL_EXE=OFF
+    -DBUILD_EXAMPLES=OFF
+    -DBUILD_LIBCURL_DOCS=OFF
+    -DBUILD_MISC_DOCS=OFF
+    -DBUILD_TESTING=OFF
+    -DCURL_DISABLE_INSTALL=OFF
+    -DCURL_USE_PKGCONFIG=OFF
+    -DCURL_USE_OPENSSL=ON
+    -DCURL_USE_LIBSSH2=ON
+    -DCURL_USE_LIBSSH=OFF
+    -DUSE_NGHTTP2=ON
+    -DCURL_DISABLE_LDAP=ON
+    -DCURL_DISABLE_LDAPS=ON
+    -DCURL_ZLIB=ON
+    -DCURL_BROTLI=OFF
+    -DCURL_ZSTD=OFF
+    -DCURL_USE_LIBPSL=OFF
+    -DUSE_LIBRTMP=OFF
+    -DUSE_LIBIDN2=OFF
+    -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
+    -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+    -DZLIB_LIBRARY=${curl_zlib_library}
+    -DOPENSSL_ROOT_DIR=${openssl_prefix}
+    -DOPENSSL_INCLUDE_DIR=${openssl_prefix}/include
+    -DOPENSSL_SSL_LIBRARY=${curl_openssl_ssl_library}
+    -DOPENSSL_CRYPTO_LIBRARY=${curl_openssl_crypto_library}
+    -DNGHTTP2_INCLUDE_DIR=${nghttp2_prefix}/include
+    -DNGHTTP2_LIBRARY=${curl_nghttp2_library}
+    -DLIBSSH2_INCLUDE_DIR=${libssh2_prefix}/include
+    -DLIBSSH2_LIBRARY=${curl_libssh2_library}
+    ${common_cmake_args}
+  )
 
   if(CPKT_BUILD_DEPENDENCIES)
     ExternalProject_Add(${project_name}
@@ -666,53 +829,9 @@ function(cpkt_add_curl)
         ${openssl_project}
         ${nghttp2_project}
         ${libssh2_project}
-      CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${install_dir}
-        -DCMAKE_INSTALL_LIBDIR=lib
-        -DCMAKE_DEBUG_POSTFIX=
-        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-        -DCMAKE_INSTALL_RPATH=${curl_install_rpath}
-        -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
-        -DCMAKE_BUILD_RPATH=
-        -DCMAKE_SKIP_INSTALL_RPATH=OFF
-        ${curl_platform_cmake_args}
-        -DBUILD_SHARED_LIBS=ON
-        -DBUILD_STATIC_LIBS=ON
-        -DSHARE_LIB_OBJECT=ON
-        -DBUILD_CURL_EXE=OFF
-        -DBUILD_EXAMPLES=OFF
-        -DBUILD_LIBCURL_DOCS=OFF
-        -DBUILD_MISC_DOCS=OFF
-        -DBUILD_TESTING=OFF
-        -DCURL_DISABLE_INSTALL=OFF
-        -DCURL_USE_PKGCONFIG=OFF
-        -DCURL_USE_OPENSSL=ON
-        -DCURL_USE_LIBSSH2=ON
-        -DCURL_USE_LIBSSH=OFF
-        -DUSE_NGHTTP2=ON
-        -DCURL_DISABLE_LDAP=ON
-        -DCURL_DISABLE_LDAPS=ON
-        -DCURL_ZLIB=ON
-        -DCURL_BROTLI=OFF
-        -DCURL_ZSTD=OFF
-        -DCURL_USE_LIBPSL=OFF
-        -DUSE_LIBRTMP=OFF
-        -DUSE_LIBIDN2=OFF
-        -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
-        -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
-        -DZLIB_LIBRARY=${curl_zlib_library}
-        -DOPENSSL_ROOT_DIR=${openssl_prefix}
-        -DOPENSSL_INCLUDE_DIR=${openssl_prefix}/include
-        -DOPENSSL_SSL_LIBRARY=${curl_openssl_ssl_library}
-        -DOPENSSL_CRYPTO_LIBRARY=${curl_openssl_crypto_library}
-        -DNGHTTP2_INCLUDE_DIR=${nghttp2_prefix}/include
-        -DNGHTTP2_LIBRARY=${curl_nghttp2_library}
-        -DLIBSSH2_INCLUDE_DIR=${libssh2_prefix}/include
-        -DLIBSSH2_LIBRARY=${curl_libssh2_library}
-        ${common_cmake_args}
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      CONFIGURE_COMMAND ${cmake_configure_command} ${curl_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS
         "${install_dir}/lib/libcurl${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -762,6 +881,8 @@ function(cpkt_add_libxml2)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_configure_command(cmake_configure_command)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   find_package(Iconv REQUIRED)
   set(libxml2_static_iconv_link_libraries Iconv::Iconv)
@@ -856,12 +977,12 @@ function(cpkt_add_libxml2)
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS cpkt_zlib_project
-      CMAKE_ARGS
+      CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=ON
         ${libxml2_common_cmake_args}
         -DZLIB_LIBRARY=${CPKT_ZLIB_SHARED_LIBRARY}
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
       BUILD_BYPRODUCTS "${libxml2_shared_library}"
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
@@ -880,12 +1001,12 @@ function(cpkt_add_libxml2)
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS ${project_name_shared}
-      CMAKE_ARGS
+      CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=OFF
         ${libxml2_common_cmake_args}
         -DZLIB_LIBRARY=${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS "${libxml2_static_library}"
       BUILD_IN_SOURCE 0
@@ -954,6 +1075,8 @@ function(cpkt_add_lua)
 
   cpkt_get_external_c_flags(lua_external_cflags)
   set(lua_my_cflags "${lua_external_cflags} -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN")
+  set(lua_env_args "")
+  cpkt_append_darwin_external_env_args(lua_env_args)
   set(lua_shared_extra_link_flags "")
   if(CMAKE_SHARED_LINKER_FLAGS)
     separate_arguments(lua_shared_extra_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
@@ -1008,14 +1131,15 @@ function(cpkt_add_lua)
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       CONFIGURE_COMMAND ""
       BUILD_COMMAND
-        ${CMAKE_COMMAND} -E env MAKEFLAGS= make -C "${source_dir}/src" clean
+        ${CMAKE_COMMAND} -E env ${lua_env_args} MAKEFLAGS= make -C "${source_dir}/src" clean
         COMMAND
-          ${CMAKE_COMMAND} -E env MAKEFLAGS= make -C "${source_dir}/src" a -j1
+          ${CMAKE_COMMAND} -E env ${lua_env_args} MAKEFLAGS= make -C "${source_dir}/src" a -j1
             CC=${CMAKE_C_COMPILER}
             AR=${CMAKE_AR}\ rcu
             RANLIB=${CMAKE_RANLIB}
             MYCFLAGS=${lua_my_cflags}
         COMMAND
+          ${CMAKE_COMMAND} -E env ${lua_env_args}
           ${CMAKE_C_COMPILER}
           ${lua_shared_link_flags}
           ${lua_shared_extra_link_flags}
@@ -1114,6 +1238,8 @@ function(cpkt_add_mqttc)
   cpkt_get_external_c_flags(mqttc_external_cflags)
   separate_arguments(mqttc_compile_flags NATIVE_COMMAND "${mqttc_external_cflags}")
   list(APPEND mqttc_compile_flags -fPIC -I "${source_dir}/include")
+  set(mqttc_env_args "")
+  cpkt_append_darwin_external_env_args(mqttc_env_args)
   set(mqttc_shared_extra_link_flags "")
   if(CMAKE_SHARED_LINKER_FLAGS)
     separate_arguments(mqttc_shared_extra_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
@@ -1143,13 +1269,16 @@ function(cpkt_add_mqttc)
       BUILD_COMMAND
         ${CMAKE_COMMAND} -E copy_directory "${source_dir}/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${build_dir}"
-        COMMAND ${CMAKE_C_COMPILER} ${mqttc_compile_flags} -c "${source_dir}/src/mqtt.c" -o "${build_dir}/mqtt.c.o"
-        COMMAND ${CMAKE_C_COMPILER} ${mqttc_compile_flags} -c "${source_dir}/src/mqtt_pal.c" -o "${build_dir}/mqtt_pal.c.o"
+        COMMAND ${CMAKE_COMMAND} -E env ${mqttc_env_args}
+          ${CMAKE_C_COMPILER} ${mqttc_compile_flags} -c "${source_dir}/src/mqtt.c" -o "${build_dir}/mqtt.c.o"
+        COMMAND ${CMAKE_COMMAND} -E env ${mqttc_env_args}
+          ${CMAKE_C_COMPILER} ${mqttc_compile_flags} -c "${source_dir}/src/mqtt_pal.c" -o "${build_dir}/mqtt_pal.c.o"
         COMMAND ${CMAKE_COMMAND} -E rm -f "${mqttc_static_library}"
         COMMAND ${CMAKE_AR} qc "${mqttc_static_library}" "${build_dir}/mqtt.c.o" "${build_dir}/mqtt_pal.c.o"
         COMMAND ${CMAKE_RANLIB} "${mqttc_static_library}"
         COMMAND ${CMAKE_COMMAND} -E rm -f "${mqttc_shared_library}"
-        COMMAND ${CMAKE_C_COMPILER} ${mqttc_shared_link_flags} ${mqttc_shared_extra_link_flags} -o "${mqttc_shared_library}" "${build_dir}/mqtt.c.o" "${build_dir}/mqtt_pal.c.o" ${mqttc_link_flags}
+        COMMAND ${CMAKE_COMMAND} -E env ${mqttc_env_args}
+          ${CMAKE_C_COMPILER} ${mqttc_shared_link_flags} ${mqttc_shared_extra_link_flags} -o "${mqttc_shared_library}" "${build_dir}/mqtt.c.o" "${build_dir}/mqtt_pal.c.o" ${mqttc_link_flags}
       INSTALL_COMMAND
         ${CMAKE_COMMAND} -E true
         COMMAND ${CMAKE_COMMAND} -E rm -f "${install_dir}/lib/${mqttc_shared_soname}" "${install_dir}/lib/${mqttc_shared_link}"
@@ -1195,6 +1324,297 @@ function(cpkt_add_mqttc)
   set(CPKT_MQTTC_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_add_miniaudio)
+  set(project_name "cpkt_miniaudio_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/miniaudio/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include/miniaudio" "${install_dir}/lib")
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(miniaudio_shared_library "${install_dir}/lib/libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(miniaudio_shared_link_flags
+      -dynamiclib
+      -Wl,-install_name,@rpath/libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}
+    )
+    if(CMAKE_LINKER)
+      list(APPEND miniaudio_shared_link_flags "-fuse-ld=${CMAKE_LINKER}")
+    endif()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(miniaudio_shared_library "${install_dir}/lib/libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(miniaudio_shared_link_flags
+      -shared
+      -Wl,--enable-new-dtags
+      -Wl,-rpath,\$ORIGIN
+      -Wl,-soname,libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}
+    )
+  else()
+    set(miniaudio_shared_library "${install_dir}/lib/libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(miniaudio_shared_link_flags -shared)
+  endif()
+  set(miniaudio_static_library "${install_dir}/lib/libminiaudio${CMAKE_STATIC_LIBRARY_SUFFIX}")
+
+  cpkt_get_external_c_flags(miniaudio_external_cflags)
+  separate_arguments(miniaudio_compile_flags NATIVE_COMMAND "${miniaudio_external_cflags}")
+  list(APPEND miniaudio_compile_flags
+    -fPIC
+    -DMA_NO_RESOURCE_MANAGER
+    -DMA_NO_NODE_GRAPH
+    -DMA_NO_ENGINE
+    -DMA_NO_GENERATION
+  )
+  set(miniaudio_object "${build_dir}/miniaudio.c.o")
+  set(miniaudio_link_libraries -lm -pthread)
+  if(CMAKE_DL_LIBS)
+    list(APPEND miniaudio_link_libraries "-l${CMAKE_DL_LIBS}")
+  endif()
+  set(miniaudio_env_args "")
+  cpkt_append_darwin_external_env_args(miniaudio_env_args)
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    ExternalProject_Add(${project_name}
+      URL "https://github.com/mackron/miniaudio/archive/refs/tags/${CPKT_MINIAUDIO_VERSION}.tar.gz"
+      URL_HASH "SHA256=b900edcffe979816e2560a0580b9b1216d674b4f17fbadeca8f777a7f8ab0274"
+      DOWNLOAD_NAME "miniaudio-${CPKT_MINIAUDIO_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND
+        ${CMAKE_COMMAND} -E make_directory
+          "${build_dir}"
+          "${install_dir}/include/miniaudio"
+          "${install_dir}/lib"
+      BUILD_COMMAND
+        ${CMAKE_COMMAND} -E env ${miniaudio_env_args}
+          ${CMAKE_C_COMPILER}
+          ${miniaudio_compile_flags}
+          -c "${source_dir}/miniaudio.c"
+          -o "${miniaudio_object}"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${miniaudio_static_library}"
+        COMMAND ${CMAKE_AR} qc "${miniaudio_static_library}" "${miniaudio_object}"
+        COMMAND ${CMAKE_RANLIB} "${miniaudio_static_library}"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${miniaudio_shared_library}"
+        COMMAND ${CMAKE_COMMAND} -E env ${miniaudio_env_args}
+          ${CMAKE_C_COMPILER}
+          ${miniaudio_shared_link_flags}
+          -o "${miniaudio_shared_library}"
+          "${miniaudio_object}"
+          ${miniaudio_link_libraries}
+      INSTALL_COMMAND
+        ${CMAKE_COMMAND} -E copy_if_different
+          "${source_dir}/miniaudio.h"
+          "${install_dir}/include/miniaudio/miniaudio.h"
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS
+        "${miniaudio_static_library}"
+        "${miniaudio_shared_library}"
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+  endif()
+
+  add_library(cpkt::miniaudio_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::miniaudio_static
+    PROPERTIES
+      IMPORTED_LOCATION "${miniaudio_static_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include/miniaudio"
+      INTERFACE_LINK_LIBRARIES "m;Threads::Threads"
+  )
+
+  add_library(cpkt::miniaudio_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::miniaudio_shared
+    PROPERTIES
+      IMPORTED_LOCATION "${miniaudio_shared_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include/miniaudio"
+      INTERFACE_LINK_LIBRARIES "m;Threads::Threads"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::miniaudio_static ${project_name})
+    add_dependencies(cpkt::miniaudio_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${miniaudio_static_library}" "miniaudio static library")
+    cpkt_require_dependency_file("${miniaudio_shared_library}" "miniaudio shared library")
+    cpkt_require_dependency_file("${install_dir}/include/miniaudio/miniaudio.h" "miniaudio header")
+  endif()
+endfunction()
+
+function(cpkt_add_whisper)
+  if(NOT CPKT_SUS_CPU_ONLY)
+    message(FATAL_ERROR "cpkt_sus currently supports only CPU-only whisper.cpp dependency builds")
+  endif()
+
+  set(project_name_shared "cpkt_whisper_shared_project")
+  set(project_name_static "cpkt_whisper_static_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper")
+  set(source_dir "${prefix_dir}/src")
+  set(shared_build_dir "${prefix_dir}/build-shared")
+  set(static_build_dir "${prefix_dir}/build-static")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/whisper/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  cpkt_append_common_external_cxx_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+
+  set(whisper_static_library "${install_dir}/lib/libwhisper${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(whisper_shared_library "${install_dir}/lib/libwhisper${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(ggml_static_libraries
+    "${install_dir}/lib/libggml${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-base${CMAKE_STATIC_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-cpu${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(ggml_shared_libraries
+    "${install_dir}/lib/libggml${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-base${CMAKE_SHARED_LIBRARY_SUFFIX}"
+    "${install_dir}/lib/libggml-cpu${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(whisper_install_rpath "")
+  set(whisper_shared_linker_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(whisper_install_rpath "$ORIGIN")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
+      set(whisper_shared_linker_flags "-static-libstdc++ -static-libgcc")
+    endif()
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(whisper_install_rpath "@loader_path")
+  endif()
+
+  set(whisper_common_cmake_args
+    -DCMAKE_INSTALL_PREFIX=${install_dir}
+    -DCMAKE_INSTALL_LIBDIR=lib
+    -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+    -DCMAKE_INSTALL_RPATH=${whisper_install_rpath}
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+    -DCMAKE_BUILD_RPATH=
+    -DCMAKE_SKIP_INSTALL_RPATH=OFF
+    -DCMAKE_SHARED_LINKER_FLAGS=${whisper_shared_linker_flags}
+    -DCMAKE_MODULE_LINKER_FLAGS=${whisper_shared_linker_flags}
+    -DWHISPER_BUILD_TESTS=OFF
+    -DWHISPER_BUILD_EXAMPLES=OFF
+    -DWHISPER_BUILD_SERVER=OFF
+    -DWHISPER_CURL=OFF
+    -DWHISPER_SDL2=OFF
+    -DWHISPER_COREML=OFF
+    -DWHISPER_COREML_ALLOW_FALLBACK=OFF
+    -DWHISPER_OPENVINO=OFF
+    -DWHISPER_ALL_WARNINGS=OFF
+    -DWHISPER_ALL_WARNINGS_3RD_PARTY=OFF
+    -DWHISPER_FATAL_WARNINGS=OFF
+    -DGGML_NATIVE=OFF
+    -DGGML_OPENMP=OFF
+    -DGGML_METAL=OFF
+    -DGGML_BLAS=OFF
+    -DGGML_ACCELERATE=OFF
+    -DGGML_CUDA=OFF
+    -DGGML_HIP=OFF
+    -DGGML_VULKAN=OFF
+    -DGGML_OPENCL=OFF
+    -DGGML_SYCL=OFF
+    -DGGML_RPC=OFF
+    -DGGML_BACKEND_DL=OFF
+    -DGGML_CPU_ALL_VARIANTS=OFF
+    -DGGML_CCACHE=OFF
+    ${common_cmake_args}
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    ExternalProject_Add(${project_name_shared}
+      URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
+      URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
+      DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${shared_build_dir}"
+      STAMP_DIR "${stamp_dir}/shared"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      PATCH_COMMAND
+        ${CMAKE_COMMAND}
+          -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
+          -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=ON
+        ${whisper_common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+      BUILD_BYPRODUCTS
+        "${whisper_shared_library}"
+        ${ggml_shared_libraries}
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+
+    ExternalProject_Add(${project_name_static}
+      URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
+      URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
+      DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${static_build_dir}"
+      STAMP_DIR "${stamp_dir}/static"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS ${project_name_shared}
+      PATCH_COMMAND
+        ${CMAKE_COMMAND}
+          -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
+          -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+      CMAKE_ARGS
+        -DBUILD_SHARED_LIBS=OFF
+        ${whisper_common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS
+        "${whisper_static_library}"
+        ${ggml_static_libraries}
+      BUILD_IN_SOURCE 0
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+  endif()
+
+  add_library(cpkt::whisper_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::whisper_static
+    PROPERTIES
+      IMPORTED_LOCATION "${whisper_static_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "${ggml_static_libraries};Threads::Threads;m"
+  )
+
+  add_library(cpkt::whisper_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::whisper_shared
+    PROPERTIES
+      IMPORTED_LOCATION "${whisper_shared_library}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+      INTERFACE_LINK_LIBRARIES "${ggml_shared_libraries};Threads::Threads"
+  )
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::whisper_static ${project_name_static})
+    add_dependencies(cpkt::whisper_shared ${project_name_shared})
+    cpkt_record_dependency_target(${project_name_static})
+  else()
+    cpkt_require_dependency_file("${whisper_static_library}" "whisper.cpp static library")
+    cpkt_require_dependency_file("${whisper_shared_library}" "whisper.cpp shared library")
+    cpkt_require_dependency_file("${install_dir}/include/whisper.h" "whisper.cpp header")
+  endif()
+endfunction()
+
 function(cpkt_add_open62541)
   set(project_name_shared "cpkt_open62541_shared_project")
   set(project_name_static "cpkt_open62541_static_project")
@@ -1206,6 +1626,7 @@ function(cpkt_add_open62541)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
 
@@ -1298,8 +1719,8 @@ function(cpkt_add_open62541)
         -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libssl${CMAKE_SHARED_LIBRARY_SUFFIX}
         -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libcrypto${CMAKE_SHARED_LIBRARY_SUFFIX}
         ${open62541_common_cmake_args}
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
       BUILD_BYPRODUCTS "${open62541_shared_library}"
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
@@ -1332,8 +1753,8 @@ function(cpkt_add_open62541)
         -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libssl${CMAKE_STATIC_LIBRARY_SUFFIX}
         -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libcrypto${CMAKE_STATIC_LIBRARY_SUFFIX}
         ${open62541_common_cmake_args}
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS "${open62541_static_library}"
       BUILD_IN_SOURCE 0
@@ -1380,6 +1801,7 @@ function(cpkt_add_cmocka)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
 
@@ -1404,8 +1826,8 @@ function(cpkt_add_cmocka)
         -DPICKY_DEVELOPER=OFF
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
         ${common_cmake_args}
-      BUILD_COMMAND ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS}
-      INSTALL_COMMAND ${CMAKE_COMMAND} --install .
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS
         "${install_dir}/lib/libcmocka${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -1435,6 +1857,8 @@ function(cpkt_configure_dependencies)
   cpkt_add_curl()
   cpkt_add_libxml2()
   cpkt_add_lua()
+  cpkt_add_miniaudio()
+  cpkt_add_whisper()
   cpkt_add_mqttc()
   cpkt_add_open62541()
 

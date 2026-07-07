@@ -2,19 +2,34 @@ set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR arm)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 
-set(CPKT_MUSL_PREFIX $ENV{HOME}/.local/cross/arm-linux-musleabihf)
-set(CMAKE_C_COMPILER ${CPKT_MUSL_PREFIX}/bin/arm-linux-musleabihf-gcc CACHE FILEPATH "")
-set(CMAKE_AR ${CPKT_MUSL_PREFIX}/bin/arm-linux-musleabihf-ar CACHE FILEPATH "")
-set(CMAKE_RANLIB ${CPKT_MUSL_PREFIX}/bin/arm-linux-musleabihf-ranlib CACHE FILEPATH "")
-set(CMAKE_SYSROOT ${CPKT_MUSL_PREFIX}/arm-linux-musleabihf CACHE PATH "")
+include("${CMAKE_CURRENT_LIST_DIR}/cpkt_linux_toolchain_common.cmake")
 
-set(CMAKE_FIND_ROOT_PATH ${CMAKE_SYSROOT})
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+if(DEFINED ENV{CPKT_ARMHF_MUSL_PREFIX})
+  set(_cpkt_local_root "$ENV{CPKT_ARMHF_MUSL_PREFIX}")
+elseif(DEFINED ENV{HOME})
+  set(_cpkt_local_root "$ENV{HOME}/.local/cross/arm-linux-musleabihf")
+else()
+  set(_cpkt_local_root "")
+endif()
 
-set(CMAKE_CROSSCOMPILING_EMULATOR /usr/bin/qemu-arm;-L;${CMAKE_SYSROOT} CACHE STRING "")
+cpkt_select_linux_toolchain(
+  armhf-linux-musl
+  "${_cpkt_local_root}"
+  arm-linux-musleabihf
+  "${_cpkt_local_root}/arm-linux-musleabihf"
+  arm-linux
+  arm-buildroot-linux-musleabihf/sysroot
+  CPKT_SELECTED_TOOLCHAIN_ROOT
+  CPKT_SELECTED_TOOLCHAIN_PREFIX
+  CPKT_SELECTED_SYSROOT
+  CPKT_SELECTED_FIND_ROOT)
+cpkt_configure_linux_toolchain(
+  "${CPKT_SELECTED_TOOLCHAIN_ROOT}"
+  "${CPKT_SELECTED_TOOLCHAIN_PREFIX}"
+  "${CPKT_SELECTED_SYSROOT}"
+  "${CPKT_SELECTED_FIND_ROOT}")
+
+set(CMAKE_CROSSCOMPILING_EMULATOR /usr/bin/qemu-arm;-L;${CPKT_SELECTED_SYSROOT} CACHE STRING "" FORCE)
 
 set(CPKT_TARGET_ARCH armhf CACHE STRING "" FORCE)
 set(CPKT_TARGET_OS linux CACHE STRING "" FORCE)

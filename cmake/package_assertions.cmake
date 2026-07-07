@@ -348,6 +348,51 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
   endforeach()
 endfunction()
 
+function(cpkt_assert_elf_runpath_output_relocatable readelf_output expected_runpath description)
+  set(_expected_found OFF)
+  string(REPLACE "\r\n" "\n" _readelf_output "${readelf_output}")
+  string(REPLACE "\n" ";" _readelf_lines "${_readelf_output}")
+  foreach(_readelf_line IN LISTS _readelf_lines)
+    if(_readelf_line MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[([^]]+)\\]")
+      set(_runpath_list "${CMAKE_MATCH_2}")
+      string(REPLACE ":" ";" _runpath_entries "${_runpath_list}")
+      foreach(_runpath_entry IN LISTS _runpath_entries)
+        if(_runpath_entry MATCHES "^${expected_runpath}$")
+          set(_expected_found ON)
+        endif()
+        if(NOT _runpath_entry MATCHES "^\\$ORIGIN(/.*)?$")
+          message(FATAL_ERROR
+            "${description} has non-relocatable RUNPATH/RPATH entry: ${_runpath_entry}")
+        endif()
+      endforeach()
+    endif()
+  endforeach()
+  if(NOT _expected_found)
+    message(FATAL_ERROR "${description} must have RUNPATH/RPATH [${expected_runpath}]")
+  endif()
+endfunction()
+
+function(cpkt_assert_elf_runpath_file_relocatable file_path expected_runpath description)
+  cpkt_find_readelf(CPKT_READELF_BIN)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_READELF_BIN}" -d "${file_path}"
+    RESULT_VARIABLE _readelf_result
+    OUTPUT_VARIABLE _readelf_output
+    ERROR_VARIABLE _readelf_error
+  )
+  if(NOT _readelf_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
+  endif()
+  cpkt_assert_elf_runpath_output_relocatable(
+    "${_readelf_output}"
+    "${expected_runpath}"
+    "${description}")
+endfunction()
+
 if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP)
   cpkt_find_darwin_otool(_cpkt_test_otool)
   message(STATUS "CPKT_TEST_OTOOL=${_cpkt_test_otool}")
@@ -373,11 +418,19 @@ if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSE
     "test Darwin relocatable dylib")
   message(STATUS "CPKT_TEST_DARWIN_RELOCATABLE=ok")
 endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH)
+  cpkt_assert_elf_runpath_file_relocatable(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_ELF}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_RUNPATH}"
+    "test ELF runpath")
+  message(STATUS "CPKT_TEST_ELF_RUNPATH=ok")
+endif()
 if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME) OR
-    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE))
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH))
   return()
 endif()
 
@@ -451,12 +504,51 @@ if(NOT EXISTS "${_manifest_path}")
   message(FATAL_ERROR "missing package manifest: ${_manifest_path}")
 endif()
 file(READ "${_manifest_path}" _manifest_text)
+set(_sus_model_catalog_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/sus-model-catalog.tsv")
+if(NOT EXISTS "${_sus_model_catalog_path}")
+  message(FATAL_ERROR "missing sus model catalog metadata: ${_sus_model_catalog_path}")
+endif()
+file(READ "${_sus_model_catalog_path}" _sus_model_catalog_text)
+if(NOT _sus_model_catalog_text MATCHES "^name\tprovider\tfilename\tsource_url\tsha256\tsize_bytes\tlicense\tquantization\tis_default\n")
+  message(FATAL_ERROR "sus model catalog metadata has an unexpected header")
+endif()
+foreach(_required_model_catalog_entry
+    "tiny\tggerganov/whisper.cpp\tggml-tiny.bin\thttps://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin\tbe07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21\t77691713\tMIT\tf16\t1"
+    "kb-whisper-small\tKBLab/kb-whisper-small\tggml-small.sv.bin\thttps://huggingface.co/KBLab/kb-whisper-small/resolve/main/ggml-model.bin\tde6911330cbdc131362f7a955682b65c8a5a2394caba73e7ea821a9822efb8c6\t487601984\tApache-2.0\tf16\t0"
+    "large-v3-turbo:q5_0\tggerganov/whisper.cpp\tggml-large-v3-turbo-q5_0.bin\thttps://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin\t394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2\t574041195\tMIT\tq5_0\t0")
+  string(FIND "${_sus_model_catalog_text}" "${_required_model_catalog_entry}" _required_model_catalog_entry_index)
+  if(_required_model_catalog_entry_index EQUAL -1)
+    message(FATAL_ERROR "sus model catalog metadata is missing required entry: ${_required_model_catalog_entry}")
+  endif()
+endforeach()
 if(NOT _manifest_text MATCHES "(^|\n)lua_runtime_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing lua_runtime_abi_version")
 endif()
 set(_manifest_lua_runtime_abi_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)opcua_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing opcua_abi_version")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)audio_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing audio_abi_version")
+endif()
+set(_manifest_audio_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)sus_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing sus_abi_version")
+endif()
+set(_manifest_sus_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)miniaudio_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing miniaudio_version")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)whisper_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing whisper_version")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)sus_backend_capabilities=([A-Za-z0-9_,.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing sus_backend_capabilities")
+endif()
+set(_manifest_sus_backend_capabilities "${CMAKE_MATCH_2}")
+if(NOT "${_manifest_sus_backend_capabilities}" STREQUAL "cpu")
+  message(FATAL_ERROR
+    "package manifest reports unsupported sus backend capabilities: ${_manifest_sus_backend_capabilities}")
 endif()
 if(NOT _manifest_text MATCHES "(^|\n)open62541_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing open62541_version")
@@ -484,29 +576,29 @@ if(DEFINED CPKT_LUA_RUNTIME_ABI_VERSION AND NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}
 else()
   set(CPKT_LUA_RUNTIME_ABI_VERSION "${_manifest_lua_runtime_abi_version}")
 endif()
+if(DEFINED CPKT_AUDIO_ABI_VERSION AND NOT "${CPKT_AUDIO_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_AUDIO_ABI_VERSION}" STREQUAL "${_manifest_audio_abi_version}")
+    message(FATAL_ERROR
+      "configured audio ABI ${CPKT_AUDIO_ABI_VERSION} does not match package manifest ABI ${_manifest_audio_abi_version}")
+  endif()
+else()
+  set(CPKT_AUDIO_ABI_VERSION "${_manifest_audio_abi_version}")
+endif()
+if(DEFINED CPKT_SUS_ABI_VERSION AND NOT "${CPKT_SUS_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_SUS_ABI_VERSION}" STREQUAL "${_manifest_sus_abi_version}")
+    message(FATAL_ERROR
+      "configured sus ABI ${CPKT_SUS_ABI_VERSION} does not match package manifest ABI ${_manifest_sus_abi_version}")
+  endif()
+else()
+  set(CPKT_SUS_ABI_VERSION "${_manifest_sus_abi_version}")
+endif()
 file(REMOVE_RECURSE "${_manifest_extract_root}")
 
 function(cpkt_assert_elf_runpath file_path expected_runpath description)
-  find_program(CPKT_READELF_BIN NAMES readelf)
-  if(NOT CPKT_READELF_BIN)
-    message(FATAL_ERROR "readelf is required to verify ${description}")
-  endif()
-  if(NOT EXISTS "${file_path}")
-    message(FATAL_ERROR "missing ${description}: ${file_path}")
-  endif()
-
-  execute_process(
-    COMMAND "${CPKT_READELF_BIN}" -d "${file_path}"
-    RESULT_VARIABLE _readelf_result
-    OUTPUT_VARIABLE _readelf_output
-    ERROR_VARIABLE _readelf_error
-  )
-  if(NOT _readelf_result EQUAL 0)
-    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
-  endif()
-  if(NOT _readelf_output MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[${expected_runpath}\\]")
-    message(FATAL_ERROR "${description} must have RUNPATH/RPATH [${expected_runpath}]")
-  endif()
+  cpkt_assert_elf_runpath_file_relocatable(
+    "${file_path}"
+    "${expected_runpath}"
+    "${description}")
 endfunction()
 
 function(cpkt_assert_elf_soname file_path expected_soname description)
@@ -530,6 +622,62 @@ function(cpkt_assert_elf_soname file_path expected_soname description)
   if(NOT _readelf_output MATCHES "\\(SONAME\\)[^\n]*\\[${expected_soname}\\]")
     message(FATAL_ERROR "${description} must have SONAME [${expected_soname}]")
   endif()
+endfunction()
+
+function(cpkt_assert_elf_lacks_needed file_path forbidden_needed_regex description)
+  find_program(CPKT_READELF_BIN NAMES readelf)
+  if(NOT CPKT_READELF_BIN)
+    message(FATAL_ERROR "readelf is required to verify ${description}")
+  endif()
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+
+  execute_process(
+    COMMAND "${CPKT_READELF_BIN}" -d "${file_path}"
+    RESULT_VARIABLE _readelf_result
+    OUTPUT_VARIABLE _readelf_output
+    ERROR_VARIABLE _readelf_error
+  )
+  if(NOT _readelf_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
+  endif()
+  if(_readelf_output MATCHES "\\(NEEDED\\)[^\n]*\\[${forbidden_needed_regex}\\]")
+    message(FATAL_ERROR "${description} must not need ${forbidden_needed_regex}")
+  endif()
+endfunction()
+
+function(cpkt_assert_dynamic_exports_match file_path allowed_symbol_regex description)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+  cpkt_find_nm(_cpkt_nm)
+  execute_process(
+    COMMAND "${_cpkt_nm}" -D --defined-only "${file_path}"
+    RESULT_VARIABLE _nm_result
+    OUTPUT_VARIABLE _nm_output
+    ERROR_VARIABLE _nm_error
+  )
+  if(NOT _nm_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect exported symbols from ${description}: ${file_path}\n${_nm_error}")
+  endif()
+  string(REPLACE "\n" ";" _nm_lines "${_nm_output}")
+  foreach(_nm_line IN LISTS _nm_lines)
+    string(STRIP "${_nm_line}" _nm_line)
+    if("${_nm_line}" STREQUAL "")
+      continue()
+    endif()
+    if(NOT _nm_line MATCHES "^[0-9A-Fa-f]+[ ]+[A-Za-z][ ]+([^ ]+)$")
+      message(FATAL_ERROR "unexpected exported symbol line for ${description}: ${_nm_line}")
+    endif()
+    set(_symbol_name "${CMAKE_MATCH_1}")
+    if(_symbol_name STREQUAL "_init" OR _symbol_name STREQUAL "_fini")
+      continue()
+    endif()
+    if(NOT _symbol_name MATCHES "${allowed_symbol_regex}")
+      message(FATAL_ERROR "${description} exports non-facade symbol: ${_symbol_name}")
+    endif()
+  endforeach()
 endfunction()
 
 foreach(_path
@@ -570,39 +718,74 @@ foreach(_path
     "include/lua.h"
     "include/lauxlib.h"
     "include/lualib.h"
+    "include/miniaudio/miniaudio.h"
+    "include/whisper.h"
     "include/mqtt.h"
     "include/mqtt_pal.h"
     "include/open62541/client.h"
     "include/open62541/server.h"
     "include/open62541/plugin/securitypolicy.h"
+    "include/cpkt/audio.h"
     "include/cpkt/lua_runtime.h"
+    "include/cpkt/sus.h"
     "include/cpkt/opcua.h"
+    "lib/libminiaudio.a"
+    "lib/libwhisper.a"
+    "lib/libggml.a"
+    "lib/libggml-base.a"
+    "lib/libggml-cpu.a"
     "lib/liblua.a"
     "lib/libmqttc.a"
     "lib/libopen62541.a"
+    "lib/libcpktaudio.a"
     "lib/libcpkt_lua_runtime.a"
+    "lib/libcpktsus.a"
     "lib/libcpkt_opcua.a"
     "lib/cmake/Lua/LuaConfig.cmake"
     "lib/cmake/Lua/LuaConfigVersion.cmake"
+    "lib/cmake/miniaudio/miniaudioConfig.cmake"
+    "lib/cmake/miniaudio/miniaudioConfigVersion.cmake"
+    "lib/cmake/whisper/whisperConfig.cmake"
+    "lib/cmake/whisper/whisperConfigVersion.cmake"
     "lib/cmake/mqtt-c/mqtt-cConfig.cmake"
     "lib/cmake/mqtt-c/mqtt-cConfigVersion.cmake"
+    "lib/cmake/CpktAudio/CpktAudioConfig.cmake"
+    "lib/cmake/CpktAudio/CpktAudioConfigVersion.cmake"
     "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
     "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
+    "lib/cmake/CpktSus/CpktSusConfig.cmake"
+    "lib/cmake/CpktSus/CpktSusConfigVersion.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
     "lib/cmake/open62541/open62541Config.cmake"
     "lib/cmake/open62541/open62541ConfigVersion.cmake"
     "lib/pkgconfig/lua.pc"
     "lib/pkgconfig/lua5.5.pc"
+    "lib/pkgconfig/miniaudio.pc"
+    "lib/pkgconfig/whisper.pc"
     "lib/pkgconfig/mqtt-c.pc"
+    "lib/pkgconfig/cpkt-audio.pc"
     "lib/pkgconfig/cpkt-lua-runtime.pc"
+    "lib/pkgconfig/cpkt-sus.pc"
     "lib/pkgconfig/cpkt-opcua.pc"
     "lib/pkgconfig/open62541.pc"
     "share/c.pkt.systems/manifest.txt"
+    "share/c.pkt.systems/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/LICENSE"
     "share/doc/c.pkt.systems/README.md"
+    "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/examples/abi_smoke.c"
+    "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/audio-sus-c89/build-pkg-config.sh"
+    "share/doc/c.pkt.systems/examples/audio-sus-c89/main.c"
+    "share/doc/c.pkt.systems/examples/audio-live-vox-c89/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/audio-live-vox-c89/build-pkg-config.sh"
+    "share/doc/c.pkt.systems/examples/audio-live-vox-c89/main.c"
+    "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/build-pkg-config.sh"
+    "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/main.c"
     "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
     "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
     "share/doc/c.pkt.systems/examples/lua-runtime-c89/build-pkg-config.sh"
@@ -613,6 +796,12 @@ foreach(_path
     "share/doc/c.pkt.systems/examples/opcua-c89/build-pkg-config.sh"
     "share/doc/c.pkt.systems/examples/opcua-c89/main.c"
     "share/doc/c.pkt.systems/examples/pkg-config-consumer/build.sh"
+    "share/doc/c.pkt.systems/examples/sus-live-vox-c89/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/sus-live-vox-c89/build-pkg-config.sh"
+    "share/doc/c.pkt.systems/examples/sus-live-vox-c89/main.c"
+    "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/CMakeLists.txt"
+    "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/build-pkg-config.sh"
+    "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/main.c"
     "share/doc/c.pkt.systems/third_party/openssl/LICENSE"
     "share/doc/c.pkt.systems/third_party/curl/LICENSE"
     "share/doc/c.pkt.systems/third_party/libssh2/LICENSE"
@@ -620,6 +809,10 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE"
     "share/doc/c.pkt.systems/third_party/libxml2/LICENSE"
     "share/doc/c.pkt.systems/third_party/lua/LICENSE"
+    "share/doc/c.pkt.systems/third_party/miniaudio/LICENSE"
+    "share/doc/c.pkt.systems/third_party/whisper.cpp/LICENSE"
+    "share/doc/c.pkt.systems/third_party/kblab-whisper-models/LICENSE"
+    "share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md"
     "share/doc/c.pkt.systems/third_party/mqtt-c/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/patches/series"
@@ -629,6 +822,15 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/open62541/patches/0004-avoid-cert-store-path-strncpy-warning.patch")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
 endforeach()
+
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/lib/cpkt-cxx/libstdc\\+\\+\\.a(\n|$)"
+    "lib/cpkt-cxx/libstdc++.a")
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/lib/cpkt-cxx/libgcc\\.a(\n|$)"
+    "lib/cpkt-cxx/libgcc.a")
+endif()
 
 cpkt_extract_archive_for_assertions(_symbol_extract_root)
 set(_symbol_root "${_symbol_extract_root}/${_archive_stem}")
@@ -674,6 +876,24 @@ foreach(_metadata_file IN LISTS _metadata_files)
     message(FATAL_ERROR "package metadata contains local build/cache path material: ${_metadata_file}")
   endif()
 endforeach()
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  set(_whisper_pc "${_metadata_extract_root}/${_archive_stem}/lib/pkgconfig/whisper.pc")
+  set(_whisper_cmake "${_metadata_extract_root}/${_archive_stem}/lib/cmake/whisper/whisperConfig.cmake")
+  foreach(_metadata_runtime_file "${_whisper_pc}" "${_whisper_cmake}")
+    if(NOT EXISTS "${_metadata_runtime_file}")
+      message(FATAL_ERROR "missing whisper runtime metadata file: ${_metadata_runtime_file}")
+    endif()
+    file(READ "${_metadata_runtime_file}" _metadata_runtime_text)
+    string(FIND "${_metadata_runtime_text}" "cpkt-cxx/libstdc++.a" _metadata_libstdcxx_offset)
+    if(_metadata_libstdcxx_offset EQUAL -1)
+      message(FATAL_ERROR "whisper metadata does not reference packaged libstdc++.a: ${_metadata_runtime_file}")
+    endif()
+    string(FIND "${_metadata_runtime_text}" "cpkt-cxx/libgcc.a" _metadata_libgcc_offset)
+    if(_metadata_libgcc_offset EQUAL -1)
+      message(FATAL_ERROR "whisper metadata does not reference packaged libgcc.a: ${_metadata_runtime_file}")
+    endif()
+  endforeach()
+endif()
 file(REMOVE_RECURSE "${_metadata_extract_root}")
 
 cpkt_extract_archive_for_assertions(_facade_header_extract_root)
@@ -697,6 +917,60 @@ foreach(_forbidden_header_token
   endif()
 endforeach()
 file(REMOVE_RECURSE "${_facade_header_extract_root}")
+
+cpkt_extract_archive_for_assertions(_audio_facade_header_extract_root)
+set(_audio_facade_header "${_audio_facade_header_extract_root}/${_archive_stem}/include/cpkt/audio.h")
+if(NOT EXISTS "${_audio_facade_header}")
+  message(FATAL_ERROR "missing audio C89 facade header: ${_audio_facade_header}")
+endif()
+file(READ "${_audio_facade_header}" _audio_facade_header_text)
+foreach(_forbidden_header_token
+    "miniaudio"
+    "ma_"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint8_t"
+    "uint16_t"
+    "uint32_t"
+    "uint64_t"
+    "int8_t"
+    "int16_t"
+    "int32_t"
+    "int64_t"
+    "long long"
+    "inline")
+  if(_audio_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "audio C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_audio_facade_header_extract_root}")
+
+cpkt_extract_archive_for_assertions(_sus_facade_header_extract_root)
+set(_sus_facade_header "${_sus_facade_header_extract_root}/${_archive_stem}/include/cpkt/sus.h")
+if(NOT EXISTS "${_sus_facade_header}")
+  message(FATAL_ERROR "sus C89 facade header: ${_sus_facade_header}")
+endif()
+file(READ "${_sus_facade_header}" _sus_facade_header_text)
+foreach(_forbidden_header_token
+    "whisper"
+    "ggml"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint8_t"
+    "uint16_t"
+    "uint32_t"
+    "uint64_t"
+    "int8_t"
+    "int16_t"
+    "int32_t"
+    "int64_t"
+    "long long"
+    "inline")
+  if(_sus_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "sus C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_sus_facade_header_extract_root}")
 
 cpkt_extract_archive_for_assertions(_opcua_facade_header_extract_root)
 set(_opcua_facade_header "${_opcua_facade_header_extract_root}/${_archive_stem}/include/cpkt/opcua.h")
@@ -735,6 +1009,14 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     3
     "Lua runtime facade Darwin shared library entries")
   cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpktaudio([^/]*)?\\.dylib$"
+    3
+    "audio facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpktsus([^/]*)?\\.dylib$"
+    3
+    "sus facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_opcua([^/]*)?\\.dylib$"
     3
     "OPC UA facade Darwin shared library entries")
@@ -750,6 +1032,8 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libxml2.16.dylib"
       "lib/liblua.dylib"
       "lib/liblua.5.5.dylib"
+      "lib/libminiaudio.dylib"
+      "lib/libwhisper.dylib"
       "lib/libmqttc.dylib"
       "lib/libmqttc.1.dylib"
       "lib/libmqttc.1.1.2.dylib"
@@ -758,7 +1042,13 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libopen62541.1.5.4.dylib"
       "lib/libcpkt_lua_runtime.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
-      "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
+      "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpktaudio.dylib"
+      "lib/libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib"
+      "lib/libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpktsus.dylib"
+      "lib/libcpktsus.${CPKT_SUS_ABI_VERSION}.dylib"
+      "lib/libcpktsus.${CPKT_BUNDLE_VERSION}.dylib")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
@@ -788,6 +1078,14 @@ else()
     3
     "Lua runtime facade Linux shared library entries")
   cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpktaudio\\.so([^/]*)?$"
+    3
+    "audio facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpktsus\\.so([^/]*)?$"
+    3
+    "sus facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_opcua\\.so([^/]*)?$"
     3
     "OPC UA facade Linux shared library entries")
@@ -807,6 +1105,19 @@ else()
       "lib/liblua.so"
       "lib/liblua.so.5.5"
       "lib/liblua.so.5.5.0"
+      "lib/libminiaudio.so"
+      "lib/libwhisper.so"
+      "lib/libwhisper.so.1"
+      "lib/libwhisper.so.1.9.1"
+      "lib/libggml.so"
+      "lib/libggml.so.0"
+      "lib/libggml.so.0.15.1"
+      "lib/libggml-base.so"
+      "lib/libggml-base.so.0"
+      "lib/libggml-base.so.0.15.1"
+      "lib/libggml-cpu.so"
+      "lib/libggml-cpu.so.0"
+      "lib/libggml-cpu.so.0.15.1"
       "lib/libmqttc.so"
       "lib/libmqttc.so.1"
       "lib/libmqttc.so.1.1.2"
@@ -815,7 +1126,13 @@ else()
       "lib/libopen62541.so.1.5.4"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
-      "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
+      "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpktaudio.so"
+      "lib/libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}"
+      "lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpktsus.so"
+      "lib/libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
+      "lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
 
@@ -834,7 +1151,13 @@ else()
       "lib/libcurl.so.4.8.0"
       "lib/libxml2.so.16.1.3"
       "lib/libmqttc.so.1.1.2"
-      "lib/libcpkt_lua_runtime.so")
+      "lib/libcpkt_lua_runtime.so"
+      "lib/libcpktaudio.so"
+      "lib/libcpktsus.so"
+      "lib/libwhisper.so.1.9.1"
+      "lib/libggml.so.0.15.1"
+      "lib/libggml-base.so.0.15.1"
+      "lib/libggml-cpu.so.0.15.1")
     cpkt_assert_elf_runpath(
       "${_assert_extract_root}/${_archive_stem}/${_runpath_library}"
       "\\$ORIGIN"
@@ -844,6 +1167,34 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
     "libcpkt_lua_runtime SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
+    "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}"
+    "libcpktaudio SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
+    "libcpktsus SONAME")
+  cpkt_assert_elf_lacks_needed(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "libstdc\\+\\+\\.so[^]]*"
+    "libcpktsus C++ runtime dependency closure")
+  cpkt_assert_elf_lacks_needed(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "libgcc_s\\.so[^]]*"
+    "libcpktsus GCC runtime dependency closure")
+  cpkt_assert_elf_lacks_needed(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
+    "libminiaudio\\.so[^]]*"
+    "libcpktaudio miniaudio backend closure")
+  cpkt_assert_dynamic_exports_match(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
+    "^cpkt_audio_"
+    "libcpktaudio public ABI surface")
+  cpkt_assert_dynamic_exports_match(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+    "^cpkt_sus_"
+    "libcpktsus public ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

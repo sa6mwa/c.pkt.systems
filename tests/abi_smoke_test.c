@@ -9,6 +9,7 @@
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
+#include <miniaudio.h>
 #include <nghttp2/nghttp2.h>
 #include <open62541/client.h>
 #include <open62541/server.h>
@@ -25,6 +26,7 @@ static void cpkt_dependency_symbols_are_linkable(void **state) {
   lua_State *lua_state;
   UA_Client *opcua_client;
   UA_Server *opcua_server;
+  const char *miniaudio_version;
   unsigned long zlib_flags;
 
   (void)state;
@@ -56,6 +58,9 @@ static void cpkt_dependency_symbols_are_linkable(void **state) {
   assert_non_null(lua_state);
   luaL_openlibs(lua_state);
   lua_close(lua_state);
+
+  miniaudio_version = ma_version_string();
+  assert_non_null(miniaudio_version);
 
   opcua_client = UA_Client_new();
   assert_non_null(opcua_client);

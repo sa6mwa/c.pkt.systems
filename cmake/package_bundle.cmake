@@ -21,6 +21,15 @@ foreach(_required
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
     CPKT_LUA_RUNTIME_SHARED_LIBRARY
+    CPKT_MINIAUDIO_VERSION
+    CPKT_AUDIO_ABI_VERSION
+    CPKT_AUDIO_STATIC_LIBRARY
+    CPKT_AUDIO_SHARED_LIBRARY
+    CPKT_WHISPER_VERSION
+    CPKT_SUS_ABI_VERSION
+    CPKT_SUS_BACKEND_CAPABILITIES
+    CPKT_SUS_STATIC_LIBRARY
+    CPKT_SUS_SHARED_LIBRARY
     CPKT_OPCUA_ABI_VERSION
     CPKT_OPCUA_STATIC_LIBRARY
     CPKT_OPCUA_SHARED_LIBRARY)
@@ -42,11 +51,19 @@ set(_stage_root "${_stage_parent}/${_archive_stem}")
 set(_archive_path "${CPKT_DIST_DIR}/${_archive_stem}.tar.gz")
 set(_checksums_path "${CPKT_DIST_DIR}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECKSUMS")
 set(_cpkt_static_library_suffix ".a")
+set(_cpkt_whisper_package_version "${CPKT_WHISPER_VERSION}")
+string(REGEX REPLACE "^v" "" _cpkt_whisper_package_version "${_cpkt_whisper_package_version}")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_shared_library_suffix ".dylib")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_audio_shared_library_link_name "libcpktaudio.dylib")
+  set(_cpkt_audio_shared_library_abi_name "libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib")
+  set(_cpkt_audio_shared_library_real_name "libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_sus_shared_library_link_name "libcpktsus.dylib")
+  set(_cpkt_sus_shared_library_abi_name "libcpktsus.${CPKT_SUS_ABI_VERSION}.dylib")
+  set(_cpkt_sus_shared_library_real_name "libcpktsus.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.dylib")
   set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.${CPKT_OPCUA_ABI_VERSION}.dylib")
   set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.${CPKT_BUNDLE_VERSION}.dylib")
@@ -60,6 +77,12 @@ else()
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.so")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_audio_shared_library_link_name "libcpktaudio.so")
+  set(_cpkt_audio_shared_library_abi_name "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}")
+  set(_cpkt_audio_shared_library_real_name "libcpktaudio.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_sus_shared_library_link_name "libcpktsus.so")
+  set(_cpkt_sus_shared_library_abi_name "libcpktsus.so.${CPKT_SUS_ABI_VERSION}")
+  set(_cpkt_sus_shared_library_real_name "libcpktsus.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.so")
   set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.so.${CPKT_OPCUA_ABI_VERSION}")
   set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.so.${CPKT_BUNDLE_VERSION}")
@@ -85,7 +108,7 @@ function(cpkt_stage_dependency_install dependency_name)
   endforeach()
 endfunction()
 
-foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua mqtt-c open62541)
+foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541)
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
 
@@ -107,75 +130,114 @@ if(_legacy_open62541_shared_libraries)
   file(REMOVE ${_legacy_open62541_shared_libraries})
 endif()
 file(COPY "${CPKT_LUA_RUNTIME_INCLUDE_DIR}/cpkt" DESTINATION "${_stage_root}/include")
-file(COPY_FILE
+function(cpkt_stage_facade_library facade_label static_source static_name shared_source shared_real_name shared_abi_name shared_link_name)
+  file(COPY_FILE
+    "${static_source}"
+    "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}"
+  )
+  get_filename_component(_facade_shared_library_dir "${shared_source}" DIRECTORY)
+  set(_facade_shared_library_real_path "${_facade_shared_library_dir}/${shared_real_name}")
+  if(NOT EXISTS "${_facade_shared_library_real_path}")
+    message(FATAL_ERROR
+      "missing ${facade_label} shared library ${shared_real_name} in ${_facade_shared_library_dir}")
+  endif()
+  file(COPY_FILE
+    "${_facade_shared_library_real_path}"
+    "${_stage_root}/lib/${shared_real_name}"
+  )
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E create_symlink
+      "${shared_real_name}"
+      "${_stage_root}/lib/${shared_abi_name}"
+    RESULT_VARIABLE _facade_abi_symlink_result
+  )
+  if(NOT _facade_abi_symlink_result EQUAL 0)
+    message(FATAL_ERROR "failed to create ${facade_label} ABI symlink")
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E create_symlink
+      "${shared_abi_name}"
+      "${_stage_root}/lib/${shared_link_name}"
+    RESULT_VARIABLE _facade_link_symlink_result
+  )
+  if(NOT _facade_link_symlink_result EQUAL 0)
+    message(FATAL_ERROR "failed to create ${facade_label} linker symlink")
+  endif()
+endfunction()
+
+cpkt_stage_facade_library(
+  "Lua runtime facade"
   "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
-  "${_stage_root}/lib/libcpkt_lua_runtime${_cpkt_static_library_suffix}"
-)
-get_filename_component(_cpkt_lua_runtime_shared_library_dir
+  "libcpkt_lua_runtime"
   "${CPKT_LUA_RUNTIME_SHARED_LIBRARY}"
-  DIRECTORY)
-set(_cpkt_lua_runtime_shared_library_real_path
-  "${_cpkt_lua_runtime_shared_library_dir}/${_cpkt_lua_runtime_shared_library_real_name}")
-if(NOT EXISTS "${_cpkt_lua_runtime_shared_library_real_path}")
-  message(FATAL_ERROR
-    "missing Lua runtime facade shared library ${_cpkt_lua_runtime_shared_library_real_name} in ${_cpkt_lua_runtime_shared_library_dir}")
-endif()
-file(COPY_FILE
-  "${_cpkt_lua_runtime_shared_library_real_path}"
-  "${_stage_root}/lib/${_cpkt_lua_runtime_shared_library_real_name}"
-)
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E create_symlink
-    "${_cpkt_lua_runtime_shared_library_real_name}"
-    "${_stage_root}/lib/${_cpkt_lua_runtime_shared_library_abi_name}"
-  RESULT_VARIABLE _cpkt_lua_runtime_abi_symlink_result
-)
-if(NOT _cpkt_lua_runtime_abi_symlink_result EQUAL 0)
-  message(FATAL_ERROR "failed to create Lua runtime facade ABI symlink")
-endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E create_symlink
-    "${_cpkt_lua_runtime_shared_library_abi_name}"
-    "${_stage_root}/lib/${_cpkt_lua_runtime_shared_library_link_name}"
-  RESULT_VARIABLE _cpkt_lua_runtime_link_symlink_result
-)
-if(NOT _cpkt_lua_runtime_link_symlink_result EQUAL 0)
-  message(FATAL_ERROR "failed to create Lua runtime facade linker symlink")
-endif()
-file(COPY_FILE
+  "${_cpkt_lua_runtime_shared_library_real_name}"
+  "${_cpkt_lua_runtime_shared_library_abi_name}"
+  "${_cpkt_lua_runtime_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "audio facade"
+  "${CPKT_AUDIO_STATIC_LIBRARY}"
+  "libcpktaudio"
+  "${CPKT_AUDIO_SHARED_LIBRARY}"
+  "${_cpkt_audio_shared_library_real_name}"
+  "${_cpkt_audio_shared_library_abi_name}"
+  "${_cpkt_audio_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "sus facade"
+  "${CPKT_SUS_STATIC_LIBRARY}"
+  "libcpktsus"
+  "${CPKT_SUS_SHARED_LIBRARY}"
+  "${_cpkt_sus_shared_library_real_name}"
+  "${_cpkt_sus_shared_library_abi_name}"
+  "${_cpkt_sus_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "OPC UA facade"
   "${CPKT_OPCUA_STATIC_LIBRARY}"
-  "${_stage_root}/lib/libcpkt_opcua${_cpkt_static_library_suffix}"
-)
-get_filename_component(_cpkt_opcua_shared_library_dir
+  "libcpkt_opcua"
   "${CPKT_OPCUA_SHARED_LIBRARY}"
-  DIRECTORY)
-set(_cpkt_opcua_shared_library_real_path
-  "${_cpkt_opcua_shared_library_dir}/${_cpkt_opcua_shared_library_real_name}")
-if(NOT EXISTS "${_cpkt_opcua_shared_library_real_path}")
-  message(FATAL_ERROR
-    "missing OPC UA facade shared library ${_cpkt_opcua_shared_library_real_name} in ${_cpkt_opcua_shared_library_dir}")
+  "${_cpkt_opcua_shared_library_real_name}"
+  "${_cpkt_opcua_shared_library_abi_name}"
+  "${_cpkt_opcua_shared_library_link_name}")
+
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  if(NOT DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY OR "${CPKT_CXX_STDLIB_STATIC_LIBRARY}" STREQUAL "")
+    message(FATAL_ERROR "Linux cpkt_sus packages require CPKT_CXX_STDLIB_STATIC_LIBRARY")
+  endif()
+  if(NOT DEFINED CPKT_CXX_LIBGCC_STATIC_LIBRARY OR "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}" STREQUAL "")
+    message(FATAL_ERROR "Linux cpkt_sus packages require CPKT_CXX_LIBGCC_STATIC_LIBRARY")
+  endif()
 endif()
-file(COPY_FILE
-  "${_cpkt_opcua_shared_library_real_path}"
-  "${_stage_root}/lib/${_cpkt_opcua_shared_library_real_name}"
-)
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E create_symlink
-    "${_cpkt_opcua_shared_library_real_name}"
-    "${_stage_root}/lib/${_cpkt_opcua_shared_library_abi_name}"
-  RESULT_VARIABLE _cpkt_opcua_abi_symlink_result
-)
-if(NOT _cpkt_opcua_abi_symlink_result EQUAL 0)
-  message(FATAL_ERROR "failed to create OPC UA facade ABI symlink")
+
+if(DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY AND NOT "${CPKT_CXX_STDLIB_STATIC_LIBRARY}" STREQUAL "")
+  if(NOT EXISTS "${CPKT_CXX_STDLIB_STATIC_LIBRARY}")
+    message(FATAL_ERROR "configured static C++ standard library does not exist: ${CPKT_CXX_STDLIB_STATIC_LIBRARY}")
+  endif()
+  file(MAKE_DIRECTORY "${_stage_root}/lib/cpkt-cxx")
+  file(COPY_FILE
+    "${CPKT_CXX_STDLIB_STATIC_LIBRARY}"
+    "${_stage_root}/lib/cpkt-cxx/libstdc++.a")
 endif()
-execute_process(
-  COMMAND "${CMAKE_COMMAND}" -E create_symlink
-    "${_cpkt_opcua_shared_library_abi_name}"
-    "${_stage_root}/lib/${_cpkt_opcua_shared_library_link_name}"
-  RESULT_VARIABLE _cpkt_opcua_link_symlink_result
-)
-if(NOT _cpkt_opcua_link_symlink_result EQUAL 0)
-  message(FATAL_ERROR "failed to create OPC UA facade linker symlink")
+if(DEFINED CPKT_CXX_LIBGCC_STATIC_LIBRARY AND NOT "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}" STREQUAL "")
+  if(NOT EXISTS "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}")
+    message(FATAL_ERROR "configured static GCC runtime library does not exist: ${CPKT_CXX_LIBGCC_STATIC_LIBRARY}")
+  endif()
+  file(MAKE_DIRECTORY "${_stage_root}/lib/cpkt-cxx")
+  file(COPY_FILE
+    "${CPKT_CXX_LIBGCC_STATIC_LIBRARY}"
+    "${_stage_root}/lib/cpkt-cxx/libgcc.a")
+endif()
+set(_cpkt_cxx_stdlib_static_pc_lib "")
+if(EXISTS "${_stage_root}/lib/cpkt-cxx/libstdc++.a")
+  set(_cpkt_cxx_stdlib_static_pc_lib "\${libdir}/cpkt-cxx/libstdc++.a")
+endif()
+set(_cpkt_cxx_libgcc_static_pc_lib "")
+if(EXISTS "${_stage_root}/lib/cpkt-cxx/libgcc.a")
+  set(_cpkt_cxx_libgcc_static_pc_lib "\${libdir}/cpkt-cxx/libgcc.a")
+endif()
+set(_cpkt_whisper_static_cxx_runtime_libs "")
+set(_cpkt_whisper_static_cxx_runtime_pc_libs "")
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_whisper_static_cxx_runtime_libs "c++")
+  set(_cpkt_whisper_static_cxx_runtime_pc_libs "-lc++")
 endif()
 
 function(cpkt_write_config_version package_dir config_stem package_version)
@@ -207,10 +269,12 @@ set(_cpkt_libxml2_static_iconv_pc_libs "")
 set(_cpkt_libxml2_static_iconv_cmake_libs "Iconv::Iconv")
 set(_cpkt_libxml2_shared_iconv_cmake_libs "Iconv::Iconv")
 set(_cpkt_lua_static_private_pc_libs "-lm")
+set(_cpkt_audio_static_private_pc_libs "-lm -pthread")
 set(_cpkt_open62541_static_private_pc_libs "-lm")
 if(CPKT_TARGET_ID MATCHES "-linux-")
   set(_cpkt_libxml2_static_private_pc_libs "-ldl -lm -pthread")
   set(_cpkt_lua_static_private_pc_libs "-lm -ldl")
+  set(_cpkt_audio_static_private_pc_libs "-ldl -lm -pthread")
   set(_cpkt_open62541_static_private_pc_libs "-lm -lrt")
 elseif(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_libxml2_static_iconv_pc_libs "-liconv")
@@ -496,6 +560,147 @@ file(WRITE "${_stage_root}/lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
 )
 cpkt_write_config_version("CpktLuaRuntime" "CpktLuaRuntime" "${CPKT_LUA_VERSION}")
 
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/miniaudio")
+file(WRITE "${_stage_root}/lib/cmake/miniaudio/miniaudioConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_miniaudio_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(miniaudio_FOUND TRUE)\n"
+  "set(miniaudio_VERSION \"${CPKT_MINIAUDIO_VERSION}\")\n"
+  "if(NOT TARGET miniaudio::miniaudio)\n"
+  "  add_library(miniaudio::miniaudio STATIC IMPORTED)\n"
+  "  set_target_properties(miniaudio::miniaudio PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_miniaudio_prefix}/lib/libminiaudio${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_miniaudio_prefix}/include/miniaudio\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"m;Threads::Threads\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::miniaudio_shared)\n"
+  "  add_library(cpkt::miniaudio_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::miniaudio_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_miniaudio_prefix}/lib/libminiaudio${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_miniaudio_prefix}/include/miniaudio\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"m;Threads::Threads\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("miniaudio" "miniaudio" "${CPKT_MINIAUDIO_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktAudio")
+file(WRITE "${_stage_root}/lib/cmake/CpktAudio/CpktAudioConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_audio_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CURL_DIR \"\${_cpkt_audio_prefix}/lib/cmake/CURL\")\n"
+  "find_dependency(CURL CONFIG REQUIRED)\n"
+  "set(CpktAudio_FOUND TRUE)\n"
+  "set(CpktAudio_VERSION \"${CPKT_MINIAUDIO_VERSION}\")\n"
+  "if(NOT TARGET cpkt::audio)\n"
+  "  add_library(cpkt::audio STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::audio PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_audio_prefix}/lib/libcpktaudio${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_audio_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"CURL::libcurl;m;\${CMAKE_DL_LIBS};Threads::Threads\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::audio_shared)\n"
+  "  add_library(cpkt::audio_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::audio_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_audio_prefix}/lib/libcpktaudio${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_audio_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::curl_shared;m;Threads::Threads\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktAudio" "CpktAudio" "${CPKT_MINIAUDIO_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/whisper")
+file(WRITE "${_stage_root}/lib/cmake/whisper/whisperConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_whisper_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(whisper_FOUND TRUE)\n"
+  "set(whisper_VERSION \"${_cpkt_whisper_package_version}\")\n"
+  "set(_cpkt_cxx_stdlib_static \"\${_cpkt_whisper_prefix}/lib/cpkt-cxx/libstdc++.a\")\n"
+  "if(NOT EXISTS \"\${_cpkt_cxx_stdlib_static}\")\n"
+  "  set(_cpkt_cxx_stdlib_static \"\")\n"
+  "endif()\n"
+  "set(_cpkt_cxx_libgcc_static \"\${_cpkt_whisper_prefix}/lib/cpkt-cxx/libgcc.a\")\n"
+  "if(NOT EXISTS \"\${_cpkt_cxx_libgcc_static}\")\n"
+  "  set(_cpkt_cxx_libgcc_static \"\")\n"
+  "endif()\n"
+  "if(NOT TARGET ggml::ggml)\n"
+  "  add_library(ggml::ggml STATIC IMPORTED)\n"
+  "  set_target_properties(ggml::ggml PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_whisper_prefix}/lib/libggml${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_whisper_prefix}/include\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET ggml::base)\n"
+  "  add_library(ggml::base STATIC IMPORTED)\n"
+  "  set_target_properties(ggml::base PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_whisper_prefix}/lib/libggml-base${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_whisper_prefix}/include\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET ggml::cpu)\n"
+  "  add_library(ggml::cpu STATIC IMPORTED)\n"
+  "  set_target_properties(ggml::cpu PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_whisper_prefix}/lib/libggml-cpu${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_whisper_prefix}/include\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET whisper::whisper)\n"
+  "  add_library(whisper::whisper STATIC IMPORTED)\n"
+  "  set_target_properties(whisper::whisper PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_whisper_prefix}/lib/libwhisper${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_whisper_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"ggml::ggml;ggml::base;ggml::cpu;Threads::Threads;m;\${_cpkt_cxx_stdlib_static};\${_cpkt_cxx_libgcc_static};${_cpkt_whisper_static_cxx_runtime_libs}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::whisper_shared)\n"
+  "  add_library(cpkt::whisper_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::whisper_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_whisper_prefix}/lib/libwhisper${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_whisper_prefix}/include\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("whisper" "whisper" "${_cpkt_whisper_package_version}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktSus")
+file(WRITE "${_stage_root}/lib/cmake/CpktSus/CpktSusConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_sus_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(whisper_DIR \"\${_cpkt_sus_prefix}/lib/cmake/whisper\")\n"
+  "set(CpktAudio_DIR \"\${_cpkt_sus_prefix}/lib/cmake/CpktAudio\")\n"
+  "set(OpenSSL_DIR \"\${_cpkt_sus_prefix}/lib/cmake/OpenSSL\")\n"
+  "set(CURL_DIR \"\${_cpkt_sus_prefix}/lib/cmake/CURL\")\n"
+  "find_dependency(whisper CONFIG REQUIRED)\n"
+  "find_dependency(CpktAudio CONFIG REQUIRED)\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "find_dependency(CURL CONFIG REQUIRED)\n"
+  "set(CpktSus_FOUND TRUE)\n"
+  "set(CpktSus_VERSION \"${_cpkt_whisper_package_version}\")\n"
+  "if(NOT TARGET cpkt::sus)\n"
+  "  add_library(cpkt::sus STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::sus PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sus_prefix}/lib/libcpktsus${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sus_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::audio;whisper::whisper;CURL::libcurl;OpenSSL::Crypto\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::sus_shared)\n"
+  "  add_library(cpkt::sus_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::sus_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sus_prefix}/lib/libcpktsus${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sus_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::audio_shared;cpkt::whisper_shared;cpkt::curl_shared;cpkt::openssl_crypto_shared\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktSus" "CpktSus" "${_cpkt_whisper_package_version}")
+
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/open62541")
 file(WRITE "${_stage_root}/lib/cmake/open62541/open62541Config.cmake"
   "include(CMakeFindDependencyMacro)\n"
@@ -723,6 +928,60 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-lua-runtime.pc"
   "Libs: -L\${libdir} -lcpkt_lua_runtime\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/miniaudio.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: miniaudio\n"
+  "Description: miniaudio from c.pkt.systems\n"
+  "Version: ${CPKT_MINIAUDIO_VERSION}\n"
+  "Libs: -L\${libdir} -lminiaudio\n"
+  "Libs.private: -lm -pthread\n"
+  "Cflags: -I\${includedir}/miniaudio\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-audio.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-audio\n"
+  "Description: C89-safe miniaudio facade from c.pkt.systems\n"
+  "Version: ${CPKT_MINIAUDIO_VERSION}\n"
+  "Requires.private: libcurl\n"
+  "Libs: -L\${libdir} -lcpktaudio\n"
+  "Libs.private: ${_cpkt_audio_static_private_pc_libs}\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/whisper.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: whisper.cpp\n"
+  "Description: whisper.cpp from c.pkt.systems\n"
+  "Version: ${_cpkt_whisper_package_version}\n"
+  "Libs: -L\${libdir} -lwhisper\n"
+  "Libs.private: -lggml -lggml-base -lggml-cpu ${_cpkt_cxx_stdlib_static_pc_lib} ${_cpkt_cxx_libgcc_static_pc_lib} ${_cpkt_whisper_static_cxx_runtime_pc_libs} -lm -pthread\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-sus.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-sus\n"
+  "Description: C89-safe whisper.cpp facade from c.pkt.systems\n"
+  "Version: ${_cpkt_whisper_package_version}\n"
+  "Requires: cpkt-audio\n"
+  "Requires.private: whisper libcurl libcrypto\n"
+  "Libs: -L\${libdir} -lcpktsus\n"
+  "Cflags: -I\${includedir}\n"
+)
 file(WRITE "${_stage_root}/lib/pkgconfig/open62541.pc"
   "prefix=\${pcfiledir}/../..\n"
   "exec_prefix=\${prefix}\n"
@@ -775,13 +1034,21 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "libssh2_version=${CPKT_LIBSSH2_VERSION}\n"
   "libxml2_version=${CPKT_LIBXML2_VERSION}\n"
   "lua_version=${CPKT_LUA_VERSION}\n"
+  "miniaudio_version=${CPKT_MINIAUDIO_VERSION}\n"
+  "whisper_version=${CPKT_WHISPER_VERSION}\n"
+  "sus_backend_capabilities=${CPKT_SUS_BACKEND_CAPABILITIES}\n"
   "mqtt_c_version=${CPKT_MQTTC_VERSION}\n"
   "mqtt_c_commit=${CPKT_MQTTC_COMMIT}\n"
   "open62541_version=${CPKT_OPEN62541_VERSION}\n"
   "open62541_patchset=${CPKT_OPEN62541_PATCHSET}\n"
   "lua_runtime_abi_version=${CPKT_LUA_RUNTIME_ABI_VERSION}\n"
+  "audio_abi_version=${CPKT_AUDIO_ABI_VERSION}\n"
+  "sus_abi_version=${CPKT_SUS_ABI_VERSION}\n"
   "opcua_abi_version=${CPKT_OPCUA_ABI_VERSION}\n"
 )
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
+  "${_stage_root}/share/c.pkt.systems/sus-model-catalog.tsv")
 
 file(MAKE_DIRECTORY
   "${_stage_root}/share/doc/c.pkt.systems"
@@ -795,6 +1062,12 @@ file(COPY_FILE
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/opcua-c89-facade-spec.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/audio-sus-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/sus-model-catalog.tsv")
 file(COPY
   "${CPKT_SOURCE_DIR}/examples/"
   DESTINATION "${_stage_root}/share/doc/c.pkt.systems/examples")
@@ -817,8 +1090,17 @@ cpkt_stage_license("zlib" "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib/src/LICENSE")
 cpkt_stage_license("nghttp2" "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2/src/COPYING")
 cpkt_stage_license("libxml2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2/src/Copyright")
 cpkt_stage_license("lua" "${CPKT_DEPENDENCY_BUILD_ROOT}/lua/src/src/lua.h")
+cpkt_stage_license("miniaudio" "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio/src/LICENSE")
+cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src/LICENSE")
 cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
 cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src/LICENSE")
+file(MAKE_DIRECTORY "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/third_party/kblab-whisper-models/LICENSE"
+  "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models/LICENSE")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/third_party/kblab-whisper-models/PROVENANCE.md"
+  "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md")
 file(MAKE_DIRECTORY "${_stage_root}/share/doc/c.pkt.systems/third_party/open62541/patches")
 file(COPY
   "${CPKT_SOURCE_DIR}/vendor/open62541/patches/series"

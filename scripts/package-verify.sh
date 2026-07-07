@@ -22,6 +22,7 @@ else
 fi
 
 bash "$repo_root/tests/package_install_smoke_args_test.sh"
+bash "$repo_root/tests/lifecycle_surface_test.sh"
 bash "$repo_root/tests/osxcross_linker_route_test.sh"
 bash "$repo_root/tests/package_assertions_darwin_tool_lookup_test.sh"
 bash "$repo_root/tests/darwin_dependency_install_name_test.sh"
@@ -30,8 +31,10 @@ bash "$repo_root/tests/darwin_generated_install_name_patch_test.sh"
 bash "$repo_root/tests/run_no_warnings_test.sh"
 bash "$repo_root/tests/privacy_scan_failure_test.sh"
 bash "$repo_root/tests/mqttc_linker_flags_test.sh"
+bash "$repo_root/tests/sus_cpu_backend_policy_test.sh"
 bash "$repo_root/tests/opcua_registration_test.sh"
 bash "$repo_root/tests/opcua_header_facade_test.sh"
+bash "$repo_root/tests/audio_sus_header_facade_test.sh"
 bash "$repo_root/tests/opcua_word_portability_test.sh"
 bash "$repo_root/tests/version_resolution_test.sh"
 bash "$repo_root/tests/dist_manifest_test.sh"

@@ -21,6 +21,38 @@ example_runtime_ldflags=
 cmake_generator="Unix Makefiles"
 cmake_toolchain_file=
 cmake_toolchain_args=()
+target_command_env=()
+
+cpkt_infer_cxx_from_cc() {
+  case "$1" in
+    *gcc) printf '%sg++\n' "${1%gcc}" ;;
+    *cc)
+      if [ -x "${1%cc}c++" ]; then
+        printf '%sc++\n' "${1%cc}"
+      else
+        printf 'c++\n'
+      fi
+      ;;
+    *clang) printf '%sclang++\n' "${1%clang}" ;;
+    *) printf 'c++\n' ;;
+  esac
+}
+
+cpkt_ensure_toolchain() {
+  "$repo_root/scripts/ensure-toolchain.sh" "$1"
+}
+
+cpkt_toolchain_complete() {
+  toolchain_root=$1
+  toolchain_prefix=$2
+  toolchain_sysroot=$3
+
+  [ -x "$toolchain_root/bin/$toolchain_prefix-gcc" ] &&
+    [ -x "$toolchain_root/bin/$toolchain_prefix-g++" ] &&
+    [ -x "$toolchain_root/bin/$toolchain_prefix-ar" ] &&
+    [ -x "$toolchain_root/bin/$toolchain_prefix-ranlib" ] &&
+    [ -f "$toolchain_sysroot/include/stdio.h" ]
+}
 
 case "$target_id" in
   x86_64-linux-gnu)
@@ -30,38 +62,95 @@ case "$target_id" in
     static_extra_libs=
     ;;
   x86_64-linux-musl)
-    cc=${CC:-/usr/bin/musl-gcc}
+    if [ -n "${CPKT_X86_64_MUSL_PREFIX:-}" ] &&
+        cpkt_toolchain_complete "$CPKT_X86_64_MUSL_PREFIX" x86_64-linux-musl "$CPKT_X86_64_MUSL_PREFIX/x86_64-linux-musl"; then
+      toolchain_root=$CPKT_X86_64_MUSL_PREFIX
+      cc=${CC:-"$toolchain_root/bin/x86_64-linux-musl-gcc"}
+    else
+      toolchain_root=$(cpkt_ensure_toolchain x86_64-linux-musl)
+      cc=${CC:-"$toolchain_root/bin/x86_64-linux-gcc"}
+    fi
     run_prefix=
+    cmake_toolchain_file="$repo_root/cmake/toolchains/x86_64-linux-musl.cmake"
     static_extra_libs=
     ;;
   aarch64-linux-gnu)
-    cc=${CC:-/usr/bin/aarch64-linux-gnu-gcc}
-    run_prefix="/usr/bin/qemu-aarch64 -L /usr/aarch64-linux-gnu"
+    if [ -n "${CPKT_AARCH64_GNU_PREFIX:-}" ] &&
+        cpkt_toolchain_complete "$CPKT_AARCH64_GNU_PREFIX" aarch64-linux-gnu "$CPKT_AARCH64_GNU_PREFIX/aarch64-linux-gnu"; then
+      toolchain_root=$CPKT_AARCH64_GNU_PREFIX
+      cc=${CC:-"$toolchain_root/bin/aarch64-linux-gnu-gcc"}
+      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-linux-gnu"
+    elif cpkt_toolchain_complete /usr aarch64-linux-gnu /usr/aarch64-linux-gnu; then
+      toolchain_root=/usr
+      cc=${CC:-/usr/bin/aarch64-linux-gnu-gcc}
+      run_prefix="/usr/bin/qemu-aarch64 -L /usr/aarch64-linux-gnu"
+    else
+      toolchain_root=$(cpkt_ensure_toolchain aarch64-linux-gnu)
+      cc=${CC:-"$toolchain_root/bin/aarch64-linux-gcc"}
+      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-buildroot-linux-gnu/sysroot"
+    fi
+    cmake_toolchain_file="$repo_root/cmake/toolchains/aarch64-linux-gnu.cmake"
     pkg_config_static_flag=
     static_extra_libs=
     ;;
   armhf-linux-gnu)
-    cc=${CC:-/usr/bin/arm-linux-gnueabihf-gcc}
-    run_prefix="/usr/bin/qemu-arm -L /usr/arm-linux-gnueabihf"
+    if [ -n "${CPKT_ARMHF_GNU_PREFIX:-}" ] &&
+        cpkt_toolchain_complete "$CPKT_ARMHF_GNU_PREFIX" arm-linux-gnueabihf "$CPKT_ARMHF_GNU_PREFIX/arm-linux-gnueabihf"; then
+      toolchain_root=$CPKT_ARMHF_GNU_PREFIX
+      cc=${CC:-"$toolchain_root/bin/arm-linux-gnueabihf-gcc"}
+      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-linux-gnueabihf"
+    elif cpkt_toolchain_complete /usr arm-linux-gnueabihf /usr/arm-linux-gnueabihf; then
+      toolchain_root=/usr
+      cc=${CC:-/usr/bin/arm-linux-gnueabihf-gcc}
+      run_prefix="/usr/bin/qemu-arm -L /usr/arm-linux-gnueabihf"
+    else
+      toolchain_root=$(cpkt_ensure_toolchain armhf-linux-gnu)
+      cc=${CC:-"$toolchain_root/bin/arm-linux-gcc"}
+      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-buildroot-linux-gnueabihf/sysroot"
+    fi
+    cmake_toolchain_file="$repo_root/cmake/toolchains/armhf-linux-gnu.cmake"
     pkg_config_static_flag=
     static_extra_libs=-latomic
     ;;
   aarch64-linux-musl)
-    musl_prefix=${CPKT_AARCH64_MUSL_PREFIX:-"$HOME/.local/cross/aarch64-linux-musl"}
-    cc=${CC:-"$musl_prefix/bin/aarch64-linux-musl-gcc"}
-    run_prefix="/usr/bin/qemu-aarch64 -L $musl_prefix/aarch64-linux-musl"
+    if [ -n "${CPKT_AARCH64_MUSL_PREFIX:-}" ]; then
+      toolchain_root=$CPKT_AARCH64_MUSL_PREFIX
+      cc=${CC:-"$toolchain_root/bin/aarch64-linux-musl-gcc"}
+      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-linux-musl"
+    elif [ -n "${HOME:-}" ] && [ -x "$HOME/.local/cross/aarch64-linux-musl/bin/aarch64-linux-musl-gcc" ]; then
+      toolchain_root=$HOME/.local/cross/aarch64-linux-musl
+      cc=${CC:-"$toolchain_root/bin/aarch64-linux-musl-gcc"}
+      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-linux-musl"
+    else
+      toolchain_root=$(cpkt_ensure_toolchain aarch64-linux-musl)
+      cc=${CC:-"$toolchain_root/bin/aarch64-linux-gcc"}
+      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-buildroot-linux-musl/sysroot"
+    fi
+    cmake_toolchain_file="$repo_root/cmake/toolchains/aarch64-linux-musl.cmake"
     static_extra_libs=
     ;;
   armhf-linux-musl)
-    musl_prefix=${CPKT_ARMHF_MUSL_PREFIX:-"$HOME/.local/cross/arm-linux-musleabihf"}
-    cc=${CC:-"$musl_prefix/bin/arm-linux-musleabihf-gcc"}
-    run_prefix="/usr/bin/qemu-arm -L $musl_prefix/arm-linux-musleabihf"
+    if [ -n "${CPKT_ARMHF_MUSL_PREFIX:-}" ]; then
+      toolchain_root=$CPKT_ARMHF_MUSL_PREFIX
+      cc=${CC:-"$toolchain_root/bin/arm-linux-musleabihf-gcc"}
+      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-linux-musleabihf"
+    elif [ -n "${HOME:-}" ] && [ -x "$HOME/.local/cross/arm-linux-musleabihf/bin/arm-linux-musleabihf-gcc" ]; then
+      toolchain_root=$HOME/.local/cross/arm-linux-musleabihf
+      cc=${CC:-"$toolchain_root/bin/arm-linux-musleabihf-gcc"}
+      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-linux-musleabihf"
+    else
+      toolchain_root=$(cpkt_ensure_toolchain armhf-linux-musl)
+      cc=${CC:-"$toolchain_root/bin/arm-linux-gcc"}
+      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-buildroot-linux-musleabihf/sysroot"
+    fi
+    cmake_toolchain_file="$repo_root/cmake/toolchains/armhf-linux-musl.cmake"
     static_extra_libs=-latomic
     ;;
   arm64-apple-darwin)
     osxcross_root=${OSXCROSS_ROOT:-"$HOME/.local/cross/osxcross"}
     osxcross_host=${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}
     cc=${CC:-"$osxcross_root/bin/$osxcross_host-clang"}
+    target_command_env=("LD_LIBRARY_PATH=$osxcross_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")
     run_prefix=
     run_consumers=0
     static_extra_libs=
@@ -87,6 +176,46 @@ if [ ! -x "$cc" ]; then
   printf 'compiler for %s is not executable: %s\n' "$target_id" "$cc" >&2
   exit 1
 fi
+cxx=${CXX:-$(cpkt_infer_cxx_from_cc "$cc")}
+case "$target_id" in
+  *-linux-*)
+    if [ ! -x "$cxx" ]; then
+      printf 'C++ compiler for %s is not executable: %s\n' "$target_id" "$cxx" >&2
+      exit 1
+    fi
+    ;;
+esac
+runtime_library_path=
+cpkt_append_runtime_library_dir() {
+  compiler=$1
+  library_name=$2
+  if ! library_path=$("$compiler" -print-file-name="$library_name" 2>/dev/null); then
+    return 0
+  fi
+  case "$library_path" in
+    /*)
+      if [ -f "$library_path" ]; then
+        library_dir=$(CDPATH= cd -- "$(dirname -- "$library_path")" && pwd)
+        case ":$runtime_library_path:" in
+          *":$library_dir:"*) ;;
+          *)
+            if [ -n "$runtime_library_path" ]; then
+              runtime_library_path="$runtime_library_path:$library_dir"
+            else
+              runtime_library_path=$library_dir
+            fi
+            ;;
+        esac
+      fi
+      ;;
+  esac
+}
+case "$target_id" in
+  *-linux-*)
+    cpkt_append_runtime_library_dir "$cc" libgcc_s.so.1
+    cpkt_append_runtime_library_dir "$cxx" libstdc++.so.6
+    ;;
+esac
 
 if [ "${CPKT_PACKAGE_INSTALL_SMOKE_PRINT_CMAKE_TOOLCHAIN_ARGS:-0}" = 1 ]; then
   printf '%s\n' -G
@@ -149,7 +278,13 @@ cpkt_run_checked() {
   shift
   log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
 
-  if ! "$@" >"$log_file" 2>&1; then
+  if [ "${#target_command_env[@]}" -gt 0 ]; then
+    command_prefix=(env "${target_command_env[@]}")
+  else
+    command_prefix=()
+  fi
+
+  if ! "${command_prefix[@]}" "$@" >"$log_file" 2>&1; then
     printf '%s failed\n' "$description" >&2
     cat "$log_file" >&2
     exit 1
@@ -167,7 +302,13 @@ cpkt_run_shell_checked() {
   command_text=$2
   log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
 
-  if ! sh -c "$command_text" >"$log_file" 2>&1; then
+  if [ "${#target_command_env[@]}" -gt 0 ]; then
+    command_prefix=(env "${target_command_env[@]}")
+  else
+    command_prefix=()
+  fi
+
+  if ! "${command_prefix[@]}" sh -c "$command_text" >"$log_file" 2>&1; then
     printf '%s failed\n' "$description" >&2
     cat "$log_file" >&2
     exit 1
@@ -178,6 +319,12 @@ cpkt_run_shell_checked() {
     exit 1
   fi
   cat "$log_file"
+}
+
+cpkt_cmake_build_checked() {
+  description=$1
+  build_dir=$2
+  cpkt_run_checked "$description" cmake --build "$build_dir"
 }
 
 (cd "$work_root" && cmake -E tar xf "$archive")
@@ -207,6 +354,7 @@ esac
 mkdir -p "$work_root/bin"
 
 common_flags="-std=c99 -Wall -Wextra -Wpedantic -isystem $prefix/include"
+common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"
 assert_package_file() {
   package_path=$1
   if [ ! -f "$prefix/$package_path" ]; then
@@ -234,6 +382,17 @@ assert_file_contains() {
   fi
 }
 
+assert_file_not_contains() {
+  file_path=$1
+  unexpected=$2
+  description=$3
+  if grep -F -- "$unexpected" "$file_path" >/dev/null 2>&1; then
+    printf '%s contains unexpected metadata-propagated item: %s\n' "$description" "$unexpected" >&2
+    printf 'inspected file: %s\n' "$file_path" >&2
+    exit 1
+  fi
+}
+
 assert_package_file "lib/cmake/OpenSSL/OpenSSLConfig.cmake"
 assert_package_file "lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake"
 assert_package_file "lib/cmake/zlib/ZLIBConfig.cmake"
@@ -256,10 +415,29 @@ assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
 assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
 assert_package_file "lib/cmake/open62541/open62541Config.cmake"
 assert_package_file "lib/cmake/open62541/open62541ConfigVersion.cmake"
+assert_package_file "share/c.pkt.systems/manifest.txt"
+assert_package_file "share/c.pkt.systems/sus-model-catalog.tsv"
 assert_package_file "share/doc/c.pkt.systems/LICENSE"
 assert_package_file "share/doc/c.pkt.systems/README.md"
+assert_package_file "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+assert_package_file "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
 assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-vox-intro-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-live-vox-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-live-vox-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/audio-live-vox-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-vox-intro-c89/main.c"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-live-vox-c89/CMakeLists.txt"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-live-vox-c89/build-pkg-config.sh"
+assert_package_file "share/doc/c.pkt.systems/examples/sus-live-vox-c89/main.c"
 assert_package_file "share/doc/c.pkt.systems/examples/cmake-consumer/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/lua-runtime-c89/build-pkg-config.sh"
@@ -270,10 +448,18 @@ assert_package_file "share/doc/c.pkt.systems/examples/opcua-c89/CMakeLists.txt"
 assert_package_file "share/doc/c.pkt.systems/examples/opcua-c89/build-pkg-config.sh"
 assert_package_file "share/doc/c.pkt.systems/examples/opcua-c89/main.c"
 assert_package_file "share/doc/c.pkt.systems/examples/pkg-config-consumer/build.sh"
+assert_package_file "share/doc/c.pkt.systems/third_party/miniaudio/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/third_party/whisper.cpp/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/third_party/kblab-whisper-models/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md"
 assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "find_dependency(Iconv REQUIRED)" "libxml2 CMake config"
 assert_file_contains "$prefix/lib/cmake/libxml2/libxml2-config.cmake" "Iconv::Iconv" "libxml2 CMake config"
 assert_file_contains "$prefix/lib/cmake/open62541/open62541Config.cmake" "find_dependency(OpenSSL CONFIG REQUIRED)" "open62541 CMake config"
 assert_file_contains "$prefix/lib/cmake/mqtt-c/mqtt-cConfig.cmake" "find_dependency(Threads REQUIRED)" "mqtt-c CMake config"
+assert_file_contains "$prefix/share/c.pkt.systems/manifest.txt" "sus_backend_capabilities=cpu" "package manifest"
+assert_file_contains "$prefix/share/c.pkt.systems/sus-model-catalog.tsv" "kb-whisper-small" "sus model catalog metadata"
+assert_file_contains "$prefix/share/c.pkt.systems/sus-model-catalog.tsv" "large-v3-turbo:q5_0" "sus model catalog metadata"
+assert_file_contains "$prefix/share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md" "KBLab/kb-whisper-*" "KBLab model provenance"
 assert_package_dir_absent "lib/cmake/ZLIB"
 assert_package_dir_absent "lib/cmake/Libssh2"
 
@@ -396,6 +582,167 @@ cat > "$cmake_source_dir/cpkt_mqttc.c" <<'EOF'
 int main(void) {
   const char *message = mqtt_error_str(MQTT_ERROR_NULLPTR);
   return message == 0 || message[0] == '\0';
+}
+EOF
+cat > "$cmake_source_dir/cpkt_sus_facade_strict.c" <<'EOF'
+#include <cpkt/sus.h>
+
+#include <string.h>
+
+int main(void) {
+  cpkt_sus_model_entry entry;
+  cpkt_sus *model;
+  cpkt_sus_config config;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_segmented_event event;
+
+  if (cpkt_sus_backend_version() == 0 ||
+      cpkt_sus_backend_system_info() == 0 ||
+      cpkt_sus_backend_capabilities() == 0 ||
+      cpkt_sus_facade_version() == 0) {
+    return 1;
+  }
+  if (strcmp(cpkt_sus_backend_capabilities(), "cpu") != 0) {
+    return 2;
+  }
+  if (cpkt_sus_result_string(CPKT_SUS_ERR_MODEL) == 0) {
+    return 3;
+  }
+  if (cpkt_sus_result_string(CPKT_SUS_ABORTED) == 0) {
+    return 11;
+  }
+  if (cpkt_sus_model_catalog_count() == 0) {
+    return 4;
+  }
+  if (cpkt_sus_model_catalog_default(&entry) != CPKT_SUS_OK) {
+    return 5;
+  }
+  if (entry.name == 0 || strcmp(entry.name, "tiny") != 0) {
+    return 6;
+  }
+  if (cpkt_sus_model_catalog_find("kb-whisper-small", &entry) != CPKT_SUS_OK) {
+    return 7;
+  }
+  if (entry.provider == 0 || strcmp(entry.provider, "KBLab/kb-whisper-small") != 0) {
+    return 8;
+  }
+  memset(&config, 0, sizeof(config));
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  memset(&event, 0, sizeof(event));
+  segmented_config.mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.length_ms = 7000UL;
+  segmented_config.keep_ms = 1500UL;
+  segmented_config.vox_threshold = 0.03f;
+  segmented_config.prebuffer_ms = 50UL;
+  segmented_config.memory_spool_bytes = 1024UL * 1024UL;
+  segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
+  event.is_final = 1;
+  if (segmented_config.mode != CPKT_SUS_SEGMENT_MODE_CONTINUOUS ||
+      segmented_config.step_ms != 1000UL ||
+      segmented_config.prebuffer_ms != 50UL ||
+      event.is_final == 0) {
+    return 12;
+  }
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented_text) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
+    return 13;
+  }
+  config.model_path = "";
+  model = (cpkt_sus *)1;
+  if (cpkt_sus_open_path(&model, &config) != CPKT_SUS_ERR_ARG) {
+    return 9;
+  }
+  if (model != 0) {
+    return 10;
+  }
+  cpkt_sus_string_free(0);
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_audio_facade_strict.c" <<'EOF'
+#include <cpkt/audio.h>
+
+int main(void) {
+  cpkt_audio_decoder *decoder;
+
+  if (cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3) == 0) {
+    return 1;
+  }
+  if (cpkt_audio_format_can_encode(CPKT_AUDIO_FORMAT_WAV) == 0) {
+    return 2;
+  }
+  decoder = (cpkt_audio_decoder *)1;
+  if (cpkt_audio_decoder_open_url(&decoder, "", 0) != CPKT_AUDIO_ERR_ARG) {
+    return 3;
+  }
+  if (decoder != 0) {
+    return 4;
+  }
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_audio_sus_facade_strict.c" <<'EOF'
+#include <cpkt/audio.h>
+#include <cpkt/sus.h>
+
+#include <string.h>
+
+int main(void) {
+  cpkt_audio_decoder *decoder;
+  cpkt_sus *model;
+  cpkt_sus_config model_config;
+  cpkt_sus_segmented_config segmented_config;
+  cpkt_sus_segmented_event event;
+
+  if (cpkt_audio_format_can_decode(CPKT_AUDIO_FORMAT_MP3) == 0) {
+    return 1;
+  }
+  decoder = (cpkt_audio_decoder *)1;
+  if (cpkt_audio_decoder_open_url(&decoder, "", 0) != CPKT_AUDIO_ERR_ARG) {
+    return 2;
+  }
+  if (decoder != 0) {
+    return 3;
+  }
+  if (cpkt_sus_backend_version() == 0 ||
+      cpkt_sus_backend_capabilities() == 0) {
+    return 4;
+  }
+  if (strcmp(cpkt_sus_backend_capabilities(), "cpu") != 0) {
+    return 5;
+  }
+  memset(&model_config, 0, sizeof(model_config));
+  memset(&segmented_config, 0, sizeof(segmented_config));
+  memset(&event, 0, sizeof(event));
+  segmented_config.mode = CPKT_SUS_SEGMENT_MODE_CONTINUOUS;
+  segmented_config.step_ms = 1000UL;
+  segmented_config.length_ms = 7000UL;
+  segmented_config.keep_ms = 1500UL;
+  segmented_config.vox_threshold = 0.03f;
+  segmented_config.prebuffer_ms = 50UL;
+  segmented_config.memory_spool_bytes = 1024UL * 1024UL;
+  segmented_config.max_spool_bytes = 1024UL * 1024UL * 1024UL;
+  event.step_index = 1UL;
+  if (sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->transcribe_audio_decoder_segmented_text) == 0 ||
+      sizeof(((cpkt_sus_transcriber *)0)->revised_text) == 0) {
+    return 8;
+  }
+  if (segmented_config.mode != CPKT_SUS_SEGMENT_MODE_CONTINUOUS ||
+      segmented_config.prebuffer_ms != 50UL ||
+      event.step_index != 1UL) {
+    return 9;
+  }
+  model_config.model_path = "";
+  model = (cpkt_sus *)1;
+  if (cpkt_sus_open_path(&model, &model_config) != CPKT_SUS_ERR_ARG) {
+    return 6;
+  }
+  if (model != 0) {
+    return 7;
+  }
+  return 0;
 }
 EOF
 cat > "$cmake_source_dir/cpkt_opcua_facade_strict.c" <<'EOF'
@@ -869,13 +1216,24 @@ find_package(Libssh2 CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(libxml2 CONFIG REQUIRED)
 find_package(Lua CONFIG REQUIRED)
+find_package(miniaudio CONFIG REQUIRED)
 find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
+find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
 find_package(open62541 CONFIG REQUIRED)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  find_package(CpktSus CONFIG REQUIRED)
+endif()
 
 function(cpkt_add_static_smoke target_name source_name link_target)
   add_executable("\${target_name}" "\${source_name}")
+  target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries("\${target_name}" PRIVATE "\${link_target}")
+endfunction()
+
+function(cpkt_add_static_archive_pic_smoke target_name source_name link_target)
+  add_library("\${target_name}" SHARED "\${source_name}")
   target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries("\${target_name}" PRIVATE "\${link_target}")
 endfunction()
@@ -890,12 +1248,39 @@ cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
 cpkt_add_static_smoke(cpkt_cmake_lua cpkt_lua.c Lua::Lua)
 cpkt_add_static_smoke(cpkt_cmake_mqttc cpkt_mqttc.c MQTT-C::mqttc)
 cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541)
+cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_zlib cpkt_zlib.c ZLIB::ZLIB)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_crypto cpkt_crypto.c OpenSSL::Crypto)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_ssl cpkt_ssl.c OpenSSL::SSL)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libssh2 cpkt_libssh2.c Libssh2::libssh2)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_curl cpkt_curl.c CURL::libcurl)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_lua cpkt_lua.c Lua::Lua)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_mqttc cpkt_mqttc.c MQTT-C::mqttc)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_open62541 cpkt_open62541.c open62541::open62541)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+set_source_files_properties(cpkt_audio_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  cpkt_add_static_smoke(cpkt_cmake_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
+  add_executable(cpkt_cmake_audio_sus_facade cpkt_audio_sus_facade_strict.c)
+  target_link_libraries(cpkt_cmake_audio_sus_facade PRIVATE cpkt::audio cpkt::sus)
+  cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
+  add_library(cpkt_cmake_pic_audio_sus_facade SHARED cpkt_audio_sus_facade_strict.c)
+  target_link_libraries(cpkt_cmake_pic_audio_sus_facade PRIVATE cpkt::audio cpkt::sus)
+  set_source_files_properties(cpkt_sus_facade_strict.c PROPERTIES
+    COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+  set_source_files_properties(cpkt_audio_sus_facade_strict.c PROPERTIES
+    COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+endif()
 add_executable(cpkt_cmake_all cpkt_all.c)
 target_compile_options(cpkt_cmake_all PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua open62541::open62541)
+target_link_libraries(cpkt_cmake_all PRIVATE CURL::libcurl LibXml2::LibXml2 Lua::Lua miniaudio::miniaudio open62541::open62541)
 
 file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/strict_file.lua"
   "local h = require('host')\\n"
@@ -935,8 +1320,11 @@ cmake_args=(
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -Dminiaudio_DIR="$prefix/lib/cmake/miniaudio" \
   -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
+  -DCpktSus_DIR="$prefix/lib/cmake/CpktSus" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
@@ -947,7 +1335,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_run_checked "cmake aggregate consumer configure" cmake "${cmake_args[@]}"
-cpkt_run_checked "cmake aggregate consumer build" cmake --build "$cmake_build_dir"
+cpkt_cmake_build_checked "cmake aggregate consumer build" "$cmake_build_dir"
 
 assert_words_contain() {
   words=$1
@@ -976,6 +1364,25 @@ assert_words_not_contain() {
   esac
 }
 
+assert_words_count() {
+  words=$1
+  expected_word=$2
+  expected_count=$3
+  description=$4
+  actual_count=0
+  for word in $words; do
+    if [ "$word" = "$expected_word" ]; then
+      actual_count=$((actual_count + 1))
+    fi
+  done
+  if [ "$actual_count" -ne "$expected_count" ]; then
+    printf '%s expected %s occurrence(s) of %s, got %s\n' \
+      "$description" "$expected_count" "$expected_word" "$actual_count" >&2
+    printf 'actual words: %s\n' "$words" >&2
+    exit 1
+  fi
+}
+
 cmake_link_dir="$cmake_build_dir/CMakeFiles"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_libssh2.dir/link.txt" "$prefix/lib/libcrypto.a" "Libssh2::libssh2 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_libssh2.dir/link.txt" "$prefix/lib/libz.a" "Libssh2::libssh2 link line"
@@ -988,6 +1395,12 @@ assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "$prefix/
 assert_file_contains "$cmake_link_dir/cpkt_cmake_mqttc.dir/link.txt" "$prefix/lib/libmqttc.a" "MQTT-C::mqttc link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libssl.a" "open62541::open62541 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libcrypto.a" "open62541::open62541 link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcurl.a" "cpkt::audio link line"
+assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libminiaudio.a" "cpkt::audio link line"
+assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::audio link line"
+assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libwhisper.a" "cpkt::audio link line"
+assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libggml.a" "cpkt::audio link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libcpkt_opcua.a" "cpkt::opcua link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libopen62541.a" "cpkt::opcua link line"
 case "$target_id" in
@@ -1004,62 +1417,90 @@ case "$target_id" in
     assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "iconv" "LibXml2::LibXml2 link line"
     ;;
 esac
+case "$target_id" in
+  *-linux-*)
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libwhisper.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libstdc++.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libgcc.a" "cpkt::sus link line"
+    assert_file_not_contains "$cmake_link_dir/cpkt_cmake_sus_facade.dir/link.txt" "$prefix/lib/libminiaudio.a" "cpkt::sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio+sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcpktsus.a" "cpkt::audio+sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/libcurl.a" "cpkt::audio+sus link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_sus_facade.dir/link.txt" "$prefix/lib/cpkt-cxx/libstdc++.a" "cpkt::audio+sus link line"
+    ;;
+esac
 
-cpkt_cmake_direct_dir_smoke() {
-  package_name=$1
-  package_dir=$2
-  executable_name=$3
-  source_name=$4
-  link_target=$5
-  direct_source_dir="$work_root/cmake-direct-$package_name-src"
-  direct_build_dir="$work_root/cmake-direct-$package_name-build"
-  mkdir -p "$direct_source_dir" "$direct_build_dir"
-  cp "$cmake_source_dir/$source_name" "$direct_source_dir/$source_name"
-  cat > "$direct_source_dir/CMakeLists.txt" <<EOF
+direct_source_dir="$work_root/cmake-direct-src"
+direct_build_dir="$work_root/cmake-direct-build"
+mkdir -p "$direct_source_dir" "$direct_build_dir"
+cp "$cmake_source_dir/cpkt_libssh2.c" "$direct_source_dir/cpkt_libssh2.c"
+cp "$cmake_source_dir/cpkt_curl.c" "$direct_source_dir/cpkt_curl.c"
+cp "$cmake_source_dir/cpkt_libxml2.c" "$direct_source_dir/cpkt_libxml2.c"
+cp "$cmake_source_dir/cpkt_lua.c" "$direct_source_dir/cpkt_lua.c"
+cp "$cmake_source_dir/cpkt_mqttc.c" "$direct_source_dir/cpkt_mqttc.c"
+cp "$cmake_source_dir/cpkt_open62541.c" "$direct_source_dir/cpkt_open62541.c"
+cat > "$direct_source_dir/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.21)
-project(cpkt_package_cmake_direct_${package_name}_smoke LANGUAGES C)
+project(cpkt_package_cmake_direct_smoke LANGUAGES C)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-find_package($package_name CONFIG REQUIRED)
+find_package(Libssh2 CONFIG REQUIRED)
+find_package(CURL CONFIG REQUIRED)
+find_package(libxml2 CONFIG REQUIRED)
+find_package(Lua CONFIG REQUIRED)
+find_package(mqtt-c CONFIG REQUIRED)
+find_package(open62541 CONFIG REQUIRED)
 
-add_executable($executable_name "$source_name")
-target_compile_options($executable_name PRIVATE -Wall -Wextra -Wpedantic -Werror)
-target_link_libraries($executable_name PRIVATE "$link_target")
+function(cpkt_direct_smoke target_name source_name link_target)
+  add_executable("${target_name}" "${source_name}")
+  target_compile_options("${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries("${target_name}" PRIVATE "${link_target}")
+endfunction()
+
+cpkt_direct_smoke(cpkt_direct_libssh2 cpkt_libssh2.c Libssh2::libssh2)
+cpkt_direct_smoke(cpkt_direct_curl cpkt_curl.c CURL::libcurl)
+cpkt_direct_smoke(cpkt_direct_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
+cpkt_direct_smoke(cpkt_direct_lua cpkt_lua.c Lua::Lua)
+cpkt_direct_smoke(cpkt_direct_mqttc cpkt_mqttc.c MQTT-C::mqttc)
+cpkt_direct_smoke(cpkt_direct_open62541 cpkt_open62541.c open62541::open62541)
 EOF
-  direct_cmake_args=(
-    -G "$cmake_generator" \
-    -S "$direct_source_dir" \
-    -B "$direct_build_dir" \
-    -DCMAKE_C_COMPILER="$cc" \
-    "-D${package_name}_DIR=$package_dir" \
-    -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
-  )
-  if [ -n "$cmake_toolchain_file" ]; then
-    direct_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
-    direct_cmake_args+=("${cmake_toolchain_args[@]}")
-    direct_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
-  fi
-  cpkt_run_checked "cmake direct ${package_name} configure" cmake "${direct_cmake_args[@]}"
-  cpkt_run_checked "cmake direct ${package_name} build" cmake --build "$direct_build_dir"
-}
+direct_cmake_args=(
+  -G "$cmake_generator" \
+  -S "$direct_source_dir" \
+  -B "$direct_build_dir" \
+  -DCMAKE_C_COMPILER="$cc" \
+  -DLibssh2_DIR="$prefix/lib/cmake/libssh2" \
+  -DCURL_DIR="$prefix/lib/cmake/CURL" \
+  -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
+  -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
+  -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
+)
+if [ -n "$cmake_toolchain_file" ]; then
+  direct_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
+  direct_cmake_args+=("${cmake_toolchain_args[@]}")
+  direct_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+fi
+cpkt_run_checked "cmake direct package consumers configure" cmake "${direct_cmake_args[@]}"
+cpkt_cmake_build_checked "cmake direct package consumers build" "$direct_build_dir"
 
-cpkt_cmake_direct_dir_smoke Libssh2 "$prefix/lib/cmake/libssh2" cpkt_direct_libssh2 cpkt_libssh2.c Libssh2::libssh2
-direct_libssh2_link_dir="$work_root/cmake-direct-Libssh2-build/CMakeFiles/cpkt_direct_libssh2.dir"
+direct_libssh2_link_dir="$direct_build_dir/CMakeFiles/cpkt_direct_libssh2.dir"
 assert_file_contains "$direct_libssh2_link_dir/link.txt" "$prefix/lib/libcrypto.a" "direct Libssh2_DIR link line"
 assert_file_contains "$direct_libssh2_link_dir/link.txt" "$prefix/lib/libz.a" "direct Libssh2_DIR link line"
 
-cpkt_cmake_direct_dir_smoke CURL "$prefix/lib/cmake/CURL" cpkt_direct_curl cpkt_curl.c CURL::libcurl
-direct_curl_link_dir="$work_root/cmake-direct-CURL-build/CMakeFiles/cpkt_direct_curl.dir"
+direct_curl_link_dir="$direct_build_dir/CMakeFiles/cpkt_direct_curl.dir"
 assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libssh2.a" "direct CURL_DIR link line"
 assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libnghttp2.a" "direct CURL_DIR link line"
 assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libssl.a" "direct CURL_DIR link line"
 assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libcrypto.a" "direct CURL_DIR link line"
 assert_file_contains "$direct_curl_link_dir/link.txt" "$prefix/lib/libz.a" "direct CURL_DIR link line"
 
-cpkt_cmake_direct_dir_smoke libxml2 "$prefix/lib/cmake/libxml2" cpkt_direct_libxml2 cpkt_libxml2.c LibXml2::LibXml2
-direct_libxml2_link_dir="$work_root/cmake-direct-libxml2-build/CMakeFiles/cpkt_direct_libxml2.dir"
+direct_libxml2_link_dir="$direct_build_dir/CMakeFiles/cpkt_direct_libxml2.dir"
 assert_file_contains "$direct_libxml2_link_dir/link.txt" "$prefix/lib/libz.a" "direct libxml2_DIR link line"
 case "$target_id" in
   arm64-apple-darwin)
@@ -1067,16 +1508,43 @@ case "$target_id" in
     ;;
 esac
 
-cpkt_cmake_direct_dir_smoke Lua "$prefix/lib/cmake/Lua" cpkt_direct_lua cpkt_lua.c Lua::Lua
-cpkt_cmake_direct_dir_smoke mqtt-c "$prefix/lib/cmake/mqtt-c" cpkt_direct_mqttc cpkt_mqttc.c MQTT-C::mqttc
-cpkt_cmake_direct_dir_smoke open62541 "$prefix/lib/cmake/open62541" cpkt_direct_open62541 cpkt_open62541.c open62541::open62541
-direct_open62541_link_dir="$work_root/cmake-direct-open62541-build/CMakeFiles/cpkt_direct_open62541.dir"
+direct_open62541_link_dir="$direct_build_dir/CMakeFiles/cpkt_direct_open62541.dir"
 assert_file_contains "$direct_open62541_link_dir/link.txt" "$prefix/lib/libssl.a" "direct open62541_DIR link line"
 assert_file_contains "$direct_open62541_link_dir/link.txt" "$prefix/lib/libcrypto.a" "direct open62541_DIR link line"
-example_cmake_build_dir="$work_root/example-cmake-consumer-build"
+example_cmake_source_dir="$work_root/example-cmake-src"
+example_cmake_build_dir="$work_root/example-cmake-build"
+mkdir -p "$example_cmake_source_dir" "$example_cmake_build_dir"
+cat > "$example_cmake_source_dir/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.21)
+project(cpkt_installed_examples_smoke LANGUAGES C)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "\${CMAKE_BINARY_DIR}/bin")
+add_subdirectory("$installed_examples_dir/cmake-consumer" cmake-consumer)
+add_subdirectory("$installed_examples_dir/lua-runtime-c89" lua-runtime-c89)
+add_subdirectory("$installed_examples_dir/opcua-c89" opcua-c89)
+add_subdirectory("$installed_examples_dir/audio-sus-c89" audio-sus-c89)
+add_subdirectory("$installed_examples_dir/audio-vox-intro-c89" audio-vox-intro-c89)
+add_subdirectory("$installed_examples_dir/audio-live-vox-c89" audio-live-vox-c89)
+add_subdirectory("$installed_examples_dir/sus-vox-intro-c89" sus-vox-intro-c89)
+add_subdirectory("$installed_examples_dir/sus-live-vox-c89" sus-live-vox-c89)
+
+function(cpkt_example_strict executable_name)
+  if(TARGET \${executable_name})
+    target_compile_options(\${executable_name} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+endfunction()
+
+cpkt_example_strict(cpkt_bundle_cmake_consumer)
+cpkt_example_strict(cpkt_lua_runtime_c89_example)
+cpkt_example_strict(cpkt_opcua_c89_example)
+cpkt_example_strict(cpkt_audio_sus_c89_example)
+cpkt_example_strict(cpkt_audio_vox_intro_c89_example)
+cpkt_example_strict(cpkt_audio_live_vox_c89_example)
+cpkt_example_strict(cpkt_sus_vox_intro_c89_example)
+cpkt_example_strict(cpkt_sus_live_vox_c89_example)
+EOF
 example_cmake_args=(
   -G "$cmake_generator" \
-  -S "$installed_examples_dir/cmake-consumer" \
+  -S "$example_cmake_source_dir" \
   -B "$example_cmake_build_dir" \
   -DCMAKE_C_COMPILER="$cc" \
   "-DCMAKE_C_FLAGS=-Werror" \
@@ -1084,7 +1552,12 @@ example_cmake_args=(
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -Dminiaudio_DIR="$prefix/lib/cmake/miniaudio" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
+  -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
+  -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
+  -DCpktSus_DIR="$prefix/lib/cmake/CpktSus" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
 if [ -n "$cmake_toolchain_file" ]; then
@@ -1092,46 +1565,8 @@ if [ -n "$cmake_toolchain_file" ]; then
   example_cmake_args+=("${cmake_toolchain_args[@]}")
   example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
-cpkt_run_checked "example cmake consumer configure" cmake "${example_cmake_args[@]}"
-cpkt_run_checked "example cmake consumer build" cmake --build "$example_cmake_build_dir"
-
-lua_runtime_example_cmake_build_dir="$work_root/example-lua-runtime-c89-cmake-build"
-lua_runtime_example_cmake_args=(
-  -G "$cmake_generator" \
-  -S "$installed_examples_dir/lua-runtime-c89" \
-  -B "$lua_runtime_example_cmake_build_dir" \
-  -DCMAKE_C_COMPILER="$cc" \
-  "-DCMAKE_C_FLAGS=-Werror" \
-  -DCMAKE_PREFIX_PATH="$prefix" \
-  -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
-  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
-)
-if [ -n "$cmake_toolchain_file" ]; then
-  lua_runtime_example_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
-  lua_runtime_example_cmake_args+=("${cmake_toolchain_args[@]}")
-  lua_runtime_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
-fi
-cpkt_run_checked "lua runtime cmake example configure" cmake "${lua_runtime_example_cmake_args[@]}"
-cpkt_run_checked "lua runtime cmake example build" cmake --build "$lua_runtime_example_cmake_build_dir"
-
-opcua_example_cmake_build_dir="$work_root/example-opcua-c89-cmake-build"
-opcua_example_cmake_args=(
-  -G "$cmake_generator" \
-  -S "$installed_examples_dir/opcua-c89" \
-  -B "$opcua_example_cmake_build_dir" \
-  -DCMAKE_C_COMPILER="$cc" \
-  "-DCMAKE_C_FLAGS=-Werror" \
-  -DCMAKE_PREFIX_PATH="$prefix" \
-  -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
-  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
-)
-if [ -n "$cmake_toolchain_file" ]; then
-  opcua_example_cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
-  opcua_example_cmake_args+=("${cmake_toolchain_args[@]}")
-  opcua_example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
-fi
-cpkt_run_checked "opcua cmake example configure" cmake "${opcua_example_cmake_args[@]}"
-cpkt_run_checked "opcua cmake example build" cmake --build "$opcua_example_cmake_build_dir"
+cpkt_run_checked "installed examples cmake configure" cmake "${example_cmake_args[@]}"
+cpkt_cmake_build_checked "installed examples cmake build" "$example_cmake_build_dir"
 
 pkg_config_libdir="$prefix/lib/pkgconfig"
 pkg_config_words() {
@@ -1153,8 +1588,10 @@ libxml2_words=$(pkg_config_words libxml-2.0)
 lua_words=$(pkg_config_words lua)
 mqttc_words=$(pkg_config_words mqtt-c)
 lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
+audio_words=$(pkg_config_words cpkt-audio)
 open62541_words=$(pkg_config_words open62541)
 opcua_words=$(pkg_config_words cpkt-opcua)
+sus_words=$(pkg_config_words cpkt-sus)
 openssl_default_words=$(pkg_config_default_words openssl)
 
 case "$target_id" in
@@ -1208,6 +1645,19 @@ assert_words_contain "$libxml2_words" "-lm" "libxml-2.0.pc --static output"
 assert_words_contain "$lua_words" "-lm" "lua.pc --static output"
 assert_words_contain "$lua_runtime_words" "-llua" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$lua_runtime_words" "-lm" "cpkt-lua-runtime.pc --static output"
+assert_words_contain "$audio_words" "-lcpktaudio" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lminiaudio" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lcurl" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lssh2" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lnghttp2" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lssl" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lcrypto" "cpkt-audio.pc --static output"
+assert_words_contain "$audio_words" "-lz" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lcpktsus" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lwhisper" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lggml" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lggml-base" "cpkt-audio.pc --static output"
+assert_words_not_contain "$audio_words" "-lggml-cpu" "cpkt-audio.pc --static output"
 assert_words_contain "$mqttc_words" "-lmqttc" "mqtt-c.pc --static output"
 assert_words_contain "$open62541_words" "-lssl" "open62541.pc --static output"
 assert_words_contain "$open62541_words" "-lcrypto" "open62541.pc --static output"
@@ -1217,11 +1667,33 @@ assert_words_contain "$opcua_words" "-lopen62541" "cpkt-opcua.pc --static output
 assert_words_contain "$opcua_words" "-lssl" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lcrypto" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lm" "cpkt-opcua.pc --static output"
+assert_words_contain "$sus_words" "-lcpktsus" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lwhisper" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lggml" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lggml-base" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lggml-cpu" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lcurl" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lcrypto" "cpkt-sus.pc --static output"
+assert_words_contain "$sus_words" "-lcpktaudio" "cpkt-sus.pc --static output"
+assert_words_count "$sus_words" "-lcpktaudio" 1 "cpkt-sus.pc --static output"
+assert_words_not_contain "$sus_words" "-lminiaudio" "cpkt-sus.pc --static output"
+case "$target_id" in
+  *-linux-*)
+    assert_words_contain "$sus_words" "$pkg_config_libdir/../../lib/cpkt-cxx/libstdc++.a" "cpkt-sus.pc --static output"
+    assert_words_contain "$sus_words" "$pkg_config_libdir/../../lib/cpkt-cxx/libgcc.a" "cpkt-sus.pc --static output"
+    ;;
+esac
 
 cpkt_pkg_config_static_smoke() {
   pc_name=$1
   source_name=$2
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
+  source_flags=$common_flags
+  case "$source_name" in
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+      source_flags=$common_c89_flags
+      ;;
+  esac
   pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs "$pc_name")
   case "$target_id" in
     *-linux-gnu)
@@ -1237,6 +1709,11 @@ cpkt_pkg_config_static_smoke() {
           bundled["-llua"] = 1
           bundled["-lcpkt_lua_runtime"] = 1
           bundled["-lmqttc"] = 1
+          bundled["-lwhisper"] = 1
+          bundled["-lggml"] = 1
+          bundled["-lggml-base"] = 1
+          bundled["-lggml-cpu"] = 1
+          bundled["-lcpktsus"] = 1
           bundled["-lopen62541"] = 1
           bundled["-lcpkt_opcua"] = 1
         }
@@ -1255,9 +1732,137 @@ cpkt_pkg_config_static_smoke() {
       ;;
   esac
   cpkt_run_shell_checked "pkg-config static ${pc_name} build" \
-    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags \"$cmake_source_dir/$source_name\" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $source_flags \"$cmake_source_dir/$source_name\" \
     -o "$output_path" \
     $pkg_config_link_toolchain_flags \
+    $pkg_config_link_words \
+    $static_extra_libs"
+}
+
+cpkt_pkg_config_static_multi_smoke() {
+  output_name=$1
+  source_name=$2
+  shift 2
+  output_path="$work_root/bin/$output_name"
+  source_flags=$common_flags
+  case "$source_name" in
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+      source_flags=$common_c89_flags
+      ;;
+  esac
+  pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs "$@")
+  case "$target_id" in
+    *-linux-gnu)
+      pkg_config_link_words=$(printf '%s\n' "$pkg_config_link_words" | awk '
+        BEGIN {
+          bundled["-lcpktaudio"] = 1
+          bundled["-lminiaudio"] = 1
+          bundled["-lcrypto"] = 1
+          bundled["-lssl"] = 1
+          bundled["-lz"] = 1
+          bundled["-lnghttp2"] = 1
+          bundled["-lssh2"] = 1
+          bundled["-lcurl"] = 1
+          bundled["-lwhisper"] = 1
+          bundled["-lggml"] = 1
+          bundled["-lggml-base"] = 1
+          bundled["-lggml-cpu"] = 1
+          bundled["-lcpktsus"] = 1
+        }
+        {
+          for (i = 1; i <= NF; ++i) {
+            if ($i in bundled) {
+              printf " -Wl,-Bstatic %s", $i
+            } else if ($i ~ /^-l/ || $i == "-pthread") {
+              printf " -Wl,-Bdynamic %s", $i
+            } else {
+              printf " %s", $i
+            }
+          }
+          printf " -Wl,-Bdynamic"
+        }')
+      ;;
+  esac
+  cpkt_run_shell_checked "pkg-config static $output_name C-only build" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_compile_toolchain_flags $source_flags \"$cmake_source_dir/$source_name\" \
+    -o \"$output_path\" \
+    $pkg_config_link_toolchain_flags \
+    $pkg_config_link_words \
+    $static_extra_libs"
+}
+
+cpkt_pkg_config_static_mixed_cxx_smoke() {
+  output_path="$work_root/bin/cpkt_pkg_sus_mixed_cxx"
+  c_source="$work_root/cpkt_sus_mixed_c_main.c"
+  c_object="$work_root/cpkt_sus_mixed_c_main.o"
+  cxx_source="$work_root/cpkt_sus_mixed_cxx_probe.cpp"
+  cxx_object="$work_root/cpkt_sus_mixed_cxx_probe.o"
+  pkg_config_link_words=$(cpkt_pkg_config --static --cflags --libs cpkt-sus)
+  case "$target_id" in
+    *-linux-gnu)
+      pkg_config_link_words=$(printf '%s\n' "$pkg_config_link_words" | awk '
+        BEGIN {
+          bundled["-lcrypto"] = 1
+          bundled["-lssl"] = 1
+          bundled["-lz"] = 1
+          bundled["-lnghttp2"] = 1
+          bundled["-lssh2"] = 1
+          bundled["-lcurl"] = 1
+          bundled["-lwhisper"] = 1
+          bundled["-lggml"] = 1
+          bundled["-lggml-base"] = 1
+          bundled["-lggml-cpu"] = 1
+          bundled["-lcpktsus"] = 1
+        }
+        {
+          for (i = 1; i <= NF; ++i) {
+            if ($i in bundled) {
+              printf " -Wl,-Bstatic %s", $i
+            } else if ($i ~ /^-l/ || $i == "-pthread") {
+              printf " -Wl,-Bdynamic %s", $i
+            } else {
+              printf " %s", $i
+            }
+          }
+          printf " -Wl,-Bdynamic"
+        }')
+      ;;
+  esac
+  cat > "$c_source" <<'EOF'
+#include <string.h>
+
+#include <cpkt/sus.h>
+
+int cpkt_sus_mixed_cxx_value(void);
+
+int main(void) {
+  const char *capabilities;
+
+  capabilities = cpkt_sus_backend_capabilities();
+  if (capabilities == 0 || strcmp(capabilities, "cpu") != 0) {
+    return 1;
+  }
+  return cpkt_sus_mixed_cxx_value() == 8 ? 0 : 2;
+}
+EOF
+  cat > "$cxx_source" <<'EOF'
+#include <string>
+
+extern "C" int cpkt_sus_mixed_cxx_value(void) {
+  std::string value("cpkt-sus");
+  return static_cast<int>(value.size());
+}
+EOF
+  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C compile" \
+    "\"$cc\" $pkg_config_compile_toolchain_flags $common_flags -c \"$c_source\" -o \"$c_object\" \
+    $(cpkt_pkg_config --cflags cpkt-sus)"
+  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C++ compile" \
+    "\"$cxx\" $pkg_config_compile_toolchain_flags -std=c++11 -Wall -Wextra -Wpedantic -Werror -c \"$cxx_source\" -o \"$cxx_object\" \
+    $(cpkt_pkg_config --cflags cpkt-sus)"
+  cpkt_run_shell_checked "pkg-config static cpkt-sus mixed C-final link" \
+    "\"$cc\" $pkg_config_static_flag $pkg_config_link_toolchain_flags \
+    \"$c_object\" \"$cxx_object\" \
+    -o \"$output_path\" \
     $pkg_config_link_words \
     $static_extra_libs"
 }
@@ -1274,6 +1879,14 @@ cpkt_pkg_config_static_smoke lua cpkt_lua.c
 cpkt_pkg_config_static_smoke mqtt-c cpkt_mqttc.c
 cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
 cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
+case "$target_id" in
+  *-linux-*)
+    cpkt_pkg_config_static_smoke cpkt-audio cpkt_audio_facade_strict.c
+    cpkt_pkg_config_static_smoke cpkt-sus cpkt_sus_facade_strict.c
+    cpkt_pkg_config_static_multi_smoke cpkt_pkg_audio_sus_facade cpkt_audio_sus_facade_strict.c cpkt-audio cpkt-sus
+    cpkt_pkg_config_static_mixed_cxx_smoke
+    ;;
+esac
 
 example_pkg_config_output="$work_root/bin/cpkt_example_pkg_config_consumer"
 CPKT_SDK_PREFIX="$prefix" \
@@ -1315,6 +1928,46 @@ CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $
   cpkt_run_checked "opcua pkg-config example build" \
     "$installed_examples_dir/opcua-c89/build-pkg-config.sh" "$opcua_example_pkg_config_output"
 
+audio_sus_example_pkg_config_output="$work_root/bin/cpkt_audio_sus_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "audio sus pkg-config example build" \
+    "$installed_examples_dir/audio-sus-c89/build-pkg-config.sh" "$audio_sus_example_pkg_config_output"
+
+audio_vox_example_pkg_config_output="$work_root/bin/cpkt_audio_vox_intro_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "audio vox intro pkg-config example build" \
+    "$installed_examples_dir/audio-vox-intro-c89/build-pkg-config.sh" "$audio_vox_example_pkg_config_output"
+
+audio_live_vox_example_pkg_config_output="$work_root/bin/cpkt_audio_live_vox_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "audio live vox pkg-config example build" \
+    "$installed_examples_dir/audio-live-vox-c89/build-pkg-config.sh" "$audio_live_vox_example_pkg_config_output"
+
+sus_vox_example_pkg_config_output="$work_root/bin/cpkt_sus_vox_intro_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "sus vox intro pkg-config example build" \
+    "$installed_examples_dir/sus-vox-intro-c89/build-pkg-config.sh" "$sus_vox_example_pkg_config_output"
+
+sus_live_vox_example_pkg_config_output="$work_root/bin/cpkt_sus_live_vox_c89_pkg_example"
+CPKT_SDK_PREFIX="$prefix" \
+CC="$cc" \
+CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
+CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+  cpkt_run_checked "sus live vox pkg-config example build" \
+    "$installed_examples_dir/sus-live-vox-c89/build-pkg-config.sh" "$sus_live_vox_example_pkg_config_output"
+
 cpkt_pkg_config_smoke() {
   pc_name=$1
   source_name=$2
@@ -1331,6 +1984,17 @@ cpkt_pkg_config_smoke openssl cpkt_ssl.c
 if [ "$run_consumers" -eq 0 ]; then
   exit 0
 fi
+
+case "$target_id" in
+  *-linux-*)
+    if [ -n "${LD_LIBRARY_PATH:-}" ]; then
+      LD_LIBRARY_PATH="$prefix/lib${runtime_library_path:+:$runtime_library_path}:$LD_LIBRARY_PATH"
+    else
+      LD_LIBRARY_PATH="$prefix/lib${runtime_library_path:+:$runtime_library_path}"
+    fi
+    export LD_LIBRARY_PATH
+    ;;
+esac
 
 if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_zlib"
@@ -1358,12 +2022,25 @@ if [ -z "$run_prefix" ]; then
   "$work_root/bin/cpkt_pkg_mqtt-c"
   "$work_root/bin/cpkt_pkg_open62541"
   "$work_root/bin/cpkt_pkg_cpkt-opcua"
-  "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
+  case "$target_id" in
+    *-linux-*) "$work_root/bin/cpkt_pkg_sus_mixed_cxx" ;;
+  esac
+  "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
   "$example_pkg_config_output"
-  "$lua_runtime_example_cmake_build_dir/cpkt_lua_runtime_c89_example" "$lua_runtime_example_cmake_build_dir/example_file.lua"
+  "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
   "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
-  "$opcua_example_cmake_build_dir/cpkt_opcua_c89_example"
+  "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
   "$opcua_example_pkg_config_output"
+  "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
+  "$audio_sus_example_pkg_config_output"
+  "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
+  "$audio_vox_example_pkg_config_output"
+  "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
+  "$audio_live_vox_example_pkg_config_output" --smoke
+  "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
+  "$sus_vox_example_pkg_config_output"
+  "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
+  "$sus_live_vox_example_pkg_config_output" --smoke
 else
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_zlib"
@@ -1415,16 +2092,42 @@ else
   $run_prefix "$work_root/bin/cpkt_pkg_open62541"
   # shellcheck disable=SC2086
   $run_prefix "$work_root/bin/cpkt_pkg_cpkt-opcua"
+  case "$target_id" in
+    *-linux-*)
+      # shellcheck disable=SC2086
+      $run_prefix "$work_root/bin/cpkt_pkg_sus_mixed_cxx"
+      ;;
+  esac
   # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/cpkt_bundle_cmake_consumer"
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
   # shellcheck disable=SC2086
   $run_prefix "$example_pkg_config_output"
   # shellcheck disable=SC2086
-  $run_prefix "$lua_runtime_example_cmake_build_dir/cpkt_lua_runtime_c89_example" "$lua_runtime_example_cmake_build_dir/example_file.lua"
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
   # shellcheck disable=SC2086
   $run_prefix "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
   # shellcheck disable=SC2086
-  $run_prefix "$opcua_example_cmake_build_dir/cpkt_opcua_c89_example"
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
   # shellcheck disable=SC2086
   $run_prefix "$opcua_example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
+  # shellcheck disable=SC2086
+  $run_prefix "$audio_sus_example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
+  # shellcheck disable=SC2086
+  $run_prefix "$audio_vox_example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
+  # shellcheck disable=SC2086
+  $run_prefix "$audio_live_vox_example_pkg_config_output" --smoke
+  # shellcheck disable=SC2086
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
+  # shellcheck disable=SC2086
+  $run_prefix "$sus_vox_example_pkg_config_output"
+  # shellcheck disable=SC2086
+  $run_prefix "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
+  # shellcheck disable=SC2086
+  $run_prefix "$sus_live_vox_example_pkg_config_output" --smoke
 fi

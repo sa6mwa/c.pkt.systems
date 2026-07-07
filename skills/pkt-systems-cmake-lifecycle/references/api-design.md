@@ -91,6 +91,28 @@ When a library has low-level protocol builders and high-level workflow helpers, 
 - Keep provider-specific escape hatches explicit and named as raw JSON, hosted tool JSON, provider metadata, or equivalent. Validate raw JSON through the JSON dependency before sending it.
 - Budget, usage, context-window, retry, and continuity behavior must be observable through public APIs and tests, not inferred from logs.
 
+## Cross-Facade Borrowed Views
+
+When a project ships multiple facades, such as a core C SDK plus a Lua C module, keep language runtimes and facade internals out of the core C SDK.
+
+Rules:
+
+- Core public C headers must not include language runtime headers, forward-declare language runtime types such as `lua_State`, expose language-specific userdata names, or declare language-specific adapter functions.
+- Private facade layouts, including Lua userdata structs, are not an integration contract. Downstream embedders must not copy or depend on them.
+- Core public C headers may expose generic borrowed view structs when the view is a stable core concept useful beyond one language facade, such as a runtime, schema, map, route, policy, session, or record pointer.
+- Borrowed view structs must be ABI-stamped with at least `size` and `abi_version`, must fail closed on mismatch, and must document that they do not transfer ownership.
+- Views must describe only the stable core concept needed for interop. Do not expose mutable schema internals, compiler state, private map builders, allocator internals, or facade-owned object layouts.
+- Language-specific adapter functions belong in a separate facade boundary, normally an installed or staged header named like `<project>_lua.h` for Lua interop, and return generic core views rather than facade-private structs.
+- Adapter functions must return ordinary project status/error values for expected validation failures such as wrong type, ABI mismatch, ownership mismatch, schema mismatch, allocation failure, parse failure, and conversion failure. They must not force C embedders into language-runtime exception or `longjmp` behavior for ordinary validation.
+- Streaming helpers that cross a facade boundary must call core callback-backed streaming APIs directly. They must not buffer, concatenate, spool, or serialize full payloads unless the API is explicitly named and documented as buffered, materialized, spooled, or file-backed.
+
+Document the ownership contract wherever a borrowed interop surface is shipped:
+
+- A borrowed view remains valid only while the owning facade object remains alive and unchanged according to the documented rules.
+- A C consumer that retains a facade-owned object beyond the current stack frame must retain it through the owning facade's lifetime mechanism, such as a Lua registry reference for Lua userdata.
+- Lua-created objects remain owned by Lua and are valid only on their owning `lua_State`.
+- C consumers must not free, resize, mutate, or retain raw pointers past the documented lifetime.
+
 ## Generated Knowledge Surfaces
 
 When a project ships generated or curated tables such as model metadata, pricing, protocol versions, default endpoints, tool schemas, or capability maps:
