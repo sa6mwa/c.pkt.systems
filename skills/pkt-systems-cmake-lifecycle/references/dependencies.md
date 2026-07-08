@@ -14,6 +14,32 @@ Projects consume external C dependencies as SDK bundles from `c.pkt.systems`. Th
 - Reuse downloaded SDK bundles and per-target dependency install roots across debug, release, sanitizer, e2e, fuzz, benchmark, and package builds.
 - Bundled SDK mode, host dependency mode, and conservative auto mode when a project benefits from all three.
 
+## Upstream Components
+
+The usual upstream project owner for pkt.systems C lifecycle dependencies is `github.com/sa6mwa/`. Unless a project explicitly documents another source, fetch dependency archives from each upstream project's GitHub Releases page, not from source checkouts, branch archives, local sibling repositories, package-manager mirrors, or generated artifacts copied between worktrees.
+
+Known upstream components:
+
+| Component | Upstream project | Release archive source |
+| --- | --- | --- |
+| `lonejson` | `https://github.com/sa6mwa/lonejson` | `https://github.com/sa6mwa/lonejson/releases` |
+| `cai` | `https://github.com/sa6mwa/cai` | `https://github.com/sa6mwa/cai/releases` |
+| `libpslog` | `https://github.com/sa6mwa/libpslog` | `https://github.com/sa6mwa/libpslog/releases` |
+| `c.pkt.systems` | `https://github.com/sa6mwa/c.pkt.systems` | `https://github.com/sa6mwa/c.pkt.systems/releases` |
+| `lonehash` | `https://github.com/sa6mwa/lonehash` | `https://github.com/sa6mwa/lonehash/releases` |
+| `liblockdc` | `https://github.com/sa6mwa/liblockdc` | `https://github.com/sa6mwa/liblockdc/releases` |
+| `vectis` | `https://github.com/sa6mwa/vectis` | `https://github.com/sa6mwa/vectis/releases` |
+| `libpid0` | `https://github.com/sa6mwa/libpid0` | `https://github.com/sa6mwa/libpid0/releases` |
+| `liblql` | `https://github.com/sa6mwa/liblql` | `https://github.com/sa6mwa/liblql/releases` |
+
+Rules for component downloads:
+
+- Pin each release dependency by component name, version, target ID when target-specific, exact GitHub release asset URL, and SHA-256.
+- Prefer release assets whose names encode component, version, and target ID. Source code archives generated automatically by GitHub are not SDK bundles unless the project explicitly declares them as supported release artifacts.
+- Reuse the same release URL and SHA-256 through every lifecycle surface that consumes the dependency: debug, release, sanitizer, fuzz, benchmark, e2e, package, and downstream smoke tests.
+- Dependency fetchers must fail with an actionable diagnostic when a component has no pinned release URL for the requested target, when the URL is not under the declared upstream release page, when the checksum is missing, or when checksum verification fails.
+- Dependency manifests in released SDKs must record the exact release asset URL used for each bundled component, but must not record local cache paths or source checkout paths.
+
 Rules:
 
 - Do not vendor generated dependency installs into release source.
@@ -32,6 +58,9 @@ Rules:
 - Do not implement bespoke JSON parsers, serializers, tokenizers, compactors, escaping logic, or JSON framing code when the project declares `lonejson` as a dependency. `lonejson` owns all JSON parsing, serialization, validation, streaming, framing, escaping, and fixture normalization surfaces.
 - If a project has legacy ad hoc JSON handling, migrate it behind `lonejson` during lifecycle consolidation and add tests that prove behavior is preserved.
 - If the needed JSON behavior cannot be implemented through `lonejson`, stop and flag it to the engineer. Propose a change request for adding the missing capability to `lonejson` instead of implementing bespoke JSON behavior in the consuming project.
+- Do not implement bespoke parsers, serializers, tokenizers, compactors, escaping logic, or framing code for a data format when the project declares a lifecycle component that owns that format.
+- If a project has legacy ad hoc structured-data handling covered by a lifecycle dependency, migrate it behind that dependency during lifecycle consolidation and add tests that prove behavior is preserved.
+- If the needed structured-data behavior cannot be implemented through the declared lifecycle dependency, stop and flag it to the engineer. Propose a change request for adding the missing capability to the owning dependency instead of implementing bespoke behavior in the consuming project.
 - Exceptions require explicit engineer approval and must be documented as a narrow non-JSON-parser use case, such as fixed test fixture text or protocol examples that are not parsed or serialized by project code.
 - Do not implement a bespoke structured logging subsystem when the project declares a pkt.systems logging dependency. Put logging behind a narrow adapter, keep it optional at the public API boundary, and test that disabling logging removes side effects.
 - Logging dependencies must not leak into public headers unless the project deliberately accepts that type as part of the API. When a logger handle is accepted publicly, forward-declare it where possible and document that ownership stays with the caller.

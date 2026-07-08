@@ -22,6 +22,25 @@ Documentation preparation:
 - If currently on the release branch and documentation updates are needed, stop before release flow begins and ask the engineer whether to create or switch to a feature or fix branch for the documentation preparation commit. Do not make documentation updates directly on the release branch unless the engineer explicitly instructs that release-branch documentation preparation is acceptable.
 - If the documentation review finds no required changes, record that result in the release plan preview and continue only with a clean worktree.
 
+Recommended Make target shape:
+
+- `make prerelease` and `make release` must exercise the same release proof graph. Put that shared graph behind an internal `release-pipeline` target or an equivalent private script surface.
+- `make prerelease` should run `release-pipeline` without cleaning generated state first. This gives fast release-equivalent feedback while engineers are still iterating.
+- `make release` must clean generated state first, then invoke the same `release-pipeline`. It should not duplicate the prerelease commands, call a narrower target, or skip any proof already required by `prerelease`.
+- `release-pipeline` should run the complete local proof in order: ordinary tests first, then the release matrix. Keep expensive optional hardening either inside the matrix when mandatory for release or behind an explicitly named target such as `prerelease-hardening`.
+- `release-matrix` should build every supported release target, run host-executable tests for the host release target, produce every shipped artifact, generate the checksum manifest after all artifacts exist, and run package, archive, checksum, privacy, relocatability, instrumentation-leak, and loader-metadata verification from the checksum manifest.
+- `prerelease-artifacts`, when kept for compatibility, should be an alias for `release-matrix`.
+- `prerelease-hardening`, when no extra hardening tier exists, should be an alias for `prerelease` until a real hardening tier is defined.
+- `prerelease-live` must fail closed unless live external-provider checks are explicitly enabled through a documented environment variable and credentials are available.
+- `make help` must describe the public release targets and make clear that `release` is the clean final gate while `prerelease` is the same proof graph without the initial clean.
+
+Executable lifecycle tests:
+
+- Add a focused test that asserts `prerelease` and `release` share the same `release-pipeline`, that `release` cleans before invoking it, that ordinary tests run before the matrix, and that release does not bypass the shared pipeline.
+- Add focused tests for checksum-manifest generation and upload-set selection: every release-looking artifact under `dist/` must be checksum-listed, every checksum-listed artifact must exist, and the checksum manifest itself must be included in release uploads.
+- Add focused tests for artifact verification failures that previously could escape until publish time: local source/cache/build path leaks, local `file://` URLs, sanitizer or fuzzer instrumentation markers, non-relocatable RPATH/RUNPATH/install-name metadata, missing dependency manifests, and stale or omitted release artifacts.
+- Tests should exercise observable release contracts through the public Make/script surfaces rather than only checking implementation details. Light structural tests are acceptable for target wiring because the target graph is part of the lifecycle contract.
+
 Branch decision:
 
 - Release from the repository's release branch. Resolve both `<release-remote>` and `<release-branch>` before touching branch state. Prefer the configured remote default branch, whatever it is named, and remember the remote that owns it. If the remote default cannot be determined, fall back to the local branch that exists among `main`, `master`, and `trunk` and use its configured upstream remote when present, otherwise `origin`. Stop and ask if more than one plausible local release branch exists and the remote default is unclear.
