@@ -220,7 +220,7 @@ verify-release-archives: package-verify
 
 verify-release-privacy: package-verify
 
-prerelease: debug clangd-surface valgrind fuzz-smoke
+prerelease: format debug clangd-surface valgrind fuzz-smoke
 
 prerelease-hardening: prerelease fuzz release-matrix
 

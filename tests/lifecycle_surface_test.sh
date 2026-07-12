@@ -78,6 +78,10 @@ require_file_contains \
 grep -Eq '^/dist/$' "$repo_root/.gitignore"
 grep -Eq '^/VERSION$' "$repo_root/.gitignore"
 grep -Eq '^release-matrix:.*package-checksums.*package-verify' "$repo_root/Makefile"
+grep -Eq '^prerelease:.*format.*debug.*clangd-surface.*valgrind.*fuzz-smoke' "$repo_root/Makefile" || {
+  printf 'prerelease must include formatting, debug, clangd, Valgrind, and AFL++ smoke coverage\n' >&2
+  exit 1
+}
 require_file_contains \
   scripts/package.sh \
   'x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release' \
