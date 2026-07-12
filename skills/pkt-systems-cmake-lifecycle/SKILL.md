@@ -84,6 +84,8 @@ Suggested starting sets:
 
 Use `scripts/cpkt-toolchains.sh` from this skill to inspect or provision the pinned Bootlin Linux compiler collections. Native fuzzing uses a pinned AFL++ GCC-plugin build tied to the x86_64 Bootlin collection:
 
+On a native x86_64 Linux development host, install `valgrind`, `clang-format`, and `clangd` through the host OS package manager. They are host tools, not artifacts in a Bootlin collection. Valgrind and AFL++ are never run through a cross target, emulator, or QEMU.
+
 ```sh
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <target|all>

@@ -19,14 +19,14 @@ Release confidence:
 2. independent review on the feature branch
 3. final clean `make release` package build from the tagged main commit
 
-`make test-all` includes fast host tests, host release tests when useful, cross tests that can execute locally or through an approved runner, sanitizer tests when affordable, deterministic e2e when part of normal confidence, and benchmark gates when performance is a product property.
+`make test-all` includes fast host tests, host release tests when useful, cross product tests that can execute locally or through an approved runner, native Valgrind checking, native AFL++ fuzz smoke, deterministic e2e when part of normal confidence, and benchmark gates when performance is a product property. Cross runners never execute Valgrind or fuzzing gates.
 
 Do not add a separate umbrella target as a standard lifecycle target. The exhaustive clean-slate release gate is `make release`; expensive pre-release confidence belongs in `make prerelease-hardening` or another documented rehearsal target that does not replace final release.
 
 Recommended production-loop tiers:
 
 - `make finalize-slice`: formatting plus the narrow debug tests needed before committing a small slice.
-- `make prerelease`: local, deterministic pre-release confidence. Include formatting, debug unit tests, sanitizer targets supported by the project, fuzz smoke, Lua tests, local example smoke, and deterministic local e2e when those surfaces exist.
+- `make prerelease`: local, deterministic pre-release confidence. Include formatting, debug unit tests, the native Valgrind target, native fuzz smoke, Lua tests, local example smoke, and deterministic local e2e when those surfaces exist.
 - `make prerelease-live`: opt-in external-provider or credentialed integration tests. Refuse to run unless a project-prefixed environment variable explicitly enables them.
 - `make prerelease-hardening`: the expensive tier. Include `prerelease`, live checks when explicitly enabled, long fuzz runs, benchmark gates when applicable, and the release matrix.
 - `make release-matrix`: incrementally build, test, package, checksum, and verify every release target and optional release artifact. This is the artifact production rehearsal before the final clean release.

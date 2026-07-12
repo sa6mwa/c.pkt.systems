@@ -11,7 +11,7 @@ Projects consume external C dependencies as SDK bundles from `c.pkt.systems`. Th
 - Cacheability under `.cache/`.
 - Clear dependency provenance in build metadata or manifests.
 - Explicit failures for missing bundles, unsupported targets, checksum failures, or unavailable network fetches.
-- Reuse downloaded SDK bundles and per-target dependency install roots across debug, release, sanitizer, e2e, fuzz, benchmark, and package builds.
+- Reuse downloaded SDK bundles and per-target dependency install roots across debug, release, hardening, e2e, fuzz, benchmark, and package builds.
 - Bundled SDK mode, host dependency mode, and conservative auto mode when a project benefits from all three.
 
 ## Upstream Components
@@ -36,7 +36,7 @@ Rules for component downloads:
 
 - Pin each release dependency by component name, version, target ID when target-specific, exact GitHub release asset URL, and SHA-256.
 - Prefer release assets whose names encode component, version, and target ID. Source code archives generated automatically by GitHub are not SDK bundles unless the project explicitly declares them as supported release artifacts.
-- Reuse the same release URL and SHA-256 through every lifecycle surface that consumes the dependency: debug, release, sanitizer, fuzz, benchmark, e2e, package, and downstream smoke tests.
+- Reuse the same release URL and SHA-256 through every lifecycle surface that consumes the dependency: debug, release, hardening, fuzz, benchmark, e2e, package, and downstream smoke tests.
 - Dependency fetchers must fail with an actionable diagnostic when a component has no pinned release URL for the requested target, when the URL is not under the declared upstream release page, when the checksum is missing, or when checksum verification fails.
 - Dependency manifests in released SDKs must record the exact release asset URL used for each bundled component, but must not record local cache paths or source checkout paths.
 

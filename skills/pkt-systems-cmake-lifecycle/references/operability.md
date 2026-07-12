@@ -16,7 +16,7 @@ Rules:
 - After package, dependency, release, RPATH/RUNPATH, install-name, or artifact layout edits, run package verification or the closest available local packaging gate.
 - After e2e service edits, run `dev-reset`, `dev-up`, and `test-e2e` or the closest project-specific local e2e gate.
 - After Lua facade edits, run `lua-rock`, `lua-test`, and any Lua benchmark gate that protects a hot path.
-- Do not run `make clean` reflexively between ordinary build, test, debug, sanitizer, e2e, Lua, fuzz, or benchmark targets. Reuse configured builds and cached dependencies for fast iteration unless there is a concrete stale-state reason.
+- Do not run `make clean` reflexively between ordinary build, test, debug, Valgrind, e2e, Lua, fuzz, or benchmark targets. Reuse configured builds and cached dependencies for fast iteration unless there is a concrete stale-state reason.
 - Run `make clean` deliberately when dependency versions, dependency URLs, dependency checksums, toolchain files, target IDs, cache layout, package layout, release versioning, or generated dependency roots change, or when a failure plausibly comes from stale build/dependency state.
 - When the skill already covers a lifecycle-mechanical decision, do not ask for permission. Implement, verify, and report.
 - Ask only for product, architecture, ABI/API, release authority, external service, or unsupported-tool decisions.
@@ -206,9 +206,8 @@ Build presets mirror configure presets. Test presets exist for each executable t
 
 Preset rules:
 
-- The hidden `base` preset pins the default dependency mode. Do not let stale CMake cache state silently change sanitizer, fuzz, integration, or release dependency resolution.
-- Keep `valgrind` as an explicit public target; do not silently turn a normal debug build into a memory-check run.
-- Sanitizer presets select a compiler/toolchain known to support that sanitizer.
+- The hidden `base` preset pins the default dependency mode. Do not let stale CMake cache state silently change Valgrind, fuzz, integration, or release dependency resolution.
+- Keep `valgrind` as an explicit native-host public target; do not silently turn a normal debug build into a memory-check run.
 - Release presets set `<P>_DIST_DIR` and `<P>_TARGET_ID` explicitly.
 - Optional cross presets may reference standard toolchain files or documented environment-owned compiler paths. If a cross toolchain is unavailable, release matrix scripts may skip that target only with an explicit message.
 - Add a local test that verifies required presets, required cache variables, and dependency-mode defaults.

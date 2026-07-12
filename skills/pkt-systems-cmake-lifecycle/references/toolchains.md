@@ -139,7 +139,8 @@ Run these checks after changing either resolver or the toolchain policy:
 ```sh
 bash -n skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh
 skills/pkt-systems-cmake-lifecycle/scripts/test-cpkt-toolchain-resolvers.sh
+skills/pkt-systems-cmake-lifecycle/scripts/test-cpkt-aflpp-resolver.sh
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 ```
 
-For a changed pin, also run `ensure` and a configure/build using that target. For AFL++ changes, compile a small target through the wrapper and prove `afl-showmap` observes distinct execution paths.
+For a changed pin, also run `ensure` and a configure/build using that target. For AFL++ changes, run `cpkt-aflpp.sh ensure`, compile a small target through the wrapper, and prove `afl-showmap` observes distinct execution paths.
