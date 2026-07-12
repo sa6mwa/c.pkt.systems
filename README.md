@@ -35,7 +35,7 @@ The release matrix is:
 - `aarch64-linux-musl`
 - `armhf-linux-gnu`
 - `armhf-linux-musl`
-- `arm64-apple-darwin`, when osxcross is available
+- `arm64-apple-darwin`
 
 Every Linux configure, build, package smoke, and staged ABI check resolves its
 complete compiler collection from the shared pinned Bootlin cache:
@@ -67,11 +67,14 @@ The release matrix builds each dependency tree, runs the ABI/link smoke tests
 where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
 writes `dist/c.pkt.systems-<version>.tar.gz` for source builds, writes
 `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
+The c.pkt.systems bundle release requires all listed Linux targets and
+`arm64-apple-darwin`; a missing osxcross SDK is a release failure, never a skip.
 Package verification also extracts each binary tarball and builds downstream
 CMake and pkg-config consumers for every shipped dependency package, asserting
 that static link requirements propagate through the shipped metadata. Linux
 consumers are run when executable locally or through the configured emulator;
-Darwin consumers are configure/link checked when osxcross is available. Source
+Darwin consumers are configure/link checked with the required local osxcross
+toolchain. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,
 verifies that non-git version resolution uses the injected `VERSION` file, and
 builds/runs the facade-only local tests from the extracted tree.

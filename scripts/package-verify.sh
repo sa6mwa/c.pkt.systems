@@ -15,9 +15,10 @@ if [ "$#" -gt 0 ]; then
   explicit_targets=1
   targets="$*"
 else
-  targets="x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl"
-  if bash "$repo_root/scripts/osxcross_available.sh"; then
-    targets="$targets arm64-apple-darwin"
+  targets="x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl arm64-apple-darwin"
+  if ! bash "$repo_root/scripts/osxcross_available.sh"; then
+    printf 'arm64-apple-darwin package verification requires a complete local osxcross SDK toolchain\n' >&2
+    exit 1
   fi
 fi
 

@@ -81,11 +81,8 @@ deps-cross:
 	@for preset in aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release; do \
 		$(CMAKE) --preset "$$preset"; \
 	done
-	@if bash ./scripts/osxcross_available.sh; then \
-		$(CMAKE) --preset arm64-apple-darwin-release; \
-	else \
-		printf '[package] skipping arm64-apple-darwin-release configure: osxcross toolchain not available\n'; \
-	fi
+	bash ./scripts/osxcross_available.sh
+	$(CMAKE) --preset arm64-apple-darwin-release
 
 build:
 	bash ./scripts/build.sh release

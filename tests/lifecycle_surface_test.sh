@@ -114,11 +114,19 @@ require_file_contains \
 require_file_contains \
   scripts/package.sh \
   'package-arm64-apple-darwin-release' \
-  'optional arm64 Darwin package target'
+  'required arm64 Darwin package target'
+require_file_contains \
+  scripts/package.sh \
+  'arm64-apple-darwin-release is required for c\.pkt\.systems releases' \
+  'Darwin package prerequisite fails closed'
 require_file_contains \
   scripts/package-verify.sh \
-  'x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl' \
-  'full Linux package verification matrix'
+  'x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl arm64-apple-darwin' \
+  'full Linux and Darwin package verification matrix'
+require_file_contains \
+  scripts/package-verify.sh \
+  'arm64-apple-darwin package verification requires a complete local osxcross SDK toolchain' \
+  'Darwin package verification prerequisite fails closed'
 require_file_contains \
   CMakeLists.txt \
   'static_archive_pic_link' \
