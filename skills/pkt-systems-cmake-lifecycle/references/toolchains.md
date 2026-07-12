@@ -46,8 +46,8 @@ skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure all
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover aarch64-linux-gnu
 eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env aarch64-linux-gnu)"
 
-scripts/cpkt-aflpp.sh ensure
-eval "$(scripts/cpkt-aflpp.sh env)"
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh ensure
+eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
 ```
 
 `ensure all` downloads the six Linux Bootlin collections and reports Darwin osxcross status. It never installs an Apple SDK. `discover` reports all resolved paths, including the selected compiler, linker, binutils, sysroot, static GNU C++ runtime archives, and source. `env` emits shell exports only; it does not modify login-shell files.

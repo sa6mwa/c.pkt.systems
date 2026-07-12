@@ -89,8 +89,8 @@ skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <target|all>
 eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env <target>)"
 
-scripts/cpkt-aflpp.sh ensure
-eval "$(scripts/cpkt-aflpp.sh env)"
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh ensure
+eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
 ```
 
 Downstream projects may vendor or call this lifecycle script, but the policy and cache root stay identical across pkt.systems C projects.

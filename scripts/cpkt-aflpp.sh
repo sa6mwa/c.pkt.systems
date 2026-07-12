@@ -2,7 +2,7 @@
 set -euo pipefail
 
 version=5.02c
-build_revision=3
+build_revision=1
 archive_name="AFLplusplus-${version}.tar.gz"
 archive_sha256=118415843e5d289d63bd6d8f2252c18212978f15ac9e86acbbc75766cd45acde
 
