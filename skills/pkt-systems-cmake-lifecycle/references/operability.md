@@ -32,7 +32,7 @@ Failure taxonomy:
 - `build-graph`: CMake target, preset, dependency graph, or install rule failure.
 - `compiler`: compiler error or warning policy failure.
 - `test`: unit, fixture, example, or consumer test failure.
-- `sanitizer`: ASan, UBSan, or related runtime failure.
+- `memory-check`: Valgrind Memcheck or related native memory-check failure.
 - `e2e-service`: local service startup, readiness, endpoint, credential, or protocol failure.
 - `dependency-acquisition`: SDK bundle download, checksum, unpack, cache, or target-root failure.
 - `package-layout`: tarball root, directory contract, missing file, forbidden file, or stale artifact failure.
@@ -182,9 +182,7 @@ Required configure presets:
 - `base`: hidden, Ninja generator, build directory `build/${presetName}`, compile commands on.
 - `debug`: host Debug build with tests and examples.
 - `debug-lua`, when Lua is supported.
-- `asan`: host Debug build with ASan and UBSan.
-- `tsan`, when the toolchain and test subset support ThreadSanitizer.
-- `msan`, when the toolchain and dependency mode support MemorySanitizer.
+- `valgrind`: native Debug facade subset checked by host-provided Valgrind.
 - `fuzz`, when fuzzing exists.
 - `integration`, when opt-in integration tests exist.
 - `x86_64-linux-gnu-release`
@@ -209,7 +207,7 @@ Build presets mirror configure presets. Test presets exist for each executable t
 Preset rules:
 
 - The hidden `base` preset pins the default dependency mode. Do not let stale CMake cache state silently change sanitizer, fuzz, integration, or release dependency resolution.
-- Debug presets may enable ASan/UBSan by default when that is the accepted local debug posture; still keep `asan` as an explicit public target.
+- Keep `valgrind` as an explicit public target; do not silently turn a normal debug build into a memory-check run.
 - Sanitizer presets select a compiler/toolchain known to support that sanitizer.
 - Release presets set `<P>_DIST_DIR` and `<P>_TARGET_ID` explicitly.
 - Optional cross presets may reference standard toolchain files or documented environment-owned compiler paths. If a cross toolchain is unavailable, release matrix scripts may skip that target only with an explicit message.
@@ -253,7 +251,7 @@ Core targets:
 - `make test`
 - `make test-debug`
 - `make test-all`
-- `make asan`
+- `make valgrind`
 - `make package`
 - `make package-source`
 - `make package-source-smoke`
@@ -283,8 +281,7 @@ Conditional standard targets, required when the surface exists:
 - `make fuzz`
 - `make fuzz-smoke`
 - `make fuzz-long`
-- `make tsan`
-- `make msan`
+- `make fuzz`
 - `make bench`
 - `make benchmarks`
 - `make bench-check`

@@ -9,7 +9,7 @@ RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-li
 E2E_SUS_PRESET ?= release
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix finalize-slice release print-release-version format source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix finalize-slice release print-release-version format source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
@@ -42,11 +42,9 @@ help:
 	@printf '  %-30s %s\n' 'example-sus-vox-intro' 'Run cached intro.mp3 VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'example-sus-live-vox' 'Run live microphone VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'example-sus-live-vox-static' 'Build the musl static live sus VOX example and print its path.'
-	@printf '  %-30s %s\n' 'asan' 'Build and test the facade-only AddressSanitizer/UBSan preset.'
-	@printf '  %-30s %s\n' 'tsan' 'Build and test the facade-only ThreadSanitizer preset.'
-	@printf '  %-30s %s\n' 'msan' 'Build and test the facade-only MemorySanitizer preset with clang.'
-	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded facade fuzz smoke tests.'
-	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded facade fuzz tests.'
+	@printf '  %-30s %s\n' 'valgrind' 'Run the facade-only Valgrind Memcheck gate.'
+	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded AFL++ GCC-plugin facade fuzz smoke tests.'
+	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded AFL++ GCC-plugin facade fuzz tests.'
 	@printf '\nTools:\n'
 	@printf '  %-30s %s\n' 'cpktxscribe' 'Build host audio transcription CLI under build/debug/tools/.'
 	@printf '\nPackaging:\n'
@@ -114,7 +112,7 @@ cross-test: test-cross
 
 test-install-tree: package-verify
 
-test-all: debug clangd-surface asan tsan msan fuzz-smoke
+test-all: debug clangd-surface valgrind fuzz-smoke
 
 debug:
 	$(CMAKE) --preset debug
@@ -176,40 +174,31 @@ cpktxscribe:
 	$(CMAKE) --build --preset debug --target cpktxscribe
 	@printf 'built: %s\n' "$$(pwd)/build/debug/tools/cpktxscribe"
 
-asan:
-	$(CMAKE) --preset asan
-	$(CMAKE) --build --preset asan
-	$(CTEST) --preset asan
-
-tsan:
-	$(CMAKE) --preset tsan
-	$(CMAKE) --build --preset tsan
-	$(CTEST) --preset tsan
-
-msan:
-	$(CMAKE) --preset msan
-	$(CMAKE) --build --preset msan
-	$(CTEST) --preset msan
+valgrind:
+	@command -v valgrind >/dev/null || { printf 'valgrind is required for make valgrind; install it with the host OS package manager\n' >&2; exit 1; }
+	$(CMAKE) --preset valgrind
+	$(CMAKE) --build --preset valgrind
+	valgrind --error-exitcode=1 --leak-check=full --track-origins=yes --show-leak-kinds=definite,indirect build/valgrind/cpkt_lua_runtime_mock_test
 
 fuzz-smoke:
 	bash ./scripts/configure-preset.sh --fresh fuzz
 	$(CMAKE) --build --preset fuzz
-	build/fuzz/cpkt_lua_runtime_fuzz -runs=256
+	bash ./scripts/run-afl-fuzz.sh smoke build/fuzz/cpkt_lua_runtime_fuzz fuzz/seeds/lua
 	bash ./scripts/configure-preset.sh debug
 	$(CMAKE) --build --preset debug --target cpkt_opcua_static
 	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
 	$(CMAKE) --build --preset opcua-fuzz
-	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=256
+	bash ./scripts/run-afl-fuzz.sh smoke build/opcua-fuzz/cpkt_opcua_facade_fuzz fuzz/seeds/opcua
 
 fuzz:
 	bash ./scripts/configure-preset.sh --fresh fuzz
 	$(CMAKE) --build --preset fuzz
-	build/fuzz/cpkt_lua_runtime_fuzz -runs=100000
+	bash ./scripts/run-afl-fuzz.sh standard build/fuzz/cpkt_lua_runtime_fuzz fuzz/seeds/lua
 	bash ./scripts/configure-preset.sh debug
 	$(CMAKE) --build --preset debug --target cpkt_opcua_static
 	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
 	$(CMAKE) --build --preset opcua-fuzz
-	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=100000
+	bash ./scripts/run-afl-fuzz.sh standard build/opcua-fuzz/cpkt_opcua_facade_fuzz fuzz/seeds/opcua
 
 package:
 	bash ./scripts/package.sh
@@ -230,9 +219,9 @@ verify-release-archives: package-verify
 
 verify-release-privacy: package-verify
 
-prerelease: debug clangd-surface asan fuzz-smoke
+prerelease: debug clangd-surface valgrind fuzz-smoke
 
-prerelease-hardening: prerelease tsan msan release-matrix
+prerelease-hardening: prerelease fuzz release-matrix
 
 release-matrix: package package-source package-checksums package-verify
 

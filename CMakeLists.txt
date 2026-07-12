@@ -26,7 +26,7 @@ find_package(Threads REQUIRED)
 option(CPKT_BUILD_DEPENDENCIES "Download and build pinned third-party dependencies." ON)
 option(CPKT_BUILD_TESTS "Build ABI/link smoke tests for published dependency artifacts." ON)
 option(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE "Honor explicitly provided dependency roots even when they differ from this compiler's default cache key." OFF)
-option(CPKT_ENABLE_FUZZING "Build libFuzzer facade fuzz targets." OFF)
+option(CPKT_ENABLE_FUZZING "Build AFL++ GCC-plugin facade fuzz targets." OFF)
 option(CPKT_FACADE_ONLY "Build only repo-owned facade hardening targets." OFF)
 option(CPKT_SUS_CPU_ONLY "Build the cpkt_sus whisper.cpp dependency set with CPU backends only." ON)
 
@@ -103,6 +103,12 @@ function(cpkt_add_lua_runtime_mock_test target_name source_name)
     "${CMAKE_SOURCE_DIR}/include")
 endfunction()
 
+function(cpkt_configure_afl_target target_name)
+  target_sources(${target_name} PRIVATE "${CMAKE_SOURCE_DIR}/fuzz/afl_input_driver.c")
+  target_compile_options(${target_name} PRIVATE -std=c99)
+  cpkt_add_repo_warning_errors(${target_name})
+endfunction()
+
 if(CPKT_FACADE_ONLY)
   foreach(_cpkt_facade_only_cache_var
       CPKT_DIST_DIR
@@ -127,15 +133,7 @@ if(CPKT_FACADE_ONLY)
 
   if(CPKT_ENABLE_FUZZING)
     cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_fuzz fuzz/lua_runtime_fuzz.c)
-    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-      target_compile_options(cpkt_lua_runtime_fuzz PRIVATE
-        -fsanitize=fuzzer,address,undefined
-        -fno-omit-frame-pointer)
-      target_link_options(cpkt_lua_runtime_fuzz PRIVATE
-        -fsanitize=fuzzer,address,undefined)
-    else()
-      message(FATAL_ERROR "CPKT_ENABLE_FUZZING requires a Clang-compatible compiler with libFuzzer")
-    endif()
+    cpkt_configure_afl_target(cpkt_lua_runtime_fuzz)
   endif()
 
   return()
@@ -1138,25 +1136,11 @@ endif()
 
 if(CPKT_ENABLE_FUZZING)
   cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_fuzz fuzz/lua_runtime_fuzz.c)
+  cpkt_configure_afl_target(cpkt_lua_runtime_fuzz)
   add_executable(cpkt_opcua_facade_fuzz fuzz/opcua_facade_fuzz.c)
-  target_compile_options(cpkt_opcua_facade_fuzz PRIVATE -std=c99)
-  cpkt_add_repo_warning_errors(cpkt_opcua_facade_fuzz)
+  cpkt_configure_afl_target(cpkt_opcua_facade_fuzz)
   target_include_directories(cpkt_opcua_facade_fuzz PRIVATE "${CMAKE_SOURCE_DIR}/include")
   target_link_libraries(cpkt_opcua_facade_fuzz PRIVATE cpkt_opcua_static)
-  if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-    target_compile_options(cpkt_lua_runtime_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined
-      -fno-omit-frame-pointer)
-    target_link_options(cpkt_lua_runtime_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined)
-    target_compile_options(cpkt_opcua_facade_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined
-      -fno-omit-frame-pointer)
-    target_link_options(cpkt_opcua_facade_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined)
-  else()
-    message(FATAL_ERROR "CPKT_ENABLE_FUZZING requires a Clang-compatible compiler with libFuzzer")
-  endif()
 endif()
 
 if(CPKT_BUILD_DEPENDENCIES)

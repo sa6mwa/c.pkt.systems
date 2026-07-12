@@ -6,7 +6,7 @@ Fast local confidence:
 
 1. `make build`
 2. `make test`
-3. `make asan`
+3. `make valgrind`
 
 Broader local confidence:
 
@@ -96,20 +96,16 @@ Rules:
 - Breaking API or ABI changes do not automatically imply a major bump. They require engineer discussion under the semver contract.
 
 
-## Sanitizers
+## Native memory checking
 
-Sanitizers are first-class hardening gates, not ad hoc debug flags.
+Valgrind Memcheck is the first-class native memory hardening gate.
 
 Contract:
 
-- `asan` preset builds with AddressSanitizer and UndefinedBehaviorSanitizer where supported.
-- `tsan` preset builds and runs a ThreadSanitizer-compatible subset when the project has concurrency, shared state, callbacks, service wrappers, or lock-sensitive behavior.
-- `msan` preset builds and runs a MemorySanitizer-compatible subset when the toolchain and dependencies support it.
-- Sanitizer tests run serially as separate Make targets.
-- If `make prerelease` already includes a sanitizer target, release procedures should not rerun that same target unless a clean rebuild or changed environment makes the rerun meaningful.
-- Label tests that cannot run under a sanitizer because of external dependency boundaries, unsupported interceptors, or intentional process behavior. The skip must be explicit and narrow.
-- MSan gates may run a smoke subset when external SDK dependencies are not fully MSan-instrumented. Label that subset and document the boundary.
-- Release package verification must fail if sanitizer runtimes, sanitizer symbols, or sanitizer build paths appear in shipped libraries, binaries, CMake metadata, pkg-config files, source archives, Lua artifacts, or checksum-listed artifacts.
+- `valgrind` builds a native Bootlin debug facade subset and runs it with leak checking, origin tracking, and a nonzero error exit code.
+- The gate runs serially and fails clearly when the host has not installed Valgrind.
+- Valgrind does not provide true MemorySanitizer coverage; document that boundary rather than claiming MSan equivalence.
+- Release package verification must fail if hardening runtime paths or build paths appear in shipped artifacts.
 
 
 ## Fuzzing
@@ -119,7 +115,7 @@ Enable fuzzing when the project parses, frames, serializes, accepts untrusted by
 Contract:
 
 - `fuzz/` or `tests/fuzz/` contains fuzz targets and seeds.
-- `fuzz` preset builds with libFuzzer or the selected engine.
+- `fuzz` preset builds with the selected engine; the Bootlin GCC lifecycle selects pinned AFL++ GCC-plugin instrumentation.
 - `make fuzz-smoke` runs bounded short jobs suitable for `prerelease`, `prerelease-hardening`, or `release` when fuzzing is part of the release gate.
 - `make fuzz` runs standard bounded local jobs.
 - `make fuzz-long` is opt-in and may run longer.

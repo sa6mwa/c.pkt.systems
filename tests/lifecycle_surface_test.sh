@@ -35,7 +35,7 @@ require_file_contains() {
 for target in \
   help deps-debug deps-release deps-cross build build-debug build-release \
   build-host cross-build test test-debug test-host test-cross cross-test test-all \
-  test-install-tree asan tsan msan fuzz-smoke fuzz package package-source \
+  test-install-tree valgrind fuzz-smoke fuzz package package-source \
   package-source-smoke package-checksums package-verify verify-release-archives \
   verify-release-privacy release-matrix finalize-slice prerelease \
   prerelease-hardening release print-release-version format clean clean-dist; do
@@ -45,7 +45,7 @@ done
 for script in \
   scripts/build.sh \
   scripts/cpkt-toolchains.sh \
-  scripts/cpkt-llvm.sh \
+  scripts/cpkt-aflpp.sh \
   scripts/configure-preset.sh \
   scripts/test.sh \
   scripts/package.sh \
@@ -64,23 +64,15 @@ require_file_contains \
   'host Linux presets select the pinned Bootlin collection'
 require_file_contains \
   CMakePresets.json \
-  'cmake/toolchains/llvm-linux.cmake' \
-  'sanitizer and fuzz presets select pinned LLVM'
-require_file_contains \
-  cmake/toolchains/llvm-linux.cmake \
-  'CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=\${_cpkt_ld}"' \
-  'LLVM CMake builds force the pinned linker through the Clang driver'
-require_file_contains \
-  scripts/cpkt-llvm.sh \
-  'CPKT_LLVM_LINKER_FLAGS' \
-  'LLVM shell environment exports the pinned linker driver flags'
+  'cmake/toolchains/aflpp-x86_64-linux-gnu.cmake' \
+  'fuzz presets select pinned AFL++ GCC instrumentation'
 if grep -Eq '"CMAKE_C_COMPILER"[[:space:]]*:[[:space:]]*"clang"' "$repo_root/CMakePresets.json"; then
   printf 'sanitizer presets must not select host clang\n' >&2
   exit 1
 fi
 require_file_contains \
   README.md \
-  'GCC, Clang, and binutils are never Linux fallbacks' \
+  'Host GCC, Clang, and binutils are never Linux build fallbacks' \
   'documented pinned Linux toolchain policy'
 
 grep -Eq '^/dist/$' "$repo_root/.gitignore"
@@ -125,7 +117,7 @@ require_file_contains \
 require_file_contains \
   Makefile \
   '\$\(CMAKE\) --build --preset debug --target cpkt_opcua_static' \
-  'fuzz gates prepare the normal OPC UA facade dependency prerequisite before Clang fuzzing'
+  'fuzz gates prepare the normal OPC UA facade dependency prerequisite before AFL++ fuzzing'
 require_file_contains \
   scripts/configure-preset.sh \
   '-DCPKT_EXTERNAL_ROOT="\$external_root"' \
@@ -136,12 +128,12 @@ require_file_contains \
   'explicit dependency root override is required before reusing a non-default dependency cache'
 require_file_contains \
   scripts/configure-preset.sh \
-  '\.cache/deps-build/x86_64-linux-gnu/\*/Clang_' \
-  'fresh fuzz configure removes generated Clang dependency build caches'
+  '\.cache/deps-build/x86_64-linux-gnu/\*/AFL_' \
+  'fresh fuzz configure removes generated AFL dependency build caches'
 require_file_contains \
   scripts/configure-preset.sh \
-  '\.cache/deps/x86_64-linux-gnu/\*/Clang_' \
-  'fresh fuzz configure removes generated Clang dependency install caches'
+  '\.cache/deps/x86_64-linux-gnu/\*/AFL_' \
+  'fresh fuzz configure removes generated AFL dependency install caches'
 require_file_contains \
   scripts/package-install-smoke.sh \
   'cpkt_add_static_archive_pic_smoke' \

@@ -135,8 +135,8 @@ require_compile_command "examples/lua-runtime-c89/host_module.c"
 require_compile_command "examples/opcua-c89/main.c"
 
 if ! command -v clangd >/dev/null 2>&1; then
-  printf 'SKIP clangd --check: clangd is not installed\n'
-  exit 0
+  printf 'clangd is required for make clangd-surface; install it with the host OS package manager\n' >&2
+  exit 1
 fi
 
 clangd --check="${SOURCE_DIR}/examples/abi_smoke.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null

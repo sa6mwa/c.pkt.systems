@@ -431,7 +431,7 @@ static void cpkt_fuzz_options(struct cpkt_fuzz_cursor *cursor) {
   cpkt_opcua_pubsub_data_set_reader_options_default(&data_set_reader_options);
 }
 
-int LLVMFuzzerTestOneInput(const unsigned char *data, size_t size) {
+int cpkt_fuzz_one_input(const unsigned char *data, size_t size) {
   struct cpkt_fuzz_cursor cursor;
 
   cursor.data = data;

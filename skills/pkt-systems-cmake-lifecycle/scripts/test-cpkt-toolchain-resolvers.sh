@@ -3,7 +3,6 @@ set -euo pipefail
 
 skill_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 bootlin_resolver="$skill_dir/scripts/cpkt-toolchains.sh"
-llvm_resolver="$skill_dir/scripts/cpkt-llvm.sh"
 cache=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-toolchain-test.XXXXXX")
 trap 'rm -rf "$cache"' EXIT HUP INT TERM
 
@@ -37,24 +36,10 @@ make_bootlin_collection() {
   make_executable "$root/bin/$prefix-g++" "#!/bin/sh\ncase \"\$1\" in\n  -print-file-name=libstdc++.a) printf '%s\\n' '$root/runtime/libstdc++.a' ;;\n  -print-file-name=libgcc.a) printf '%s\\n' '$root/runtime/libgcc.a' ;;\n  *) exit 1 ;;\nesac"
 }
 
-make_llvm_collection() {
-  local root="$cache/roots/llvm-22.1.6-linux-x64"
-  local runtime="$root/lib/clang/22/lib/x86_64-unknown-linux-gnu"
-  local tool
-  mkdir -p "$root/bin" "$runtime"
-  for tool in clang clang++ ld.lld llvm-ar llvm-ranlib llvm-strip llvm-nm llvm-objcopy llvm-objdump llvm-addr2line llvm-readelf; do
-    make_executable "$root/bin/$tool" '#!/bin/sh\nexit 0'
-  done
-  : > "$runtime/libclang_rt.asan.a"
-  : > "$runtime/libclang_rt.fuzzer.a"
-  : > "$runtime/libclang_rt.msan.a"
-}
-
 make_bootlin_collection \
   x86-64--glibc--stable-2025.08-1 \
   x86_64-linux \
   x86_64-buildroot-linux-gnu/sysroot
-make_llvm_collection
 
 bootlin_description=$(CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin_resolver" discover x86_64-linux-gnu)
 require_line 'source=bootlin' "$bootlin_description"
@@ -66,16 +51,5 @@ bootlin_env=$(CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin_resolver" env x86_64-linux
 printf '%s\n' "$bootlin_env" | grep -Fq "export CC=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-gcc" || fail 'Bootlin env did not export the pinned compiler'
 printf '%s\n' "$bootlin_env" | grep -Fq "export LD=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-ld" || fail 'Bootlin env did not export the pinned linker'
 printf '%s\n' "$bootlin_env" | grep -Fq "export NM=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-nm" || fail 'Bootlin env did not export the pinned nm'
-
-llvm_description=$(CPKT_TOOLCHAIN_CACHE="$cache" "$llvm_resolver" discover)
-require_line 'version=22.1.6' "$llvm_description"
-require_line 'source=llvm-project' "$llvm_description"
-require_line "cc=$cache/roots/llvm-22.1.6-linux-x64/bin/clang" "$llvm_description"
-require_line "ld=$cache/roots/llvm-22.1.6-linux-x64/bin/ld.lld" "$llvm_description"
-require_line "asan_runtime=$cache/roots/llvm-22.1.6-linux-x64/lib/clang/22/lib/x86_64-unknown-linux-gnu/libclang_rt.asan.a" "$llvm_description"
-llvm_env=$(CPKT_TOOLCHAIN_CACHE="$cache" "$llvm_resolver" env)
-printf '%s\n' "$llvm_env" | grep -Fq "export CC=$cache/roots/llvm-22.1.6-linux-x64/bin/clang" || fail 'LLVM env did not export the pinned compiler'
-printf '%s\n' "$llvm_env" | grep -Fq "export AR=$cache/roots/llvm-22.1.6-linux-x64/bin/llvm-ar" || fail 'LLVM env did not export the pinned archiver'
-printf '%s\n' "$llvm_env" | grep -Fq "export LDFLAGS=-fuse-ld=$cache/roots/llvm-22.1.6-linux-x64/bin/ld.lld" || fail 'LLVM env did not force the pinned linker'
 
 printf 'toolchain resolver tests passed\n'

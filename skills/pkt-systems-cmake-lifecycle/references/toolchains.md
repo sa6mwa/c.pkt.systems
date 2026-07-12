@@ -7,8 +7,9 @@ This lifecycle owns C and C++ compiler resolution for pkt.systems C/CMake projec
 - Every ordinary Linux build uses the pinned Bootlin GCC collection for its target. Its triple-prefixed `gcc`, `g++`, `ld`, `ar`, `ranlib`, `strip`, `nm`, `objcopy`, `objdump`, `addr2line`, `gdb`, and `readelf`, plus its sysroot libc and headers, are one inseparable collection.
 - Do not use `/usr/bin/cc`, `gcc`, `clang`, distro cross compilers, or unpinned compiler paths as a fallback. A cached Bootlin collection is the only Linux default.
 - `arm64-apple-darwin` remains local-osxcross-only. The lifecycle discovers a complete osxcross collection but must not download Apple SDKs or Darwin compiler collections.
-- Sanitizer and libFuzzer builds that require compiler-rt use the pinned upstream LLVM 22.1.6 collection. This includes ASan, MSan, and fuzzing. Set every compiler and binary-tool setting from that collection; do not use host Clang, `ld`, `ar`, or `nm`.
-- A downstream project may deliberately select a different Clang collection for a specialized diagnostic workflow, but it must set the complete collection consistently and make that override explicit. It is not a reason to fall back to host tools.
+- Native memory checking uses host-provided Valgrind against executables compiled by the selected Bootlin collection. It is a required gate where Valgrind is supported, but it is not an MSan substitute.
+- Native fuzzing uses a pinned cached AFL++ release built with the matching x86_64 Bootlin GCC plugin headers. AFL++ compiler wrappers must delegate to the selected Bootlin `gcc`/`g++`; never use host GCC or Clang for project targets.
+- `clang-format` and `clangd` are host OS development-tool prerequisites only. They must not enter CMake compiler or linker discovery.
 
 ## Linux Targets
 
@@ -31,7 +32,7 @@ Default root:
 ${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}
 ```
 
-- `archives/` contains verified Bootlin and LLVM tarballs.
+- `archives/` contains verified Bootlin and AFL++ source tarballs.
 - `roots/` contains extracted immutable compiler collections.
 
 The cache survives project cleans and is shared by all downstream pkt.systems projects. Do not create project-local compiler caches.
@@ -45,8 +46,8 @@ skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure all
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover aarch64-linux-gnu
 eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env aarch64-linux-gnu)"
 
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-llvm.sh ensure
-eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-llvm.sh env)"
+scripts/cpkt-aflpp.sh ensure
+eval "$(scripts/cpkt-aflpp.sh env)"
 ```
 
 `ensure all` downloads the six Linux Bootlin collections and reports Darwin osxcross status. It never installs an Apple SDK. `discover` reports all resolved paths, including the selected compiler, linker, binutils, sysroot, static GNU C++ runtime archives, and source. `env` emits shell exports only; it does not modify login-shell files.
@@ -97,7 +98,7 @@ endfunction()
 
 For a cross target, the enclosing toolchain file must additionally set `CMAKE_SYSTEM_NAME` to `Linux`, set the target processor, and use `CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY` before calling the function.
 
-For ASan, MSan, or libFuzzer, replace every applicable value with the output from `cpkt-llvm.sh discover`: `clang`, `clang++`, `ld.lld`, `llvm-ar`, `llvm-ranlib`, `llvm-nm`, `llvm-objcopy`, `llvm-objdump`, and `llvm-readelf`. CMake toolchain files must also pass `-fuse-ld=<resolved ld.lld>` through executable, shared-library, and module linker flags. Shell consumers of `eval "$(cpkt-llvm.sh env)"` receive the same driver flag in `LDFLAGS`; exporting `LD` alone does not route Clang through `ld.lld`. The LLVM resolver selects the official 22.1.6 X64 or ARM64 Linux archive from the running host architecture and refuses unsupported Linux hosts before downloading. LLVM 22.1.6 is intentionally pinned because its installed size is substantial and the shared cache must avoid accumulating project-specific versions.
+For AFL++ fuzzing, first configure the ordinary Bootlin x86_64 collection, then resolve the pinned AFL++ wrapper. The wrapper must export `AFL_CC`/`AFL_CXX` as the matching Bootlin drivers and `AFL_PATH` as the cached helper root before it invokes `afl-gcc-fast` or `afl-g++-fast`. Fuzzing is native-only unless an explicitly supported target runner exists.
 
 Assert collection integrity in the downstream bootstrap: the C compiler's reported linker must be inside the selected compiler root, and its libc must be inside the selected sysroot. This prevents an accidental host linker or host libc from entering an otherwise cross-target build.
 
@@ -137,9 +138,8 @@ Run these checks after changing either resolver or the toolchain policy:
 
 ```sh
 bash -n skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh
-bash -n skills/pkt-systems-cmake-lifecycle/scripts/cpkt-llvm.sh
 skills/pkt-systems-cmake-lifecycle/scripts/test-cpkt-toolchain-resolvers.sh
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 ```
 
-For a changed pin, also run `ensure` and a configure/build using that target. For LLVM changes, verify the selected Clang version and that the ASan, fuzzer, and MSan runtimes are present.
+For a changed pin, also run `ensure` and a configure/build using that target. For AFL++ changes, compile a small target through the wrapper and prove `afl-showmap` observes distinct execution paths.

@@ -14,7 +14,7 @@ fi
 
 preset=$1
 case "$preset" in
-  debug|release|asan|tsan|msan|fuzz|opcua-fuzz|x86_64-linux-gnu-release|x86_64-linux-musl-release|aarch64-linux-gnu-release|aarch64-linux-musl-release|armhf-linux-gnu-release|armhf-linux-musl-release|arm64-apple-darwin-release)
+  debug|release|valgrind|fuzz|opcua-fuzz|x86_64-linux-gnu-release|x86_64-linux-musl-release|aarch64-linux-gnu-release|aarch64-linux-musl-release|armhf-linux-gnu-release|armhf-linux-musl-release|arm64-apple-darwin-release)
     ;;
   *)
     printf 'unknown configure preset: %s\n' "$preset" >&2
@@ -40,8 +40,8 @@ if [ "$fresh" -eq 1 ]; then
   case "$preset" in
     fuzz|opcua-fuzz)
       remove_generated_glob \
-        "$repo_root"/.cache/deps-build/x86_64-linux-gnu/*/Clang_* \
-        "$repo_root"/.cache/deps/x86_64-linux-gnu/*/Clang_*
+        "$repo_root"/.cache/deps-build/x86_64-linux-gnu/*/AFL_* \
+        "$repo_root"/.cache/deps/x86_64-linux-gnu/*/AFL_*
       ;;
   esac
 fi

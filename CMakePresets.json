@@ -45,45 +45,17 @@
       }
     },
     {
-      "name": "asan",
+      "name": "valgrind",
       "inherits": "debug",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
       "cacheVariables": {
         "CPKT_BUILD_DEPENDENCIES": "OFF",
-        "CPKT_FACADE_ONLY": "ON",
-        "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined",
-        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=address,undefined",
-        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=address,undefined"
-      }
-    },
-    {
-      "name": "tsan",
-      "inherits": "debug",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
-      "cacheVariables": {
-        "CPKT_BUILD_DEPENDENCIES": "OFF",
-        "CPKT_FACADE_ONLY": "ON",
-        "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fno-omit-frame-pointer -fsanitize=thread",
-        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=thread",
-        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=thread"
-      }
-    },
-    {
-      "name": "msan",
-      "inherits": "debug",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
-      "cacheVariables": {
-        "CPKT_BUILD_DEPENDENCIES": "OFF",
-        "CPKT_FACADE_ONLY": "ON",
-        "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fno-omit-frame-pointer -fsanitize=memory -fsanitize-memory-track-origins=2",
-        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=memory -fsanitize-memory-track-origins=2",
-        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=memory -fsanitize-memory-track-origins=2"
+        "CPKT_FACADE_ONLY": "ON"
       }
     },
     {
       "name": "fuzz",
       "inherits": "debug",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/aflpp-x86_64-linux-gnu.cmake",
       "cacheVariables": {
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "ON",
@@ -93,7 +65,7 @@
     {
       "name": "opcua-fuzz",
       "inherits": "debug",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/aflpp-x86_64-linux-gnu.cmake",
       "cacheVariables": {
         "CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE": "ON",
         "CPKT_BUILD_DEPENDENCIES": "OFF",
@@ -176,16 +148,8 @@
       "configurePreset": "debug"
     },
     {
-      "name": "asan",
-      "configurePreset": "asan"
-    },
-    {
-      "name": "tsan",
-      "configurePreset": "tsan"
-    },
-    {
-      "name": "msan",
-      "configurePreset": "msan"
+      "name": "valgrind",
+      "configurePreset": "valgrind"
     },
     {
       "name": "fuzz",
@@ -286,22 +250,8 @@
       }
     },
     {
-      "name": "asan",
-      "configurePreset": "asan",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "tsan",
-      "configurePreset": "tsan",
-      "output": {
-        "outputOnFailure": true
-      }
-    },
-    {
-      "name": "msan",
-      "configurePreset": "msan",
+      "name": "valgrind",
+      "configurePreset": "valgrind",
       "output": {
         "outputOnFailure": true
       }

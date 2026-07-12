@@ -45,8 +45,8 @@ ${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains
 ```
 
 The resolver downloads and SHA-256-verifies the collection when needed; host
-GCC, Clang, and binutils are never Linux fallbacks. ASan, TSan, MSan, and fuzz
-presets instead use the separately pinned LLVM 22.1.6 collection. Darwin stays
+Host GCC, Clang, and binutils are never Linux build fallbacks. Every Linux
+compile uses its pinned Bootlin GCC collection; Darwin stays
 local-osxcross-only and does not download an Apple SDK.
 
 ## Release Workflow
@@ -392,23 +392,21 @@ targets:
 ```sh
 make debug
 make clangd-surface
-make asan
-make tsan
-make msan
+make valgrind
 make fuzz-smoke
 ```
 
-`asan` also enables UBSan. These sanitizer and fuzz gates instrument repo-owned
-facade targets and the mock Lua sink; they do not build, instrument, or fuzz
-bundled upstream dependencies. `fuzz-smoke` runs bounded smoke passes against
-the mock-backed Lua runtime fuzzer and the public OPC UA facade fuzzer. The OPC
-UA fuzzer reuses the normal debug dependency install tree for linkage instead
-of creating an LLVM-owned third-party dependency tree. These instrumentation
-builds live under `build/asan`, `build/tsan`, `build/msan`, `build/fuzz`, and
-`build/opcua-fuzz`; release package targets do not enable sanitizer or fuzzing
+`valgrind` is the required native Memcheck gate for the repo-owned facade test
+surface. AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
+plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
+runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
+dependency install tree for linkage. These hardening builds live under
+`build/valgrind`, `build/fuzz`, and `build/opcua-fuzz`; release package targets
+do not enable Valgrind or fuzzing.
 instrumentation.
 
-`make clangd-surface` configures the debug compile database, verifies that the
+`clang-format` and `clangd` are required host development tools and must be
+installed with the host OS package manager. `make clangd-surface` configures the debug compile database, verifies that the
 public strict Lua facade declarations have adjacent Doxygen comments for LSP
 hover text, and checks that the shipped examples are present in
 `compile_commands.json`. When `clangd` is installed, the same target also runs

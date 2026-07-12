@@ -3,7 +3,7 @@
 
 #include <cpkt/lua_runtime.h>
 
-int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
+int cpkt_fuzz_one_input(const uint8_t *data, size_t size) {
   cpkt_lua_runtime *runtime;
 
   runtime = NULL;

@@ -95,9 +95,8 @@ Run this on the feature or fix branch before touching the release branch. The go
 
 1. `make clean release` when the repository defines `release`. This is a clean release rehearsal on the candidate branch, not a publishable tagged release. In an untagged git worktree it may resolve the version as `0.0.0` or use an explicit project-prefixed release-candidate override when supplied, but it must exercise the same build, test, package, checksum, and verification graph as the final release.
 2. If the repository does not define `make release`, run `make clean`, then `make prerelease` when the repository defines it; otherwise run `make test-all` and the explicit local gates below.
-3. `make asan` when supported and not already included in `prerelease`.
-4. `make tsan` when supported and not already included in `prerelease`.
-5. `make msan` when supported and not already included in `prerelease`.
+3. `make valgrind` when supported and not already included in `prerelease`.
+4. `make fuzz` when fuzzing is part of the project hardening contract.
 6. `make fuzz-smoke` when fuzzing exists and is not already included in `prerelease`.
 7. `make bench-gate` or `make perf-gate` when performance gates exist.
 8. `make test-e2e` when deterministic e2e exists and is not already included in `prerelease`.
