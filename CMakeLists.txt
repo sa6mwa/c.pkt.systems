@@ -1071,6 +1071,11 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/linux_toolchain_sysroot_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME pinned_toolchain_resolvers
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/toolchain_resolver_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
         NAME privacy_scan_failure
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/privacy_scan_failure_test.sh")

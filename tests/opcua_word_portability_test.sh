@@ -183,6 +183,13 @@ if [ -n "$open62541_include_dir" ] && [ -f "$open62541_include_dir/open62541/typ
   compile_upstream_word_width "$cc" "$open62541_include_dir" upstream_word_width_c99
 fi
 
+cpkt_bootlin_cc() {
+  target_id=$1
+  resolver="$repo_root/scripts/cpkt-toolchains.sh"
+  "$resolver" ensure "$target_id" >/dev/null
+  "$resolver" discover "$target_id" | sed -n 's/^cc=//p' | tail -n 1
+}
+
 for staged_include_dir in \
   "$repo_root"/build/*/package-stage/c.pkt.systems-*/include
 do
@@ -192,22 +199,22 @@ do
 
   case "$staged_include_dir" in
     *armhf-linux-gnu*)
-      if ! command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1; then
-        printf 'armhf GNU SDK is staged, but arm-linux-gnueabihf-gcc is missing; cannot verify 32-bit UInt64 ABI\n' >&2
+      armhf_gnu_cc=$(cpkt_bootlin_cc armhf-linux-gnu)
+      if [ ! -x "$armhf_gnu_cc" ]; then
+        printf 'pinned armhf GNU compiler is missing: %s\n' "$armhf_gnu_cc" >&2
         exit 1
       fi
-      compile_facade_word_width arm-linux-gnueabihf-gcc facade_word_width_c89_armhf_linux_gnu
+      compile_facade_word_width "$armhf_gnu_cc" facade_word_width_c89_armhf_linux_gnu
       compile_facade_word_width_32_bit_abi \
-        arm-linux-gnueabihf-gcc \
+        "$armhf_gnu_cc" \
         facade_word_width_32_bit_abi_c89_armhf_linux_gnu
       compile_upstream_word_width \
-        arm-linux-gnueabihf-gcc \
+        "$armhf_gnu_cc" \
         "$staged_include_dir" \
         upstream_word_width_c99_armhf_linux_gnu
       ;;
     *armhf-linux-musl*)
-      armhf_musl_prefix=${CPKT_ARMHF_MUSL_PREFIX:-"$HOME/.local/cross/arm-linux-musleabihf"}
-      armhf_musl_cc="$armhf_musl_prefix/bin/arm-linux-musleabihf-gcc"
+      armhf_musl_cc=$(cpkt_bootlin_cc armhf-linux-musl)
       if [ ! -x "$armhf_musl_cc" ]; then
         printf 'armhf musl SDK is staged, but %s is missing; cannot verify 32-bit UInt64 ABI\n' "$armhf_musl_cc" >&2
         exit 1

@@ -119,11 +119,11 @@ require_file_lacks "$smoke" \
   'package smoke must not use c++ driver for final static links'
 
 require_file_contains "$toolchains" \
-  'do not merge `libstdc++.a` into facade archives;' \
+  'Do not merge GNU runtime archives into facade archives.' \
   'lifecycle toolchain policy must forbid merging libstdc++.a into facades'
 require_file_contains "$toolchains" \
-  'ship the selected runtime archives in the cpkt SDK;' \
+  'Ship the selected runtime archives in the SDK.' \
   'lifecycle toolchain policy must require shipping selected runtime archives'
 require_file_contains "$toolchains" \
-  'make `pkg-config --static` or equivalent metadata place facade archives first and the cpkt-provided runtime archives after them;' \
+  'Make static metadata place facade archives before the selected runtime archives.' \
   'lifecycle toolchain policy must require metadata-owned runtime closure'

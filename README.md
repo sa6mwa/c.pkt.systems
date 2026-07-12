@@ -37,6 +37,18 @@ The release matrix is:
 - `armhf-linux-musl`
 - `arm64-apple-darwin`, when osxcross is available
 
+Every Linux configure, build, package smoke, and staged ABI check resolves its
+complete compiler collection from the shared pinned Bootlin cache:
+
+```sh
+${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}
+```
+
+The resolver downloads and SHA-256-verifies the collection when needed; host
+GCC, Clang, and binutils are never Linux fallbacks. ASan, TSan, MSan, and fuzz
+presets instead use the separately pinned LLVM 22.1.6 collection. Darwin stays
+local-osxcross-only and does not download an Apple SDK.
+
 ## Release Workflow
 
 ```sh
@@ -391,7 +403,7 @@ facade targets and the mock Lua sink; they do not build, instrument, or fuzz
 bundled upstream dependencies. `fuzz-smoke` runs bounded smoke passes against
 the mock-backed Lua runtime fuzzer and the public OPC UA facade fuzzer. The OPC
 UA fuzzer reuses the normal debug dependency install tree for linkage instead
-of creating a Clang-owned third-party dependency tree. These instrumentation
+of creating an LLVM-owned third-party dependency tree. These instrumentation
 builds live under `build/asan`, `build/tsan`, `build/msan`, `build/fuzz`, and
 `build/opcua-fuzz`; release package targets do not enable sanitizer or fuzzing
 instrumentation.

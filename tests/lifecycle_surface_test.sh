@@ -44,6 +44,8 @@ done
 
 for script in \
   scripts/build.sh \
+  scripts/cpkt-toolchains.sh \
+  scripts/cpkt-llvm.sh \
   scripts/configure-preset.sh \
   scripts/test.sh \
   scripts/package.sh \
@@ -55,6 +57,23 @@ for script in \
   scripts/package-verify.sh; do
   require_script "$script"
 done
+
+require_file_contains \
+  CMakePresets.json \
+  'cmake/toolchains/x86_64-linux-gnu.cmake' \
+  'host Linux presets select the pinned Bootlin collection'
+require_file_contains \
+  CMakePresets.json \
+  'cmake/toolchains/llvm-linux.cmake' \
+  'sanitizer and fuzz presets select pinned LLVM'
+if grep -Eq '"CMAKE_C_COMPILER"[[:space:]]*:[[:space:]]*"clang"' "$repo_root/CMakePresets.json"; then
+  printf 'sanitizer presets must not select host clang\n' >&2
+  exit 1
+fi
+require_file_contains \
+  README.md \
+  'GCC, Clang, and binutils are never Linux fallbacks' \
+  'documented pinned Linux toolchain policy'
 
 grep -Eq '^/dist/$' "$repo_root/.gitignore"
 grep -Eq '^/VERSION$' "$repo_root/.gitignore"

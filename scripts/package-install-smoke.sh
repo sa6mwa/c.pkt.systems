@@ -38,113 +38,38 @@ cpkt_infer_cxx_from_cc() {
   esac
 }
 
-cpkt_ensure_toolchain() {
-  "$repo_root/scripts/ensure-toolchain.sh" "$1"
+cpkt_resolver_value() {
+  resolver_description=$1
+  resolver_key=$2
+  sed -n "s/^${resolver_key}=//p" <<<"$resolver_description" | tail -n 1
 }
 
-cpkt_toolchain_complete() {
-  toolchain_root=$1
-  toolchain_prefix=$2
-  toolchain_sysroot=$3
-
-  [ -x "$toolchain_root/bin/$toolchain_prefix-gcc" ] &&
-    [ -x "$toolchain_root/bin/$toolchain_prefix-g++" ] &&
-    [ -x "$toolchain_root/bin/$toolchain_prefix-ar" ] &&
-    [ -x "$toolchain_root/bin/$toolchain_prefix-ranlib" ] &&
-    [ -f "$toolchain_sysroot/include/stdio.h" ]
+cpkt_resolve_linux_toolchain() {
+  resolver="$repo_root/scripts/cpkt-toolchains.sh"
+  "$resolver" ensure "$1" >/dev/null
+  resolver_description=$("$resolver" discover "$1")
+  if ! grep -Fxq 'source=bootlin' <<<"$resolver_description" ||
+      ! grep -Fxq 'status=ready' <<<"$resolver_description"; then
+    printf 'pinned Bootlin toolchain is not ready for %s\n' "$1" >&2
+    exit 1
+  fi
+  toolchain_root=$(cpkt_resolver_value "$resolver_description" root)
+  toolchain_sysroot=$(cpkt_resolver_value "$resolver_description" sysroot)
+  cc=$(cpkt_resolver_value "$resolver_description" cc)
+  cxx=$(cpkt_resolver_value "$resolver_description" cxx)
 }
 
 case "$target_id" in
-  x86_64-linux-gnu)
-    cc=${CC:-/usr/bin/cc}
-    run_prefix=
-    pkg_config_static_flag=
+  x86_64-linux-gnu|x86_64-linux-musl|aarch64-linux-gnu|aarch64-linux-musl|armhf-linux-gnu|armhf-linux-musl)
+    cpkt_resolve_linux_toolchain "$target_id"
+    cmake_toolchain_file="$repo_root/cmake/toolchains/$target_id.cmake"
     static_extra_libs=
-    ;;
-  x86_64-linux-musl)
-    if [ -n "${CPKT_X86_64_MUSL_PREFIX:-}" ] &&
-        cpkt_toolchain_complete "$CPKT_X86_64_MUSL_PREFIX" x86_64-linux-musl "$CPKT_X86_64_MUSL_PREFIX/x86_64-linux-musl"; then
-      toolchain_root=$CPKT_X86_64_MUSL_PREFIX
-      cc=${CC:-"$toolchain_root/bin/x86_64-linux-musl-gcc"}
-    else
-      toolchain_root=$(cpkt_ensure_toolchain x86_64-linux-musl)
-      cc=${CC:-"$toolchain_root/bin/x86_64-linux-gcc"}
-    fi
-    run_prefix=
-    cmake_toolchain_file="$repo_root/cmake/toolchains/x86_64-linux-musl.cmake"
-    static_extra_libs=
-    ;;
-  aarch64-linux-gnu)
-    if [ -n "${CPKT_AARCH64_GNU_PREFIX:-}" ] &&
-        cpkt_toolchain_complete "$CPKT_AARCH64_GNU_PREFIX" aarch64-linux-gnu "$CPKT_AARCH64_GNU_PREFIX/aarch64-linux-gnu"; then
-      toolchain_root=$CPKT_AARCH64_GNU_PREFIX
-      cc=${CC:-"$toolchain_root/bin/aarch64-linux-gnu-gcc"}
-      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-linux-gnu"
-    elif cpkt_toolchain_complete /usr aarch64-linux-gnu /usr/aarch64-linux-gnu; then
-      toolchain_root=/usr
-      cc=${CC:-/usr/bin/aarch64-linux-gnu-gcc}
-      run_prefix="/usr/bin/qemu-aarch64 -L /usr/aarch64-linux-gnu"
-    else
-      toolchain_root=$(cpkt_ensure_toolchain aarch64-linux-gnu)
-      cc=${CC:-"$toolchain_root/bin/aarch64-linux-gcc"}
-      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-buildroot-linux-gnu/sysroot"
-    fi
-    cmake_toolchain_file="$repo_root/cmake/toolchains/aarch64-linux-gnu.cmake"
-    pkg_config_static_flag=
-    static_extra_libs=
-    ;;
-  armhf-linux-gnu)
-    if [ -n "${CPKT_ARMHF_GNU_PREFIX:-}" ] &&
-        cpkt_toolchain_complete "$CPKT_ARMHF_GNU_PREFIX" arm-linux-gnueabihf "$CPKT_ARMHF_GNU_PREFIX/arm-linux-gnueabihf"; then
-      toolchain_root=$CPKT_ARMHF_GNU_PREFIX
-      cc=${CC:-"$toolchain_root/bin/arm-linux-gnueabihf-gcc"}
-      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-linux-gnueabihf"
-    elif cpkt_toolchain_complete /usr arm-linux-gnueabihf /usr/arm-linux-gnueabihf; then
-      toolchain_root=/usr
-      cc=${CC:-/usr/bin/arm-linux-gnueabihf-gcc}
-      run_prefix="/usr/bin/qemu-arm -L /usr/arm-linux-gnueabihf"
-    else
-      toolchain_root=$(cpkt_ensure_toolchain armhf-linux-gnu)
-      cc=${CC:-"$toolchain_root/bin/arm-linux-gcc"}
-      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-buildroot-linux-gnueabihf/sysroot"
-    fi
-    cmake_toolchain_file="$repo_root/cmake/toolchains/armhf-linux-gnu.cmake"
-    pkg_config_static_flag=
-    static_extra_libs=-latomic
-    ;;
-  aarch64-linux-musl)
-    if [ -n "${CPKT_AARCH64_MUSL_PREFIX:-}" ]; then
-      toolchain_root=$CPKT_AARCH64_MUSL_PREFIX
-      cc=${CC:-"$toolchain_root/bin/aarch64-linux-musl-gcc"}
-      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-linux-musl"
-    elif [ -n "${HOME:-}" ] && [ -x "$HOME/.local/cross/aarch64-linux-musl/bin/aarch64-linux-musl-gcc" ]; then
-      toolchain_root=$HOME/.local/cross/aarch64-linux-musl
-      cc=${CC:-"$toolchain_root/bin/aarch64-linux-musl-gcc"}
-      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-linux-musl"
-    else
-      toolchain_root=$(cpkt_ensure_toolchain aarch64-linux-musl)
-      cc=${CC:-"$toolchain_root/bin/aarch64-linux-gcc"}
-      run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_root/aarch64-buildroot-linux-musl/sysroot"
-    fi
-    cmake_toolchain_file="$repo_root/cmake/toolchains/aarch64-linux-musl.cmake"
-    static_extra_libs=
-    ;;
-  armhf-linux-musl)
-    if [ -n "${CPKT_ARMHF_MUSL_PREFIX:-}" ]; then
-      toolchain_root=$CPKT_ARMHF_MUSL_PREFIX
-      cc=${CC:-"$toolchain_root/bin/arm-linux-musleabihf-gcc"}
-      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-linux-musleabihf"
-    elif [ -n "${HOME:-}" ] && [ -x "$HOME/.local/cross/arm-linux-musleabihf/bin/arm-linux-musleabihf-gcc" ]; then
-      toolchain_root=$HOME/.local/cross/arm-linux-musleabihf
-      cc=${CC:-"$toolchain_root/bin/arm-linux-musleabihf-gcc"}
-      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-linux-musleabihf"
-    else
-      toolchain_root=$(cpkt_ensure_toolchain armhf-linux-musl)
-      cc=${CC:-"$toolchain_root/bin/arm-linux-gcc"}
-      run_prefix="/usr/bin/qemu-arm -L $toolchain_root/arm-buildroot-linux-musleabihf/sysroot"
-    fi
-    cmake_toolchain_file="$repo_root/cmake/toolchains/armhf-linux-musl.cmake"
-    static_extra_libs=-latomic
+    case "$target_id" in
+      x86_64-linux-*) run_prefix= ;;
+      aarch64-linux-*) run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_sysroot" ;;
+      armhf-linux-*) run_prefix="/usr/bin/qemu-arm -L $toolchain_sysroot"; static_extra_libs=-latomic ;;
+    esac
+    case "$target_id" in *-linux-gnu) pkg_config_static_flag= ;; esac
     ;;
   arm64-apple-darwin)
     osxcross_root=${OSXCROSS_ROOT:-"$HOME/.local/cross/osxcross"}
@@ -176,7 +101,7 @@ if [ ! -x "$cc" ]; then
   printf 'compiler for %s is not executable: %s\n' "$target_id" "$cc" >&2
   exit 1
 fi
-cxx=${CXX:-$(cpkt_infer_cxx_from_cc "$cc")}
+cxx=${cxx:-$(cpkt_infer_cxx_from_cc "$cc")}
 case "$target_id" in
   *-linux-*)
     if [ ! -x "$cxx" ]; then

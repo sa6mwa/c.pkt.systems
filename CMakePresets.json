@@ -21,6 +21,7 @@
     {
       "name": "x86_64-linux-gnu-release",
       "inherits": "base",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-gnu.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CPKT_TARGET_ARCH": "x86_64",
@@ -35,6 +36,7 @@
     {
       "name": "debug",
       "inherits": "base",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-gnu.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CPKT_TARGET_ARCH": "x86_64",
@@ -45,6 +47,7 @@
     {
       "name": "asan",
       "inherits": "debug",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
       "cacheVariables": {
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "ON",
@@ -56,6 +59,7 @@
     {
       "name": "tsan",
       "inherits": "debug",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
       "cacheVariables": {
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "ON",
@@ -67,10 +71,10 @@
     {
       "name": "msan",
       "inherits": "debug",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
       "cacheVariables": {
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "ON",
-        "CMAKE_C_COMPILER": "clang",
         "CMAKE_C_FLAGS_DEBUG": "-O1 -g -fno-omit-frame-pointer -fsanitize=memory -fsanitize-memory-track-origins=2",
         "CMAKE_EXE_LINKER_FLAGS_DEBUG": "-fsanitize=memory -fsanitize-memory-track-origins=2",
         "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "-fsanitize=memory -fsanitize-memory-track-origins=2"
@@ -79,8 +83,8 @@
     {
       "name": "fuzz",
       "inherits": "debug",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "clang",
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "ON",
         "CPKT_ENABLE_FUZZING": "ON"
@@ -89,8 +93,8 @@
     {
       "name": "opcua-fuzz",
       "inherits": "debug",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/llvm-linux.cmake",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "clang",
         "CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE": "ON",
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "OFF",
