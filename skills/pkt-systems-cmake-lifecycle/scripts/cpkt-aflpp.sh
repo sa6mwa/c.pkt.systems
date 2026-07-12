@@ -9,7 +9,12 @@ archive_sha256=118415843e5d289d63bd6d8f2252c18212978f15ac9e86acbbc75766cd45acde
 skill_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 bootlin="$skill_dir/scripts/cpkt-toolchains.sh"
 die() { printf 'cpkt-aflpp: %s\n' "$*" >&2; exit 1; }
-cache() { printf '%s\n' "${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}"; }
+cache() {
+  if [[ -n "${CPKT_TOOLCHAIN_CACHE:-}" ]]; then printf '%s\n' "$CPKT_TOOLCHAIN_CACHE"
+  elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then printf '%s/c.pkt.systems/toolchains\n' "$XDG_CACHE_HOME"
+  elif [[ -n "${HOME:-}" ]]; then printf '%s/.cache/c.pkt.systems/toolchains\n' "$HOME"
+  else die 'HOME, XDG_CACHE_HOME, or CPKT_TOOLCHAIN_CACHE is required'; fi
+}
 root() { printf '%s/roots/aflplusplus-%s-x86_64-linux-gnu\n' "$(cache)" "$version"; }
 value() { sed -n "s/^$1=//p" <<<"$2" | tail -1; }
 ready() {

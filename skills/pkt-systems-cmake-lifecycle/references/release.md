@@ -38,7 +38,7 @@ Executable lifecycle tests:
 
 - Add a focused test that asserts `prerelease` and `release` share the same `release-pipeline`, that `release` cleans before invoking it, that ordinary tests run before the matrix, and that release does not bypass the shared pipeline.
 - Add focused tests for checksum-manifest generation and upload-set selection: every release-looking artifact under `dist/` must be checksum-listed, every checksum-listed artifact must exist, and the checksum manifest itself must be included in release uploads.
-- Add focused tests for artifact verification failures that previously could escape until publish time: local source/cache/build path leaks, local `file://` URLs, sanitizer or fuzzer instrumentation markers, non-relocatable RPATH/RUNPATH/install-name metadata, missing dependency manifests, and stale or omitted release artifacts.
+- Add focused tests for artifact verification failures that previously could escape until publish time: local source/cache/build path leaks, local `file://` URLs, hardening or fuzzer instrumentation markers, non-relocatable RPATH/RUNPATH/install-name metadata, missing dependency manifests, and stale or omitted release artifacts.
 - Tests should exercise observable release contracts through the public Make/script surfaces rather than only checking implementation details. Light structural tests are acceptable for target wiring because the target graph is part of the lifecycle contract.
 
 Branch decision:

@@ -122,7 +122,7 @@ Package verification must:
 - Verify no shipped Mach-O dynamic library, module, or executable contains non-system absolute dependency paths such as `/lib`, `/usr/local`, build roots, dependency cache roots, source roots, temporary directories, or home directories. `/usr/lib` and `/System/Library` are the normal allowed absolute system locations.
 - Verify Darwin rpaths are relative loader paths such as `@loader_path` or `@executable_path` when runtime lookup metadata is needed; do not allow absolute non-system Darwin rpaths.
 - Verify no shipped runtime loader metadata contains absolute non-system paths. ELF RPATH/RUNPATH and Darwin install names/dependency paths are release artifacts and must be inspected after extraction.
-- Scan both text and binary files in extracted artifacts. Verify no sanitizer runtime, sanitizer symbols, debug-only paths, generated service state, package-manager build state, credentials, VCS metadata, dependency caches, `$HOME`, repository path, temporary build path, package-manager temporary path, absolute local `file://` URL, or other local path appears in artifacts.
+- Scan both text and binary files in extracted artifacts. Verify no hardening runtime, hardening symbols, debug-only paths, generated service state, package-manager build state, credentials, VCS metadata, dependency caches, `$HOME`, repository path, temporary build path, package-manager temporary path, absolute local `file://` URL, or other local path appears in artifacts.
 - Verify shipped CMake config files give actionable errors for missing external dependencies and include any installed helper modules they call.
 - Verify shipped pkg-config files are relocatable from their installed `lib/pkgconfig` or multiarch path and declare public/private dependencies correctly.
 - For SDKs that bundle static dependency archives, verify extracted downstream consumers link through the shipped CMake imported targets and `pkg-config --static` metadata without consumer-supplied private workaround libraries such as `-ldl`, `-lm`, `-lz`, `-pthread`, platform frameworks, or raw transitive archive lists. The test should fail if removing the metadata would still pass because the consumer hard-codes the closure.
@@ -150,7 +150,7 @@ Runtime path invariant:
 - Shipped Linux and other ELF artifacts must never contain absolute RPATH/RUNPATH entries, dependency cache paths, build directories, source directories, temporary directories, or workstation-local paths.
 - Prefer no RPATH/RUNPATH when the artifact does not need one.
 - When runtime lookup metadata is needed, use `$ORIGIN` or `$ORIGIN/<relative-lib-dir>` so the artifact is relocatable inside the extracted SDK.
-- Package verification must inspect every shipped executable and shared object with `readelf -d` or an equivalent tool and fail on absolute paths, local paths, sanitizer runtime dependencies, or non-relocatable runpaths.
+- Package verification must inspect every shipped executable and shared object with `readelf -d` or an equivalent tool and fail on absolute paths, local paths, hardening runtime dependencies, or non-relocatable runpaths.
 - Discover ELF inspection tools from configured build state before `PATH` when cross targets are involved. Prefer configured values such as `CMAKE_READELF`, then target-prefixed sibling tools next to `CMAKE_C_COMPILER`, then `readelf` or an equivalent tool on `PATH`.
 - Do not rely on CMake defaults for this. Set install/build RPATH policy explicitly for shipped targets and test the installed package tree, not only the build tree.
 

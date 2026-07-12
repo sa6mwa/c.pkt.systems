@@ -19,4 +19,8 @@ if PATH="$fake_bin:$PATH" "$resolver" ensure >/dev/null 2>&1; then
   fail 'resolver accepted a non-native host'
 fi
 
+if env -u HOME -u XDG_CACHE_HOME -u CPKT_TOOLCHAIN_CACHE "$resolver" discover >/dev/null 2>&1; then
+  fail 'resolver accepted a missing cache root'
+fi
+
 printf 'AFL++ resolver tests passed\n'

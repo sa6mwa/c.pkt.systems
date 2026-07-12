@@ -99,7 +99,7 @@ Mandatory surfaces:
 - Make command surface.
 - Dependency acquisition from `c.pkt.systems` SDK bundles.
 - Fast host tests.
-- Sanitizer tests.
+- Native Valgrind memory-check tests.
 - Release target matrix.
 - Binary SDK packaging.
 - Checksums.
