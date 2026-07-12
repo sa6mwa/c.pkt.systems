@@ -76,5 +76,6 @@ require_line "asan_runtime=$cache/roots/llvm-22.1.6-linux-x64/lib/clang/22/lib/x
 llvm_env=$(CPKT_TOOLCHAIN_CACHE="$cache" "$llvm_resolver" env)
 printf '%s\n' "$llvm_env" | grep -Fq "export CC=$cache/roots/llvm-22.1.6-linux-x64/bin/clang" || fail 'LLVM env did not export the pinned compiler'
 printf '%s\n' "$llvm_env" | grep -Fq "export AR=$cache/roots/llvm-22.1.6-linux-x64/bin/llvm-ar" || fail 'LLVM env did not export the pinned archiver'
+printf '%s\n' "$llvm_env" | grep -Fq "export LDFLAGS=-fuse-ld=$cache/roots/llvm-22.1.6-linux-x64/bin/ld.lld" || fail 'LLVM env did not force the pinned linker'
 
 printf 'toolchain resolver tests passed\n'

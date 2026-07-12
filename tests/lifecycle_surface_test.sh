@@ -66,6 +66,14 @@ require_file_contains \
   CMakePresets.json \
   'cmake/toolchains/llvm-linux.cmake' \
   'sanitizer and fuzz presets select pinned LLVM'
+require_file_contains \
+  cmake/toolchains/llvm-linux.cmake \
+  'CMAKE_EXE_LINKER_FLAGS_INIT "-fuse-ld=\${_cpkt_ld}"' \
+  'LLVM CMake builds force the pinned linker through the Clang driver'
+require_file_contains \
+  scripts/cpkt-llvm.sh \
+  'CPKT_LLVM_LINKER_FLAGS' \
+  'LLVM shell environment exports the pinned linker driver flags'
 if grep -Eq '"CMAKE_C_COMPILER"[[:space:]]*:[[:space:]]*"clang"' "$repo_root/CMakePresets.json"; then
   printf 'sanitizer presets must not select host clang\n' >&2
   exit 1

@@ -68,7 +68,7 @@ function(project_configure_bootlin_toolchain target_id)
   if(NOT result EQUAL 0)
     message(FATAL_ERROR "Unable to inspect the pinned Bootlin toolchain: ${error}")
   endif()
-  foreach(key cc cxx ld ar ranlib strip nm objcopy objdump addr2line readelf sysroot target_triple root)
+  foreach(key cc cxx ld ar ranlib strip nm objcopy objdump addr2line readelf sysroot root)
     string(REGEX MATCH "${key}=([^\r\n]+)" match "${description}")
     if(NOT match)
       message(FATAL_ERROR "Bootlin resolver did not report ${key} for ${target_id}")
@@ -77,8 +77,6 @@ function(project_configure_bootlin_toolchain target_id)
   endforeach()
   set(CMAKE_C_COMPILER "${bootlin_cc}" CACHE FILEPATH "" FORCE)
   set(CMAKE_CXX_COMPILER "${bootlin_cxx}" CACHE FILEPATH "" FORCE)
-  set(CMAKE_C_COMPILER_TARGET "${bootlin_target_triple}" CACHE STRING "" FORCE)
-  set(CMAKE_CXX_COMPILER_TARGET "${bootlin_target_triple}" CACHE STRING "" FORCE)
   set(CMAKE_LINKER "${bootlin_ld}" CACHE FILEPATH "" FORCE)
   set(CMAKE_AR "${bootlin_ar}" CACHE FILEPATH "" FORCE)
   set(CMAKE_RANLIB "${bootlin_ranlib}" CACHE FILEPATH "" FORCE)
@@ -99,7 +97,7 @@ endfunction()
 
 For a cross target, the enclosing toolchain file must additionally set `CMAKE_SYSTEM_NAME` to `Linux`, set the target processor, and use `CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY` before calling the function.
 
-For ASan, MSan, or libFuzzer, replace every applicable value with the output from `cpkt-llvm.sh discover`: `clang`, `clang++`, `ld.lld`, `llvm-ar`, `llvm-ranlib`, `llvm-nm`, `llvm-objcopy`, `llvm-objdump`, and `llvm-readelf`. LLVM 22.1.6 is intentionally pinned because its installed size is substantial and the shared cache must avoid accumulating project-specific versions.
+For ASan, MSan, or libFuzzer, replace every applicable value with the output from `cpkt-llvm.sh discover`: `clang`, `clang++`, `ld.lld`, `llvm-ar`, `llvm-ranlib`, `llvm-nm`, `llvm-objcopy`, `llvm-objdump`, and `llvm-readelf`. CMake toolchain files must also pass `-fuse-ld=<resolved ld.lld>` through executable, shared-library, and module linker flags. Shell consumers of `eval "$(cpkt-llvm.sh env)"` receive the same driver flag in `LDFLAGS`; exporting `LD` alone does not route Clang through `ld.lld`. The LLVM resolver selects the official 22.1.6 X64 or ARM64 Linux archive from the running host architecture and refuses unsupported Linux hosts before downloading. LLVM 22.1.6 is intentionally pinned because its installed size is substantial and the shared cache must avoid accumulating project-specific versions.
 
 Assert collection integrity in the downstream bootstrap: the C compiler's reported linker must be inside the selected compiler root, and its libc must be inside the selected sysroot. This prevents an accidental host linker or host libc from entering an otherwise cross-target build.
 
