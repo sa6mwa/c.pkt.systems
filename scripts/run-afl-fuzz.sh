@@ -10,6 +10,7 @@ mode=$1
 target=$2
 seed_dir=$3
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+bash "$repo_root/scripts/require-native-hardening-host.sh" afl++
 
 case "$mode" in
   smoke) duration=2 ;;

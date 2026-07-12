@@ -102,7 +102,7 @@ Valgrind Memcheck is the first-class native memory hardening gate.
 
 Contract:
 
-- `valgrind` builds a native Bootlin debug facade subset and runs it with leak checking, origin tracking, and a nonzero error exit code.
+- `valgrind` builds a native x86_64 Linux Bootlin debug facade subset and runs it with leak checking, origin tracking, and a nonzero error exit code. It must not run through cross-compilation, emulation, or QEMU.
 - The gate runs serially and fails clearly when the host has not installed Valgrind.
 - Valgrind does not provide true MemorySanitizer coverage; document that boundary rather than claiming MSan equivalence.
 - Release package verification must fail if hardening runtime paths or build paths appear in shipped artifacts.
@@ -115,7 +115,7 @@ Enable fuzzing when the project parses, frames, serializes, accepts untrusted by
 Contract:
 
 - `fuzz/` or `tests/fuzz/` contains fuzz targets and seeds.
-- `fuzz` preset builds with the selected engine; the Bootlin GCC lifecycle selects pinned AFL++ GCC-plugin instrumentation.
+- `fuzz` preset builds with the selected engine; the Bootlin GCC lifecycle selects pinned AFL++ GCC-plugin instrumentation. It runs only on the native x86_64 Linux host, never through cross-compilation, emulation, or QEMU.
 - `make fuzz-smoke` runs bounded short jobs suitable for `prerelease`, `prerelease-hardening`, or `release` when fuzzing is part of the release gate.
 - `make fuzz` runs standard bounded local jobs.
 - `make fuzz-long` is opt-in and may run longer.

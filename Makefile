@@ -175,6 +175,7 @@ cpktxscribe:
 	@printf 'built: %s\n' "$$(pwd)/build/debug/tools/cpktxscribe"
 
 valgrind:
+	bash ./scripts/require-native-hardening-host.sh valgrind
 	@command -v valgrind >/dev/null || { printf 'valgrind is required for make valgrind; install it with the host OS package manager\n' >&2; exit 1; }
 	$(CMAKE) --preset valgrind
 	$(CMAKE) --build --preset valgrind

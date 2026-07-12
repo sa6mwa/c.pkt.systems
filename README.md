@@ -396,18 +396,19 @@ make valgrind
 make fuzz-smoke
 ```
 
-`valgrind` is the required native Memcheck gate for the repo-owned facade test
+`valgrind` is the required native x86_64 Linux Memcheck gate for the repo-owned facade test
 surface. AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
 plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
 runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
 dependency install tree for linkage. These hardening builds live under
 `build/valgrind`, `build/fuzz`, and `build/opcua-fuzz`; release package targets
-do not enable Valgrind or fuzzing.
+do not enable Valgrind or fuzzing. Valgrind and AFL++ never run via a cross
+target, emulator, or QEMU.
 instrumentation.
 
 `clang-format` and `clangd` are required host development tools and must be
 installed with the host OS package manager. `make clangd-surface` configures the debug compile database, verifies that the
 public strict Lua facade declarations have adjacent Doxygen comments for LSP
 hover text, and checks that the shipped examples are present in
-`compile_commands.json`. When `clangd` is installed, the same target also runs
+`compile_commands.json`. The same target also runs
 `clangd --check` against the examples using that compile database.
