@@ -35,9 +35,9 @@ require_file_contains() {
 for target in \
   help deps-debug deps-release deps-cross build build-debug build-release \
   build-host cross-build test test-debug test-host test-cross cross-test test-all \
-  test-install-tree valgrind fuzz-smoke fuzz package package-source \
+  test-install-tree valgrind fuzz-smoke fuzz fuzz-long package package-source \
   package-source-smoke package-checksums package-verify verify-release-archives \
-  verify-release-privacy release-matrix finalize-slice prerelease \
+  verify-release-privacy release-matrix finalize-slice prerelease prerelease-live \
   prerelease-hardening release print-release-version format clean clean-dist; do
   require_help_target "$target"
 done
@@ -47,6 +47,7 @@ for script in \
   scripts/cpkt-toolchains.sh \
   scripts/cpkt-aflpp.sh \
   scripts/configure-preset.sh \
+  scripts/fuzz.sh \
   scripts/test.sh \
   scripts/package.sh \
   scripts/run_linux_release_matrix.sh \
@@ -78,10 +79,34 @@ require_file_contains \
 grep -Eq '^/dist/$' "$repo_root/.gitignore"
 grep -Eq '^/VERSION$' "$repo_root/.gitignore"
 grep -Eq '^release-matrix:.*package-checksums.*package-verify' "$repo_root/Makefile"
-grep -Eq '^prerelease:.*format.*debug.*clangd-surface.*valgrind.*fuzz-smoke' "$repo_root/Makefile" || {
-  printf 'prerelease must include formatting, debug, clangd, Valgrind, and AFL++ smoke coverage\n' >&2
+grep -Eq '^release-pipeline:.*format.*debug.*clangd-surface.*valgrind.*fuzz-smoke.*release-matrix' "$repo_root/Makefile" || {
+  printf 'release-pipeline must run ordinary checks before the release matrix\n' >&2
   exit 1
 }
+grep -Eq '^prerelease:[[:space:]]+release-pipeline[[:space:]]*$' "$repo_root/Makefile" || {
+  printf 'prerelease must invoke the shared release-pipeline\n' >&2
+  exit 1
+}
+grep -Eq '^release:[[:space:]]+clean[[:space:]]+release-pipeline[[:space:]]*$' "$repo_root/Makefile" || {
+  printf 'release must clean before invoking the shared release-pipeline\n' >&2
+  exit 1
+}
+grep -Eq '^prerelease-hardening:[[:space:]]+prerelease[[:space:]]+fuzz[[:space:]]*$' "$repo_root/Makefile" || {
+  printf 'prerelease-hardening must extend prerelease with standard native fuzzing\n' >&2
+  exit 1
+}
+require_file_contains \
+  scripts/run-afl-fuzz.sh \
+  'smoke\|standard\|long' \
+  'AFL++ runner supports the long fuzz mode'
+if make -C "$repo_root" prerelease-live >/dev/null 2>&1; then
+  printf 'prerelease-live must refuse external-provider checks without CPKT_LIVE_CHECKS=1\n' >&2
+  exit 1
+fi
+if make -C "$repo_root" fuzz-long >/dev/null 2>&1; then
+  printf 'fuzz-long must require CPKT_FUZZ_LONG_ENABLE=1\n' >&2
+  exit 1
+fi
 require_file_contains \
   scripts/package.sh \
   'x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release' \
@@ -119,8 +144,8 @@ require_file_contains \
   '"CPKT_BUILD_DEPENDENCIES": "OFF"' \
   'fuzz presets do not build third-party dependency trees'
 require_file_contains \
-  Makefile \
-  '\$\(CMAKE\) --build --preset debug --target cpkt_opcua_static' \
+  scripts/fuzz.sh \
+  '\$cmake" --build --preset debug --target cpkt_opcua_static' \
   'fuzz gates prepare the normal OPC UA facade dependency prerequisite before AFL++ fuzzing'
 require_file_contains \
   scripts/configure-preset.sh \

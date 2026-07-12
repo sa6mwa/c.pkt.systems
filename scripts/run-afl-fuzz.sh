@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
-  printf 'usage: %s <smoke|standard> <target> <seed-dir>\n' "$0" >&2
+  printf 'usage: %s <smoke|standard|long> <target> <seed-dir>\n' "$0" >&2
   exit 2
 fi
 
@@ -15,7 +15,15 @@ bash "$repo_root/scripts/require-native-hardening-host.sh" afl++
 case "$mode" in
   smoke) duration=2 ;;
   standard) duration=30 ;;
+  long) duration=${CPKT_AFLPP_LONG_DURATION_SECONDS:-300} ;;
   *) printf 'unknown AFL++ duration mode: %s\n' "$mode" >&2; exit 2 ;;
+esac
+
+case "$duration" in
+  ''|*[!0-9]*|0)
+    printf 'AFL++ duration must be a positive integer number of seconds: %s\n' "$duration" >&2
+    exit 2
+    ;;
 esac
 
 [ -x "$target" ] || { printf 'AFL++ target is not executable: %s\n' "$target" >&2; exit 1; }

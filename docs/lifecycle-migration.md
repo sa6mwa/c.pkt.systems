@@ -1,6 +1,6 @@
 # Lifecycle Migration Ledger
 
-This repository is being aligned to the pkt.systems C/CMake lifecycle while preserving the shipped C SDK behavior, public C headers, package names, and release target set.
+This repository is aligned to the pkt.systems C/CMake lifecycle while preserving the shipped C SDK behavior, public C headers, package names, and release target set.
 
 | Old command or behavior | Lifecycle surface | Behavior preserved | Verification |
 | --- | --- | --- | --- |
@@ -8,9 +8,6 @@ This repository is being aligned to the pkt.systems C/CMake lifecycle while pres
 | Generated-state removal lived directly in `Makefile`. | `scripts/clean.sh`. | `make clean` removes `build/`, `.cache/`, and `dist/`; `make clean-dist` removes `dist/` only. | `tests/lifecycle_surface_test.sh`. |
 | No standard `finalize-slice`, `format`, `print-release-version`, `build-host`, `test-host`, `cross-build`, `test-cross`, or `test-install-tree` surface. | Standard lifecycle Make vocabulary. | Existing debug, release, package, and install-tree verification behavior is exposed through lifecycle names. | `tests/lifecycle_surface_test.sh`. |
 | Checksum verification was available as `package-checksums` but not explicitly named in `release-matrix`. | Release matrix checksum surface. | Release matrix now names package, source archive, checksum, and package verification stages explicitly. | `tests/lifecycle_surface_test.sh`; `scripts/verify-dist-manifest.sh`. |
+| `prerelease` was a source-only confidence gate and `release` bypassed its proof. | Shared internal `release-pipeline`. | `prerelease` now executes the complete package-producing proof graph without a clean; `release` cleans first and invokes the same graph. | `tests/lifecycle_surface_test.sh`; `make prerelease`; `make release`. |
+| Native fuzzing had smoke and standard modes but no standard extended surface; external checks had no lifecycle gate. | `fuzz-long` and fail-closed `prerelease-live` targets. | Existing AFL++ targets and external e2e workflows remain available behind explicit opt-ins. | `tests/lifecycle_surface_test.sh`; `scripts/fuzz.sh`; `scripts/run-afl-fuzz.sh`. |
 | Static archive PIC coverage existed in build and package checks but was not tied to lifecycle surface regression. | Lifecycle smoke asserts both build-tree and install-tree static archive PIC smoke coverage. | `.a` archives for bundled deps and facades remain usable from shared-library consumers across the release matrix. | `static_archive_pic_link`; `scripts/package-install-smoke.sh`; `tests/lifecycle_surface_test.sh`. |
-
-Open lifecycle work:
-
-- Continue replacing any future bespoke orchestration with standard script surfaces before adding new Make targets.
-- Keep this ledger until the release process has completed with the lifecycle skill and the engineer decides whether to retain it as durable documentation.

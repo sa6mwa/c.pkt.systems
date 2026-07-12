@@ -52,11 +52,19 @@ local-osxcross-only and does not download an Apple SDK.
 ## Release Workflow
 
 ```sh
+make prerelease
 make release
 ```
 
-This builds each dependency tree, runs the ABI/link smoke tests where the target
-can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
+`make prerelease` runs the complete release proof graph without first deleting
+generated state: formatting, deterministic debug and clangd checks, native
+Valgrind and AFL++ smoke checks, then the release matrix. It therefore produces
+and verifies the same package set as the final gate. `make release` removes
+generated state first and then invokes that exact same proof graph; it is the
+final local release action.
+
+The release matrix builds each dependency tree, runs the ABI/link smoke tests
+where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
 writes `dist/c.pkt.systems-<version>.tar.gz` for source builds, writes
 `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
 Package verification also extracts each binary tarball and builds downstream
@@ -394,6 +402,7 @@ make debug
 make clangd-surface
 make valgrind
 make fuzz-smoke
+make fuzz
 ```
 
 `valgrind` is the required native x86_64 Linux Memcheck gate for the repo-owned facade test
@@ -401,10 +410,13 @@ surface. AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
 plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
 runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
 dependency install tree for linkage. These hardening builds live under
-`build/valgrind`, `build/fuzz`, and `build/opcua-fuzz`; release package targets
-do not enable Valgrind or fuzzing. Valgrind and AFL++ never run via a cross
-target, emulator, or QEMU.
-instrumentation.
+`build/valgrind`, `build/fuzz`, and `build/opcua-fuzz`; they are part of the
+shared prerelease and release proof graph and never instrument release package
+artifacts. Valgrind and AFL++ never run via a cross target, emulator, or QEMU.
+
+`make fuzz-long` is an opt-in extended native fuzz run and requires
+`CPKT_FUZZ_LONG_ENABLE=1`. External-provider checks are likewise separate from
+the deterministic release gate: `CPKT_LIVE_CHECKS=1 make prerelease-live`.
 
 `clang-format` and `clangd` are required host development tools and must be
 installed with the host OS package manager. `make clangd-surface` configures the debug compile database, verifies that the
