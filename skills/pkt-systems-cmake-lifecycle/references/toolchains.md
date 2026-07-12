@@ -100,6 +100,27 @@ For a cross target, the enclosing toolchain file must additionally set `CMAKE_SY
 
 For AFL++ fuzzing, first configure the ordinary Bootlin x86_64 collection, then resolve the pinned AFL++ wrapper. The wrapper must export `AFL_CC`/`AFL_CXX` as the matching Bootlin drivers and `AFL_PATH` as the cached helper root before it invokes `afl-gcc-fast` or `afl-g++-fast`. Fuzzing is native x86_64 Linux-only: no cross target, emulator, or QEMU runner is permitted.
 
+An AFL++ CMake toolchain file must call the Bootlin setup before `project()`, then replace only the C/C++ compiler drivers with the resolver-reported wrappers. Keep the linker and all binary utilities from Bootlin:
+
+```cmake
+cpkt_configure_bootlin_toolchain(x86_64-linux-gnu)
+execute_process(COMMAND "${CMAKE_SOURCE_DIR}/scripts/cpkt-aflpp.sh" discover
+  RESULT_VARIABLE result OUTPUT_VARIABLE description ERROR_VARIABLE error)
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "Unable to provision pinned AFL++: ${error}")
+endif()
+foreach(key cc cxx helper root)
+  string(REGEX MATCH "${key}=([^\r\n]+)" match "${description}")
+  if(NOT match)
+    message(FATAL_ERROR "AFL++ resolver did not report ${key}")
+  endif()
+  set(afl_${key} "${CMAKE_MATCH_1}")
+endforeach()
+set(ENV{AFL_PATH} "${afl_helper}")
+set(CMAKE_C_COMPILER "${afl_cc}" CACHE FILEPATH "" FORCE)
+set(CMAKE_CXX_COMPILER "${afl_cxx}" CACHE FILEPATH "" FORCE)
+```
+
 Assert collection integrity in the downstream bootstrap: the C compiler's reported linker must be inside the selected compiler root, and its libc must be inside the selected sysroot. This prevents an accidental host linker or host libc from entering an otherwise cross-target build.
 
 ## C89 CMake Policy

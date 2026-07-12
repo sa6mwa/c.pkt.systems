@@ -27,7 +27,7 @@ ready() {
 ensure() {
   [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is native Linux-only'
   case "$(uname -m)" in x86_64|amd64) ;; *) die "native x86_64 Linux is required; no cross, emulator, or QEMU runner is supported";; esac
-  local r c archive desc cc cxx br tmp src
+  local r c archive desc cc cxx br tmp src dl
   r=$(root); c=$(cache); archive="$c/archives/$archive_name"
   ready "$r" && return
   [[ -x "$bootlin" ]] || die "Bootlin resolver missing: $bootlin"
@@ -37,11 +37,13 @@ ensure() {
   [[ -x "$cc" && -x "$cxx" && -f "$br/include/gmp.h" ]] || die 'Bootlin GCC plugin headers are incomplete'
   mkdir -p "$c/archives"
   if ! [[ -f "$archive" ]] || ! printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum -c - >/dev/null 2>&1; then
-    rm -f "$archive"; local dl="$archive.tmp.$$"
-    if command -v curl >/dev/null; then curl -fL --retry 3 --connect-timeout 20 -o "$dl" "https://github.com/AFLplusplus/AFLplusplus/archive/refs/tags/v${version}.tar.gz";
-    elif command -v wget >/dev/null; then wget -O "$dl" "https://github.com/AFLplusplus/AFLplusplus/archive/refs/tags/v${version}.tar.gz";
+    rm -f "$archive"; dl="$archive.tmp.$$"
+    if command -v curl >/dev/null; then
+      curl -fL --retry 3 --connect-timeout 20 -o "$dl" "https://github.com/AFLplusplus/AFLplusplus/archive/refs/tags/v${version}.tar.gz" || { rm -f "$dl"; die 'AFL++ download failed'; }
+    elif command -v wget >/dev/null; then
+      wget -O "$dl" "https://github.com/AFLplusplus/AFLplusplus/archive/refs/tags/v${version}.tar.gz" || { rm -f "$dl"; die 'AFL++ download failed'; }
     else die 'curl or wget is required to download AFL++'; fi
-    printf '%s  %s\n' "$archive_sha256" "$dl" | sha256sum -c - >/dev/null || die 'AFL++ checksum mismatch'
+    printf '%s  %s\n' "$archive_sha256" "$dl" | sha256sum -c - >/dev/null || { rm -f "$dl"; die 'AFL++ checksum mismatch'; }
     mv "$dl" "$archive"
   fi
   tmp="$c/.aflplusplus.$$"; trap 'rm -rf "${tmp:-}"' EXIT HUP INT TERM
@@ -67,4 +69,9 @@ ensure() {
 
 report() { ensure; local r=$(root); printf 'version=%s\ncache=%s\nsource=aflplusplus\nroot=%s\nafl_fuzz=%s\nafl_showmap=%s\ncc=%s\ncxx=%s\nhelper=%s\n' "$version" "$(cache)" "$r" "$r/bin/afl-fuzz" "$r/bin/afl-showmap" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/lib/afl"; }
 env_out() { local d cc cxx r; ensure; d=$("$bootlin" discover x86_64-linux-gnu); cc=$(value cc "$d"); cxx=$(value cxx "$d"); r=$(root); printf 'export CPKT_AFLPP_ROOT=%q\nexport AFL_PATH=%q\nexport AFL_CC=%q\nexport AFL_CXX=%q\nexport CC=%q\nexport CXX=%q\n' "$r" "$r/lib/afl" "$cc" "$cxx" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++"; }
-case "${1:-}" in ensure) ensure;; discover) report;; env) env_out;; *) die 'usage: cpkt-aflpp.sh {ensure|discover|env}';; esac
+case "${1:-}" in
+  ensure) [[ $# -eq 1 ]] || die 'usage: cpkt-aflpp.sh ensure'; ensure;;
+  discover) [[ $# -eq 1 ]] || die 'usage: cpkt-aflpp.sh discover'; report;;
+  env) [[ $# -eq 1 ]] || die 'usage: cpkt-aflpp.sh env'; env_out;;
+  *) die 'usage: cpkt-aflpp.sh {ensure|discover|env}';;
+esac

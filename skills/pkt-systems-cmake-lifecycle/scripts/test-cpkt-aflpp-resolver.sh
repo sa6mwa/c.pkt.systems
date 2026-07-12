@@ -23,4 +23,8 @@ if env -u HOME -u XDG_CACHE_HOME -u CPKT_TOOLCHAIN_CACHE "$resolver" discover >/
   fail 'resolver accepted a missing cache root'
 fi
 
+if "$resolver" ensure extra >/dev/null 2>&1; then
+  fail 'resolver accepted an invalid command shape'
+fi
+
 printf 'AFL++ resolver tests passed\n'
