@@ -33,7 +33,7 @@ This skill is the process authority. It must not require external example reposi
 - `dist/` is generated output, not the release manifest. Release uploads must come from a verified checksum or manifest file.
 - Git commits created by this workflow use Conventional Commits.
 - Local CI/CD is the default operating model. Do not scaffold or require remote CI/CD or GitHub Actions unless the engineer explicitly asks.
-- Toolchain resolution is lifecycle-owned. C/C++ compiler discovery, automatic download, cache layout, static C++ runtime metadata, and downstream setup must follow [references/toolchains.md](references/toolchains.md) and use the shared cache root `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`. Do not create project-specific toolchain cache directories.
+- Toolchain resolution is lifecycle-owned. Every Linux build uses a complete pinned Bootlin GCC collection, including compiler, linker, binutils, libc, headers, and C++ runtime; never select a host compiler or host binutils fallback. ASan, MSan, and libFuzzer use the separately pinned LLVM 22.1.6 collection, never host Clang. C/C++ compiler discovery, automatic download, cache layout, static C++ runtime metadata, C89 compiler policy, and downstream setup must follow [references/toolchains.md](references/toolchains.md) and use the shared cache root `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`. Do not create project-specific toolchain cache directories.
 
 ## Operating Posture
 
@@ -82,12 +82,15 @@ Suggested starting sets:
 
 ## Toolchain Command Surface
 
-Use `scripts/cpkt-toolchains.sh` from this skill to inspect or provision cpkt compiler collections:
+Use `scripts/cpkt-toolchains.sh` from this skill to inspect or provision the pinned Bootlin Linux compiler collections. Use `scripts/cpkt-llvm.sh` only for sanitizer or libFuzzer builds that require compiler-rt:
 
 ```sh
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <target|all>
 eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env <target>)"
+
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-llvm.sh ensure
+eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-llvm.sh env)"
 ```
 
 Downstream projects may vendor or call this lifecycle script, but the policy and cache root stay identical across pkt.systems C projects.
