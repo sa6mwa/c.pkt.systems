@@ -3,10 +3,10 @@
 #include <stddef.h>
 
 #include <curl/curl.h>
+#include <lauxlib.h>
 #include <libssh2.h>
 #include <libxml/parser.h>
 #include <lua.h>
-#include <lauxlib.h>
 #include <lualib.h>
 #include <miniaudio.h>
 #include <nghttp2/nghttp2.h>

@@ -59,11 +59,13 @@ int lua_istable(lua_State *state, int index);
 int lua_isfunction(lua_State *state, int index);
 void lua_setfield(lua_State *state, int index, const char *name);
 void lua_getfield(lua_State *state, int index, const char *name);
-void lua_pushfstring(lua_State *state, const char *fmt, const char *a, const char *b);
+void lua_pushfstring(lua_State *state, const char *fmt, const char *a,
+                     const char *b);
 void *lua_newuserdata(lua_State *state, size_t size);
 void lua_pushcclosure(lua_State *state, lua_CFunction fn, int n);
 int lua_error(lua_State *state);
-void lua_sethook(lua_State *state, void (*hook)(lua_State *, lua_Debug *), int mask, int count);
+void lua_sethook(lua_State *state, void (*hook)(lua_State *, lua_Debug *),
+                 int mask, int count);
 lua_State *lua_tothread(lua_State *state, int index);
 void lua_xmove(lua_State *from, lua_State *to, int n);
 int lua_resume(lua_State *state, lua_State *from, int nargs, int *nresults);

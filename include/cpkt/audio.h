@@ -204,7 +204,8 @@ typedef struct cpkt_audio_encoder_config {
   unsigned long channels;
 } cpkt_audio_encoder_config;
 
-/** Capture construction options. Zero initializes to default mic, mono 16 kHz. */
+/** Capture construction options. Zero initializes to default mic, mono 16 kHz.
+ */
 typedef struct cpkt_audio_capture_config {
   /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
   int backend;
@@ -218,7 +219,8 @@ typedef struct cpkt_audio_capture_config {
   void *state_user;
 } cpkt_audio_capture_config;
 
-/** Playback construction options. Zero initializes to default output, mono 16 kHz. */
+/** Playback construction options. Zero initializes to default output, mono 16
+ * kHz. */
 typedef struct cpkt_audio_playback_config {
   /** cpkt_audio_device_backend value. Zero selects automatic backend choice. */
   int backend;
@@ -230,7 +232,8 @@ typedef struct cpkt_audio_playback_config {
 
 #ifndef CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
 #define CPKT_AUDIO_VOX_SEGMENT_TYPEDEF
-/** Pullable VOX segment delivered when speech releases or a budget is reached. */
+/** Pullable VOX segment delivered when speech releases or a budget is reached.
+ */
 typedef struct cpkt_audio_vox_segment cpkt_audio_vox_segment;
 #endif
 
@@ -393,7 +396,8 @@ struct cpkt_audio_encoder {
    * failed while the backend patched or flushed the output.
    */
   cpkt_audio_result (*close)(cpkt_audio_encoder *self);
-  /** Finalizes and releases the encoder and all resources owned by the handle. */
+  /** Finalizes and releases the encoder and all resources owned by the handle.
+   */
   void (*destroy)(cpkt_audio_encoder *self);
 };
 
@@ -471,7 +475,8 @@ struct cpkt_audio_vox {
    * Ends the stream and emits any open speech segment as a final segment.
    */
   cpkt_audio_result (*flush)(cpkt_audio_vox *self);
-  /** Releases the VOX handle and any memory or temporary-file segment storage. */
+  /** Releases the VOX handle and any memory or temporary-file segment storage.
+   */
   void (*destroy)(cpkt_audio_vox *self);
 };
 
@@ -494,7 +499,8 @@ struct cpkt_audio_ptt {
   cpkt_audio_result (*release)(cpkt_audio_ptt *self);
   /** Ends the stream and emits any open PTT segment as final. */
   cpkt_audio_result (*flush)(cpkt_audio_ptt *self);
-  /** Releases the PTT handle and any memory or temporary-file segment storage. */
+  /** Releases the PTT handle and any memory or temporary-file segment storage.
+   */
   void (*destroy)(cpkt_audio_ptt *self);
 };
 

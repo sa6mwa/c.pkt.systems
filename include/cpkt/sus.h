@@ -162,7 +162,8 @@ typedef struct cpkt_sus_segment {
   long t1;
 } cpkt_sus_segment;
 
-/** Committed streaming transcript state delivered after a VOX segment closes. */
+/** Committed streaming transcript state delivered after a VOX segment closes.
+ */
 typedef struct cpkt_sus_segmented_event {
   /** Cumulative session transcript owned by the facade during the callback. */
   const char *text;
@@ -240,7 +241,7 @@ typedef int (*cpkt_sus_segment_sink)(const cpkt_sus_segment *segment,
  * after the active backend call completes.
  */
 typedef int (*cpkt_sus_segmented_sink)(const cpkt_sus_segmented_event *event,
-                                      void *user);
+                                       void *user);
 
 /** Receives backend or facade progress in percent. Return non-zero to fail. */
 typedef int (*cpkt_sus_progress_sink)(int progress, void *user);
@@ -496,9 +497,9 @@ cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
                                      const cpkt_sus_cache_config *config);
 
 /** Creates a transcriber bound to an opened instance. */
-cpkt_sus_result cpkt_sus_create_transcriber(
-    cpkt_sus *sus, cpkt_sus_transcriber **out,
-    const cpkt_sus_transcriber_config *config);
+cpkt_sus_result
+cpkt_sus_create_transcriber(cpkt_sus *sus, cpkt_sus_transcriber **out,
+                            const cpkt_sus_transcriber_config *config);
 
 /**
  * Resets instance-level segmented transcript spacing state.

@@ -20,7 +20,8 @@ int main(int argc, char **argv) {
     fprintf(stderr, "failed to open %s: %s\n", argv[1], strerror(errno));
     return 2;
   }
-  if (fseek(input, 0, SEEK_END) != 0 || (length = ftell(input)) < 0 || fseek(input, 0, SEEK_SET) != 0) {
+  if (fseek(input, 0, SEEK_END) != 0 || (length = ftell(input)) < 0 ||
+      fseek(input, 0, SEEK_SET) != 0) {
     fclose(input);
     return 2;
   }

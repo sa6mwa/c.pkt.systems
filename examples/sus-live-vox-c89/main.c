@@ -314,25 +314,26 @@ cpkt_sus_live_print_startup(const struct cpkt_sus_live_options *opts) {
             "status source=default-capture mode=%s model=%s cache=%s "
             "cache_state=%s language=%s threshold=%.3f hang_ms=%lu "
             "prebuffer_ms=%lu\n",
-            opts->ptt ? "ptt" : "vox", opts->model != NULL ? opts->model : "tiny",
-            cache_path, cache_state,
+            opts->ptt ? "ptt" : "vox",
+            opts->model != NULL ? opts->model : "tiny", cache_path, cache_state,
             opts->language != NULL ? opts->language : "auto",
             (double)cpkt_sus_live_threshold(opts), opts->hang_ms,
             opts->prebuffer_ms);
     if (strcmp(cache_state, "download") == 0) {
-      fprintf(stderr, "status model_cache=download model=%s cache=%s source=%s\n",
-              opts->model != NULL ? opts->model : "tiny", cache_path,
-              opts->source_url != NULL ? opts->source_url
-                                       : (entry.source_url != NULL
-                                              ? entry.source_url
-                                              : "(unknown)"));
+      fprintf(
+          stderr, "status model_cache=download model=%s cache=%s source=%s\n",
+          opts->model != NULL ? opts->model : "tiny", cache_path,
+          opts->source_url != NULL
+              ? opts->source_url
+              : (entry.source_url != NULL ? entry.source_url : "(unknown)"));
     }
   } else {
     fprintf(stderr,
             "status source=default-capture mode=%s model=%s "
             "cache=(unresolved) language=%s threshold=%.3f hang_ms=%lu "
             "prebuffer_ms=%lu\n",
-            opts->ptt ? "ptt" : "vox", opts->model != NULL ? opts->model : "tiny",
+            opts->ptt ? "ptt" : "vox",
+            opts->model != NULL ? opts->model : "tiny",
             opts->language != NULL ? opts->language : "auto",
             (double)cpkt_sus_live_threshold(opts), opts->hang_ms,
             opts->prebuffer_ms);
@@ -407,7 +408,7 @@ static int cpkt_sus_live_state_sink(const cpkt_audio_vox_state_event *event,
 }
 
 static int cpkt_sus_live_segmented_sink(const cpkt_sus_segmented_event *event,
-                                       void *user) {
+                                        void *user) {
   struct cpkt_sus_live_run *run;
   char line[256];
 
@@ -442,16 +443,16 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
           "final=%d\n",
           segment->segment_index, segment->t0, segment->t1,
           (unsigned long)segment->frame_count,
-          (double)segment->frame_count / 16000.0,
-          segment->hard_cut, segment->is_final);
+          (double)segment->frame_count / 16000.0, segment->hard_cut,
+          segment->is_final);
   cpkt_sus_live_emit(run, line);
 
   transcriber = NULL;
   cpkt_sus_transcriber_config_default(&transcriber_config);
   transcriber_config.language = run->options->language;
   transcriber_config.cpu_only = run->options->cpu_only;
-  result = run->sus->create_transcriber(run->sus, &transcriber,
-                                        &transcriber_config);
+  result =
+      run->sus->create_transcriber(run->sus, &transcriber, &transcriber_config);
   if (result != CPKT_SUS_OK) {
     return 1;
   }
@@ -477,8 +478,9 @@ static int cpkt_sus_live_segment_sink(cpkt_audio_vox_segment *segment,
   return 0;
 }
 
-static int cpkt_sus_live_capture_state_sink(
-    const cpkt_audio_capture_state_event *event, void *user) {
+static int
+cpkt_sus_live_capture_state_sink(const cpkt_audio_capture_state_event *event,
+                                 void *user) {
   struct cpkt_sus_live_run *run;
   char line[80];
 
@@ -796,10 +798,10 @@ static void cpkt_sus_live_usage(FILE *out) {
   fprintf(out,
           "  --threshold-milli N         VOX threshold * 1000; default 50.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
-  fprintf(out,
-          "  --prebuffer-ms N            VOX prebuffer; default 50.\n");
-  fprintf(out,
-          "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
+  fprintf(out, "  --prebuffer-ms N            VOX prebuffer; default 50.\n");
+  fprintf(
+      out,
+      "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
   fprintf(out,
           "  --buffer-ms N               Device ring buffer; default 2000.\n");
   fprintf(
@@ -807,13 +809,17 @@ static void cpkt_sus_live_usage(FILE *out) {
       "  --period-ms N               Device callback period; default 20.\n");
   fprintf(out,
           "  --meter-ms N                Print input peak level every N ms.\n");
-  fprintf(out, "  --backend NAME              auto, process, coreaudio, native.\n");
+  fprintf(out,
+          "  --backend NAME              auto, process, coreaudio, native.\n");
   fprintf(out,
           "  --model NAME                Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH           Load an explicit model file.\n");
   fprintf(out, "  --cache-dir DIR             Model cache directory.\n");
-  fprintf(out, "  --source-url URL            Override cached model source URL.\n");
-  fprintf(out, "  --offline                   Do not download missing cached models.\n");
+  fprintf(out,
+          "  --source-url URL            Override cached model source URL.\n");
+  fprintf(
+      out,
+      "  --offline                   Do not download missing cached models.\n");
   fprintf(out, "  --language CODE             Language code; default en.\n");
   fprintf(
       out,

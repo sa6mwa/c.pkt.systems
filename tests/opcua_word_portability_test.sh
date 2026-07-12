@@ -5,6 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=${1:-$(CDPATH= cd -- "$script_dir/.." && pwd)}
 open62541_include_dir=${2:-}
 cc=${CC:-cc}
+opcua_source=$(tr '\n\t' '  ' < "$repo_root/src/opcua.c" | tr -s ' ')
 work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-opcua-word-portability.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
 
@@ -51,7 +52,7 @@ if grep -F -- 'uint64_t' "$repo_root/include/cpkt/opcua.h" >/dev/null 2>&1; then
 fi
 
 if ! grep -F -- 'cpkt_valid_uint64_words(value->uint64_value.high32, value->uint64_value.low32)' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade no longer validates UInt64 high/low words before native conversion\n' >&2
   exit 1
 fi
@@ -69,7 +70,7 @@ do
 done
 
 if ! grep -F -- 'return ((UA_UInt64)value.high32 << 32) | (UA_UInt64)value.low32;' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade must widen split UInt64 words before shifting for 32-bit targets\n' >&2
   exit 1
 fi
@@ -83,7 +84,7 @@ if grep -E 'return +\(?\(?value[.]high32 << 32|\(UA_UInt64\)\(value[.]high32 << 
 fi
 
 if ! grep -F -- 'out.high32 = -1L - (long)(CPKT_OPCUA_UINT32_MAX_VALUE - high32);' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade must decode negative DateTime high words without signed overflow on 32-bit targets\n' >&2
   exit 1
 fi
@@ -106,7 +107,7 @@ if ! grep -F -- 'native_uint64 >> 32' "$repo_root/tests/opcua_facade_test.c" >/d
 fi
 
 if ! grep -F -- 'cpkt_valid_datetime_words(value->datetime_value.high32, value->datetime_value.low32)' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade no longer validates DateTime high/low words before native conversion\n' >&2
   exit 1
 fi

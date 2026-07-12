@@ -15,8 +15,7 @@ int cpkt_static_archive_pic_smoke_probe(void) {
     return 2;
   }
   cpkt_sus_config_default(&sus_config);
-  if (cpkt_sus_backend_capabilities() == 0 ||
-      cpkt_sus_facade_version() == 0 ||
+  if (cpkt_sus_backend_capabilities() == 0 || cpkt_sus_facade_version() == 0 ||
       cpkt_sus_result_string(CPKT_SUS_OK) == 0) {
     return 3;
   }
