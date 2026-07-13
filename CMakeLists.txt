@@ -1104,6 +1104,14 @@ if(CPKT_BUILD_TESTS)
         LABELS "smoke"
         TIMEOUT 30)
       add_test(
+        NAME afl_crash_gate
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/run_afl_fuzz_crash_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(afl_crash_gate PROPERTIES
+        LABELS "fuzz;smoke"
+        TIMEOUT 30)
+      add_test(
         NAME lifecycle_surface
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/lifecycle_surface_test.sh")
