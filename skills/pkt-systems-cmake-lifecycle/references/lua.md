@@ -35,6 +35,13 @@ Build contract:
 - For local development, install the just-built C SDK into a repo-local prefix and build the Lua module against that installed layout. This catches C package metadata problems before release.
 - Lua package-manager build directories and locks are generated state and belong under `build/` or another ignored generated directory.
 
+Lua module linkage contract:
+
+- Treat a Lua C binding as a facade over the public C library. Compile it against the installed public headers and link it to the public shared-library artifact (`.so` or platform equivalent).
+- Do not statically link the public C library into the Lua module, import private implementation targets or source-tree internals, or reproduce private implementation/header declarations in the binding. The Lua facade must know only the public C API it exposes.
+- This boundary is especially important for embedded Lua servers: the host binary may already contain the C library and its dependencies through static linkage or loaded shared libraries. A second private or static copy in the Lua module duplicates symbols and state. The public shared-library facade avoids that collision.
+- Verify the Lua C binding against an installed public SDK and reject private include paths, static-library linkage, or shadow declarations in its build and export-boundary tests.
+
 Facade contract:
 
 - The Lua facade should mirror the main public workflows: client, agent, session, response/output handles, streaming sinks/readers, tool registries, tool presets, auth/login helpers, and protocol handlers when those exist.
