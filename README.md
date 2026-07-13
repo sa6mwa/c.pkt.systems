@@ -422,8 +422,10 @@ artifacts. Valgrind and AFL++ never run via a cross target, emulator, or QEMU.
 the deterministic release gate: `CPKT_LIVE_CHECKS=1 make prerelease-live`.
 
 `clang-format` and `clangd` are required host development tools and must be
-installed with the host OS package manager. `make clangd-surface` configures the debug compile database, verifies that the
+installed with the host OS package manager. `make clangd-surface` configures the native debug compile database, verifies that the
 public strict Lua facade declarations have adjacent Doxygen comments for LSP
 hover text, and checks that the shipped examples are present in
 `compile_commands.json`. The same target also runs
-`clangd --check` against the examples using that compile database.
+`clangd --check` against the examples using that compile database. Cross-target
+CTest and package configurations do not invoke host `clangd`; their compiler,
+target-runner, and package verification gates remain authoritative.

@@ -1124,12 +1124,17 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_spec_consistency_test.sh"
           "${CMAKE_SOURCE_DIR}")
-      add_test(
-        NAME clangd_surface
-        COMMAND
-          "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh"
-          "${CMAKE_SOURCE_DIR}"
-          "${CMAKE_BINARY_DIR}")
+      # clangd is a host editor tool, not a cross compiler.  Its driver model
+      # cannot reliably reproduce every Bootlin target ABI/sysroot, so validate
+      # only the native development-host compile database.
+      if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu")
+        add_test(
+          NAME clangd_surface
+          COMMAND
+            "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh"
+            "${CMAKE_SOURCE_DIR}"
+            "${CMAKE_BINARY_DIR}")
+      endif()
     endif()
   endif()
 endif()

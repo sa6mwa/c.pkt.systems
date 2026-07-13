@@ -83,6 +83,10 @@ grep -Eq '^release-pipeline:.*format.*debug.*clangd-surface.*valgrind.*fuzz-smok
   printf 'release-pipeline must run ordinary checks before the release matrix\n' >&2
   exit 1
 }
+grep -Eq 'if\(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu"\)' "$repo_root/CMakeLists.txt" || {
+  printf 'clangd CTest registration must be restricted to the native host target\n' >&2
+  exit 1
+}
 grep -Eq '^prerelease:[[:space:]]+release-pipeline[[:space:]]*$' "$repo_root/Makefile" || {
   printf 'prerelease must invoke the shared release-pipeline\n' >&2
   exit 1
