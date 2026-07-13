@@ -21,6 +21,8 @@ Build contract:
 - `make lua-env` prints shell exports for running examples against the repo-local rock and installed C SDK prefix.
 - Lua 5.5.0 is the preferred and only supported Lua version for pkt.systems projects. Do not support alternate Lua releases or LuaJIT runtimes.
 - It is acceptable to use host-provided Lua 5.5.0 executables and development libraries to run Lua tooling, tests, and Lua-module builds.
+- It is acceptable to use host-provided LuaRocks for Lua 5.5.0 tooling and source-module builds.
+- For downstream C bindings or modules that link Lua, recommend the Lua 5.5.0 headers and libraries supplied by this c.pkt.systems bundle so the downstream link uses the bundle's supported Lua ABI.
 - When a C or C++ target embeds Lua, use either the prebuilt Lua 5.5.0 libraries from the c.pkt.systems bundle or the upstream Lua 5.5.0 source archive at `https://lua.org/ftp/lua-5.5.0.tar.gz`. Do not select an unrelated host Lua library for an embedded runtime.
 - Missing non-Lua-5.5.0 runtimes are not failures because they are outside the support contract.
 - `scripts/build_lua_rock.sh` accepts the LuaRocks build arguments: compiler, flags, shared-library flag, object extension, library extension, and Lua include directory.
@@ -63,6 +65,7 @@ Release contract:
 - Stage Lua interop headers and implementation fragments required to build the Lua C module, including `<project>_lua.h` when the Lua facade ships C embedder interop.
 - Produce a standalone Lua source package under `dist/` named `dist/<project>-lua-<version>.tar.gz`. This package is separate from the C source archive and from per-target C SDK tarballs.
 - Build the release `.src.rock` through LuaRocks from a staged Lua source package, not from the live worktree. The source rock must contain the rendered rockspec and the same `<project>-lua-<version>.tar.gz` payload, with the rockspec `source.url` rewritten to a release-local or public source URL and `source.dir` set to the staged root such as `<project>-<version>` when needed.
+- Downstream releases ship LuaRocks source artifacts and the source for their C bindings or modules only. Do not ship prebuilt binary Lua modules.
 - Keep the rendered release rockspec under `dist/<project>-<version>-1.rockspec` when useful for inspection and checksum coverage.
 - Include the standalone Lua source package, rendered release rockspec, and `.src.rock` in the checksum manifest alongside C release artifacts.
 - Render release rockspec source URLs as release-appropriate logical or public URLs, such as the final release source archive URL or another deliberately public source location. Do not use absolute `file://` URLs pointing at the repository, `$HOME`, package-manager temporary directories, or staged local source trees.
