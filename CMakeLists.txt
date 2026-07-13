@@ -203,7 +203,21 @@ if(CPKT_CXX_LIBGCC_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES 
       "Static GCC runtime archive used by C-facing static SDK metadata." FORCE)
   endif()
 endif()
-set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Shared source archive download root.")
+if(NOT DEFINED CPKT_DEPENDENCY_CACHE OR "${CPKT_DEPENDENCY_CACHE}" STREQUAL "")
+  if(DEFINED ENV{CPKT_DEPENDENCY_CACHE} AND NOT "$ENV{CPKT_DEPENDENCY_CACHE}" STREQUAL "")
+    set(_cpkt_dependency_cache_default "$ENV{CPKT_DEPENDENCY_CACHE}")
+  elseif(DEFINED ENV{XDG_CACHE_HOME} AND NOT "$ENV{XDG_CACHE_HOME}" STREQUAL "")
+    set(_cpkt_dependency_cache_default "$ENV{XDG_CACHE_HOME}/c.pkt.systems/deps")
+  elseif(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
+    set(_cpkt_dependency_cache_default "$ENV{HOME}/.cache/c.pkt.systems/deps")
+  else()
+    message(FATAL_ERROR "CPKT_DEPENDENCY_CACHE, XDG_CACHE_HOME, or HOME is required for the shared dependency archive cache")
+  endif()
+  set(CPKT_DEPENDENCY_CACHE "${_cpkt_dependency_cache_default}" CACHE PATH "Shared verified dependency archive cache." FORCE)
+endif()
+unset(_cpkt_dependency_cache_default)
+set(CPKT_DEPENDENCY_CACHE_LOCK_TIMEOUT "120" CACHE STRING "Maximum shared dependency archive cache lock wait in seconds.")
+set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Local ExternalProject archive staging root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
 set(CPKT_TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Artifact architecture name.")
 set(CPKT_TARGET_OS "${CMAKE_SYSTEM_NAME}" CACHE STRING "Artifact operating system name.")
@@ -1072,6 +1086,11 @@ if(CPKT_BUILD_TESTS)
         NAME pinned_toolchain_resolvers
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/toolchain_resolver_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME dependency_archive_cache
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/dependency_archive_cache_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
         NAME privacy_scan_failure

@@ -1,4 +1,52 @@
 include(ExternalProject)
+include("${CMAKE_CURRENT_LIST_DIR}/CpktDependencyArchiveCache.cmake")
+
+macro(cpkt_cached_external_project_add)
+  set(_cpkt_ep_args ${ARGV})
+  list(FIND _cpkt_ep_args "URL" _cpkt_ep_url_index)
+  list(FIND _cpkt_ep_args "URL_HASH" _cpkt_ep_hash_index)
+  if(_cpkt_ep_url_index LESS 1 OR _cpkt_ep_hash_index LESS 0 OR _cpkt_ep_hash_index LESS _cpkt_ep_url_index)
+    message(FATAL_ERROR "cpkt_cached_external_project_add requires URL and URL_HASH after the target name")
+  endif()
+  math(EXPR _cpkt_ep_url_start "${_cpkt_ep_url_index} + 1")
+  math(EXPR _cpkt_ep_url_count "${_cpkt_ep_hash_index} - ${_cpkt_ep_url_start}")
+  if(_cpkt_ep_url_count LESS 1)
+    message(FATAL_ERROR "cpkt_cached_external_project_add requires at least one URL")
+  endif()
+  list(SUBLIST _cpkt_ep_args ${_cpkt_ep_url_start} ${_cpkt_ep_url_count} _cpkt_ep_urls)
+  math(EXPR _cpkt_ep_hash_value_index "${_cpkt_ep_hash_index} + 1")
+  list(GET _cpkt_ep_args ${_cpkt_ep_hash_value_index} _cpkt_ep_hash)
+  string(REGEX REPLACE "^SHA256=" "" _cpkt_ep_sha256 "${_cpkt_ep_hash}")
+  string(LENGTH "${_cpkt_ep_sha256}" _cpkt_ep_sha256_length)
+  if(NOT _cpkt_ep_hash MATCHES "^SHA256="
+      OR NOT _cpkt_ep_sha256_length EQUAL 64
+      OR NOT "${_cpkt_ep_sha256}" MATCHES "^[A-Fa-f0-9]+$")
+    message(FATAL_ERROR "cpkt_cached_external_project_add requires URL_HASH SHA256=<digest>")
+  endif()
+  list(FIND _cpkt_ep_args "DOWNLOAD_NAME" _cpkt_ep_download_name_index)
+  if(_cpkt_ep_download_name_index LESS 0)
+    list(GET _cpkt_ep_urls 0 _cpkt_ep_name_url)
+    string(REGEX REPLACE "[?#].*$" "" _cpkt_ep_name_url "${_cpkt_ep_name_url}")
+    get_filename_component(_cpkt_ep_archive_name "${_cpkt_ep_name_url}" NAME)
+  else()
+    math(EXPR _cpkt_ep_download_name_value_index "${_cpkt_ep_download_name_index} + 1")
+    list(GET _cpkt_ep_args ${_cpkt_ep_download_name_value_index} _cpkt_ep_archive_name)
+  endif()
+  if(_cpkt_ep_archive_name STREQUAL "")
+    message(FATAL_ERROR "cpkt_cached_external_project_add could not determine an archive name")
+  endif()
+  cpkt_acquire_dependency_archive(_cpkt_ep_cached_archive
+    NAME "${_cpkt_ep_archive_name}"
+    SHA256 "${_cpkt_ep_sha256}"
+    URLS ${_cpkt_ep_urls}
+    SEED_PATHS "${CPKT_DOWNLOAD_ROOT}/${_cpkt_ep_archive_name}")
+  math(EXPR _cpkt_ep_remove_count "${_cpkt_ep_url_count} + 1")
+  foreach(_cpkt_ep_remove_index RANGE 1 ${_cpkt_ep_remove_count})
+    list(REMOVE_AT _cpkt_ep_args ${_cpkt_ep_url_index})
+  endforeach()
+  list(INSERT _cpkt_ep_args ${_cpkt_ep_url_index} URL "${_cpkt_ep_cached_archive}")
+  ExternalProject_Add(${_cpkt_ep_args})
+endmacro()
 
 function(cpkt_record_dependency_target target_name)
   set_property(GLOBAL APPEND PROPERTY CPKT_DEPENDENCY_TARGETS "${target_name}")
@@ -297,7 +345,7 @@ function(cpkt_add_openssl)
   cpkt_append_darwin_external_env_args(openssl_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/openssl/openssl/releases/download/openssl-${CPKT_OPENSSL_VERSION}/openssl-${CPKT_OPENSSL_VERSION}.tar.gz"
       URL_HASH "SHA256=aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f"
       DOWNLOAD_NAME "openssl-${CPKT_OPENSSL_VERSION}.tar.gz"
@@ -425,7 +473,7 @@ function(cpkt_add_nghttp2)
   cpkt_append_darwin_external_env_args(nghttp2_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/nghttp2/nghttp2/releases/download/v${CPKT_NGHTTP2_VERSION}/nghttp2-${CPKT_NGHTTP2_VERSION}.tar.gz"
       URL_HASH "SHA256=c866b7477cbb7512ab6863a685027adbb1bb8da8fc3bab7429ed43d3281d5aa9"
       DOWNLOAD_NAME "nghttp2-${CPKT_NGHTTP2_VERSION}.tar.gz"
@@ -513,7 +561,7 @@ function(cpkt_add_zlib)
   set(zlib_static_library "${install_dir}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}")
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL
         "https://www.zlib.net/zlib-${CPKT_ZLIB_VERSION}.tar.gz"
         "https://zlib.net/fossils/zlib-${CPKT_ZLIB_VERSION}.tar.gz"
@@ -639,7 +687,7 @@ function(cpkt_add_libssh2)
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://libssh2.org/download/libssh2-${CPKT_LIBSSH2_VERSION}.tar.gz"
       URL_HASH "SHA256=d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
       DOWNLOAD_NAME "libssh2-${CPKT_LIBSSH2_VERSION}.tar.gz"
@@ -812,7 +860,7 @@ function(cpkt_add_curl)
   )
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://curl.se/download/curl-${CPKT_CURL_VERSION}.tar.xz"
       URL_HASH "SHA256=63fe2dc148ba0ceae89922ef838f7e5c946272c2e78b7c59fab4b79d3ce2b896"
       DOWNLOAD_NAME "${curl_download_name}"
@@ -964,7 +1012,7 @@ function(cpkt_add_libxml2)
   )
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name_shared}
+    cpkt_cached_external_project_add(${project_name_shared}
       URL "https://download.gnome.org/sources/libxml2/2.15/libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
       URL_HASH "SHA256=78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07"
       DOWNLOAD_NAME "libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
@@ -988,7 +1036,7 @@ function(cpkt_add_libxml2)
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
 
-    ExternalProject_Add(${project_name_static}
+    cpkt_cached_external_project_add(${project_name_static}
       URL "https://download.gnome.org/sources/libxml2/2.15/libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
       URL_HASH "SHA256=78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07"
       DOWNLOAD_NAME "libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
@@ -1118,7 +1166,7 @@ function(cpkt_add_lua)
   )
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://lua.org/ftp/lua-${CPKT_LUA_VERSION}.tar.gz"
       URL_HASH "SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d"
       DOWNLOAD_NAME "lua-${CPKT_LUA_VERSION}.tar.gz"
@@ -1129,7 +1177,7 @@ function(cpkt_add_lua)
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      CONFIGURE_COMMAND ""
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E true
       BUILD_COMMAND
         ${CMAKE_COMMAND} -E env ${lua_env_args} MAKEFLAGS= make -C "${source_dir}/src" clean
         COMMAND
@@ -1253,7 +1301,7 @@ function(cpkt_add_mqttc)
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/LiamBindle/MQTT-C/archive/${CPKT_MQTTC_COMMIT}.tar.gz"
       URL_HASH "SHA256=985898405912dbddf50d8b446226763696e6390fbd6f38b66cede6f38e703086"
       DOWNLOAD_NAME "mqtt-c-${CPKT_MQTTC_COMMIT}.tar.gz"
@@ -1376,7 +1424,7 @@ function(cpkt_add_miniaudio)
   cpkt_append_darwin_external_env_args(miniaudio_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/mackron/miniaudio/archive/refs/tags/${CPKT_MINIAUDIO_VERSION}.tar.gz"
       URL_HASH "SHA256=b900edcffe979816e2560a0580b9b1216d674b4f17fbadeca8f777a7f8ab0274"
       DOWNLOAD_NAME "miniaudio-${CPKT_MINIAUDIO_VERSION}.tar.gz"
@@ -1529,7 +1577,7 @@ function(cpkt_add_whisper)
   )
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name_shared}
+    cpkt_cached_external_project_add(${project_name_shared}
       URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
       URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
@@ -1557,7 +1605,7 @@ function(cpkt_add_whisper)
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
 
-    ExternalProject_Add(${project_name_static}
+    cpkt_cached_external_project_add(${project_name_static}
       URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
       URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
@@ -1693,7 +1741,7 @@ function(cpkt_add_open62541)
   )
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name_shared}
+    cpkt_cached_external_project_add(${project_name_shared}
       URL "https://github.com/open62541/open62541/archive/refs/tags/v${CPKT_OPEN62541_VERSION}.tar.gz"
       URL_HASH "SHA256=fb5aafc19c67a91368d1f71d9ee4acf0f4b47a0d65c66db4ed738691828779c7"
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
@@ -1726,7 +1774,7 @@ function(cpkt_add_open62541)
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
 
-    ExternalProject_Add(${project_name_static}
+    cpkt_cached_external_project_add(${project_name_static}
       URL "https://github.com/open62541/open62541/archive/refs/tags/v${CPKT_OPEN62541_VERSION}.tar.gz"
       URL_HASH "SHA256=fb5aafc19c67a91368d1f71d9ee4acf0f4b47a0d65c66db4ed738691828779c7"
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
@@ -1806,7 +1854,7 @@ function(cpkt_add_cmocka)
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
 
   if(CPKT_BUILD_DEPENDENCIES)
-    ExternalProject_Add(${project_name}
+    cpkt_cached_external_project_add(${project_name}
       URL "https://cmocka.org/files/2.0/cmocka-${CPKT_CMOCKA_VERSION}.tar.xz"
       URL_HASH "SHA256=39f92f366bdf3f1a02af4da75b4a5c52df6c9f7e736c7d65de13283f9f0ef416"
       PREFIX "${prefix_dir}"

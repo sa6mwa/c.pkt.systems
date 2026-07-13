@@ -49,6 +49,18 @@ Host GCC, Clang, and binutils are never Linux build fallbacks. Every Linux
 compile uses its pinned Bootlin GCC collection; Darwin stays
 local-osxcross-only and does not download an Apple SDK.
 
+Pinned third-party source archives use a separate shared verified cache:
+
+```sh
+${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}
+```
+
+CMake hashes every cache hit, downloads a miss to a temporary file, verifies
+the pinned SHA-256, and atomically publishes the archive. Extraction, build,
+and install trees remain under this repository's `.cache/` and are disposable;
+`make clean` and `make release` never remove the shared archive cache. Set
+`-DCPKT_DEPENDENCY_CACHE=/path/to/deps` to use a different shared cache.
+
 ## Release Workflow
 
 ```sh

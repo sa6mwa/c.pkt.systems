@@ -64,6 +64,18 @@ require_file_contains \
   'cmake/toolchains/x86_64-linux-gnu.cmake' \
   'host Linux presets select the pinned Bootlin collection'
 require_file_contains \
+  CMakeLists.txt \
+  'CPKT_DEPENDENCY_CACHE' \
+  'CMake exposes the shared dependency archive cache'
+require_file_contains \
+  cmake/CpktDependencyArchiveCache.cmake \
+  'file\(LOCK' \
+  'dependency archives use per-digest shared-cache locks'
+require_file_contains \
+  cmake/CpktDependencyArchiveCache.cmake \
+  'file\(RENAME' \
+  'dependency archives publish by atomic rename'
+require_file_contains \
   CMakePresets.json \
   'cmake/toolchains/aflpp-x86_64-linux-gnu.cmake' \
   'fuzz presets select pinned AFL++ GCC instrumentation'
