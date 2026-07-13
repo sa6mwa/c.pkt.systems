@@ -33,6 +33,13 @@ Recommended production-loop tiers:
 
 These names are preferred over project-specific gate names. Compatibility aliases are acceptable only for already documented public commands.
 
+## Cross-Target Runner Contract
+
+- Each downstream project decides whether to execute cross-target tests under QEMU. QEMU is not an implicit lifecycle requirement merely because a project cross-compiles.
+- Once a project opts in to QEMU testing for a release target such as `aarch64` or `armhf`, those target tests are mandatory release coverage. Include them in `release-matrix` and therefore in the shared prerelease/release proof graph; do not leave an existing QEMU test behind an optional or manual-only target.
+- A project that opts in must fail `release-matrix` and `release` clearly when the required QEMU user-mode runner, target sysroot, or runner configuration is unavailable. Do not silently skip the selected target tests.
+- A project that does not opt in may limit cross-target release coverage to configure, build, link, package, and artifact verification. Native Valgrind and AFL++ gates remain native x86_64 Linux-only and are never QEMU gates.
+
 
 ## Quality Contracts
 
