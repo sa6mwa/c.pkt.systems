@@ -22,8 +22,8 @@ Build contract:
 - Lua 5.5.0 is the preferred and only supported Lua version for pkt.systems projects. Do not support alternate Lua releases or LuaJIT runtimes.
 - It is acceptable to use host-provided Lua 5.5.0 executables and development libraries to run Lua tooling, tests, and Lua-module builds.
 - It is acceptable to use host-provided LuaRocks for Lua 5.5.0 tooling and source-module builds.
-- For downstream C bindings or modules that link Lua, recommend the Lua 5.5.0 headers and libraries supplied by this c.pkt.systems bundle so the downstream link uses the bundle's supported Lua ABI.
-- When a C or C++ target embeds Lua, use either the prebuilt Lua 5.5.0 libraries from the c.pkt.systems bundle or the upstream Lua 5.5.0 source archive at `https://lua.org/ftp/lua-5.5.0.tar.gz`. Do not select an unrelated host Lua library for an embedded runtime.
+- Downstream C bindings and modules may use host Lua 5.5.0 headers and libraries during normal development, builds, and tests.
+- When shipping a C or C++ binary that embeds Lua, prefer the prebuilt Lua 5.5.0 libraries from the c.pkt.systems bundle. The upstream Lua 5.5.0 source archive at `https://lua.org/ftp/lua-5.5.0.tar.gz` is the direct-source alternative.
 - Missing non-Lua-5.5.0 runtimes are not failures because they are outside the support contract.
 - `scripts/build_lua_rock.sh` accepts the LuaRocks build arguments: compiler, flags, shared-library flag, object extension, library extension, and Lua include directory.
 - If the Lua module links an installed C SDK, discover it through pkg-config first, then a project-prefixed prefix variable, and fail with an actionable message if neither is available.
