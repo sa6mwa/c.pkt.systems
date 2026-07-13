@@ -17,10 +17,12 @@ scripts/stage_lua_rock_sources.sh
 Build contract:
 
 - `make lua-rock` renders a development rockspec and installs the Lua module into a repo-local tree under `build/luarocks`.
-- `make lua-test` runs Lua smoke tests against the repo-local installed rock and the repository's supported system Lua runtime.
+- `make lua-test` runs Lua smoke tests against the repo-local installed rock and the supported host Lua runtime.
 - `make lua-env` prints shell exports for running examples against the repo-local rock and installed C SDK prefix.
-- Do not assume support for old Lua versions or alternate JIT Lua runtimes. pkt.systems Lua artifacts target the system Lua runtime available for the project; currently expect Lua 5.5 unless the engineer explicitly expands the support matrix.
-- Missing non-target Lua runtimes are not failures because they are not part of the support contract.
+- Lua 5.5.0 is the preferred and only supported Lua version for pkt.systems projects. Do not support alternate Lua releases or LuaJIT runtimes.
+- It is acceptable to use host-provided Lua 5.5.0 executables and development libraries to run Lua tooling, tests, and Lua-module builds.
+- When a C or C++ target embeds Lua, use either the prebuilt Lua 5.5.0 libraries from the c.pkt.systems bundle or the upstream Lua 5.5.0 source archive at `https://lua.org/ftp/lua-5.5.0.tar.gz`. Do not select an unrelated host Lua library for an embedded runtime.
+- Missing non-Lua-5.5.0 runtimes are not failures because they are outside the support contract.
 - `scripts/build_lua_rock.sh` accepts the LuaRocks build arguments: compiler, flags, shared-library flag, object extension, library extension, and Lua include directory.
 - If the Lua module links an installed C SDK, discover it through pkg-config first, then a project-prefixed prefix variable, and fail with an actionable message if neither is available.
 - If optional C dependencies can be enabled, probe them at build time and provide force/disable environment variables.
