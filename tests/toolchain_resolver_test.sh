@@ -8,10 +8,13 @@ fi
 
 source_dir=$1
 cache=$(mktemp -d)
-trap 'rm -rf "$cache"' EXIT HUP INT TERM
+failure_cache=$(mktemp -d)
+fake_bin=$(mktemp -d)
+trap 'rm -rf "$cache" "$failure_cache" "$fake_bin"' EXIT HUP INT TERM
 bootlin="$source_dir/scripts/cpkt-toolchains.sh"
 fail() { printf 'toolchain resolver test: %s\n' "$*" >&2; exit 1; }
 require_line() { grep -Fxq "$1" <<<"$2" || fail "missing output: $1"; }
+require_text() { [[ "$2" == *"$1"* ]] || fail "missing output: $1"; }
 make_executable() { printf '%b\n' "$2" > "$1"; chmod +x "$1"; }
 
 bootlin_name=x86-64--glibc--stable-2025.08-1
@@ -32,5 +35,47 @@ require_line "libstdcxx_a=$bootlin_root/runtime/libstdc++.a" "$bootlin_descripti
 bootlin_env=$(CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" env x86_64-linux-gnu)
 grep -Fq "export CC=$bootlin_root/bin/x86_64-linux-gcc" <<<"$bootlin_env" || fail 'Bootlin environment omitted the compiler'
 grep -Fq "export LD=$bootlin_root/bin/x86_64-linux-ld" <<<"$bootlin_env" || fail 'Bootlin environment omitted the linker'
+
+make_executable "$fake_bin/curl" '#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "$(dirname "$output")"
+: > "$output"
+printf "%s\\n" "simulated download failure" >&2
+exit 42'
+
+set +e
+download_output=$(PATH="$fake_bin:$PATH" CPKT_TOOLCHAIN_CACHE="$failure_cache" "$bootlin" ensure x86_64-linux-gnu 2>&1)
+download_status=$?
+set -e
+[[ $download_status -eq 42 ]] || fail "download failure status was $download_status, expected 42"
+require_text 'simulated download failure' "$download_output"
+[[ "$download_output" != *'unbound variable'* ]] || fail 'download cleanup masked the original failure'
+if find "$failure_cache/archives" -maxdepth 1 -name '*.tmp.*' -print -quit | grep -q .; then
+  fail 'download cleanup left a temporary archive'
+fi
+
+bootlin_archive="$failure_cache/archives/$bootlin_name.tar.xz"
+: > "$bootlin_archive"
+make_executable "$fake_bin/sha256sum" '#!/bin/sh
+printf "%s  %s\\n" "760acd5c3159448b618e237b61935335baada74fe0cdc0d7611826cb49b41c8c" "$1"'
+make_executable "$fake_bin/tar" '#!/bin/sh
+printf "%s\\n" "simulated extraction failure" >&2
+exit 73'
+
+set +e
+extract_output=$(PATH="$fake_bin:$PATH" CPKT_TOOLCHAIN_CACHE="$failure_cache" "$bootlin" ensure x86_64-linux-gnu 2>&1)
+extract_status=$?
+set -e
+[[ $extract_status -eq 73 ]] || fail "extraction failure status was $extract_status, expected 73"
+require_text 'simulated extraction failure' "$extract_output"
+[[ "$extract_output" != *'unbound variable'* ]] || fail 'extraction cleanup masked the original failure'
+if find "$failure_cache/roots" -maxdepth 1 -name '.extract-*' -print -quit | grep -q .; then
+  fail 'extraction cleanup left a temporary directory'
+fi
 
 printf '[test] pinned toolchain resolvers passed\n'

@@ -38,17 +38,28 @@ foreach(_cpkt_required_tool
     endif()
 endforeach()
 
-set(_cpkt_darwin_linker_flag "-fuse-ld=${CMAKE_LINKER}")
+set(_cpkt_darwin_linker_flag "--ld-path=${CMAKE_LINKER}")
 foreach(_cpkt_linker_flags
         CMAKE_EXE_LINKER_FLAGS
         CMAKE_SHARED_LINKER_FLAGS
         CMAKE_MODULE_LINKER_FLAGS)
-    if(NOT "${${_cpkt_linker_flags}}" MATCHES "(^| )-fuse-ld=")
-        set(${_cpkt_linker_flags} "${_cpkt_darwin_linker_flag} ${${_cpkt_linker_flags}}" CACHE STRING "" FORCE)
+    set(_cpkt_existing_linker_flags "${${_cpkt_linker_flags}}")
+    string(REPLACE "-fuse-ld=${CMAKE_LINKER}" "" _cpkt_existing_linker_flags "${_cpkt_existing_linker_flags}")
+    string(STRIP "${_cpkt_existing_linker_flags}" _cpkt_existing_linker_flags)
+    if(NOT "${_cpkt_existing_linker_flags}" MATCHES "(^| )--ld-path=")
+        if("${_cpkt_existing_linker_flags}" STREQUAL "")
+            set(_cpkt_existing_linker_flags "${_cpkt_darwin_linker_flag}")
+        else()
+            set(_cpkt_existing_linker_flags "${_cpkt_darwin_linker_flag} ${_cpkt_existing_linker_flags}")
+        endif()
+    endif()
+    if(NOT "${_cpkt_existing_linker_flags}" STREQUAL "${${_cpkt_linker_flags}}")
+        set(${_cpkt_linker_flags} "${_cpkt_existing_linker_flags}" CACHE STRING "" FORCE)
     endif()
 endforeach()
 unset(_cpkt_linker_flags)
 unset(_cpkt_darwin_linker_flag)
+unset(_cpkt_existing_linker_flags)
 
 file(GLOB _cpkt_osxcross_sdks LIST_DIRECTORIES true "${CPKT_OSXCROSS_ROOT}/SDK/MacOSX*.sdk")
 if(NOT _cpkt_osxcross_sdks)

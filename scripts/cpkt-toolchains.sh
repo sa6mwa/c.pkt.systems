@@ -26,6 +26,17 @@ download_file() {
   else die 'curl or wget is required to download Bootlin toolchains'; fi
 }
 
+install_cleanup_trap() {
+  local path=$1 remove_option=$2 cleanup
+  # Expand the path into the trap now.  EXIT handlers run after function-local
+  # variables have gone out of scope, so a handler that references $path would
+  # mask an installation failure under `set -u`.
+  printf -v cleanup 'status=$?; rm %s -- %q || :; trap - EXIT HUP INT TERM; exit "$status"' \
+    "$remove_option" "$path"
+  trap "$cleanup" EXIT
+  trap 'exit 1' HUP INT TERM
+}
+
 target_ids() {
   cat <<'TARGETS'
 x86_64-linux-gnu
@@ -107,7 +118,7 @@ install_bootlin() {
   archive_dir="$(cache_root)/archives"; archive="$archive_dir/$name.tar.xz"
   mkdir -p "$archive_dir" "$(cache_root)/roots"
   if [[ ! -f "$archive" ]]; then
-    tmp="$archive.tmp.$$"; trap 'rm -f "$tmp"' EXIT HUP INT TERM
+    tmp="$archive.tmp.$$"; install_cleanup_trap "$tmp" -f
     download_file "https://toolchains.bootlin.com/downloads/releases/toolchains/$arch/tarballs/$name.tar.xz" "$tmp"
     actual=$(sha256_file "$tmp")
     [[ "$actual" == "$sha256" ]] || die "checksum mismatch for $name.tar.xz: expected $sha256, got $actual"
@@ -116,7 +127,7 @@ install_bootlin() {
     actual=$(sha256_file "$archive")
     [[ "$actual" == "$sha256" ]] || die "cached archive checksum mismatch for $archive: expected $sha256, got $actual"
   fi
-  extract="$(cache_root)/roots/.extract-$name.$$"; trap 'rm -rf "$extract"' EXIT HUP INT TERM
+  extract="$(cache_root)/roots/.extract-$name.$$"; install_cleanup_trap "$extract" -rf
   mkdir -p "$extract"; tar -C "$extract" -xf "$archive"
   [[ -d "$extract/$name/bin" ]] || die "unexpected archive layout for $name.tar.xz"
   rm -rf "$root"; mv "$extract/$name" "$root"; rm -rf "$extract"; trap - EXIT HUP INT TERM
