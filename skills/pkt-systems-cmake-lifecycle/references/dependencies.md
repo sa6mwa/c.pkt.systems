@@ -8,7 +8,7 @@ Projects consume external C dependencies as SDK bundles from `c.pkt.systems`. Th
 - Host release dependency root.
 - Cross dependency roots keyed by target ID.
 - Separate dependency build roots and install roots.
-- Cacheability under `.cache/`.
+- A shared verified archive cache plus repository-local disposable dependency state under `.cache/`.
 - Clear dependency provenance in build metadata or manifests.
 - Explicit failures for missing bundles, unsupported targets, checksum failures, or unavailable network fetches.
 - Reuse downloaded SDK bundles and per-target dependency install roots across debug, release, hardening, e2e, fuzz, benchmark, and package builds.
@@ -32,6 +32,40 @@ Known upstream components:
 | `libpid0` | `https://github.com/sa6mwa/libpid0` | `https://github.com/sa6mwa/libpid0/releases` |
 | `liblql` | `https://github.com/sa6mwa/liblql` | `https://github.com/sa6mwa/liblql/releases` |
 
+## Shared Verified Archive Cache
+
+All external dependency archives use the shared cache below, regardless of whether they are pkt.systems SDK bundles or third-party sources:
+
+```sh
+${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}
+```
+
+This is a sibling of the toolchain cache's default `.../c.pkt.systems/toolchains` root. `CPKT_DEPENDENCY_CACHE` may override only the dependency archive cache; it must not redirect toolchains, and `CPKT_TOOLCHAIN_CACHE` must not redirect dependencies.
+
+Expose `CPKT_DEPENDENCY_CACHE` as a CMake `PATH` cache variable. Resolve it once, with an explicit `-DCPKT_DEPENDENCY_CACHE=...` taking precedence over the environment variable, then `XDG_CACHE_HOME`, then `$HOME/.cache`; do not rediscover it independently in each dependency declaration.
+
+Use this layout:
+
+```text
+deps/
+  archives/sha256/<expected-sha256>/<archive-name>
+  locks/<expected-sha256>.lock
+```
+
+- The global cache holds verified immutable archives only. Do not put extracted trees, CMake build directories, install prefixes, package-manager state, generated headers, or dependency stamps there.
+- Keep extraction, build, install, and identity-stamp state under the consuming repository's `.cache/`, normally keyed by target ID and dependency identity. A project may delete that local state freely; the next dependency acquisition must reuse the verified global archive without network access.
+- Key each archive by its required SHA-256. Archive names are for diagnostics only; never accept an archive because its filename, component name, version, or URL happens to match.
+- Before every cache reuse, calculate SHA-256 and compare it to the dependency's pinned expected digest. A corrupt entry is not a cache hit.
+- Serialize writers with a per-digest lock. The lifecycle serializes project operations, but independent downstream repositories can acquire the same shared cache concurrently.
+- On a miss or corrupt entry, download to a uniquely named temporary file in the archive's final cache directory, verify the expected SHA-256, then atomically rename it to the final path. Never publish a partial download. Remove only the temporary or corrupt archive entry covered by the held lock.
+- If a verified cache entry cannot be reused and the download fails, report the component, URL, expected digest, cache path, and download failure. Do not silently substitute a host package, a differently named file, an unpinned URL, or an unchecked archive.
+- `make clean`, `make clean-dist`, `make prerelease`, `make release`, package targets, and normal dependency-clean targets must never remove this global archive cache. A project may offer an explicitly named, opt-in cache-prune command, but it must state that it affects all local pkt.systems projects sharing the cache and must never be a prerequisite of another lifecycle target.
+- Never embed this global path in dependency manifests, generated CMake or pkg-config metadata, binaries, scripts, source archives, binary SDKs, or release artifacts.
+
+Implement acquisition behind one project-owned CMake helper, for example `project_acquire_verified_archive()`, rather than letting each `FetchContent`, `ExternalProject`, or custom dependency builder download independently. The helper must accept a component identity, HTTPS URL, expected SHA-256, and output archive path. It must serialize writers with CMake `file(LOCK ...)`, hash an existing archive, download with `file(DOWNLOAD ... TLS_VERIFY ON EXPECTED_HASH SHA256=...)` only when needed, hash the temporary file explicitly, and use same-directory `file(RENAME ...)` publication. Consumers then extract or stage the returned archive into their repository-local `.cache/` tree. `FetchContent` and `ExternalProject` may consume that staged local result, but their default build-tree download cache is not the lifecycle cache.
+
+Add executable cache-contract tests that prove: an initial miss downloads and publishes only a verified archive; deleting local extracted dependency state permits an offline cache hit; a corrupt cached archive is rejected and never extracted; concurrent acquisition does not expose a partial archive; `make clean` preserves the global archive; and package/privacy checks reject global-cache paths in released output.
+
 Rules for component downloads:
 
 - Pin each release dependency by component name, version, target ID when target-specific, exact GitHub release asset URL, and SHA-256.
@@ -43,8 +77,8 @@ Rules for component downloads:
 Rules:
 
 - Do not vendor generated dependency installs into release source.
-- Dependency cache reuse is the default. Do not re-download or rebuild dependencies for every target when the requested dependency identity has not changed.
-- When dependency identity changes, invalidate the relevant `.cache/` dependency roots through `make clean` or a narrower documented dependency-clean target before rebuilding.
+- Dependency cache reuse is the default. Do not re-download a verified global archive or rebuild a local dependency root when the requested dependency identity has not changed.
+- When dependency identity changes, invalidate only the relevant local `.cache/` extraction, build, and install roots through `make clean` or a narrower documented dependency-clean target. Retain the global archive cache; it is keyed by the expected SHA-256 and remains safe for any project that still pins that artifact.
 - Dependency identity includes dependency name, version, target ID, source URL, SHA-256, toolchain file, ABI-relevant build options, and cache layout version.
 - `scripts/deps.sh` should detect stale dependency roots when possible by comparing requested dependency identity to a cached manifest or stamp. On mismatch, fail with an actionable stale-cache diagnostic or refresh through the documented clean path.
 - Do not leak dependency cache paths into package metadata, CMake config files, pkg-config files, binaries, scripts, or release archives.
@@ -68,7 +102,7 @@ Rules:
 - Package metadata must record logical dependency identity and ABI requirements, not local cache paths. CMake package config and pkg-config metadata should explain how static consumers supply external dependencies.
 - For `c.pkt.systems` dependency bundles specifically, package metadata is part of the SDK product surface: every bundled library intended for downstream consumption must have CMake and pkg-config metadata in the released archive, and downstream pkt.systems projects should consume those targets instead of raw archive paths.
 - Bundled SDK mode must pin per-target URL and SHA-256 for every dependency archive used by release builds.
-- Downloads should verify an existing archive before fetching, retry transient download failures a bounded number of times, verify SHA-256 after download, and extract into a target-specific dependency root.
+- Downloads must use the shared verified archive cache: hash an existing global archive before reuse, retry transient download failures a bounded number of times, hash a temporary download before atomic publication, and extract only into a repository-local target-specific dependency root.
 - Auto mode may choose host dependencies only when all required headers, libraries, package metadata, and ABI checks pass. Partial host installs must not shadow a valid bundled SDK configuration.
 - Host mode must not require bundled SDK checksums for unsupported host target IDs.
 - Deprecate old dependency-mode names with warnings and force them to the current spelling; remove the compatibility alias only as an explicit breaking change.

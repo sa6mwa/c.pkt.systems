@@ -170,7 +170,7 @@ Rules:
 - `cmake/` holds CMake modules, toolchains, package scripts, archive assertions, version logic, and config templates.
 - `dist/`, `build/`, generated dependency roots, local service state, and package-manager build directories are generated.
 - Source archives may include static Docker config, release scripts, examples, tests, and fixture descriptors. They must not include generated service state, dependency caches, build trees, package-manager temp trees, credentials, or VCS internals.
-- `make clean` is the go-to full generated-state reset. It removes `build/`, `dist/`, generated dependency/cache roots under `.cache/`, and package-manager build state.
+- `make clean` is the go-to full generated-state reset. It removes `build/`, `dist/`, generated dependency/cache roots under the repository's `.cache/`, and package-manager build state. It must not remove or mutate the shared `${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}` archive cache or the sibling toolchain cache.
 - `make clean-dist` removes only release artifacts under `dist/`.
 - Do not make normal build/test targets depend on `make clean`; fast local CI/CD depends on cache reuse.
 
@@ -378,7 +378,7 @@ Script safety contract:
 - Resolve the repository root once and operate relative to it.
 - Validate argument count and required files before mutating generated state.
 - Trap cleanup for temporary directories, child processes, local daemons, and service state created by the script.
-- Destructive cleanup must be limited to known generated directories such as `build/`, `dist/`, `.cache/`, package-manager build roots, temporary directories, and `devenv/volumes`.
+- Destructive cleanup must be limited to known generated directories inside the repository such as `build/`, `dist/`, `.cache/`, package-manager build roots, temporary directories, and `devenv/volumes`. It must not reach the shared XDG/HOME `c.pkt.systems/deps` archive cache or the toolchain cache.
 - Scripts that delete or recreate a directory must refuse empty paths, `/`, the repository root, parent directories, home directories, and any path outside the expected generated-state root.
 - Never remove source-controlled files, parent directories, home directories, or arbitrary user-provided paths.
 - Print actionable errors with the failed surface, phase, and next step. Use the structured diagnostic block for important lifecycle failures.
