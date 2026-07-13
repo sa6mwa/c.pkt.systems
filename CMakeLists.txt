@@ -1088,6 +1088,22 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging"
         TIMEOUT 30)
       add_test(
+        NAME package_verify_toolchain_tools
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/package_verify_toolchain_tools_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(package_verify_toolchain_tools PROPERTIES
+        LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
+        NAME native_hardening_host
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/native_hardening_host_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(native_hardening_host PROPERTIES
+        LABELS "smoke"
+        TIMEOUT 30)
+      add_test(
         NAME lifecycle_surface
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/lifecycle_surface_test.sh")
