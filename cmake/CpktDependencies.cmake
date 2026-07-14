@@ -211,7 +211,7 @@ endfunction()
 
 function(cpkt_append_pinned_external_toolchain_env_args out_var)
   set(_args ${${out_var}})
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_BUILD_DEPENDENCIES)
     foreach(_cpkt_required_var IN ITEMS
         CPKT_TOOLCHAIN_ROOT
         CMAKE_C_COMPILER

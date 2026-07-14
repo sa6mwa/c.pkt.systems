@@ -6,6 +6,7 @@ if(NOT DEFINED CPKT_SOURCE_DIR OR "${CPKT_SOURCE_DIR}" STREQUAL "")
 endif()
 
 set(CMAKE_SYSTEM_NAME Linux)
+set(CPKT_BUILD_DEPENDENCIES ON)
 set(test_toolchain_root "${CMAKE_BINARY_DIR}/bootlin")
 file(MAKE_DIRECTORY "${test_toolchain_root}/bin")
 set(CPKT_TOOLCHAIN_ROOT "${test_toolchain_root}")
