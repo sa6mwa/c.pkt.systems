@@ -60,9 +60,21 @@ if find "$failure_cache/archives" -maxdepth 1 -name '*.tmp.*' -print -quit | gre
 fi
 
 bootlin_archive="$failure_cache/archives/$bootlin_name.tar.xz"
-: > "$bootlin_archive"
+printf '%s\n' 'corrupt cached archive' > "$bootlin_archive"
+make_executable "$fake_bin/curl" '#!/bin/sh
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "$(dirname "$output")"
+printf "%s\\n" "replacement archive" > "$output"'
 make_executable "$fake_bin/sha256sum" '#!/bin/sh
-printf "%s  %s\\n" "760acd5c3159448b618e237b61935335baada74fe0cdc0d7611826cb49b41c8c" "$1"'
+case "$1" in
+  *.tmp.*) printf "%s  %s\\n" "760acd5c3159448b618e237b61935335baada74fe0cdc0d7611826cb49b41c8c" "$1" ;;
+  *) printf "%s  %s\\n" "corrupt" "$1" ;;
+esac'
 make_executable "$fake_bin/tar" '#!/bin/sh
 printf "%s\\n" "simulated extraction failure" >&2
 exit 73'
@@ -72,8 +84,10 @@ extract_output=$(PATH="$fake_bin:$PATH" CPKT_TOOLCHAIN_CACHE="$failure_cache" "$
 extract_status=$?
 set -e
 [[ $extract_status -eq 73 ]] || fail "extraction failure status was $extract_status, expected 73"
+require_text 'discarding corrupt cached archive' "$extract_output"
 require_text 'simulated extraction failure' "$extract_output"
 [[ "$extract_output" != *'unbound variable'* ]] || fail 'extraction cleanup masked the original failure'
+grep -Fxq 'replacement archive' "$bootlin_archive" || fail 'corrupt archive was not replaced before extraction'
 if find "$failure_cache/roots" -maxdepth 1 -name '.extract-*' -print -quit | grep -q .; then
   fail 'extraction cleanup left a temporary directory'
 fi

@@ -15,6 +15,13 @@ if ! grep -Fq 'cpkt-toolchains.sh" discover "$target_id"' "$package_verify"; the
   exit 1
 fi
 
+ensure_line=$(grep -nF 'cpkt-toolchains.sh" ensure "$target_id"' "$package_verify" | cut -d: -f1)
+discover_line=$(grep -nF 'cpkt-toolchains.sh" discover "$target_id"' "$package_verify" | cut -d: -f1)
+if [ -z "$ensure_line" ] || [ -z "$discover_line" ] || [ "$ensure_line" -ge "$discover_line" ]; then
+  printf 'package verification must provision the pinned Bootlin collection before discovery\n' >&2
+  exit 1
+fi
+
 for tool in NM AR READELF; do
   lower_tool=$(printf '%s' "$tool" | tr '[:upper:]' '[:lower:]')
   if ! grep -Fq "toolchain_value $lower_tool" "$package_verify"; then

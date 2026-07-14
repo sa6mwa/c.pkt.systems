@@ -51,6 +51,7 @@ for target_id in $targets; do
   package_assertion_tool_args=()
   case "$target_id" in
     *-linux-*)
+      "$repo_root/scripts/cpkt-toolchains.sh" ensure "$target_id" >/dev/null
       toolchain_report=$("$repo_root/scripts/cpkt-toolchains.sh" discover "$target_id")
       toolchain_value() {
         local key=$1 value

@@ -117,15 +117,19 @@ install_bootlin() {
   if bootlin_ready "$root" "$prefix" "$root/$sysroot_rel"; then return; fi
   archive_dir="$(cache_root)/archives"; archive="$archive_dir/$name.tar.xz"
   mkdir -p "$archive_dir" "$(cache_root)/roots"
+  if [[ -f "$archive" ]]; then
+    actual=$(sha256_file "$archive")
+    if [[ "$actual" != "$sha256" ]]; then
+      printf 'cpkt-toolchains: discarding corrupt cached archive: %s\n' "$archive" >&2
+      rm -f -- "$archive"
+    fi
+  fi
   if [[ ! -f "$archive" ]]; then
     tmp="$archive.tmp.$$"; install_cleanup_trap "$tmp" -f
     download_file "https://toolchains.bootlin.com/downloads/releases/toolchains/$arch/tarballs/$name.tar.xz" "$tmp"
     actual=$(sha256_file "$tmp")
     [[ "$actual" == "$sha256" ]] || die "checksum mismatch for $name.tar.xz: expected $sha256, got $actual"
     mv "$tmp" "$archive"; trap - EXIT HUP INT TERM
-  else
-    actual=$(sha256_file "$archive")
-    [[ "$actual" == "$sha256" ]] || die "cached archive checksum mismatch for $archive: expected $sha256, got $actual"
   fi
   extract="$(cache_root)/roots/.extract-$name.$$"; install_cleanup_trap "$extract" -rf
   mkdir -p "$extract"; tar -C "$extract" -xf "$archive"
