@@ -62,9 +62,18 @@ function(cpkt_configure_bootlin_toolchain target_id)
   if(NOT _cpkt_linker_in_root EQUAL 0)
     message(FATAL_ERROR "Bootlin compiler selected a linker outside its collection: ${_cpkt_compiler_linker}")
   endif()
+  get_filename_component(_cpkt_sysroot_real "${_cpkt_sysroot}" REALPATH)
+  file(RELATIVE_PATH _cpkt_sysroot_relative "${_cpkt_root_real}" "${_cpkt_sysroot_real}")
+  if(_cpkt_sysroot_relative MATCHES "^\\.\\.")
+    message(FATAL_ERROR "Pinned Bootlin sysroot is outside its compiler collection: ${_cpkt_sysroot}")
+  endif()
+  get_filename_component(_cpkt_root_name "${_cpkt_root_real}" NAME)
 
   set(CPKT_TOOLCHAIN_ROOT "${_cpkt_root}" CACHE PATH "Pinned Bootlin compiler collection root." FORCE)
   set(CPKT_TOOLCHAIN_TARGET "${target_id}" CACHE STRING "Pinned Linux compiler collection target." FORCE)
+  set(CPKT_TOOLCHAIN_IDENTITY
+    "bootlin-${target_id}-${_cpkt_root_name}-${_cpkt_sysroot_relative}"
+    CACHE INTERNAL "Pinned Bootlin dependency cache identity." FORCE)
   set(CPKT_CXX_STDLIB_STATIC_LIBRARY "${_cpkt_libstdcxx_a}" CACHE FILEPATH "Pinned static C++ runtime archive." FORCE)
   set(CPKT_CXX_LIBGCC_STATIC_LIBRARY "${_cpkt_libgcc_a}" CACHE FILEPATH "Pinned static GCC runtime archive." FORCE)
   set(CMAKE_C_COMPILER "${_cpkt_cc}" CACHE FILEPATH "" FORCE)

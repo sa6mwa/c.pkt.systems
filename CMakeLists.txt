@@ -264,12 +264,8 @@ endif()
 set(CPKT_DEPENDENCY_SET_ID
   "openssl-${CPKT_OPENSSL_VERSION}_zlib-${CPKT_ZLIB_VERSION}_curl-${CPKT_CURL_VERSION}_nghttp2-${CPKT_NGHTTP2_VERSION}_libssh2-${CPKT_LIBSSH2_VERSION}_libxml2-${CPKT_LIBXML2_VERSION}_lua-${CPKT_LUA_VERSION}_miniaudio-${CPKT_MINIAUDIO_VERSION}_whisper-${CPKT_WHISPER_VERSION}_mqtt-c-${CPKT_MQTTC_VERSION}-${CPKT_MQTTC_COMMIT}_open62541-${CPKT_OPEN62541_VERSION}-${CPKT_OPEN62541_PATCHSET}_cmocka-${CPKT_CMOCKA_VERSION}"
   CACHE INTERNAL "Version key for the pinned third-party dependency set.")
-set(_cpkt_dependency_toolchain_id
-  "${CMAKE_C_COMPILER_ID}-${CMAKE_C_COMPILER_VERSION}")
-if(CMAKE_C_COMPILER_TARGET)
-  string(APPEND _cpkt_dependency_toolchain_id "-${CMAKE_C_COMPILER_TARGET}")
-endif()
-string(MAKE_C_IDENTIFIER "${_cpkt_dependency_toolchain_id}" _cpkt_dependency_toolchain_id)
+include(cmake/CpktDependencyToolchainIdentity.cmake)
+cpkt_dependency_toolchain_cache_id(_cpkt_dependency_toolchain_id)
 set(_cpkt_legacy_external_root "${CMAKE_SOURCE_DIR}/.cache/deps/${CPKT_TARGET_ID}")
 set(_cpkt_legacy_dependency_build_root "${CMAKE_SOURCE_DIR}/.cache/deps-build/${CPKT_TARGET_ID}")
 set(_cpkt_default_external_root
@@ -1082,6 +1078,12 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/linux_toolchain_sysroot_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME dependency_toolchain_identity
+        COMMAND
+          "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          -P "${CMAKE_SOURCE_DIR}/tests/dependency_toolchain_identity_test.cmake")
       add_test(
         NAME pinned_toolchain_resolvers
         COMMAND

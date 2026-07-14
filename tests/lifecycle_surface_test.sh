@@ -180,6 +180,10 @@ require_file_contains \
   'CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE' \
   'explicit dependency root override is required before reusing a non-default dependency cache'
 require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/dependencies.md \
+  'A Bootlin identity must never reuse a host-GCC dependency root' \
+  'dependency cache identity separates pinned Bootlin collections from host GCC'
+require_file_contains \
   scripts/configure-preset.sh \
   '\.cache/deps-build/x86_64-linux-gnu/\*/AFL_' \
   'fresh fuzz configure removes generated AFL dependency build caches'

@@ -79,7 +79,7 @@ Rules:
 - Do not vendor generated dependency installs into release source.
 - Dependency cache reuse is the default. Do not re-download a verified global archive or rebuild a local dependency root when the requested dependency identity has not changed.
 - When dependency identity changes, invalidate only the relevant local `.cache/` extraction, build, and install roots through `make clean` or a narrower documented dependency-clean target. Retain the global archive cache; it is keyed by the expected SHA-256 and remains safe for any project that still pins that artifact.
-- Dependency identity includes dependency name, version, target ID, source URL, SHA-256, toolchain file, ABI-relevant build options, and cache layout version.
+- Dependency identity includes dependency name, version, target ID, source URL, SHA-256, compiler collection identity, toolchain file, ABI-relevant build options, and cache layout version. For a pinned Bootlin build, the compiler collection identity must include the Bootlin target ID, pinned collection release/root, and sysroot identity; GCC version alone and `CMAKE_C_COMPILER_TARGET` are insufficient. A Bootlin identity must never reuse a host-GCC dependency root merely because the compiler version matches.
 - `scripts/deps.sh` should detect stale dependency roots when possible by comparing requested dependency identity to a cached manifest or stamp. On mismatch, fail with an actionable stale-cache diagnostic or refresh through the documented clean path.
 - Do not leak dependency cache paths into package metadata, CMake config files, pkg-config files, binaries, scripts, or release archives.
 - Imported CMake targets and pkg-config metadata must expose only the public dependency contract needed by downstream consumers.
