@@ -32,6 +32,21 @@ require_file_contains() {
   fi
 }
 
+require_ordered_make_recipe() {
+  target=$1
+  expected=$2
+  actual=$(awk -v target="$target" '
+    $0 == target ":" { found = 1; next }
+    found && /^[^[:space:]#]/ { exit }
+    found && /^\t\$\(MAKE\) / { sub(/^\t\$\(MAKE\) /, ""); print }
+  ' "$repo_root/Makefile")
+  if [ "$actual" != "$expected" ]; then
+    printf 'Make target %s must serialize this lifecycle recipe:\nexpected:\n%s\nactual:\n%s\n' \
+      "$target" "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+
 for target in \
   help deps-debug deps-release deps-cross build build-debug build-release \
   build-host cross-build test test-debug test-host test-cross cross-test test-all \
@@ -90,27 +105,30 @@ require_file_contains \
 
 grep -Eq '^/dist/$' "$repo_root/.gitignore"
 grep -Eq '^/VERSION$' "$repo_root/.gitignore"
-grep -Eq '^release-matrix:.*package-checksums.*package-verify' "$repo_root/Makefile"
-grep -Eq '^release-pipeline:.*format.*debug.*clangd-surface.*valgrind.*fuzz-smoke.*release-matrix' "$repo_root/Makefile" || {
-  printf 'release-pipeline must run ordinary checks before the release matrix\n' >&2
-  exit 1
-}
+require_ordered_make_recipe \
+  release-pipeline \
+  'format
+debug
+clangd-surface
+valgrind
+fuzz-smoke
+release-matrix'
+require_ordered_make_recipe \
+  release-matrix \
+  'package
+package-source
+package-source-smoke
+package-checksums
+package-verify'
 grep -Eq 'if\(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu"\)' "$repo_root/CMakeLists.txt" || {
   printf 'clangd CTest registration must be restricted to the native host target\n' >&2
   exit 1
 }
-grep -Eq '^prerelease:[[:space:]]+release-pipeline[[:space:]]*$' "$repo_root/Makefile" || {
-  printf 'prerelease must invoke the shared release-pipeline\n' >&2
-  exit 1
-}
-grep -Eq '^release:[[:space:]]+clean[[:space:]]+release-pipeline[[:space:]]*$' "$repo_root/Makefile" || {
-  printf 'release must clean before invoking the shared release-pipeline\n' >&2
-  exit 1
-}
-grep -Eq '^prerelease-hardening:[[:space:]]+prerelease[[:space:]]+fuzz[[:space:]]*$' "$repo_root/Makefile" || {
-  printf 'prerelease-hardening must extend prerelease with standard native fuzzing\n' >&2
-  exit 1
-}
+require_ordered_make_recipe prerelease 'release-pipeline'
+require_ordered_make_recipe release 'clean
+release-pipeline'
+require_ordered_make_recipe prerelease-hardening 'prerelease
+fuzz'
 require_file_contains \
   scripts/run-afl-fuzz.sh \
   'smoke\|standard\|long' \

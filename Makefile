@@ -60,7 +60,7 @@ help:
 	@printf '  %-30s %s\n' 'prerelease' 'Run the release proof graph without cleaning generated state first.'
 	@printf '  %-30s %s\n' 'prerelease-live' 'Run external-provider checks; requires CPKT_LIVE_CHECKS=1.'
 	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run the release proof graph plus standard-duration native fuzzing.'
-	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, checksum, and verify all release artifacts.'
+	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, source-smoke, checksum, and verify all release artifacts.'
 	@printf '  %-30s %s\n' 'finalize-slice' 'Format and run the narrow local pre-commit gate.'
 	@printf '  %-30s %s\n' 'release' 'Clean, then run the same proof graph as prerelease; final local release gate.'
 	@printf '  %-30s %s\n' 'print-release-version' 'Print the version used by package and release artifacts.'
@@ -209,17 +209,31 @@ verify-release-archives: package-verify
 
 verify-release-privacy: package-verify
 
-release-pipeline: format debug clangd-surface valgrind fuzz-smoke release-matrix
+release-pipeline:
+	$(MAKE) format
+	$(MAKE) debug
+	$(MAKE) clangd-surface
+	$(MAKE) valgrind
+	$(MAKE) fuzz-smoke
+	$(MAKE) release-matrix
 
-prerelease: release-pipeline
+prerelease:
+	$(MAKE) release-pipeline
 
 prerelease-live:
 	@test "$${CPKT_LIVE_CHECKS:-}" = 1 || { printf 'prerelease-live requires CPKT_LIVE_CHECKS=1 because it contacts external providers\n' >&2; exit 2; }
 	$(MAKE) e2e-sus e2e-cpktxscribe
 
-prerelease-hardening: prerelease fuzz
+prerelease-hardening:
+	$(MAKE) prerelease
+	$(MAKE) fuzz
 
-release-matrix: package package-source package-checksums package-verify
+release-matrix:
+	$(MAKE) package
+	$(MAKE) package-source
+	$(MAKE) package-source-smoke
+	$(MAKE) package-checksums
+	$(MAKE) package-verify
 
 finalize-slice: format debug clangd-surface
 
@@ -230,7 +244,9 @@ format:
 	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format\n' >&2; exit 1; }
 	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
 
-release: clean release-pipeline
+release:
+	$(MAKE) clean
+	$(MAKE) release-pipeline
 
 source-archive: package-source-smoke
 
