@@ -11,6 +11,17 @@ die() {
   exit 1
 }
 
+install_cleanup_trap() {
+  local remove_option=$1 cleanup='status=$?;' path
+  shift
+  for path in "$@"; do
+    printf -v cleanup '%s rm %s -- %q || :;' "$cleanup" "$remove_option" "$path"
+  done
+  cleanup+=' trap - EXIT HUP INT TERM; exit "$status"'
+  trap "$cleanup" EXIT
+  trap 'exit 1' HUP INT TERM
+}
+
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 toolchain_resolver="$repo_root/scripts/cpkt-toolchains.sh"
 
@@ -52,7 +63,7 @@ download_archive() {
   fi
   rm -f "$archive"
   temporary="$archive.tmp.$$"
-  trap 'rm -f "$temporary"' EXIT HUP INT TERM
+  install_cleanup_trap -f "$temporary"
   if command -v curl >/dev/null 2>&1; then
     curl -fL --retry 3 --connect-timeout 20 --output "$temporary" \
       "https://github.com/AFLplusplus/AFLplusplus/archive/refs/tags/v${version}.tar.gz"
@@ -67,9 +78,8 @@ download_archive() {
 }
 
 build_afl() {
-  local root=$1 source=$2 cc=$3 cxx=$4 bootlin_root=$5 temporary
+  local root=$1 source=$2 cc=$3 cxx=$4 bootlin_root=$5 temporary=$6
   local helper="$root/lib/afl"
-  temporary="$root.tmp.$$"
   rm -rf "$temporary"
   mkdir -p "$temporary/bin" "$temporary/lib/afl"
 
@@ -134,7 +144,7 @@ build_afl() {
 }
 
 ensure() {
-  local cache archive_root archive root description cc cxx bootlin_root extract source
+  local cache archive_root archive root description cc cxx bootlin_root extract source temporary
   [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is supported only on native Linux hosts'
   case "$(uname -m)" in
     x86_64|amd64) ;;
@@ -152,17 +162,16 @@ ensure() {
   [[ -x "$cc" && -x "$cxx" && -d "$bootlin_root/include" ]] || die 'Bootlin GCC collection is incomplete for AFL++'
   download_archive "$archive_root" "$archive"
   extract="$cache/.aflplusplus-extract.$$"
-  CPKT_AFLPP_EXTRACT=$extract
-  trap 'rm -rf "${CPKT_AFLPP_EXTRACT:-}"' EXIT HUP INT TERM
-  rm -rf "$extract"
+  temporary="$root.tmp.$$"
+  install_cleanup_trap -rf "$extract" "$temporary"
+  rm -rf "$extract" "$temporary"
   mkdir -p "$extract"
   tar -xzf "$archive" -C "$extract"
   source="$extract/AFLplusplus-$version"
   [[ -d "$source" ]] || die "unexpected AFL++ archive layout: $archive_name"
-  build_afl "$root" "$source" "$cc" "$cxx" "$bootlin_root"
-  trap - EXIT HUP INT TERM
-  unset CPKT_AFLPP_EXTRACT
+  build_afl "$root" "$source" "$cc" "$cxx" "$bootlin_root" "$temporary"
   rm -rf "$extract"
+  trap - EXIT HUP INT TERM
 }
 
 report() {

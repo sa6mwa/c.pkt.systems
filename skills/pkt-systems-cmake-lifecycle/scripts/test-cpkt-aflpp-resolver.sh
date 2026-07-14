@@ -10,6 +10,7 @@ bash -n "$resolver"
 grep -Fq 'version=5.02c' "$resolver" || fail 'AFL++ version is not pinned'
 grep -Fq 'archive_sha256=' "$resolver" || fail 'AFL++ checksum is not pinned'
 grep -Fq 'cpkt-toolchains.sh' "$resolver" || fail 'resolver does not use the embedded Bootlin resolver'
+grep -Fq 'install_cleanup_trap -rf "$tmp"' "$resolver" || fail 'resolver does not clean failed staging state'
 
 fake_bin=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-aflpp-test.XXXXXX")
 trap 'rm -rf "$fake_bin"' EXIT HUP INT TERM

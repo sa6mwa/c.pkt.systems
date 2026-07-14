@@ -9,6 +9,16 @@ archive_sha256=118415843e5d289d63bd6d8f2252c18212978f15ac9e86acbbc75766cd45acde
 skill_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 bootlin="$skill_dir/scripts/cpkt-toolchains.sh"
 die() { printf 'cpkt-aflpp: %s\n' "$*" >&2; exit 1; }
+install_cleanup_trap() {
+  local remove_option=$1 cleanup='status=$?;' path
+  shift
+  for path in "$@"; do
+    printf -v cleanup '%s rm %s -- %q || :;' "$cleanup" "$remove_option" "$path"
+  done
+  cleanup+=' trap - EXIT HUP INT TERM; exit "$status"'
+  trap "$cleanup" EXIT
+  trap 'exit 1' HUP INT TERM
+}
 cache() {
   if [[ -n "${CPKT_TOOLCHAIN_CACHE:-}" ]]; then printf '%s\n' "$CPKT_TOOLCHAIN_CACHE"
   elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then printf '%s/c.pkt.systems/toolchains\n' "$XDG_CACHE_HOME"
@@ -46,7 +56,7 @@ ensure() {
     printf '%s  %s\n' "$archive_sha256" "$dl" | sha256sum -c - >/dev/null || { rm -f "$dl"; die 'AFL++ checksum mismatch'; }
     mv "$dl" "$archive"
   fi
-  tmp="$c/.aflplusplus.$$"; trap 'rm -rf "${tmp:-}"' EXIT HUP INT TERM
+  tmp="$c/.aflplusplus.$$"; install_cleanup_trap -rf "$tmp"
   mkdir -p "$tmp/extract" "$tmp/root/bin" "$tmp/root/lib/afl"
   tar -xzf "$archive" -C "$tmp/extract"; src="$tmp/extract/AFLplusplus-$version"
   [[ -d "$src" ]] || die "unexpected archive layout: $archive_name"
@@ -64,7 +74,7 @@ ensure() {
   printf '#!/usr/bin/env bash\nexport AFL_PATH=%q\nexport AFL_CC=%q\nexec %q "$@"\n' "$r/lib/afl" "$cc" "$r/bin/afl-gcc-fast" > "$tmp/root/bin/cpkt-afl-gcc"
   printf '#!/usr/bin/env bash\nexport AFL_PATH=%q\nexport AFL_CC=%q\nexport AFL_CXX=%q\nexec %q "$@"\n' "$r/lib/afl" "$cc" "$cxx" "$r/bin/afl-g++-fast" > "$tmp/root/bin/cpkt-afl-g++"
   chmod +x "$tmp/root/bin/cpkt-afl-gcc" "$tmp/root/bin/cpkt-afl-g++"; touch "$tmp/root/.cpkt-aflpp-revision-$revision"
-  ready "$tmp/root" || die 'incomplete AFL++ build'; rm -rf "$r"; mv "$tmp/root" "$r"; trap - EXIT HUP INT TERM; rm -rf "$tmp"
+  ready "$tmp/root" || die 'incomplete AFL++ build'; rm -rf "$r"; mv "$tmp/root" "$r"; rm -rf "$tmp"; trap - EXIT HUP INT TERM
 }
 
 report() { ensure; local r=$(root); printf 'version=%s\ncache=%s\nsource=aflplusplus\nroot=%s\nafl_fuzz=%s\nafl_showmap=%s\ncc=%s\ncxx=%s\nhelper=%s\n' "$version" "$(cache)" "$r" "$r/bin/afl-fuzz" "$r/bin/afl-showmap" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/lib/afl"; }
