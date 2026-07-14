@@ -81,7 +81,8 @@ typedef enum cpkt_audio_format {
 typedef enum cpkt_audio_device_backend {
   /**
    * Let the facade select the platform backend. Linux static builds select the
-   * process backend; shared builds may try native runtime loading first.
+   * process backend; shared builds try native runtime loading first and fall
+   * back to the process backend when native device open fails.
    */
   CPKT_AUDIO_DEVICE_BACKEND_AUTO = 0,
   /** Spawn a platform audio command and stream raw PCM over pipes. */
@@ -564,9 +565,11 @@ cpkt_audio_encoder_open_writer(cpkt_audio_encoder **out,
 /**
  * Opens capture from the platform default input device.
  *
- * The handle captures normalized float32 mono 16 kHz PCM. Device backends are
- * loaded by the facade at runtime; missing host audio libraries cause open or
- * start to fail without adding link requirements for ordinary decoder users.
+ * The handle captures normalized float32 mono 16 kHz PCM. The facade selects
+ * runtime-loaded native device I/O or, on Linux, the process backend that
+ * streams raw PCM through a platform capture command. Native runtime libraries
+ * are never link requirements for ordinary decoder users; the selected backend
+ * can still fail to open or start when its host runtime or command is missing.
  */
 cpkt_audio_result
 cpkt_audio_capture_open_default(cpkt_audio_capture **out,
@@ -575,9 +578,12 @@ cpkt_audio_capture_open_default(cpkt_audio_capture **out,
 /**
  * Opens playback to the platform default output device.
  *
- * The handle plays normalized float32 mono 16 kHz PCM. Device backends are
- * loaded by the facade at runtime; missing host audio libraries cause open or
- * start to fail without adding link requirements for ordinary decoder users.
+ * The handle plays normalized float32 mono 16 kHz PCM. The facade selects
+ * runtime-loaded native device I/O or, on Linux, the process backend that
+ * streams raw PCM through a platform playback command. Native runtime
+ * libraries are never link requirements for ordinary decoder users; the
+ * selected backend can still fail to open or start when its host runtime or
+ * command is missing.
  */
 cpkt_audio_result
 cpkt_audio_playback_open_default(cpkt_audio_playback **out,

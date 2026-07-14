@@ -283,8 +283,8 @@ typedef struct cpkt_opcua_event {
 } cpkt_opcua_event;
 
 /**
- * Scalar value container. String and byte-string values point at caller-owned
- * memory on input and at the caller's read buffer on output.
+ * C89 value container. Scalar and array string or byte-string values point at
+ * caller-owned memory on input and at caller-provided read buffers on output.
  */
 typedef struct cpkt_opcua_value {
   int type;
@@ -1857,7 +1857,7 @@ cpkt_opcua_result cpkt_opcua_client_read_async(
     cpkt_opcua_request_id *request_id_out, char *string_buffer,
     size_t string_buffer_size, size_t *required_string_size_out,
     cpkt_opcua_status *status_out);
-/** Writes the client-side async attribute from caller-provided input. */
+/** Asynchronously writes a Value attribute through the connected client. */
 cpkt_opcua_result cpkt_opcua_client_write_async(
     cpkt_opcua_client *client, cpkt_opcua_node_id node_id,
     const cpkt_opcua_value *value, cpkt_opcua_async_status_fn fn, void *user,
@@ -1878,7 +1878,7 @@ cpkt_opcua_result cpkt_opcua_client_call_method_async(
     cpkt_opcua_request_id *request_id_out, cpkt_opcua_value *outputs,
     char **string_buffers, const size_t *string_buffer_sizes,
     size_t *required_string_sizes_out, cpkt_opcua_status *status_out);
-/** Adds client-side object async state through the connected server. */
+/** Asynchronously adds an object through the connected client. */
 cpkt_opcua_result cpkt_opcua_client_add_object_async(
     cpkt_opcua_client *client, cpkt_opcua_node_id node_id,
     cpkt_opcua_node_id parent_node_id, const char *browse_name,
@@ -1886,7 +1886,7 @@ cpkt_opcua_result cpkt_opcua_client_add_object_async(
     cpkt_opcua_request_id *request_id_out, cpkt_opcua_node_id *node_id_out,
     char *node_id_buffer, size_t node_id_buffer_size,
     size_t *required_node_id_size_out, cpkt_opcua_status *status_out);
-/** Adds client-side variable async state through the connected server. */
+/** Asynchronously adds a variable through the connected client. */
 cpkt_opcua_result cpkt_opcua_client_add_variable_async(
     cpkt_opcua_client *client, cpkt_opcua_node_id node_id,
     cpkt_opcua_node_id parent_node_id, const char *browse_name,

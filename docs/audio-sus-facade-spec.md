@@ -1,6 +1,6 @@
 # Audio And Susurro C89 Facade Specification
 
-This document defines the initial implementation target for two new `cpkt`
+This document records the implemented production contract for two `cpkt`
 C89 facades:
 
 - `cpkt_audio`, a facade over miniaudio for audio decoding, conversion, and
@@ -70,7 +70,7 @@ and receiver-shell CLI stay aligned.
 
 ## Upstream Dependency Pins
 
-Initial source pins inspected for this specification:
+Current source pins used by the facades:
 
 | Dependency | Version | Source | SHA-256 |
 | --- | --- | --- | --- |
@@ -105,7 +105,7 @@ Build miniaudio as an internal dependency, through a controlled wrapper or
 upstream `miniaudio.c/.h` build. The facade should compile only the features
 needed for the shipped public surface.
 
-Initial miniaudio build intent:
+Current miniaudio build policy:
 
 - Keep decoding enabled.
 - Keep WAV, FLAC, and MP3 decoding enabled when available from miniaudio's
@@ -135,7 +135,7 @@ Build the first whisper.cpp integration CPU-only. This keeps the initial
 Vulkan/CUDA runtime libraries, CMake/pkg-config transitive link metadata, loader
 paths, and optional backend packaging part of the first cut.
 
-Initial whisper.cpp/ggml build intent:
+Current whisper.cpp/ggml build policy:
 
 - `WHISPER_BUILD_TESTS=OFF`
 - `WHISPER_BUILD_EXAMPLES=OFF`
@@ -283,10 +283,14 @@ static read-only data.
 
 - `cpkt_audio_decoder`
 - `cpkt_audio_encoder`
+- `cpkt_audio_capture`
+- `cpkt_audio_playback`
+- `cpkt_audio_vox`
+- `cpkt_audio_ptt`
 
 ### Common Types
 
-Expected public types:
+Key public types:
 
 - `cpkt_audio_result`
 - `cpkt_audio_format`
@@ -295,6 +299,10 @@ Expected public types:
 - `cpkt_audio_writer`
 - `cpkt_audio_decoder_config`
 - `cpkt_audio_encoder_config`
+- `cpkt_audio_capture_config`
+- `cpkt_audio_playback_config`
+- `cpkt_audio_vox_config`
+- `cpkt_audio_ptt_config`
 
 Reader and writer callbacks must define:
 
@@ -315,7 +323,7 @@ the backend's requested byte count.
 
 ### Decoder
 
-The first decoder tier must support:
+The decoder supports:
 
 - open from explicit file path;
 - open from libcurl-supported URLs through libcurl without pre-downloading the
@@ -337,11 +345,8 @@ headers.
 
 ### Encoder
 
-Prepare `cpkt_audio_encoder` in the initial public design. Implement encoding
-where miniaudio's built-in APIs make this practical without new external
-dependencies.
-
-The first encoder tier should support:
+`cpkt_audio_encoder` is part of the public design and uses miniaudio's
+built-in encoder APIs without new external dependencies. It supports:
 
 - open from explicit file path;
 - open from callback writer when miniaudio supports the required write/seek
@@ -351,8 +356,8 @@ The first encoder tier should support:
 - query supported output formats.
 
 Do not imply that every decoded format can also be encoded. Encoding support
-must be capability-driven and tested. WAV is expected to be the first-class
-encoding format. Additional formats require explicit confirmation from
+is capability-driven and tested. WAV is the supported first-class encoding
+format. Additional formats require explicit confirmation from
 miniaudio's built-in encoder surface or a deliberate dependency expansion.
 
 ## cpkt_sus Surface
@@ -368,21 +373,29 @@ policy. The instance creates transcriber sessions.
 
 ### Common Types
 
-Expected public types:
+Key public types:
 
 - `cpkt_sus_result`
 - `cpkt_sus_config`
 - `cpkt_sus_cache_config`
 - `cpkt_sus_cache_status_event`
 - `cpkt_sus_cache_status_sink`
+- `cpkt_sus_info`
 - `cpkt_sus_transcriber_config`
 - `cpkt_sus_segment`
 - `cpkt_sus_segment_sink`
+- `cpkt_sus_segmented_config`
+- `cpkt_sus_segmented_event`
+- `cpkt_sus_segmented_sink`
 - `cpkt_sus_progress_sink`
 - `cpkt_sus_abort_fn`
+- `cpkt_sus_model_entry`
+- `cpkt_sus_log_level`
+- `cpkt_sus_log_event`
+- `cpkt_sus_log_sink`
 
-Public config structs must be initialized through their default helpers before
-field overrides:
+Public config structs are zero-initializable. The default helpers are provided
+for explicit initialization and are equivalent to documented zero defaults:
 
 - `cpkt_sus_config_default`
 - `cpkt_sus_cache_config_default`
@@ -391,7 +404,7 @@ field overrides:
 
 ### Model Loading
 
-Model loading must support:
+Model loading supports:
 
 - open from explicit path;
 - open from explicit cache configuration;
@@ -420,7 +433,7 @@ Current implementation status:
   load phases through `cpkt_sus_cache_config.status_sink`;
 - downloaded files are written to a unique temporary path, flushed, checksum
   verified, model-load verified, and then atomically renamed into place;
-- cache loading returns distinct lookup, I/O, checksum, model-load, and future
+- cache loading returns distinct lookup, I/O, checksum, model-load, and
   network result codes.
 
 Opening from a path must not perform network access.
@@ -441,7 +454,7 @@ re-use across processes.
 
 ### Transcription
 
-The first transcription tier must support:
+The transcription surface supports:
 
 - transcribe `float32` mono 16000 Hz PCM buffers;
 - transcribe VOX-segmented audio from a `cpkt_audio_decoder` integration path;
@@ -513,7 +526,7 @@ Push-to-talk is the caller-driven sibling to VOX for live capture use:
   toggles TX/RX and `q` exits. Modifier-hold controls are intentionally not
   modeled because ordinary ttys do not report key-up or modifier-only events.
 
-Initial transcription options should expose only stable, high-value knobs:
+The transcription options expose stable, high-value knobs:
 
 - `cpkt_sus` instance;
 - thread count;
