@@ -37,6 +37,18 @@ install_cleanup_trap() {
   trap 'exit 1' HUP INT TERM
 }
 
+with_cache_lock() {
+  local lock_path=$1 lock_fd
+  shift
+  command -v flock >/dev/null 2>&1 || die 'flock is required to provision shared Linux toolchains'
+  mkdir -p "$(dirname -- "$lock_path")"
+  exec {lock_fd}>"$lock_path"
+  flock -w "${CPKT_TOOLCHAIN_LOCK_TIMEOUT:-600}" "$lock_fd" || die "timed out waiting for shared toolchain lock: $lock_path"
+  "$@"
+  flock -u "$lock_fd"
+  eval "exec ${lock_fd}>&-"
+}
+
 target_ids() {
   cat <<'TARGETS'
 x86_64-linux-gnu
@@ -111,6 +123,14 @@ osxcross_candidate() {
 }
 
 install_bootlin() {
+  local target=$1 values arch name sha256 prefix sysroot_rel root
+  values=$(bootlin_values "$target")
+  IFS='|' read -r arch name sha256 prefix sysroot_rel root <<<"$values"
+  if bootlin_ready "$root" "$prefix" "$root/$sysroot_rel"; then return; fi
+  with_cache_lock "$(cache_root)/locks/bootlin-$name.lock" install_bootlin_locked "$target"
+}
+
+install_bootlin_locked() {
   local target=$1 values arch name sha256 prefix sysroot_rel root archive_dir archive tmp extract actual
   values=$(bootlin_values "$target")
   IFS='|' read -r arch name sha256 prefix sysroot_rel root <<<"$values"

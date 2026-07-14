@@ -22,6 +22,18 @@ install_cleanup_trap() {
   trap 'exit 1' HUP INT TERM
 }
 
+with_cache_lock() {
+  local lock_path=$1 lock_fd
+  shift
+  command -v flock >/dev/null 2>&1 || die 'flock is required to provision shared AFL++ tooling'
+  mkdir -p "$(dirname -- "$lock_path")"
+  exec {lock_fd}>"$lock_path"
+  flock -w "${CPKT_TOOLCHAIN_LOCK_TIMEOUT:-600}" "$lock_fd" || die "timed out waiting for shared toolchain lock: $lock_path"
+  "$@"
+  flock -u "$lock_fd"
+  eval "exec ${lock_fd}>&-"
+}
+
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 toolchain_resolver="$repo_root/scripts/cpkt-toolchains.sh"
 
@@ -144,13 +156,20 @@ build_afl() {
 }
 
 ensure() {
-  local cache archive_root archive root description cc cxx bootlin_root extract source temporary
+  local cache root
   [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is supported only on native Linux hosts'
   case "$(uname -m)" in
     x86_64|amd64) ;;
     *) die "AFL++ GCC-plugin fuzzing requires an x86_64 Linux host, got: $(uname -m)" ;;
   esac
   cache=$(cache_root)
+  root=$(afl_root)
+  afl_ready "$root" && return
+  with_cache_lock "$cache/locks/aflplusplus-${version}-x86_64-linux-gnu.lock" ensure_locked "$cache"
+}
+
+ensure_locked() {
+  local cache=$1 archive_root archive root description cc cxx bootlin_root extract source temporary
   archive_root="$cache/archives"
   archive="$archive_root/$archive_name"
   root=$(afl_root)

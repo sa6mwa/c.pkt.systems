@@ -184,6 +184,10 @@ require_file_contains \
   'A Bootlin identity must never reuse a host-GCC dependency root' \
   'dependency cache identity separates pinned Bootlin collections from host GCC'
 require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/toolchains.md \
+  'locks/.*per-collection advisory lock files' \
+  'lifecycle documents serialized shared toolchain publication'
+require_file_contains \
   scripts/configure-preset.sh \
   '\.cache/deps-build/x86_64-linux-gnu/\*/AFL_' \
   'fresh fuzz configure removes generated AFL dependency build caches'

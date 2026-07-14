@@ -19,6 +19,17 @@ install_cleanup_trap() {
   trap "$cleanup" EXIT
   trap 'exit 1' HUP INT TERM
 }
+with_cache_lock() {
+  local lock_path=$1 lock_fd
+  shift
+  command -v flock >/dev/null 2>&1 || die 'flock is required to provision shared AFL++ tooling'
+  mkdir -p "$(dirname -- "$lock_path")"
+  exec {lock_fd}>"$lock_path"
+  flock -w "${CPKT_TOOLCHAIN_LOCK_TIMEOUT:-600}" "$lock_fd" || die "timed out waiting for shared toolchain lock: $lock_path"
+  "$@"
+  flock -u "$lock_fd"
+  eval "exec ${lock_fd}>&-"
+}
 cache() {
   if [[ -n "${CPKT_TOOLCHAIN_CACHE:-}" ]]; then printf '%s\n' "$CPKT_TOOLCHAIN_CACHE"
   elif [[ -n "${XDG_CACHE_HOME:-}" ]]; then printf '%s/c.pkt.systems/toolchains\n' "$XDG_CACHE_HOME"
@@ -35,6 +46,15 @@ ready() {
 }
 
 ensure() {
+  [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is native Linux-only'
+  case "$(uname -m)" in x86_64|amd64) ;; *) die "native x86_64 Linux is required; no cross, emulator, or QEMU runner is supported";; esac
+  local r c
+  r=$(root); c=$(cache)
+  ready "$r" && return
+  with_cache_lock "$c/locks/aflplusplus-${version}-x86_64-linux-gnu.lock" ensure_locked
+}
+
+ensure_locked() {
   [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is native Linux-only'
   case "$(uname -m)" in x86_64|amd64) ;; *) die "native x86_64 Linux is required; no cross, emulator, or QEMU runner is supported";; esac
   local r c archive desc cc cxx br tmp src dl

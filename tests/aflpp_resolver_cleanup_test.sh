@@ -15,6 +15,14 @@ cache_root="$work_dir/cache"
 mkdir -p "$fake_repo/scripts" "$fake_bin" "$work_dir/bootlin/include" "$cache_root/archives"
 cp "$source_dir/scripts/cpkt-aflpp.sh" "$fake_repo/scripts/cpkt-aflpp.sh"
 chmod +x "$fake_repo/scripts/cpkt-aflpp.sh"
+grep -Fq 'with_cache_lock "$cache/locks/aflplusplus-${version}-x86_64-linux-gnu.lock" ensure_locked "$cache"' "$fake_repo/scripts/cpkt-aflpp.sh" || {
+  printf 'AFL++ root publication is not serialized by a shared cache lock\n' >&2
+  exit 1
+}
+grep -Fq 'afl_ready "$root" && return' "$fake_repo/scripts/cpkt-aflpp.sh" || {
+  printf 'AFL++ root readiness is not rechecked after acquiring the shared cache lock\n' >&2
+  exit 1
+}
 
 cat > "$fake_repo/scripts/cpkt-toolchains.sh" <<EOF
 #!/bin/sh
@@ -77,6 +85,10 @@ if find "$cache_root/roots" -maxdepth 1 -name 'aflplusplus-*.tmp.*' -print -quit
 fi
 if find "$cache_root" -maxdepth 1 -name '.aflplusplus-extract.*' -print -quit | grep -q .; then
   printf 'failed AFL++ provisioning left an extraction directory in the shared cache\n' >&2
+  exit 1
+fi
+if [ ! -f "$cache_root/locks/aflplusplus-5.02c-x86_64-linux-gnu.lock" ]; then
+  printf 'AFL++ provisioning did not create its shared cache lock\n' >&2
   exit 1
 fi
 

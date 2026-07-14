@@ -17,6 +17,11 @@ require_line() { grep -Fxq "$1" <<<"$2" || fail "missing output: $1"; }
 require_text() { [[ "$2" == *"$1"* ]] || fail "missing output: $1"; }
 make_executable() { printf '%b\n' "$2" > "$1"; chmod +x "$1"; }
 
+grep -Fq 'with_cache_lock "$(cache_root)/locks/bootlin-$name.lock" install_bootlin_locked "$target"' "$bootlin" ||
+  fail 'Bootlin root publication is not serialized by collection lock'
+grep -Fq 'if bootlin_ready "$root" "$prefix" "$root/$sysroot_rel"; then return; fi' "$bootlin" ||
+  fail 'Bootlin root readiness is not rechecked after acquiring the collection lock'
+
 bootlin_name=x86-64--glibc--stable-2025.08-1
 bootlin_root="$cache/roots/$bootlin_name"
 bootlin_sysroot="$bootlin_root/x86_64-buildroot-linux-gnu/sysroot"
@@ -58,6 +63,7 @@ require_text 'simulated download failure' "$download_output"
 if find "$failure_cache/archives" -maxdepth 1 -name '*.tmp.*' -print -quit | grep -q .; then
   fail 'download cleanup left a temporary archive'
 fi
+[[ -f "$failure_cache/locks/bootlin-$bootlin_name.lock" ]] || fail 'Bootlin provisioning did not create its collection lock'
 
 bootlin_archive="$failure_cache/archives/$bootlin_name.tar.xz"
 printf '%s\n' 'corrupt cached archive' > "$bootlin_archive"

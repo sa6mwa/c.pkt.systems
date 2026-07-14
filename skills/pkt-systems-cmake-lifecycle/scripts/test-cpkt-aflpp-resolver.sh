@@ -11,6 +11,8 @@ grep -Fq 'version=5.02c' "$resolver" || fail 'AFL++ version is not pinned'
 grep -Fq 'archive_sha256=' "$resolver" || fail 'AFL++ checksum is not pinned'
 grep -Fq 'cpkt-toolchains.sh' "$resolver" || fail 'resolver does not use the embedded Bootlin resolver'
 grep -Fq 'install_cleanup_trap -rf "$tmp"' "$resolver" || fail 'resolver does not clean failed staging state'
+grep -Fq 'with_cache_lock "$c/locks/aflplusplus-${version}-x86_64-linux-gnu.lock" ensure_locked' "$resolver" || fail 'resolver does not serialize shared AFL++ publication'
+grep -Fq 'ready "$r" && return' "$resolver" || fail 'resolver does not recheck AFL++ readiness under the lock'
 
 fake_bin=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-aflpp-test.XXXXXX")
 trap 'rm -rf "$fake_bin"' EXIT HUP INT TERM
