@@ -1087,6 +1087,13 @@ if(CPKT_BUILD_TESTS)
           "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
           -P "${CMAKE_SOURCE_DIR}/tests/dependency_toolchain_identity_test.cmake")
       add_test(
+        NAME external_project_toolchain_environment
+        COMMAND
+          "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}/external-project-toolchain-env-fixture"
+          -P "${CMAKE_SOURCE_DIR}/tests/external_project_toolchain_env_test.cmake")
+      add_test(
         NAME pinned_toolchain_resolvers
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/toolchain_resolver_test.sh"

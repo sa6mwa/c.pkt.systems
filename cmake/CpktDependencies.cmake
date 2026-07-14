@@ -209,11 +209,56 @@ function(cpkt_append_darwin_external_env_args out_var)
   set(${out_var} "${_args}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_append_pinned_external_toolchain_env_args out_var)
+  set(_args ${${out_var}})
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    foreach(_cpkt_required_var IN ITEMS
+        CPKT_TOOLCHAIN_ROOT
+        CMAKE_C_COMPILER
+        CMAKE_CXX_COMPILER
+        CMAKE_LINKER
+        CMAKE_AR
+        CMAKE_RANLIB
+        CMAKE_STRIP
+        CMAKE_NM
+        CMAKE_OBJCOPY
+        CMAKE_OBJDUMP
+        CMAKE_ADDR2LINE
+        CMAKE_READELF)
+      if(NOT DEFINED ${_cpkt_required_var}
+          OR "${${_cpkt_required_var}}" STREQUAL "")
+        message(FATAL_ERROR
+          "Pinned Linux external builds require ${_cpkt_required_var}")
+      endif()
+    endforeach()
+    set(_cpkt_toolchain_bin "${CPKT_TOOLCHAIN_ROOT}/bin")
+    if(NOT IS_DIRECTORY "${_cpkt_toolchain_bin}")
+      message(FATAL_ERROR
+        "Pinned Linux toolchain bin directory is missing: ${_cpkt_toolchain_bin}")
+    endif()
+    list(APPEND _args
+      PATH=${_cpkt_toolchain_bin}:$ENV{PATH}
+      CC=${CMAKE_C_COMPILER}
+      CXX=${CMAKE_CXX_COMPILER}
+      LD=${CMAKE_LINKER}
+      AR=${CMAKE_AR}
+      RANLIB=${CMAKE_RANLIB}
+      STRIP=${CMAKE_STRIP}
+      NM=${CMAKE_NM}
+      OBJCOPY=${CMAKE_OBJCOPY}
+      OBJDUMP=${CMAKE_OBJDUMP}
+      ADDR2LINE=${CMAKE_ADDR2LINE}
+      READELF=${CMAKE_READELF})
+  endif()
+  cpkt_append_darwin_external_env_args(_args)
+  set(${out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_get_external_cmake_step_commands build_out_var install_out_var)
   set(_build_command ${CMAKE_COMMAND} --build . --parallel ${CPKT_DEPENDENCY_BUILD_JOBS})
   set(_install_command ${CMAKE_COMMAND} --install .)
   set(_env_args "")
-  cpkt_append_darwin_external_env_args(_env_args)
+  cpkt_append_pinned_external_toolchain_env_args(_env_args)
   if(_env_args)
     set(_build_command ${CMAKE_COMMAND} -E env ${_env_args} ${_build_command})
     set(_install_command ${CMAKE_COMMAND} -E env ${_env_args} ${_install_command})
@@ -228,7 +273,7 @@ function(cpkt_get_external_cmake_configure_command out_var)
     list(APPEND _configure_command -G "${CMAKE_GENERATOR}")
   endif()
   set(_env_args "")
-  cpkt_append_darwin_external_env_args(_env_args)
+  cpkt_append_pinned_external_toolchain_env_args(_env_args)
   if(_env_args)
     set(_configure_command ${CMAKE_COMMAND} -E env ${_env_args} ${_configure_command})
   endif()
@@ -261,8 +306,15 @@ endfunction()
 function(cpkt_append_common_external_cmake_args out_var)
   set(_args
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+    -DCMAKE_LINKER=${CMAKE_LINKER}
     -DCMAKE_AR=${CMAKE_AR}
     -DCMAKE_RANLIB=${CMAKE_RANLIB}
+    -DCMAKE_STRIP=${CMAKE_STRIP}
+    -DCMAKE_NM=${CMAKE_NM}
+    -DCMAKE_OBJCOPY=${CMAKE_OBJCOPY}
+    -DCMAKE_OBJDUMP=${CMAKE_OBJDUMP}
+    -DCMAKE_ADDR2LINE=${CMAKE_ADDR2LINE}
+    -DCMAKE_READELF=${CMAKE_READELF}
     -Wno-dev
   )
 
@@ -342,7 +394,7 @@ function(cpkt_add_openssl)
     string(REPLACE " -include stdint.h -include sys/types.h" "" openssl_cflags "${openssl_cflags}")
   endif()
   list(APPEND openssl_env_args CFLAGS=${openssl_cflags})
-  cpkt_append_darwin_external_env_args(openssl_env_args)
+  cpkt_append_pinned_external_toolchain_env_args(openssl_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
@@ -470,7 +522,7 @@ function(cpkt_add_nghttp2)
         -DCPKT_DARWIN_INSTALL_NAME_FILE=${build_dir}/libtool
         -P ${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake)
   endif()
-  cpkt_append_darwin_external_env_args(nghttp2_env_args)
+  cpkt_append_pinned_external_toolchain_env_args(nghttp2_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
@@ -1124,7 +1176,7 @@ function(cpkt_add_lua)
   cpkt_get_external_c_flags(lua_external_cflags)
   set(lua_my_cflags "${lua_external_cflags} -fPIC -DLUA_USE_POSIX -DLUA_USE_DLOPEN")
   set(lua_env_args "")
-  cpkt_append_darwin_external_env_args(lua_env_args)
+  cpkt_append_pinned_external_toolchain_env_args(lua_env_args)
   set(lua_shared_extra_link_flags "")
   if(CMAKE_SHARED_LINKER_FLAGS)
     separate_arguments(lua_shared_extra_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
@@ -1287,7 +1339,7 @@ function(cpkt_add_mqttc)
   separate_arguments(mqttc_compile_flags NATIVE_COMMAND "${mqttc_external_cflags}")
   list(APPEND mqttc_compile_flags -fPIC -I "${source_dir}/include")
   set(mqttc_env_args "")
-  cpkt_append_darwin_external_env_args(mqttc_env_args)
+  cpkt_append_pinned_external_toolchain_env_args(mqttc_env_args)
   set(mqttc_shared_extra_link_flags "")
   if(CMAKE_SHARED_LINKER_FLAGS)
     separate_arguments(mqttc_shared_extra_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
@@ -1421,7 +1473,7 @@ function(cpkt_add_miniaudio)
     list(APPEND miniaudio_link_libraries "-l${CMAKE_DL_LIBS}")
   endif()
   set(miniaudio_env_args "")
-  cpkt_append_darwin_external_env_args(miniaudio_env_args)
+  cpkt_append_pinned_external_toolchain_env_args(miniaudio_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
