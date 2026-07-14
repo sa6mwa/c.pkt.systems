@@ -85,7 +85,7 @@ if grep -Eq '"CMAKE_C_COMPILER"[[:space:]]*:[[:space:]]*"clang"' "$repo_root/CMa
 fi
 require_file_contains \
   README.md \
-  'Host GCC, Clang, and binutils are never Linux build fallbacks' \
+  'GCC, Clang, and binutils are never Linux build fallbacks' \
   'documented pinned Linux toolchain policy'
 
 grep -Eq '^/dist/$' "$repo_root/.gitignore"
