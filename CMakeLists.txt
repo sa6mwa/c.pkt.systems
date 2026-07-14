@@ -1194,6 +1194,15 @@ if(CPKT_BUILD_TESTS)
       # only the native development-host compile database.
       if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu")
         add_test(
+          NAME clangd_comment_gate
+          COMMAND
+            bash
+            "${CMAKE_SOURCE_DIR}/tests/clangd_comment_gate_test.sh"
+            "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh")
+        set_tests_properties(clangd_comment_gate PROPERTIES
+          LABELS "smoke"
+          TIMEOUT 30)
+        add_test(
           NAME clangd_surface
           COMMAND
             "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh"
