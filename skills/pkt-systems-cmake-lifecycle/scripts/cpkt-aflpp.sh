@@ -46,7 +46,8 @@ root() { local id=$1; printf '%s/roots/aflplusplus-%s-x86_64-linux-gnu-%s\n' "$(
 value() { sed -n "s/^$1=//p" <<<"$2" | tail -1; }
 ready() {
   local r=$1 id=$2
-  [[ -x "$r/bin/afl-fuzz" && -x "$r/bin/cpkt-afl-gcc" && -x "$r/bin/cpkt-afl-g++" &&
+  [[ -x "$r/bin/afl-fuzz" && -x "$r/bin/afl-showmap" &&
+     -x "$r/bin/cpkt-afl-gcc" && -x "$r/bin/cpkt-afl-g++" &&
      -f "$r/lib/afl/afl-gcc-pass.so" && -f "$r/lib/afl/afl-compiler-rt.o" &&
      -f "$r/.cpkt-aflpp-revision-$revision-$id" ]]
 }
@@ -111,7 +112,7 @@ ensure_locked() {
 }
 
 report() { local d br id r; ensure; d=$(bootlin_description); br=$(value root "$d"); id=$(collection_id "$br"); r=$(root "$id"); printf 'version=%s\ncache=%s\nsource=aflplusplus\nroot=%s\nafl_fuzz=%s\nafl_showmap=%s\ncc=%s\ncxx=%s\nhelper=%s\n' "$version" "$(cache)" "$r" "$r/bin/afl-fuzz" "$r/bin/afl-showmap" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/lib/afl"; }
-env_out() { local d cc cxx br id r; ensure; d=$(bootlin_description); cc=$(value cc "$d"); cxx=$(value cxx "$d"); br=$(value root "$d"); id=$(collection_id "$br"); r=$(root "$id"); printf 'export CPKT_AFLPP_ROOT=%q\nexport AFL_PATH=%q\nexport AFL_CC=%q\nexport AFL_CXX=%q\nexport CC=%q\nexport CXX=%q\n' "$r" "$r/lib/afl" "$cc" "$cxx" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++"; }
+env_out() { local d cc cxx br id r; ensure; d=$(bootlin_description); cc=$(value cc "$d"); cxx=$(value cxx "$d"); br=$(value root "$d"); id=$(collection_id "$br"); r=$(root "$id"); printf 'export CPKT_AFLPP_ROOT=%q\nexport AFL_PATH=%q\nexport AFL_CC=%q\nexport AFL_CXX=%q\nexport CC=%q\nexport CXX=%q\nexport PATH=%q\n' "$r" "$r/lib/afl" "$cc" "$cxx" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/bin:$PATH"; }
 case "${1:-}" in
   ensure) [[ $# -eq 1 ]] || die 'usage: cpkt-aflpp.sh ensure'; ensure;;
   discover) [[ $# -eq 1 ]] || die 'usage: cpkt-aflpp.sh discover'; report;;
