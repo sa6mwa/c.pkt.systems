@@ -806,8 +806,8 @@ cpkt_sus_open_validated_cached_file(cpkt_sus **out, const char *path,
     return result;
   }
 
-  result = cpkt_sus_emit_cache_status(
-      config, CPKT_SUS_CACHE_STATUS_LOAD_BEGIN, entry, path, NULL);
+  result = cpkt_sus_emit_cache_status(config, CPKT_SUS_CACHE_STATUS_LOAD_BEGIN,
+                                      entry, path, NULL);
   if (result != CPKT_SUS_OK) {
     return result;
   }
@@ -868,9 +868,9 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
   }
   temp_file = NULL;
   if (result == CPKT_SUS_OK) {
-    result = cpkt_sus_emit_cache_status(
-        config, CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE, entry, model_path,
-        url);
+    result = cpkt_sus_emit_cache_status(config,
+                                        CPKT_SUS_CACHE_STATUS_DOWNLOAD_COMPLETE,
+                                        entry, model_path, url);
   }
   if (result == CPKT_SUS_OK) {
     result = cpkt_sus_emit_cache_status(
@@ -884,8 +884,7 @@ cpkt_sus_fetch_cached_file(const char *model_path, const char *cache_dir,
   }
   if (result == CPKT_SUS_OK) {
     result = cpkt_sus_emit_cache_status(
-        config, CPKT_SUS_CACHE_STATUS_VERIFY_COMPLETE, entry, model_path,
-        NULL);
+        config, CPKT_SUS_CACHE_STATUS_VERIFY_COMPLETE, entry, model_path, NULL);
   }
   if (result == CPKT_SUS_OK && rename(temp_path, model_path) != 0) {
     result = CPKT_SUS_ERR_IO;
@@ -1218,8 +1217,7 @@ static cpkt_sus_result
 cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
                                          const char *text, size_t text_len);
 
-static int
-cpkt_sus_transcriber_should_strip_initial_space(
+static int cpkt_sus_transcriber_should_strip_initial_space(
     struct cpkt_sus_transcriber_impl *impl) {
   struct cpkt_sus_model_impl *model_impl;
 
@@ -1240,12 +1238,10 @@ cpkt_sus_transcriber_should_strip_initial_space(
   return 1;
 }
 
-static cpkt_sus_result
-cpkt_sus_emit_segmented_event(struct cpkt_sus_transcriber_impl *impl,
-                             const cpkt_sus_segmented_config *config,
-                             const char *text, size_t text_len,
-                             unsigned long step_index, long t0, long t1,
-                             int final) {
+static cpkt_sus_result cpkt_sus_emit_segmented_event(
+    struct cpkt_sus_transcriber_impl *impl,
+    const cpkt_sus_segmented_config *config, const char *text, size_t text_len,
+    unsigned long step_index, long t0, long t1, int final) {
   cpkt_sus_segmented_event event;
   cpkt_sus_result result;
   int callback_result;
@@ -1392,7 +1388,7 @@ cpkt_sus_transcriber_append_revised_text(struct cpkt_sus_transcriber_impl *impl,
 }
 
 static int cpkt_sus_segmented_text_sink(const cpkt_sus_segmented_event *event,
-                                       void *user) {
+                                        void *user) {
   struct cpkt_sus_segmented_text_state *state;
   cpkt_sus_result result;
 
@@ -1636,10 +1632,9 @@ static int cpkt_sus_vox_segment_sink(cpkt_audio_vox_segment *segment,
   if (state->result != CPKT_SUS_OK) {
     return 1;
   }
-  state->result =
-      cpkt_sus_emit_segmented_event(impl, state->config, text, strlen(text),
-                                   state->segment_count, segment->t0,
-                                   segment->t1, segment->is_final);
+  state->result = cpkt_sus_emit_segmented_event(
+      impl, state->config, text, strlen(text), state->segment_count,
+      segment->t0, segment->t1, segment->is_final);
   free(text);
   if (state->result != CPKT_SUS_OK) {
     return 1;
@@ -1780,9 +1775,9 @@ cpkt_sus_transcriber_transcribe_audio_decoder_segmented_impl(
     goto cleanup;
   }
   if (!state.final_emitted) {
-    sus_result = cpkt_sus_emit_segmented_event(
-        impl, config, NULL, 0U, state.segment_count, state.last_t0,
-        state.last_t1, 1);
+    sus_result = cpkt_sus_emit_segmented_event(impl, config, NULL, 0U,
+                                               state.segment_count,
+                                               state.last_t0, state.last_t1, 1);
     if (sus_result != CPKT_SUS_OK) {
       goto cleanup;
     }
@@ -1930,8 +1925,7 @@ static void cpkt_sus_transcriber_destroy_impl(cpkt_sus_transcriber *self) {
   free(self);
 }
 
-static cpkt_sus_result
-cpkt_sus_reset_transcript_spacing_impl(cpkt_sus *self) {
+static cpkt_sus_result cpkt_sus_reset_transcript_spacing_impl(cpkt_sus *self) {
   struct cpkt_sus_model_impl *impl;
 
   if (self == NULL || self->impl == NULL) {
@@ -1943,9 +1937,9 @@ cpkt_sus_reset_transcript_spacing_impl(cpkt_sus *self) {
   return CPKT_SUS_OK;
 }
 
-static cpkt_sus_result cpkt_sus_create_transcriber_impl(
-    cpkt_sus *self, cpkt_sus_transcriber **out,
-    const cpkt_sus_transcriber_config *config) {
+static cpkt_sus_result
+cpkt_sus_create_transcriber_impl(cpkt_sus *self, cpkt_sus_transcriber **out,
+                                 const cpkt_sus_transcriber_config *config) {
   cpkt_sus_transcriber *transcriber;
   struct cpkt_sus_transcriber_impl *impl;
 
@@ -2061,8 +2055,7 @@ cpkt_sus_result cpkt_sus_open_path(cpkt_sus **out,
   model->impl = impl;
   model->info = cpkt_sus_info_impl;
   model->create_transcriber = cpkt_sus_create_transcriber_impl;
-  model->reset_transcript_spacing =
-      cpkt_sus_reset_transcript_spacing_impl;
+  model->reset_transcript_spacing = cpkt_sus_reset_transcript_spacing_impl;
   model->destroy = cpkt_sus_destroy_impl;
   *out = model;
   return CPKT_SUS_OK;
@@ -2104,8 +2097,8 @@ cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
     free(cache_dir);
     return result;
   }
-  result = cpkt_sus_emit_cache_status(
-      config, CPKT_SUS_CACHE_STATUS_LOOKUP, entry, model_path, NULL);
+  result = cpkt_sus_emit_cache_status(config, CPKT_SUS_CACHE_STATUS_LOOKUP,
+                                      entry, model_path, NULL);
   if (result != CPKT_SUS_OK) {
     free(cache_dir);
     free(model_path);
@@ -2113,8 +2106,8 @@ cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
   }
 
   if (!cpkt_sus_file_exists(model_path)) {
-    result = cpkt_sus_emit_cache_status(
-        config, CPKT_SUS_CACHE_STATUS_MISS, entry, model_path, NULL);
+    result = cpkt_sus_emit_cache_status(config, CPKT_SUS_CACHE_STATUS_MISS,
+                                        entry, model_path, NULL);
     if (result != CPKT_SUS_OK) {
       free(cache_dir);
       free(model_path);
@@ -2127,8 +2120,8 @@ cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
       return result;
     }
   } else {
-    result = cpkt_sus_emit_cache_status(
-        config, CPKT_SUS_CACHE_STATUS_HIT, entry, model_path, NULL);
+    result = cpkt_sus_emit_cache_status(config, CPKT_SUS_CACHE_STATUS_HIT,
+                                        entry, model_path, NULL);
     if (result != CPKT_SUS_OK) {
       free(cache_dir);
       free(model_path);
@@ -2161,9 +2154,9 @@ cpkt_sus_result cpkt_sus_open_cached(cpkt_sus **out,
 }
 
 /** Creates a transcriber bound to an opened instance. */
-cpkt_sus_result cpkt_sus_create_transcriber(
-    cpkt_sus *sus, cpkt_sus_transcriber **out,
-    const cpkt_sus_transcriber_config *config) {
+cpkt_sus_result
+cpkt_sus_create_transcriber(cpkt_sus *sus, cpkt_sus_transcriber **out,
+                            const cpkt_sus_transcriber_config *config) {
   if (out != NULL) {
     *out = NULL;
   }

@@ -27,11 +27,49 @@ import sys
 source_dir = pathlib.Path(sys.argv[1])
 
 
-def previous_nonblank_is_comment(lines, index):
+def previous_nonblank_is_doxygen_comment(lines, index):
     i = index - 1
     while i >= 0 and not lines[i].strip():
         i -= 1
-    return i >= 0 and lines[i].strip().endswith("*/")
+    if i < 0:
+        return False
+
+    stripped = lines[i].lstrip()
+    if stripped.startswith(("///", "//!")):
+        return True
+    if not stripped.endswith("*/"):
+        return False
+
+    while i >= 0:
+        stripped = lines[i].lstrip()
+        if stripped.startswith(("/**", "/*!")):
+            return True
+        if stripped.startswith("/*"):
+            return False
+        i -= 1
+    return False
+
+
+def first_declaration_line(lines, start, end):
+    i = start
+    in_block_comment = False
+    while i <= end:
+        stripped = lines[i].lstrip()
+        if in_block_comment:
+            if "*/" in stripped:
+                in_block_comment = False
+            i += 1
+            continue
+        if not stripped or stripped.startswith("//"):
+            i += 1
+            continue
+        if stripped.startswith("/*"):
+            if "*/" not in stripped:
+                in_block_comment = True
+            i += 1
+            continue
+        return i
+    return start
 
 
 def declaration_requires_comment(text):
@@ -64,11 +102,12 @@ def verify_header(path):
             start = i
         depth += line.count("{") - line.count("}")
         if start is not None and depth == 0 and ";" in line:
-            chunks.append((start, "\n".join(lines[start : i + 1])))
+            declaration_start = first_declaration_line(lines, start, i)
+            chunks.append((declaration_start, "\n".join(lines[declaration_start : i + 1])))
             start = None
     failures = []
     for start_index, text in chunks:
-        if declaration_requires_comment(text) and not previous_nonblank_is_comment(lines, start_index):
+        if declaration_requires_comment(text) and not previous_nonblank_is_doxygen_comment(lines, start_index):
             failures.append((start_index + 1, text.splitlines()[0].strip()))
     return failures
 
@@ -90,7 +129,7 @@ def verify_source(path):
         if start is not None and "{" in line:
             text = "\n".join(lines[start : i + 1])
             name = function_name_from_definition(text)
-            if name and not previous_nonblank_is_comment(lines, start):
+            if name and not previous_nonblank_is_doxygen_comment(lines, start):
                 failures.append((start + 1, name))
             start = None
         depth += line.count("{") - line.count("}")
@@ -135,8 +174,8 @@ require_compile_command "examples/lua-runtime-c89/host_module.c"
 require_compile_command "examples/opcua-c89/main.c"
 
 if ! command -v clangd >/dev/null 2>&1; then
-  printf 'SKIP clangd --check: clangd is not installed\n'
-  exit 0
+  printf 'clangd is required for make clangd-surface; install it with the host OS package manager\n' >&2
+  exit 1
 fi
 
 clangd --check="${SOURCE_DIR}/examples/abi_smoke.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null

@@ -48,9 +48,8 @@ static int read_one(cpkt_audio_capture *capture, int *sample_out) {
       return 0;
     }
     frames_read = 0U;
-    result = capture->read_f32_mono_16k(capture, frames,
-                                        sizeof(frames) / sizeof(frames[0]),
-                                        &frames_read);
+    result = capture->read_f32_mono_16k(
+        capture, frames, sizeof(frames) / sizeof(frames[0]), &frames_read);
     if (result != CPKT_AUDIO_OK) {
       fprintf(stderr, "capture read failed: %s\n",
               cpkt_audio_result_string(result));
@@ -109,12 +108,12 @@ int main(void) {
       capture->destroy(capture);
       return 1;
     }
-    result = capture->read_f32_mono_16k(capture, frames,
-                                        sizeof(frames) / sizeof(frames[0]),
-                                        &frames_read);
+    result = capture->read_f32_mono_16k(
+        capture, frames, sizeof(frames) / sizeof(frames[0]), &frames_read);
     capture->destroy(capture);
     if (result != CPKT_AUDIO_ERR_IO || frames_read != 0U) {
-      fprintf(stderr, "expected capture EOF to report I/O error, got %s frames=%lu\n",
+      fprintf(stderr,
+              "expected capture EOF to report I/O error, got %s frames=%lu\n",
               cpkt_audio_result_string(result), (unsigned long)frames_read);
       return 4;
     }

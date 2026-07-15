@@ -1,5 +1,5 @@
-#include <lua.h>
 #include <lauxlib.h>
+#include <lua.h>
 #include <lualib.h>
 
 #include <stdarg.h>
@@ -87,7 +87,8 @@ static struct mock_value *mock_at(lua_State *state, int index) {
 }
 
 static void mock_push(lua_State *state, enum mock_value_type type) {
-  if (state == 0 || state->top >= (int)(sizeof(state->stack) / sizeof(state->stack[0]))) {
+  if (state == 0 ||
+      state->top >= (int)(sizeof(state->stack) / sizeof(state->stack[0]))) {
     return;
   }
   memset(&state->stack[state->top], 0, sizeof(state->stack[state->top]));
@@ -106,7 +107,8 @@ static void *mock_alloc_block(lua_State *state, size_t size) {
   if (ptr == 0) {
     return 0;
   }
-  block = (struct mock_block *)state->alloc_fn(state->alloc_user, 0, 0, sizeof(*block));
+  block = (struct mock_block *)state->alloc_fn(state->alloc_user, 0, 0,
+                                               sizeof(*block));
   if (block == 0) {
     state->alloc_fn(state->alloc_user, ptr, size, 0);
     return 0;
@@ -119,7 +121,8 @@ static void *mock_alloc_block(lua_State *state, size_t size) {
 }
 
 static void mock_push_message(lua_State *state, const char *message) {
-  snprintf(state->message, sizeof(state->message), "%s", message != 0 ? message : "");
+  snprintf(state->message, sizeof(state->message), "%s",
+           message != 0 ? message : "");
   mock_push(state, MOCK_STRING);
   state->stack[state->top - 1].text = state->message;
 }
@@ -178,7 +181,8 @@ void lua_gettable(lua_State *state, int index) {
 
   (void)index;
   key = mock_at(state, -1);
-  if (key != 0 && key->type == MOCK_LIGHTUSERDATA && key->ptr == state->registry_key) {
+  if (key != 0 && key->type == MOCK_LIGHTUSERDATA &&
+      key->ptr == state->registry_key) {
     lua_pop(state, 1);
     lua_pushlightuserdata(state, state->registry_value);
   } else {
@@ -263,9 +267,7 @@ const char *lua_tostring(lua_State *state, int index) {
   return value->text;
 }
 
-int lua_gettop(lua_State *state) {
-  return state != 0 ? state->top : 0;
-}
+int lua_gettop(lua_State *state) { return state != 0 ? state->top : 0; }
 
 void lua_pushcfunction(lua_State *state, lua_CFunction fn) {
   mock_push(state, MOCK_FUNCTION);
@@ -455,7 +457,8 @@ void lua_getfield(lua_State *state, int index, const char *name) {
   }
 }
 
-void lua_pushfstring(lua_State *state, const char *fmt, const char *a, const char *b) {
+void lua_pushfstring(lua_State *state, const char *fmt, const char *a,
+                     const char *b) {
   snprintf(state->message, sizeof(state->message), fmt, a, b);
   lua_pushstring(state, state->message);
 }
@@ -485,7 +488,8 @@ int lua_error(lua_State *state) {
   return 1;
 }
 
-void lua_sethook(lua_State *state, void (*hook)(lua_State *, lua_Debug *), int mask, int count) {
+void lua_sethook(lua_State *state, void (*hook)(lua_State *, lua_Debug *),
+                 int mask, int count) {
   (void)mask;
   state->hook = hook;
   state->hook_count = count;
@@ -559,7 +563,8 @@ void luaL_openlibs(lua_State *state) {
   state->require_open = 1;
 }
 
-void luaL_requiref(lua_State *state, const char *name, lua_CFunction opener, int global) {
+void luaL_requiref(lua_State *state, const char *name, lua_CFunction opener,
+                   int global) {
   (void)opener;
   (void)global;
   if (strcmp(name, LUA_LOADLIBNAME) == 0) {
@@ -569,18 +574,22 @@ void luaL_requiref(lua_State *state, const char *name, lua_CFunction opener, int
   mock_push(state, MOCK_TABLE);
 }
 
-void luaL_traceback(lua_State *state, lua_State *from, const char *message, int level) {
+void luaL_traceback(lua_State *state, lua_State *from, const char *message,
+                    int level) {
   (void)from;
   (void)level;
-  snprintf(state->message, sizeof(state->message), "%s\nstack traceback", message);
+  snprintf(state->message, sizeof(state->message), "%s\nstack traceback",
+           message);
   lua_pushstring(state, state->message);
 }
 
-int luaL_loadbuffer(lua_State *state, const char *source, size_t size, const char *name) {
+int luaL_loadbuffer(lua_State *state, const char *source, size_t size,
+                    const char *name) {
   void *prototype;
 
   if (mock_contains(source, size, "load-error")) {
-    snprintf(state->message, sizeof(state->message), "%s: mock load error", name);
+    snprintf(state->message, sizeof(state->message), "%s: mock load error",
+             name);
     lua_pushstring(state, state->message);
     return 1;
   }
@@ -599,7 +608,8 @@ int luaL_loadfile(lua_State *state, const char *path) {
   void *prototype;
 
   if (path != 0 && strstr(path, "load-error") != 0) {
-    snprintf(state->message, sizeof(state->message), "%s: mock load error", path);
+    snprintf(state->message, sizeof(state->message), "%s: mock load error",
+             path);
     lua_pushstring(state, state->message);
     return 1;
   }

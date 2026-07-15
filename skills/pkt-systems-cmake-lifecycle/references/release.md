@@ -28,7 +28,7 @@ Recommended Make target shape:
 - `make prerelease` should run `release-pipeline` without cleaning generated state first. This gives fast release-equivalent feedback while engineers are still iterating.
 - `make release` must clean generated state first, then invoke the same `release-pipeline`. It should not duplicate the prerelease commands, call a narrower target, or skip any proof already required by `prerelease`.
 - `release-pipeline` should run the complete local proof in order: ordinary tests first, then the release matrix. Keep expensive optional hardening either inside the matrix when mandatory for release or behind an explicitly named target such as `prerelease-hardening`.
-- `release-matrix` should build every supported release target, run host-executable tests for the host release target, produce every shipped artifact, generate the checksum manifest after all artifacts exist, and run package, archive, checksum, privacy, relocatability, instrumentation-leak, and loader-metadata verification from the checksum manifest.
+- `release-matrix` should build every supported release target, run host-executable tests for the host release target, run every cross-target QEMU test suite the project has opted into, produce every shipped artifact, generate the checksum manifest after all artifacts exist, and run package, archive, checksum, privacy, relocatability, instrumentation-leak, and loader-metadata verification from the checksum manifest. Selected QEMU coverage is mandatory: fail clearly when its runner or configuration is unavailable; see [local-ci.md](local-ci.md).
 - `prerelease-artifacts`, when kept for compatibility, should be an alias for `release-matrix`.
 - `prerelease-hardening`, when no extra hardening tier exists, should be an alias for `prerelease` until a real hardening tier is defined.
 - `prerelease-live` must fail closed unless live external-provider checks are explicitly enabled through a documented environment variable and credentials are available.
@@ -38,7 +38,7 @@ Executable lifecycle tests:
 
 - Add a focused test that asserts `prerelease` and `release` share the same `release-pipeline`, that `release` cleans before invoking it, that ordinary tests run before the matrix, and that release does not bypass the shared pipeline.
 - Add focused tests for checksum-manifest generation and upload-set selection: every release-looking artifact under `dist/` must be checksum-listed, every checksum-listed artifact must exist, and the checksum manifest itself must be included in release uploads.
-- Add focused tests for artifact verification failures that previously could escape until publish time: local source/cache/build path leaks, local `file://` URLs, sanitizer or fuzzer instrumentation markers, non-relocatable RPATH/RUNPATH/install-name metadata, missing dependency manifests, and stale or omitted release artifacts.
+- Add focused tests for artifact verification failures that previously could escape until publish time: local source/cache/build path leaks, local `file://` URLs, hardening or fuzzer instrumentation markers, non-relocatable RPATH/RUNPATH/install-name metadata, missing dependency manifests, and stale or omitted release artifacts.
 - Tests should exercise observable release contracts through the public Make/script surfaces rather than only checking implementation details. Light structural tests are acceptable for target wiring because the target graph is part of the lifecycle contract.
 
 Branch decision:
@@ -95,9 +95,8 @@ Run this on the feature or fix branch before touching the release branch. The go
 
 1. `make clean release` when the repository defines `release`. This is a clean release rehearsal on the candidate branch, not a publishable tagged release. In an untagged git worktree it may resolve the version as `0.0.0` or use an explicit project-prefixed release-candidate override when supplied, but it must exercise the same build, test, package, checksum, and verification graph as the final release.
 2. If the repository does not define `make release`, run `make clean`, then `make prerelease` when the repository defines it; otherwise run `make test-all` and the explicit local gates below.
-3. `make asan` when supported and not already included in `prerelease`.
-4. `make tsan` when supported and not already included in `prerelease`.
-5. `make msan` when supported and not already included in `prerelease`.
+3. `make valgrind` when supported and not already included in `prerelease`.
+4. `make fuzz` when fuzzing is part of the project hardening contract.
 6. `make fuzz-smoke` when fuzzing exists and is not already included in `prerelease`.
 7. `make bench-gate` or `make perf-gate` when performance gates exist.
 8. `make test-e2e` when deterministic e2e exists and is not already included in `prerelease`.

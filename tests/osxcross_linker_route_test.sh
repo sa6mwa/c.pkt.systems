@@ -45,8 +45,8 @@ assert_contains "$bad_route_output" '"/usr/bin/ld"' "the known host-linker failu
 path_route_output=$(PATH="$osxcross_bin:$clean_path" "$compiler" -### "$source_file" -o "$binary_file" 2>&1)
 assert_contains "$path_route_output" "\"$linker\"" "the target linker when osxcross bin is first on PATH"
 
-fuse_ld_route_output=$(PATH="$clean_path" "$compiler" "-fuse-ld=$linker" -### "$source_file" -o "$binary_file" 2>&1)
-assert_contains "$fuse_ld_route_output" "\"$linker\"" "the target linker when -fuse-ld is absolute"
+ld_path_route_output=$(PATH="$clean_path" "$compiler" "--ld-path=$linker" -### "$source_file" -o "$binary_file" 2>&1)
+assert_contains "$ld_path_route_output" "\"$linker\"" "the target linker when --ld-path is absolute"
 
 if ! grep -F 'set(ENV{PATH} "${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}")' \
     "$repo_root/cmake/toolchains/arm64-apple-darwin.cmake" >/dev/null 2>&1; then
@@ -54,9 +54,21 @@ if ! grep -F 'set(ENV{PATH} "${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}")' \
   exit 1
 fi
 
-if ! grep -F 'set(_cpkt_darwin_linker_flag "-fuse-ld=${CMAKE_LINKER}")' \
+if ! grep -F 'set(_cpkt_darwin_linker_flag "--ld-path=${CMAKE_LINKER}")' \
     "$repo_root/cmake/toolchains/arm64-apple-darwin.cmake" >/dev/null 2>&1; then
-  printf 'Darwin toolchain must force an absolute target linker with -fuse-ld\n' >&2
+  printf 'Darwin toolchain must force an absolute target linker with --ld-path\n' >&2
+  exit 1
+fi
+
+if ! grep -F 'string(REGEX REPLACE "(^| )--ld-path=[^ ]+" " " _cpkt_existing_linker_flags' \
+    "$repo_root/cmake/toolchains/arm64-apple-darwin.cmake" >/dev/null 2>&1; then
+  printf 'Darwin toolchain must remove stale --ld-path linker routes from existing CMake caches\n' >&2
+  exit 1
+fi
+
+if ! grep -F 'string(REGEX REPLACE "(^| )-fuse-ld=[^ ]+" " " _cpkt_existing_linker_flags' \
+    "$repo_root/cmake/toolchains/arm64-apple-darwin.cmake" >/dev/null 2>&1; then
+  printf 'Darwin toolchain must remove its legacy -fuse-ld linker path from existing CMake caches\n' >&2
   exit 1
 fi
 

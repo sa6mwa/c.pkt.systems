@@ -5,6 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=${1:-$(CDPATH= cd -- "$script_dir/.." && pwd)}
 open62541_include_dir=${2:-}
 cc=${CC:-cc}
+opcua_source=$(tr '\n\t' '  ' < "$repo_root/src/opcua.c" | tr -s ' ')
 work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-opcua-word-portability.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
 
@@ -51,7 +52,7 @@ if grep -F -- 'uint64_t' "$repo_root/include/cpkt/opcua.h" >/dev/null 2>&1; then
 fi
 
 if ! grep -F -- 'cpkt_valid_uint64_words(value->uint64_value.high32, value->uint64_value.low32)' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade no longer validates UInt64 high/low words before native conversion\n' >&2
   exit 1
 fi
@@ -69,7 +70,7 @@ do
 done
 
 if ! grep -F -- 'return ((UA_UInt64)value.high32 << 32) | (UA_UInt64)value.low32;' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade must widen split UInt64 words before shifting for 32-bit targets\n' >&2
   exit 1
 fi
@@ -83,7 +84,7 @@ if grep -E 'return +\(?\(?value[.]high32 << 32|\(UA_UInt64\)\(value[.]high32 << 
 fi
 
 if ! grep -F -- 'out.high32 = -1L - (long)(CPKT_OPCUA_UINT32_MAX_VALUE - high32);' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade must decode negative DateTime high words without signed overflow on 32-bit targets\n' >&2
   exit 1
 fi
@@ -106,7 +107,7 @@ if ! grep -F -- 'native_uint64 >> 32' "$repo_root/tests/opcua_facade_test.c" >/d
 fi
 
 if ! grep -F -- 'cpkt_valid_datetime_words(value->datetime_value.high32, value->datetime_value.low32)' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    <<<"$opcua_source" >/dev/null 2>&1; then
   printf 'OPC UA facade no longer validates DateTime high/low words before native conversion\n' >&2
   exit 1
 fi
@@ -183,6 +184,13 @@ if [ -n "$open62541_include_dir" ] && [ -f "$open62541_include_dir/open62541/typ
   compile_upstream_word_width "$cc" "$open62541_include_dir" upstream_word_width_c99
 fi
 
+cpkt_bootlin_cc() {
+  target_id=$1
+  resolver="$repo_root/scripts/cpkt-toolchains.sh"
+  "$resolver" ensure "$target_id" >/dev/null
+  "$resolver" discover "$target_id" | sed -n 's/^cc=//p' | tail -n 1
+}
+
 for staged_include_dir in \
   "$repo_root"/build/*/package-stage/c.pkt.systems-*/include
 do
@@ -192,22 +200,22 @@ do
 
   case "$staged_include_dir" in
     *armhf-linux-gnu*)
-      if ! command -v arm-linux-gnueabihf-gcc >/dev/null 2>&1; then
-        printf 'armhf GNU SDK is staged, but arm-linux-gnueabihf-gcc is missing; cannot verify 32-bit UInt64 ABI\n' >&2
+      armhf_gnu_cc=$(cpkt_bootlin_cc armhf-linux-gnu)
+      if [ ! -x "$armhf_gnu_cc" ]; then
+        printf 'pinned armhf GNU compiler is missing: %s\n' "$armhf_gnu_cc" >&2
         exit 1
       fi
-      compile_facade_word_width arm-linux-gnueabihf-gcc facade_word_width_c89_armhf_linux_gnu
+      compile_facade_word_width "$armhf_gnu_cc" facade_word_width_c89_armhf_linux_gnu
       compile_facade_word_width_32_bit_abi \
-        arm-linux-gnueabihf-gcc \
+        "$armhf_gnu_cc" \
         facade_word_width_32_bit_abi_c89_armhf_linux_gnu
       compile_upstream_word_width \
-        arm-linux-gnueabihf-gcc \
+        "$armhf_gnu_cc" \
         "$staged_include_dir" \
         upstream_word_width_c99_armhf_linux_gnu
       ;;
     *armhf-linux-musl*)
-      armhf_musl_prefix=${CPKT_ARMHF_MUSL_PREFIX:-"$HOME/.local/cross/arm-linux-musleabihf"}
-      armhf_musl_cc="$armhf_musl_prefix/bin/arm-linux-musleabihf-gcc"
+      armhf_musl_cc=$(cpkt_bootlin_cc armhf-linux-musl)
       if [ ! -x "$armhf_musl_cc" ]; then
         printf 'armhf musl SDK is staged, but %s is missing; cannot verify 32-bit UInt64 ABI\n' "$armhf_musl_cc" >&2
         exit 1

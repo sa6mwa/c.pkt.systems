@@ -1,75 +1,96 @@
-function(cpkt_bootstrap_linux_toolchain target_id out_root_var)
-  if(DEFINED CPKT_AUTO_TOOLCHAINS AND NOT CPKT_AUTO_TOOLCHAINS)
-    message(FATAL_ERROR
-      "Missing compiler set for ${target_id} and CPKT_AUTO_TOOLCHAINS is OFF. "
-      "Install the toolchain locally or enable CPKT_AUTO_TOOLCHAINS.")
+function(cpkt_toolchain_report_value description key out_var)
+  string(REGEX MATCH "(^|\n)${key}=([^\r\n]+)" _cpkt_match "${description}")
+  if(NOT _cpkt_match)
+    message(FATAL_ERROR "Pinned toolchain resolver did not report ${key}")
   endif()
+  set(${out_var} "${CMAKE_MATCH_2}" PARENT_SCOPE)
+endfunction()
 
-  get_filename_component(_cpkt_toolchain_dir "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
-  get_filename_component(_cpkt_cmake_dir "${_cpkt_toolchain_dir}" DIRECTORY)
+function(cpkt_configure_bootlin_toolchain target_id)
+  get_filename_component(_cpkt_cmake_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" DIRECTORY)
   get_filename_component(_cpkt_repo_root "${_cpkt_cmake_dir}" DIRECTORY)
+  set(_cpkt_resolver "${_cpkt_repo_root}/scripts/cpkt-toolchains.sh")
+  if(NOT EXISTS "${_cpkt_resolver}")
+    message(FATAL_ERROR "Pinned Bootlin resolver is missing: ${_cpkt_resolver}")
+  endif()
+
   execute_process(
-    COMMAND "${_cpkt_repo_root}/scripts/ensure-toolchain.sh" "${target_id}"
-    RESULT_VARIABLE _cpkt_toolchain_result
-    OUTPUT_VARIABLE _cpkt_toolchain_root
-    ERROR_VARIABLE _cpkt_toolchain_error
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-  if(NOT _cpkt_toolchain_result EQUAL 0)
-    message(FATAL_ERROR
-      "failed to bootstrap toolchain for ${target_id}: ${_cpkt_toolchain_error}")
+    COMMAND "${_cpkt_resolver}" ensure "${target_id}"
+    RESULT_VARIABLE _cpkt_ensure_result
+    OUTPUT_QUIET
+    ERROR_VARIABLE _cpkt_ensure_error)
+  if(NOT _cpkt_ensure_result EQUAL 0)
+    message(FATAL_ERROR "Unable to install the pinned Bootlin toolchain for ${target_id}: ${_cpkt_ensure_error}")
   endif()
-  set(${out_root_var} "${_cpkt_toolchain_root}" PARENT_SCOPE)
-endfunction()
+  execute_process(
+    COMMAND "${_cpkt_resolver}" discover "${target_id}"
+    RESULT_VARIABLE _cpkt_discover_result
+    OUTPUT_VARIABLE _cpkt_description
+    ERROR_VARIABLE _cpkt_discover_error)
+  if(NOT _cpkt_discover_result EQUAL 0)
+    message(FATAL_ERROR "Unable to inspect the pinned Bootlin toolchain for ${target_id}: ${_cpkt_discover_error}")
+  endif()
 
-function(cpkt_select_linux_toolchain
-    target_id
-    local_root
-    local_prefix
-    local_sysroot
-    bootlin_prefix
-    bootlin_sysroot
-    out_root_var
-    out_prefix_var
-    out_sysroot_var
-    out_find_root_var)
-  if(NOT "${local_root}" STREQUAL ""
-      AND EXISTS "${local_root}/bin/${local_prefix}-gcc"
-      AND EXISTS "${local_root}/bin/${local_prefix}-g++"
-      AND EXISTS "${local_root}/bin/${local_prefix}-ar"
-      AND EXISTS "${local_root}/bin/${local_prefix}-ranlib"
-      AND EXISTS "${local_sysroot}/include/stdio.h")
-    set(${out_root_var} "${local_root}" PARENT_SCOPE)
-    set(${out_prefix_var} "${local_prefix}" PARENT_SCOPE)
-    if(target_id MATCHES "-linux-gnu$")
-      set(${out_sysroot_var} "" PARENT_SCOPE)
-    else()
-      set(${out_sysroot_var} "${local_sysroot}" PARENT_SCOPE)
+  foreach(_cpkt_key source status root prefix sysroot cc cxx ld ar ranlib strip nm objcopy objdump addr2line readelf libstdcxx_a libgcc_a)
+    cpkt_toolchain_report_value("${_cpkt_description}" "${_cpkt_key}" "_cpkt_${_cpkt_key}")
+  endforeach()
+  if(NOT _cpkt_source STREQUAL "bootlin" OR NOT _cpkt_status STREQUAL "ready")
+    message(FATAL_ERROR "Linux target ${target_id} did not resolve to a ready Bootlin collection")
+  endif()
+  foreach(_cpkt_path_key cc cxx ld ar ranlib strip nm objcopy objdump addr2line readelf libstdcxx_a libgcc_a)
+    if(NOT EXISTS "${_cpkt_${_cpkt_path_key}}")
+      message(FATAL_ERROR "Pinned Bootlin ${_cpkt_path_key} is missing: ${_cpkt_${_cpkt_path_key}}")
     endif()
-    set(${out_find_root_var} "${local_sysroot}" PARENT_SCOPE)
-    return()
+  endforeach()
+  if(NOT EXISTS "${_cpkt_sysroot}/usr/include/stdio.h" AND NOT EXISTS "${_cpkt_sysroot}/include/stdio.h")
+    message(FATAL_ERROR "Pinned Bootlin sysroot lacks libc headers: ${_cpkt_sysroot}")
   endif()
-
-  cpkt_bootstrap_linux_toolchain("${target_id}" _cpkt_bootstrap_root)
-  set(${out_root_var} "${_cpkt_bootstrap_root}" PARENT_SCOPE)
-  set(${out_prefix_var} "${bootlin_prefix}" PARENT_SCOPE)
-  set(${out_sysroot_var} "${_cpkt_bootstrap_root}/${bootlin_sysroot}" PARENT_SCOPE)
-  set(${out_find_root_var} "${_cpkt_bootstrap_root}/${bootlin_sysroot}" PARENT_SCOPE)
-endfunction()
-
-function(cpkt_configure_linux_toolchain root prefix sysroot find_root)
-  set(CMAKE_C_COMPILER "${root}/bin/${prefix}-gcc" CACHE FILEPATH "" FORCE)
-  set(CMAKE_CXX_COMPILER "${root}/bin/${prefix}-g++" CACHE FILEPATH "" FORCE)
-  set(CMAKE_AR "${root}/bin/${prefix}-ar" CACHE FILEPATH "" FORCE)
-  set(CMAKE_RANLIB "${root}/bin/${prefix}-ranlib" CACHE FILEPATH "" FORCE)
-  set(CMAKE_STRIP "${root}/bin/${prefix}-strip" CACHE FILEPATH "" FORCE)
-  set(CMAKE_READELF "${root}/bin/${prefix}-readelf" CACHE FILEPATH "" FORCE)
-
-  set(CMAKE_SYSROOT "${sysroot}" CACHE PATH "" FORCE)
-  if(root STREQUAL "/usr")
-    set(CMAKE_FIND_ROOT_PATH "${find_root}" CACHE STRING "" FORCE)
-  else()
-    set(CMAKE_FIND_ROOT_PATH "${find_root}" "${root}" CACHE STRING "" FORCE)
+  if(NOT EXISTS "${_cpkt_sysroot}/usr/lib/libc.so" AND NOT EXISTS "${_cpkt_sysroot}/lib/libc.so" AND NOT EXISTS "${_cpkt_sysroot}/lib/libc.so.6")
+    message(FATAL_ERROR "Pinned Bootlin sysroot lacks libc: ${_cpkt_sysroot}")
   endif()
+  execute_process(
+    COMMAND "${_cpkt_cc}" -print-prog-name=ld
+    RESULT_VARIABLE _cpkt_linker_query_result
+    OUTPUT_VARIABLE _cpkt_compiler_linker
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(NOT _cpkt_linker_query_result EQUAL 0)
+    message(FATAL_ERROR "Unable to inspect Bootlin compiler linker: ${_cpkt_cc}")
+  endif()
+  get_filename_component(_cpkt_root_real "${_cpkt_root}" REALPATH)
+  get_filename_component(_cpkt_compiler_linker_real "${_cpkt_compiler_linker}" REALPATH)
+  string(FIND "${_cpkt_compiler_linker_real}" "${_cpkt_root_real}/" _cpkt_linker_in_root)
+  if(NOT _cpkt_linker_in_root EQUAL 0)
+    message(FATAL_ERROR "Bootlin compiler selected a linker outside its collection: ${_cpkt_compiler_linker}")
+  endif()
+  get_filename_component(_cpkt_sysroot_real "${_cpkt_sysroot}" REALPATH)
+  file(RELATIVE_PATH _cpkt_sysroot_relative "${_cpkt_root_real}" "${_cpkt_sysroot_real}")
+  if(_cpkt_sysroot_relative MATCHES "^\\.\\.")
+    message(FATAL_ERROR "Pinned Bootlin sysroot is outside its compiler collection: ${_cpkt_sysroot}")
+  endif()
+  get_filename_component(_cpkt_root_name "${_cpkt_root_real}" NAME)
+
+  set(CPKT_TOOLCHAIN_ROOT "${_cpkt_root}" CACHE PATH "Pinned Bootlin compiler collection root." FORCE)
+  set(CPKT_TOOLCHAIN_TARGET "${target_id}" CACHE STRING "Pinned Linux compiler collection target." FORCE)
+  set(CPKT_TOOLCHAIN_IDENTITY
+    "bootlin-${target_id}-${_cpkt_root_name}-${_cpkt_sysroot_relative}"
+    CACHE INTERNAL "Pinned Bootlin dependency cache identity." FORCE)
+  set(CPKT_CXX_STDLIB_STATIC_LIBRARY "${_cpkt_libstdcxx_a}" CACHE FILEPATH "Pinned static C++ runtime archive." FORCE)
+  set(CPKT_CXX_LIBGCC_STATIC_LIBRARY "${_cpkt_libgcc_a}" CACHE FILEPATH "Pinned static GCC runtime archive." FORCE)
+  set(CMAKE_C_COMPILER "${_cpkt_cc}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_CXX_COMPILER "${_cpkt_cxx}" CACHE FILEPATH "" FORCE)
+  unset(CMAKE_C_COMPILER_TARGET CACHE)
+  unset(CMAKE_CXX_COMPILER_TARGET CACHE)
+  set(CMAKE_LINKER "${_cpkt_ld}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_AR "${_cpkt_ar}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_RANLIB "${_cpkt_ranlib}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_STRIP "${_cpkt_strip}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_NM "${_cpkt_nm}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_OBJCOPY "${_cpkt_objcopy}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_OBJDUMP "${_cpkt_objdump}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_ADDR2LINE "${_cpkt_addr2line}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_READELF "${_cpkt_readelf}" CACHE FILEPATH "" FORCE)
+  set(CMAKE_SYSROOT "${_cpkt_sysroot}" CACHE PATH "" FORCE)
+  set(CMAKE_FIND_ROOT_PATH "${_cpkt_sysroot}" "${_cpkt_root}" CACHE STRING "" FORCE)
   set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER CACHE STRING "" FORCE)
   set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY CACHE STRING "" FORCE)
   set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY CACHE STRING "" FORCE)

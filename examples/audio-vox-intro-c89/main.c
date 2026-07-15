@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define CPKT_VOX_INTRO_URL                                                   \
+#define CPKT_VOX_INTRO_URL                                                     \
   "https://pkt.systems/trajectory/assets/narration/intro/intro.mp3"
 #define CPKT_VOX_DUMP_DIR "build/vox-intro-dump"
 #define CPKT_VOX_SAMPLE_RATE 16000UL
@@ -321,10 +321,9 @@ static int cpkt_vox_segment_sink(cpkt_audio_vox_segment *segment, void *user) {
                 "segment=%lu start_ms=%lu end_ms=%lu "
                 "duration_ms=%lu frames=%lu reason=%s hard_cut=%d final=%d "
                 "fits_budget=%s peak_milli=%lu mean_abs_milli=%lu wav=%s\n",
-                segment->segment_index, start_ms, end_ms,
-                duration_ms, (unsigned long)segment->frame_count, reason,
-                segment->hard_cut, segment->is_final, fits, peak_milli,
-                mean_abs_milli, path);
+                segment->segment_index, start_ms, end_ms, duration_ms,
+                (unsigned long)segment->frame_count, reason, segment->hard_cut,
+                segment->is_final, fits, peak_milli, mean_abs_milli, path);
   ++run->segment_count;
   return 0;
 }
@@ -337,13 +336,19 @@ static int cpkt_vox_print_usage(FILE *out) {
   fprintf(out, "Options:\n");
   fprintf(out, "  --audio PATH                 Decode a local audio file.\n");
   fprintf(out, "  --url URL                    Stream an HTTP(S) audio URL.\n");
-  fprintf(out, "  --dump-dir DIR               Write summary and segment WAVs.\n");
+  fprintf(out,
+          "  --dump-dir DIR               Write summary and segment WAVs.\n");
   fprintf(out, "  --threshold VALUE            VOX open/keep threshold.\n");
-  fprintf(out, "  --hang-ms N                  Silence hang-time before release.\n");
-  fprintf(out, "  --budget-ms N                Max duration; 0 is unbounded.\n");
-  fprintf(out, "  --prebuffer-ms N             Audio retained before VOX opens.\n");
-  fprintf(out, "  --memory-spool-bytes N       RAM before VOX spills to disk.\n");
-  fprintf(out, "  --max-spool-bytes N          Bytes before forced hard cut.\n");
+  fprintf(out,
+          "  --hang-ms N                  Silence hang-time before release.\n");
+  fprintf(out,
+          "  --budget-ms N                Max duration; 0 is unbounded.\n");
+  fprintf(out,
+          "  --prebuffer-ms N             Audio retained before VOX opens.\n");
+  fprintf(out,
+          "  --memory-spool-bytes N       RAM before VOX spills to disk.\n");
+  fprintf(out,
+          "  --max-spool-bytes N          Bytes before forced hard cut.\n");
   return 0;
 }
 
@@ -377,8 +382,7 @@ static int cpkt_vox_parse_options(int argc, char **argv,
       if (!cpkt_vox_parse_ulong(argv[++i], &options->prebuffer_ms)) {
         return 0;
       }
-    } else if (strcmp(argv[i], "--memory-spool-bytes") == 0 &&
-               i + 1 < argc) {
+    } else if (strcmp(argv[i], "--memory-spool-bytes") == 0 && i + 1 < argc) {
       if (!cpkt_vox_parse_ulong(argv[++i], &options->memory_spool_bytes)) {
         return 0;
       }
@@ -426,8 +430,8 @@ static int cpkt_vox_run(const struct cpkt_vox_options *options) {
     return 1;
   }
   cpkt_vox_clear_dump_dir(options->dump_dir);
-  if (!cpkt_vox_join_path(summary_path, sizeof(summary_path),
-                          options->dump_dir, "summary.txt")) {
+  if (!cpkt_vox_join_path(summary_path, sizeof(summary_path), options->dump_dir,
+                          "summary.txt")) {
     fprintf(stderr, "dump dir path is too long: %s\n", options->dump_dir);
     return 1;
   }
@@ -440,9 +444,8 @@ static int cpkt_vox_run(const struct cpkt_vox_options *options) {
   decoder_config.encoding = CPKT_AUDIO_ENCODING_MP3;
   if (options->audio_path != NULL) {
     source = options->audio_path;
-    audio_result =
-        cpkt_audio_decoder_open_file(&decoder, options->audio_path,
-                                     &decoder_config);
+    audio_result = cpkt_audio_decoder_open_file(&decoder, options->audio_path,
+                                                &decoder_config);
   } else {
     source = options->url;
     audio_result =
@@ -478,11 +481,9 @@ static int cpkt_vox_run(const struct cpkt_vox_options *options) {
                 options->memory_spool_bytes, options->max_spool_bytes);
   do {
     frames_read = 0U;
-    audio_result = decoder->read_f32_mono_16k(decoder, frames,
-                                              CPKT_VOX_READ_FRAMES,
-                                              &frames_read);
-    if (audio_result != CPKT_AUDIO_OK &&
-        audio_result != CPKT_AUDIO_AT_END) {
+    audio_result = decoder->read_f32_mono_16k(
+        decoder, frames, CPKT_VOX_READ_FRAMES, &frames_read);
+    if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
       fprintf(stderr, "decode failed: %s\n",
               cpkt_audio_result_string(audio_result));
       goto cleanup;

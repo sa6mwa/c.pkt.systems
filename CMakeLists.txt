@@ -26,7 +26,7 @@ find_package(Threads REQUIRED)
 option(CPKT_BUILD_DEPENDENCIES "Download and build pinned third-party dependencies." ON)
 option(CPKT_BUILD_TESTS "Build ABI/link smoke tests for published dependency artifacts." ON)
 option(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE "Honor explicitly provided dependency roots even when they differ from this compiler's default cache key." OFF)
-option(CPKT_ENABLE_FUZZING "Build libFuzzer facade fuzz targets." OFF)
+option(CPKT_ENABLE_FUZZING "Build AFL++ GCC-plugin facade fuzz targets." OFF)
 option(CPKT_FACADE_ONLY "Build only repo-owned facade hardening targets." OFF)
 option(CPKT_SUS_CPU_ONLY "Build the cpkt_sus whisper.cpp dependency set with CPU backends only." ON)
 
@@ -103,6 +103,29 @@ function(cpkt_add_lua_runtime_mock_test target_name source_name)
     "${CMAKE_SOURCE_DIR}/include")
 endfunction()
 
+function(cpkt_configure_afl_target target_name)
+  if(NOT DEFINED CPKT_AFLPP_ROOT OR "${CPKT_AFLPP_ROOT}" STREQUAL "")
+    message(FATAL_ERROR
+      "CPKT_ENABLE_FUZZING requires the pinned AFL++ toolchain; "
+      "configure with the fuzz or opcua-fuzz preset.")
+  endif()
+  if(NOT EXISTS "${CPKT_AFLPP_ROOT}/bin/afl-fuzz" OR
+      NOT EXISTS "${CPKT_AFLPP_ROOT}/lib/afl/afl-gcc-pass.so")
+    message(FATAL_ERROR
+      "CPKT_ENABLE_FUZZING requires a complete pinned AFL++ toolchain at "
+      "CPKT_AFLPP_ROOT=${CPKT_AFLPP_ROOT}.")
+  endif()
+  if(NOT CMAKE_C_COMPILER MATCHES "/cpkt-afl-gcc$" OR
+      NOT CMAKE_CXX_COMPILER MATCHES "/cpkt-afl-g\\+\\+$")
+    message(FATAL_ERROR
+      "CPKT_ENABLE_FUZZING requires the pinned AFL++ compiler wrappers; "
+      "configure with the fuzz or opcua-fuzz preset.")
+  endif()
+  target_sources(${target_name} PRIVATE "${CMAKE_SOURCE_DIR}/fuzz/afl_input_driver.c")
+  target_compile_options(${target_name} PRIVATE -std=c99)
+  cpkt_add_repo_warning_errors(${target_name})
+endfunction()
+
 if(CPKT_FACADE_ONLY)
   foreach(_cpkt_facade_only_cache_var
       CPKT_DIST_DIR
@@ -127,15 +150,7 @@ if(CPKT_FACADE_ONLY)
 
   if(CPKT_ENABLE_FUZZING)
     cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_fuzz fuzz/lua_runtime_fuzz.c)
-    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-      target_compile_options(cpkt_lua_runtime_fuzz PRIVATE
-        -fsanitize=fuzzer,address,undefined
-        -fno-omit-frame-pointer)
-      target_link_options(cpkt_lua_runtime_fuzz PRIVATE
-        -fsanitize=fuzzer,address,undefined)
-    else()
-      message(FATAL_ERROR "CPKT_ENABLE_FUZZING requires a Clang-compatible compiler with libFuzzer")
-    endif()
+    cpkt_configure_afl_target(cpkt_lua_runtime_fuzz)
   endif()
 
   return()
@@ -152,6 +167,8 @@ set(CPKT_BUILD_SHARED ON CACHE INTERNAL "c.pkt.systems release bundles always in
 
 set(CPKT_BUNDLE_VERSION "${PROJECT_VERSION}" CACHE STRING "Published dependency bundle version." FORCE)
 set(CPKT_OPENSSL_VERSION "3.6.2" CACHE STRING "Pinned OpenSSL release.")
+set(CPKT_OPENSSL_BUILD_CONFIG_REVISION "origin-runpath-1" CACHE INTERNAL
+  "OpenSSL Configure contract revision used in dependency cache identity." FORCE)
 set(CPKT_ZLIB_VERSION "1.3.2" CACHE STRING "Pinned zlib release.")
 set(CPKT_CURL_VERSION "8.20.0" CACHE STRING "Pinned curl release.")
 set(CPKT_NGHTTP2_VERSION "1.69.0" CACHE STRING "Pinned nghttp2 release.")
@@ -205,7 +222,23 @@ if(CPKT_CXX_LIBGCC_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES 
       "Static GCC runtime archive used by C-facing static SDK metadata." FORCE)
   endif()
 endif()
-set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Shared source archive download root.")
+if(CPKT_BUILD_DEPENDENCIES)
+  if(NOT DEFINED CPKT_DEPENDENCY_CACHE OR "${CPKT_DEPENDENCY_CACHE}" STREQUAL "")
+    if(DEFINED ENV{CPKT_DEPENDENCY_CACHE} AND NOT "$ENV{CPKT_DEPENDENCY_CACHE}" STREQUAL "")
+      set(_cpkt_dependency_cache_default "$ENV{CPKT_DEPENDENCY_CACHE}")
+    elseif(DEFINED ENV{XDG_CACHE_HOME} AND NOT "$ENV{XDG_CACHE_HOME}" STREQUAL "")
+      set(_cpkt_dependency_cache_default "$ENV{XDG_CACHE_HOME}/c.pkt.systems/deps")
+    elseif(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
+      set(_cpkt_dependency_cache_default "$ENV{HOME}/.cache/c.pkt.systems/deps")
+    else()
+      message(FATAL_ERROR "CPKT_DEPENDENCY_CACHE, XDG_CACHE_HOME, or HOME is required for the shared dependency archive cache")
+    endif()
+    set(CPKT_DEPENDENCY_CACHE "${_cpkt_dependency_cache_default}" CACHE PATH "Shared verified dependency archive cache." FORCE)
+  endif()
+endif()
+unset(_cpkt_dependency_cache_default)
+set(CPKT_DEPENDENCY_CACHE_LOCK_TIMEOUT "120" CACHE STRING "Maximum shared dependency archive cache lock wait in seconds.")
+set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Local ExternalProject archive staging root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
 set(CPKT_TARGET_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Artifact architecture name.")
 set(CPKT_TARGET_OS "${CMAKE_SYSTEM_NAME}" CACHE STRING "Artifact operating system name.")
@@ -218,6 +251,7 @@ endif()
 set(CPKT_DEPENDENCY_BUILD_JOBS "${CPKT_DEPENDENCY_BUILD_JOBS_DEFAULT}" CACHE STRING "Parallel dependency build job count.")
 set(CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT "300" CACHE STRING "Maximum source archive download time in seconds.")
 set(CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT "60" CACHE STRING "Maximum source archive idle download time in seconds.")
+set(CPKT_DEPENDENCY_DOWNLOAD_RETRIES "3" CACHE STRING "Bounded retry count for each dependency archive URL.")
 
 string(TOLOWER "${CPKT_TARGET_OS}" CPKT_TARGET_OS_LOWER)
 cpkt_normalize_arch("${CPKT_TARGET_ARCH}" CPKT_TARGET_ARCH_LOWER)
@@ -249,15 +283,13 @@ else()
   set(CPKT_TARGET_ID "${CPKT_TARGET_ARCH_LOWER}-${CPKT_TARGET_OS_LOWER}")
 endif()
 
-set(CPKT_DEPENDENCY_SET_ID
-  "openssl-${CPKT_OPENSSL_VERSION}_zlib-${CPKT_ZLIB_VERSION}_curl-${CPKT_CURL_VERSION}_nghttp2-${CPKT_NGHTTP2_VERSION}_libssh2-${CPKT_LIBSSH2_VERSION}_libxml2-${CPKT_LIBXML2_VERSION}_lua-${CPKT_LUA_VERSION}_miniaudio-${CPKT_MINIAUDIO_VERSION}_whisper-${CPKT_WHISPER_VERSION}_mqtt-c-${CPKT_MQTTC_VERSION}-${CPKT_MQTTC_COMMIT}_open62541-${CPKT_OPEN62541_VERSION}-${CPKT_OPEN62541_PATCHSET}_cmocka-${CPKT_CMOCKA_VERSION}"
+include(cmake/CpktDependencySetIdentity.cmake)
+cpkt_dependency_set_cache_id(_cpkt_dependency_set_id)
+set(CPKT_DEPENDENCY_SET_ID "${_cpkt_dependency_set_id}"
   CACHE INTERNAL "Version key for the pinned third-party dependency set.")
-set(_cpkt_dependency_toolchain_id
-  "${CMAKE_C_COMPILER_ID}-${CMAKE_C_COMPILER_VERSION}")
-if(CMAKE_C_COMPILER_TARGET)
-  string(APPEND _cpkt_dependency_toolchain_id "-${CMAKE_C_COMPILER_TARGET}")
-endif()
-string(MAKE_C_IDENTIFIER "${_cpkt_dependency_toolchain_id}" _cpkt_dependency_toolchain_id)
+unset(_cpkt_dependency_set_id)
+include(cmake/CpktDependencyToolchainIdentity.cmake)
+cpkt_dependency_toolchain_cache_id(_cpkt_dependency_toolchain_id)
 set(_cpkt_legacy_external_root "${CMAKE_SOURCE_DIR}/.cache/deps/${CPKT_TARGET_ID}")
 set(_cpkt_legacy_dependency_build_root "${CMAKE_SOURCE_DIR}/.cache/deps-build/${CPKT_TARGET_ID}")
 set(_cpkt_default_external_root
@@ -1071,6 +1103,51 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/linux_toolchain_sysroot_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME osxcross_linker_cache_refresh
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/osxcross_linker_cache_refresh_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME dependency_toolchain_identity
+        COMMAND
+          "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          -P "${CMAKE_SOURCE_DIR}/tests/dependency_toolchain_identity_test.cmake")
+      add_test(
+        NAME dependency_set_identity
+        COMMAND
+          "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          -P "${CMAKE_SOURCE_DIR}/tests/dependency_set_identity_test.cmake")
+      add_test(
+        NAME external_project_toolchain_environment
+        COMMAND
+          "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}/external-project-toolchain-env-fixture"
+          -P "${CMAKE_SOURCE_DIR}/tests/external_project_toolchain_env_test.cmake")
+      add_test(
+        NAME pinned_toolchain_resolvers
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/toolchain_resolver_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME aflpp_resolver_cleanup
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/aflpp_resolver_cleanup_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME dependency_archive_cache
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/dependency_archive_cache_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME dependency_cache_disabled
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/dependency_cache_disabled_test.sh"
+          "${CMAKE_SOURCE_DIR}"
+          "${CPKT_EXTERNAL_ROOT}")
+      add_test(
         NAME privacy_scan_failure
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/privacy_scan_failure_test.sh")
@@ -1083,6 +1160,46 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/package_assertions_elf_runpath_test.sh")
       set_tests_properties(package_assertions_elf_runpath PROPERTIES
         LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
+        NAME package_assertions_cleanup
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/package_assertions_cleanup_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(package_assertions_cleanup PROPERTIES
+        LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
+        NAME package_verify_toolchain_tools
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/package_verify_toolchain_tools_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(package_verify_toolchain_tools PROPERTIES
+        LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
+        NAME native_hardening_host
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/native_hardening_host_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(native_hardening_host PROPERTIES
+        LABELS "smoke"
+        TIMEOUT 30)
+      add_test(
+        NAME afl_crash_gate
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/run_afl_fuzz_crash_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(afl_crash_gate PROPERTIES
+        LABELS "fuzz;smoke"
+        TIMEOUT 30)
+      add_test(
+        NAME fuzz_toolchain_policy
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/fuzz_toolchain_policy_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(fuzz_toolchain_policy PROPERTIES
+        LABELS "fuzz;smoke"
         TIMEOUT 30)
       add_test(
         NAME lifecycle_surface
@@ -1121,37 +1238,37 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_spec_consistency_test.sh"
           "${CMAKE_SOURCE_DIR}")
-      add_test(
-        NAME clangd_surface
-        COMMAND
-          "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh"
-          "${CMAKE_SOURCE_DIR}"
-          "${CMAKE_BINARY_DIR}")
+      # clangd is a host editor tool, not a cross compiler.  Its driver model
+      # cannot reliably reproduce every Bootlin target ABI/sysroot, so validate
+      # only the native development-host compile database.
+      if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu")
+        add_test(
+          NAME clangd_comment_gate
+          COMMAND
+            bash
+            "${CMAKE_SOURCE_DIR}/tests/clangd_comment_gate_test.sh"
+            "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh")
+        set_tests_properties(clangd_comment_gate PROPERTIES
+          LABELS "smoke"
+          TIMEOUT 30)
+        add_test(
+          NAME clangd_surface
+          COMMAND
+            "${CMAKE_SOURCE_DIR}/scripts/verify-clangd-surface.sh"
+            "${CMAKE_SOURCE_DIR}"
+            "${CMAKE_BINARY_DIR}")
+      endif()
     endif()
   endif()
 endif()
 
 if(CPKT_ENABLE_FUZZING)
   cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_fuzz fuzz/lua_runtime_fuzz.c)
+  cpkt_configure_afl_target(cpkt_lua_runtime_fuzz)
   add_executable(cpkt_opcua_facade_fuzz fuzz/opcua_facade_fuzz.c)
-  target_compile_options(cpkt_opcua_facade_fuzz PRIVATE -std=c99)
-  cpkt_add_repo_warning_errors(cpkt_opcua_facade_fuzz)
+  cpkt_configure_afl_target(cpkt_opcua_facade_fuzz)
   target_include_directories(cpkt_opcua_facade_fuzz PRIVATE "${CMAKE_SOURCE_DIR}/include")
   target_link_libraries(cpkt_opcua_facade_fuzz PRIVATE cpkt_opcua_static)
-  if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-    target_compile_options(cpkt_lua_runtime_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined
-      -fno-omit-frame-pointer)
-    target_link_options(cpkt_lua_runtime_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined)
-    target_compile_options(cpkt_opcua_facade_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined
-      -fno-omit-frame-pointer)
-    target_link_options(cpkt_opcua_facade_fuzz PRIVATE
-      -fsanitize=fuzzer,address,undefined)
-  else()
-    message(FATAL_ERROR "CPKT_ENABLE_FUZZING requires a Clang-compatible compiler with libFuzzer")
-  endif()
 endif()
 
 if(CPKT_BUILD_DEPENDENCIES)

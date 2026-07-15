@@ -33,7 +33,8 @@ This skill is the process authority. It must not require external example reposi
 - `dist/` is generated output, not the release manifest. Release uploads must come from a verified checksum or manifest file.
 - Git commits created by this workflow use Conventional Commits.
 - Local CI/CD is the default operating model. Do not scaffold or require remote CI/CD or GitHub Actions unless the engineer explicitly asks.
-- Toolchain resolution is lifecycle-owned. Every Linux build uses a complete pinned Bootlin GCC collection, including compiler, linker, binutils, libc, headers, and C++ runtime; never select a host compiler or host binutils fallback. ASan, MSan, and libFuzzer use the separately pinned LLVM 22.1.6 collection, never host Clang. C/C++ compiler discovery, automatic download, cache layout, static C++ runtime metadata, C89 compiler policy, and downstream setup must follow [references/toolchains.md](references/toolchains.md) and use the shared cache root `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`. Do not create project-specific toolchain cache directories.
+- Toolchain resolution is lifecycle-owned. Every Linux build uses a complete pinned Bootlin GCC collection, including compiler, linker, binutils, libc, headers, and C++ runtime; never select a host compiler or host binutils fallback. Native memory checking uses host-provided Valgrind; fuzzing uses a pinned cached AFL++ GCC-plugin build tied to the selected Bootlin GCC collection. Host `clang-format` and `clangd` are development-tool prerequisites only, never build compilers. `clangd` validation is native-host-only: cross-target CTest, packaging, and release configurations must not invoke it or depend on host `clangd` reproducing a target ABI. C/C++ compiler discovery, automatic download, cache layout, static C++ runtime metadata, C89 compiler policy, and downstream setup must follow [references/toolchains.md](references/toolchains.md) and use the shared cache root `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`. Do not create project-specific toolchain cache directories.
+- Dependency acquisition is lifecycle-owned. Cache every checksum-pinned external archive, including `c.pkt.systems` SDK bundles and third-party sources, under `${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}`. This is a shared archive cache, not a build tree: local `.cache/` holds disposable extracted sources, dependency builds, and install roots. Verify every cache hit, publish verified downloads through an atomic rename, and never let clean, release, or packaging remove the shared archive cache. Follow [references/dependencies.md](references/dependencies.md).
 
 ## Operating Posture
 
@@ -64,7 +65,7 @@ Read references only after the request and repository state indicate they are re
 - Read [references/operability.md](references/operability.md) for repository layout, CMake presets, Make targets, script surfaces, cache discipline, diagnostics, and lifecycle command shape.
 - Read [references/toolchains.md](references/toolchains.md) when touching C/C++ compiler discovery, cross-target setup, autodownloaded compiler collections, CMake toolchain files or presets, static C++ runtime closure, downstream setup instructions, release target matrices, or package metadata that exposes compiler/runtime requirements.
 - Read [references/dependencies.md](references/dependencies.md) when touching SDK dependencies, cache invalidation, dependency provenance, bundled/external dependency rules, license provenance, any JSON behavior owned by `lonejson`, or project-owned dependency behavior.
-- Read [references/local-ci.md](references/local-ci.md) when touching build/test gates, API or ABI behavior, sanitizer coverage, fuzzing, benchmarks, install-tree consumers, or quality contracts.
+- Read [references/local-ci.md](references/local-ci.md) when touching build/test gates, API or ABI behavior, native memory checking, fuzzing, benchmarks, install-tree consumers, or quality contracts.
 - Read [references/docker-compose-e2e.md](references/docker-compose-e2e.md) when the repository has or needs deterministic local service e2e.
 - Read [references/lua.md](references/lua.md) when the repository has or needs Lua facades, Lua C modules, source rocks, Lua benchmarks, or Lua release artifacts.
 - Read [references/packaging.md](references/packaging.md) when touching `dist/`, binary SDKs, checksums, source archives, single-header artifacts, vendored upstreams, RPATH/RUNPATH, Darwin install names, or artifact verification.
@@ -82,15 +83,17 @@ Suggested starting sets:
 
 ## Toolchain Command Surface
 
-Use `scripts/cpkt-toolchains.sh` from this skill to inspect or provision the pinned Bootlin Linux compiler collections. Use `scripts/cpkt-llvm.sh` only for sanitizer or libFuzzer builds that require compiler-rt:
+Use `scripts/cpkt-toolchains.sh` from this skill to inspect or provision the pinned Bootlin Linux compiler collections. Native fuzzing uses a pinned AFL++ GCC-plugin build tied to the x86_64 Bootlin collection:
+
+On a native x86_64 Linux development host, install `valgrind`, `clang-format`, and `clangd` through the host OS package manager. They are host tools, not artifacts in a Bootlin collection. Valgrind and AFL++ are never run through a cross target, emulator, or QEMU.
 
 ```sh
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <target|all>
 eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env <target>)"
 
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-llvm.sh ensure
-eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-llvm.sh env)"
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh ensure
+eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
 ```
 
 Downstream projects may vendor or call this lifecycle script, but the policy and cache root stay identical across pkt.systems C projects.

@@ -189,12 +189,9 @@ static int cpkt_test_send_all(int fd, const void *buffer, size_t size) {
   return 0;
 }
 
-static int
-cpkt_test_start_http_server_with_extra_length(const unsigned char *data,
-                                              size_t data_size,
-                                              size_t extra_length,
-                                              unsigned short *port_out,
-                                              pid_t *pid_out) {
+static int cpkt_test_start_http_server_with_extra_length(
+    const unsigned char *data, size_t data_size, size_t extra_length,
+    unsigned short *port_out, pid_t *pid_out) {
   struct sockaddr_in address;
   socklen_t address_length;
   int listen_fd;
@@ -654,7 +651,8 @@ static void test_decoder_http_url_streams_before_full_response(void **state) {
   cpkt_test_stop_http_server(server_pid);
 }
 
-static void test_decoder_http_mp3_url_reports_interrupted_transfer(void **state) {
+static void
+test_decoder_http_mp3_url_reports_interrupted_transfer(void **state) {
   unsigned char mp3_fixture[1536];
   unsigned char mp3_data[1536 * 4];
   char url[128];
@@ -679,8 +677,7 @@ static void test_decoder_http_mp3_url_reports_interrupted_transfer(void **state)
   assert_int_equal(cpkt_test_start_prefix_http_server(mp3_data, mp3_size, &port,
                                                       &server_pid),
                    0);
-  (void)sprintf(url, "http://127.0.0.1:%u/interrupted.mp3",
-                (unsigned int)port);
+  (void)sprintf(url, "http://127.0.0.1:%u/interrupted.mp3", (unsigned int)port);
 
   decoder = NULL;
   assert_int_equal(cpkt_audio_decoder_open_url(&decoder, url, NULL),
@@ -702,7 +699,8 @@ static void test_decoder_http_mp3_url_reports_interrupted_transfer(void **state)
   decoder->destroy(decoder);
 }
 
-static void test_decoder_http_wav_url_reports_interrupted_transfer(void **state) {
+static void
+test_decoder_http_wav_url_reports_interrupted_transfer(void **state) {
   unsigned char wav_data[4096];
   char url[128];
   cpkt_audio_decoder *decoder;
@@ -731,8 +729,7 @@ static void test_decoder_http_wav_url_reports_interrupted_transfer(void **state)
   assert_int_equal(cpkt_test_start_prefix_http_server(
                        wav_data, sizeof(wav_data), &port, &server_pid),
                    0);
-  (void)sprintf(url, "http://127.0.0.1:%u/interrupted.wav",
-                (unsigned int)port);
+  (void)sprintf(url, "http://127.0.0.1:%u/interrupted.wav", (unsigned int)port);
 
   decoder = NULL;
   result = cpkt_audio_decoder_open_url(&decoder, url, NULL);
@@ -781,8 +778,8 @@ static void test_decoder_http_url_waits_for_large_id3_tag(void **state) {
   mp3_data[9] = (unsigned char)(tag_payload_size & 0x7fU);
   memcpy(mp3_data + 10U + tag_payload_size, mp3_fixture, mp3_size);
 
-  assert_int_equal(cpkt_test_start_exact_http_server(mp3_data, total_size, &port,
-                                                     &server_pid),
+  assert_int_equal(cpkt_test_start_exact_http_server(mp3_data, total_size,
+                                                     &port, &server_pid),
                    0);
   (void)sprintf(url, "http://127.0.0.1:%u/large-id3.mp3", (unsigned int)port);
 

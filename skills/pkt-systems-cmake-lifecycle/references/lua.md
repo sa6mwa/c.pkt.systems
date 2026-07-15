@@ -17,10 +17,14 @@ scripts/stage_lua_rock_sources.sh
 Build contract:
 
 - `make lua-rock` renders a development rockspec and installs the Lua module into a repo-local tree under `build/luarocks`.
-- `make lua-test` runs Lua smoke tests against the repo-local installed rock and the repository's supported system Lua runtime.
+- `make lua-test` runs Lua smoke tests against the repo-local installed rock and the supported host Lua runtime.
 - `make lua-env` prints shell exports for running examples against the repo-local rock and installed C SDK prefix.
-- Do not assume support for old Lua versions or alternate JIT Lua runtimes. pkt.systems Lua artifacts target the system Lua runtime available for the project; currently expect Lua 5.5 unless the engineer explicitly expands the support matrix.
-- Missing non-target Lua runtimes are not failures because they are not part of the support contract.
+- Lua 5.5.0 is the preferred and only supported Lua version for pkt.systems projects. Do not support alternate Lua releases or LuaJIT runtimes.
+- It is acceptable to use host-provided Lua 5.5.0 executables and development libraries to run Lua tooling, tests, and Lua-module builds.
+- It is acceptable to use host-provided LuaRocks for Lua 5.5.0 tooling and source-module builds.
+- Downstream C bindings and modules may use host Lua 5.5.0 headers and libraries during normal development, builds, and tests.
+- When shipping a C or C++ binary that embeds Lua, prefer the prebuilt Lua 5.5.0 libraries from the c.pkt.systems bundle. The upstream Lua 5.5.0 source archive at `https://lua.org/ftp/lua-5.5.0.tar.gz` is the direct-source alternative.
+- Missing non-Lua-5.5.0 runtimes are not failures because they are outside the support contract.
 - `scripts/build_lua_rock.sh` accepts the LuaRocks build arguments: compiler, flags, shared-library flag, object extension, library extension, and Lua include directory.
 - If the Lua module links an installed C SDK, discover it through pkg-config first, then a project-prefixed prefix variable, and fail with an actionable message if neither is available.
 - If optional C dependencies can be enabled, probe them at build time and provide force/disable environment variables.
@@ -30,6 +34,13 @@ Build contract:
 - If the Lua facade consumes a released C SDK, test it against the installed SDK layout, not only against the source-tree build.
 - For local development, install the just-built C SDK into a repo-local prefix and build the Lua module against that installed layout. This catches C package metadata problems before release.
 - Lua package-manager build directories and locks are generated state and belong under `build/` or another ignored generated directory.
+
+Lua module linkage contract:
+
+- Treat a Lua C binding as a facade over the public C library. Compile it against the installed public headers and link it to the public shared-library artifact (`.so` or platform equivalent).
+- Do not statically link the public C library into the Lua module, import private implementation targets or source-tree internals, or reproduce private implementation/header declarations in the binding. The Lua facade must know only the public C API it exposes.
+- This boundary is especially important for embedded Lua servers: the host binary may already contain the C library and its dependencies through static linkage or loaded shared libraries. A second private or static copy in the Lua module duplicates symbols and state. The public shared-library facade avoids that collision.
+- Verify the Lua C binding against an installed public SDK and reject private include paths, static-library linkage, or shadow declarations in its build and export-boundary tests.
 
 Facade contract:
 
@@ -61,6 +72,7 @@ Release contract:
 - Stage Lua interop headers and implementation fragments required to build the Lua C module, including `<project>_lua.h` when the Lua facade ships C embedder interop.
 - Produce a standalone Lua source package under `dist/` named `dist/<project>-lua-<version>.tar.gz`. This package is separate from the C source archive and from per-target C SDK tarballs.
 - Build the release `.src.rock` through LuaRocks from a staged Lua source package, not from the live worktree. The source rock must contain the rendered rockspec and the same `<project>-lua-<version>.tar.gz` payload, with the rockspec `source.url` rewritten to a release-local or public source URL and `source.dir` set to the staged root such as `<project>-<version>` when needed.
+- Downstream releases ship LuaRocks source artifacts and the source for their C bindings or modules only. Do not ship prebuilt binary Lua modules.
 - Keep the rendered release rockspec under `dist/<project>-<version>-1.rockspec` when useful for inspection and checksum coverage.
 - Include the standalone Lua source package, rendered release rockspec, and `.src.rock` in the checksum manifest alongside C release artifacts.
 - Render release rockspec source URLs as release-appropriate logical or public URLs, such as the final release source archive URL or another deliberately public source location. Do not use absolute `file://` URLs pointing at the repository, `$HOME`, package-manager temporary directories, or staged local source trees.

@@ -9,7 +9,7 @@ RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-li
 E2E_SUS_PRESET ?= release
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe asan tsan msan fuzz-smoke fuzz package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-hardening release-matrix finalize-slice release print-release-version format source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice release print-release-version format source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
@@ -42,11 +42,10 @@ help:
 	@printf '  %-30s %s\n' 'example-sus-vox-intro' 'Run cached intro.mp3 VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'example-sus-live-vox' 'Run live microphone VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'example-sus-live-vox-static' 'Build the musl static live sus VOX example and print its path.'
-	@printf '  %-30s %s\n' 'asan' 'Build and test the facade-only AddressSanitizer/UBSan preset.'
-	@printf '  %-30s %s\n' 'tsan' 'Build and test the facade-only ThreadSanitizer preset.'
-	@printf '  %-30s %s\n' 'msan' 'Build and test the facade-only MemorySanitizer preset with clang.'
-	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded facade fuzz smoke tests.'
-	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded facade fuzz tests.'
+	@printf '  %-30s %s\n' 'valgrind' 'Run the facade-only Valgrind Memcheck gate.'
+	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded AFL++ GCC-plugin facade fuzz smoke tests.'
+	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded AFL++ GCC-plugin facade fuzz tests.'
+	@printf '  %-30s %s\n' 'fuzz-long' 'Run extended AFL++ fuzzing; requires CPKT_FUZZ_LONG_ENABLE=1.'
 	@printf '\nTools:\n'
 	@printf '  %-30s %s\n' 'cpktxscribe' 'Build host audio transcription CLI under build/debug/tools/.'
 	@printf '\nPackaging:\n'
@@ -58,11 +57,12 @@ help:
 	@printf '  %-30s %s\n' 'verify-release-archives' 'Alias for package-verify.'
 	@printf '  %-30s %s\n' 'verify-release-privacy' 'Alias for package-verify; privacy is part of the package gate.'
 	@printf '\nRelease:\n'
-	@printf '  %-30s %s\n' 'prerelease' 'Run deterministic local pre-release confidence.'
-	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run expensive local pre-release confidence.'
-	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, checksum, and verify all release artifacts.'
+	@printf '  %-30s %s\n' 'prerelease' 'Run the release proof graph without cleaning generated state first.'
+	@printf '  %-30s %s\n' 'prerelease-live' 'Run external-provider checks; requires CPKT_LIVE_CHECKS=1.'
+	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run the release proof graph plus standard-duration native fuzzing.'
+	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, source-smoke, checksum, and verify all release artifacts.'
 	@printf '  %-30s %s\n' 'finalize-slice' 'Format and run the narrow local pre-commit gate.'
-	@printf '  %-30s %s\n' 'release' 'Clean, build, package, and verify the final local release gate.'
+	@printf '  %-30s %s\n' 'release' 'Clean, then run the same proof graph as prerelease; final local release gate.'
 	@printf '  %-30s %s\n' 'print-release-version' 'Print the version used by package and release artifacts.'
 	@printf '  %-30s %s\n' 'format' 'Format project-owned C and header files with clang-format.'
 	@printf '\nCleanup:\n'
@@ -81,11 +81,8 @@ deps-cross:
 	@for preset in aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release; do \
 		$(CMAKE) --preset "$$preset"; \
 	done
-	@if bash ./scripts/osxcross_available.sh; then \
-		$(CMAKE) --preset arm64-apple-darwin-release; \
-	else \
-		printf '[package] skipping arm64-apple-darwin-release configure: osxcross toolchain not available\n'; \
-	fi
+	bash ./scripts/osxcross_available.sh
+	$(CMAKE) --preset arm64-apple-darwin-release
 
 build:
 	bash ./scripts/build.sh release
@@ -114,7 +111,7 @@ cross-test: test-cross
 
 test-install-tree: package-verify
 
-test-all: debug clangd-surface asan tsan msan fuzz-smoke
+test-all: debug clangd-surface valgrind fuzz-smoke
 
 debug:
 	$(CMAKE) --preset debug
@@ -176,40 +173,22 @@ cpktxscribe:
 	$(CMAKE) --build --preset debug --target cpktxscribe
 	@printf 'built: %s\n' "$$(pwd)/build/debug/tools/cpktxscribe"
 
-asan:
-	$(CMAKE) --preset asan
-	$(CMAKE) --build --preset asan
-	$(CTEST) --preset asan
-
-tsan:
-	$(CMAKE) --preset tsan
-	$(CMAKE) --build --preset tsan
-	$(CTEST) --preset tsan
-
-msan:
-	$(CMAKE) --preset msan
-	$(CMAKE) --build --preset msan
-	$(CTEST) --preset msan
+valgrind:
+	bash ./scripts/require-native-hardening-host.sh valgrind
+	@command -v valgrind >/dev/null || { printf 'valgrind is required for make valgrind; install it with the host OS package manager\n' >&2; exit 1; }
+	$(CMAKE) --preset valgrind
+	$(CMAKE) --build --preset valgrind
+	valgrind --error-exitcode=1 --leak-check=full --track-origins=yes --show-leak-kinds=definite,indirect build/valgrind/cpkt_lua_runtime_mock_test
 
 fuzz-smoke:
-	bash ./scripts/configure-preset.sh --fresh fuzz
-	$(CMAKE) --build --preset fuzz
-	build/fuzz/cpkt_lua_runtime_fuzz -runs=256
-	bash ./scripts/configure-preset.sh debug
-	$(CMAKE) --build --preset debug --target cpkt_opcua_static
-	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
-	$(CMAKE) --build --preset opcua-fuzz
-	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=256
+	bash ./scripts/fuzz.sh smoke
 
 fuzz:
-	bash ./scripts/configure-preset.sh --fresh fuzz
-	$(CMAKE) --build --preset fuzz
-	build/fuzz/cpkt_lua_runtime_fuzz -runs=100000
-	bash ./scripts/configure-preset.sh debug
-	$(CMAKE) --build --preset debug --target cpkt_opcua_static
-	bash ./scripts/configure-preset.sh --fresh opcua-fuzz
-	$(CMAKE) --build --preset opcua-fuzz
-	build/opcua-fuzz/cpkt_opcua_facade_fuzz -runs=100000
+	bash ./scripts/fuzz.sh standard
+
+fuzz-long:
+	@test "$${CPKT_FUZZ_LONG_ENABLE:-}" = 1 || { printf 'fuzz-long requires CPKT_FUZZ_LONG_ENABLE=1\n' >&2; exit 2; }
+	bash ./scripts/fuzz.sh long
 
 package:
 	bash ./scripts/package.sh
@@ -230,11 +209,31 @@ verify-release-archives: package-verify
 
 verify-release-privacy: package-verify
 
-prerelease: debug clangd-surface asan fuzz-smoke
+release-pipeline:
+	$(MAKE) format
+	$(MAKE) debug
+	$(MAKE) clangd-surface
+	$(MAKE) valgrind
+	$(MAKE) fuzz-smoke
+	$(MAKE) release-matrix
 
-prerelease-hardening: prerelease tsan msan release-matrix
+prerelease:
+	$(MAKE) release-pipeline
 
-release-matrix: package package-source package-checksums package-verify
+prerelease-live:
+	@test "$${CPKT_LIVE_CHECKS:-}" = 1 || { printf 'prerelease-live requires CPKT_LIVE_CHECKS=1 because it contacts external providers\n' >&2; exit 2; }
+	$(MAKE) e2e-sus e2e-cpktxscribe
+
+prerelease-hardening:
+	$(MAKE) prerelease
+	$(MAKE) fuzz
+
+release-matrix:
+	$(MAKE) package
+	$(MAKE) package-source
+	$(MAKE) package-source-smoke
+	$(MAKE) package-checksums
+	$(MAKE) package-verify
 
 finalize-slice: format debug clangd-surface
 
@@ -245,7 +244,9 @@ format:
 	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format\n' >&2; exit 1; }
 	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
 
-release: clean release-matrix
+release:
+	$(MAKE) clean
+	$(MAKE) release-pipeline
 
 source-archive: package-source-smoke
 

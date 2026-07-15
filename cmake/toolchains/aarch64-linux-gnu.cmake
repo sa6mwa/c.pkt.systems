@@ -1,28 +1,9 @@
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)
 set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
-
 include("${CMAKE_CURRENT_LIST_DIR}/cpkt_linux_toolchain_common.cmake")
-
-cpkt_select_linux_toolchain(
-  aarch64-linux-gnu
-  /usr
-  aarch64-linux-gnu
-  /usr/aarch64-linux-gnu
-  aarch64-linux
-  aarch64-buildroot-linux-gnu/sysroot
-  CPKT_SELECTED_TOOLCHAIN_ROOT
-  CPKT_SELECTED_TOOLCHAIN_PREFIX
-  CPKT_SELECTED_SYSROOT
-  CPKT_SELECTED_FIND_ROOT)
-cpkt_configure_linux_toolchain(
-  "${CPKT_SELECTED_TOOLCHAIN_ROOT}"
-  "${CPKT_SELECTED_TOOLCHAIN_PREFIX}"
-  "${CPKT_SELECTED_SYSROOT}"
-  "${CPKT_SELECTED_FIND_ROOT}")
-
-set(CMAKE_CROSSCOMPILING_EMULATOR /usr/bin/qemu-aarch64;-L;${CPKT_SELECTED_FIND_ROOT} CACHE STRING "" FORCE)
-
+cpkt_configure_bootlin_toolchain(aarch64-linux-gnu)
+set(CMAKE_CROSSCOMPILING_EMULATOR /usr/bin/qemu-aarch64;-L;${CMAKE_SYSROOT} CACHE STRING "" FORCE)
 set(CPKT_TARGET_ARCH aarch64 CACHE STRING "" FORCE)
 set(CPKT_TARGET_OS linux CACHE STRING "" FORCE)
 set(CPKT_TARGET_LIBC gnu CACHE STRING "" FORCE)

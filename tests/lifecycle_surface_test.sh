@@ -32,19 +32,37 @@ require_file_contains() {
   fi
 }
 
+require_ordered_make_recipe() {
+  target=$1
+  expected=$2
+  actual=$(awk -v target="$target" '
+    $0 == target ":" { found = 1; next }
+    found && /^[^[:space:]#]/ { exit }
+    found && /^\t\$\(MAKE\) / { sub(/^\t\$\(MAKE\) /, ""); print }
+  ' "$repo_root/Makefile")
+  if [ "$actual" != "$expected" ]; then
+    printf 'Make target %s must serialize this lifecycle recipe:\nexpected:\n%s\nactual:\n%s\n' \
+      "$target" "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+
 for target in \
   help deps-debug deps-release deps-cross build build-debug build-release \
   build-host cross-build test test-debug test-host test-cross cross-test test-all \
-  test-install-tree asan tsan msan fuzz-smoke fuzz package package-source \
+  test-install-tree valgrind fuzz-smoke fuzz fuzz-long package package-source \
   package-source-smoke package-checksums package-verify verify-release-archives \
-  verify-release-privacy release-matrix finalize-slice prerelease \
+  verify-release-privacy release-matrix finalize-slice prerelease prerelease-live \
   prerelease-hardening release print-release-version format clean clean-dist; do
   require_help_target "$target"
 done
 
 for script in \
   scripts/build.sh \
+  scripts/cpkt-toolchains.sh \
+  scripts/cpkt-aflpp.sh \
   scripts/configure-preset.sh \
+  scripts/fuzz.sh \
   scripts/test.sh \
   scripts/package.sh \
   scripts/run_linux_release_matrix.sh \
@@ -56,9 +74,73 @@ for script in \
   require_script "$script"
 done
 
+require_file_contains \
+  CMakePresets.json \
+  'cmake/toolchains/x86_64-linux-gnu.cmake' \
+  'host Linux presets select the pinned Bootlin collection'
+require_file_contains \
+  CMakeLists.txt \
+  'CPKT_DEPENDENCY_CACHE' \
+  'CMake exposes the shared dependency archive cache'
+require_file_contains \
+  cmake/CpktDependencyArchiveCache.cmake \
+  'file\(LOCK' \
+  'dependency archives use per-digest shared-cache locks'
+require_file_contains \
+  cmake/CpktDependencyArchiveCache.cmake \
+  'file\(RENAME' \
+  'dependency archives publish by atomic rename'
+require_file_contains \
+  CMakePresets.json \
+  'cmake/toolchains/aflpp-x86_64-linux-gnu.cmake' \
+  'fuzz presets select pinned AFL++ GCC instrumentation'
+if grep -Eq '"CMAKE_C_COMPILER"[[:space:]]*:[[:space:]]*"clang"' "$repo_root/CMakePresets.json"; then
+  printf 'sanitizer presets must not select host clang\n' >&2
+  exit 1
+fi
+require_file_contains \
+  README.md \
+  'GCC, Clang, and binutils are never Linux build fallbacks' \
+  'documented pinned Linux toolchain policy'
+
 grep -Eq '^/dist/$' "$repo_root/.gitignore"
 grep -Eq '^/VERSION$' "$repo_root/.gitignore"
-grep -Eq '^release-matrix:.*package-checksums.*package-verify' "$repo_root/Makefile"
+require_ordered_make_recipe \
+  release-pipeline \
+  'format
+debug
+clangd-surface
+valgrind
+fuzz-smoke
+release-matrix'
+require_ordered_make_recipe \
+  release-matrix \
+  'package
+package-source
+package-source-smoke
+package-checksums
+package-verify'
+grep -Eq 'if\(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu"\)' "$repo_root/CMakeLists.txt" || {
+  printf 'clangd CTest registration must be restricted to the native host target\n' >&2
+  exit 1
+}
+require_ordered_make_recipe prerelease 'release-pipeline'
+require_ordered_make_recipe release 'clean
+release-pipeline'
+require_ordered_make_recipe prerelease-hardening 'prerelease
+fuzz'
+require_file_contains \
+  scripts/run-afl-fuzz.sh \
+  'smoke\|standard\|long' \
+  'AFL++ runner supports the long fuzz mode'
+if make -C "$repo_root" prerelease-live >/dev/null 2>&1; then
+  printf 'prerelease-live must refuse external-provider checks without CPKT_LIVE_CHECKS=1\n' >&2
+  exit 1
+fi
+if make -C "$repo_root" fuzz-long >/dev/null 2>&1; then
+  printf 'fuzz-long must require CPKT_FUZZ_LONG_ENABLE=1\n' >&2
+  exit 1
+fi
 require_file_contains \
   scripts/package.sh \
   'x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release' \
@@ -66,11 +148,19 @@ require_file_contains \
 require_file_contains \
   scripts/package.sh \
   'package-arm64-apple-darwin-release' \
-  'optional arm64 Darwin package target'
+  'required arm64 Darwin package target'
+require_file_contains \
+  scripts/package.sh \
+  'arm64-apple-darwin-release is required for c\.pkt\.systems releases' \
+  'Darwin package prerequisite fails closed'
 require_file_contains \
   scripts/package-verify.sh \
-  'x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl' \
-  'full Linux package verification matrix'
+  'x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl arm64-apple-darwin' \
+  'full Linux and Darwin package verification matrix'
+require_file_contains \
+  scripts/package-verify.sh \
+  'arm64-apple-darwin package verification requires a complete local osxcross SDK toolchain' \
+  'Darwin package verification prerequisite fails closed'
 require_file_contains \
   CMakeLists.txt \
   'static_archive_pic_link' \
@@ -96,9 +186,9 @@ require_file_contains \
   '"CPKT_BUILD_DEPENDENCIES": "OFF"' \
   'fuzz presets do not build third-party dependency trees'
 require_file_contains \
-  Makefile \
-  '\$\(CMAKE\) --build --preset debug --target cpkt_opcua_static' \
-  'fuzz gates prepare the normal OPC UA facade dependency prerequisite before Clang fuzzing'
+  scripts/fuzz.sh \
+  '\$cmake" --build --preset debug --target cpkt_opcua_static' \
+  'fuzz gates prepare the normal OPC UA facade dependency prerequisite before AFL++ fuzzing'
 require_file_contains \
   scripts/configure-preset.sh \
   '-DCPKT_EXTERNAL_ROOT="\$external_root"' \
@@ -108,13 +198,21 @@ require_file_contains \
   'CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE' \
   'explicit dependency root override is required before reusing a non-default dependency cache'
 require_file_contains \
-  scripts/configure-preset.sh \
-  '\.cache/deps-build/x86_64-linux-gnu/\*/Clang_' \
-  'fresh fuzz configure removes generated Clang dependency build caches'
+  skills/pkt-systems-cmake-lifecycle/references/dependencies.md \
+  'A Bootlin identity must never reuse a host-GCC dependency root' \
+  'dependency cache identity separates pinned Bootlin collections from host GCC'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/toolchains.md \
+  'locks/.*per-collection advisory lock files' \
+  'lifecycle documents serialized shared toolchain publication'
 require_file_contains \
   scripts/configure-preset.sh \
-  '\.cache/deps/x86_64-linux-gnu/\*/Clang_' \
-  'fresh fuzz configure removes generated Clang dependency install caches'
+  '\.cache/deps-build/x86_64-linux-gnu/\*/AFL_' \
+  'fresh fuzz configure removes generated AFL dependency build caches'
+require_file_contains \
+  scripts/configure-preset.sh \
+  '\.cache/deps/x86_64-linux-gnu/\*/AFL_' \
+  'fresh fuzz configure removes generated AFL dependency install caches'
 require_file_contains \
   scripts/package-install-smoke.sh \
   'cpkt_add_static_archive_pic_smoke' \

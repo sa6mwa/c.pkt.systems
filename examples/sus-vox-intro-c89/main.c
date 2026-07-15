@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
-#define CPKT_SUS_VOX_INTRO_URL                                               \
+#define CPKT_SUS_VOX_INTRO_URL                                                 \
   "https://pkt.systems/trajectory/assets/narration/intro/intro.mp3"
 #define CPKT_SUS_VOX_READ_FRAMES 4096UL
 #define CPKT_SUS_VOX_MEMORY_SPOOL_BYTES 65536UL
@@ -152,9 +152,10 @@ static void cpkt_sus_vox_emit_quoted(struct cpkt_sus_vox_events *events,
   }
 }
 
-static int cpkt_sus_vox_write_text_file(
-    const struct cpkt_sus_vox_options *options, const char *name,
-    const char *text, unsigned long length) {
+static int
+cpkt_sus_vox_write_text_file(const struct cpkt_sus_vox_options *options,
+                             const char *name, const char *text,
+                             unsigned long length) {
   char path[CPKT_SUS_VOX_PATH_MAX];
   FILE *file;
 
@@ -178,9 +179,10 @@ static int cpkt_sus_vox_write_text_file(
   return 1;
 }
 
-static int cpkt_sus_vox_write_segment_text(
-    const struct cpkt_sus_vox_options *options, unsigned long index,
-    const char *text, unsigned long length) {
+static int
+cpkt_sus_vox_write_segment_text(const struct cpkt_sus_vox_options *options,
+                                unsigned long index, const char *text,
+                                unsigned long length) {
   char name[64];
 
   sprintf(name, "segment-%04lu.txt", index);
@@ -199,7 +201,7 @@ static unsigned long cpkt_sus_vox_elapsed_ms(clock_t started) {
 }
 
 static int cpkt_sus_vox_segmented_sink(const cpkt_sus_segmented_event *event,
-                                      void *user) {
+                                       void *user) {
   struct cpkt_sus_vox_events *events;
   unsigned long delta_offset;
   unsigned long delta_length;
@@ -217,14 +219,16 @@ static int cpkt_sus_vox_segmented_sink(const cpkt_sus_segmented_event *event,
     delta_offset = 0UL;
   }
   delta_length = event->text_length - delta_offset;
-  printf("stream segment=%lu t0=%ld t1=%ld final=%d elapsed_ms=%lu total_chars=%lu "
+  printf("stream segment=%lu t0=%ld t1=%ld final=%d elapsed_ms=%lu "
+         "total_chars=%lu "
          "delta_chars=%lu text=",
          event->step_index, event->t0, event->t1, event->is_final,
          cpkt_sus_vox_elapsed_ms(events->started), event->text_length,
          delta_length);
   if (events->summary_file != NULL) {
     fprintf(events->summary_file,
-            "stream segment=%lu t0=%ld t1=%ld final=%d elapsed_ms=%lu total_chars=%lu "
+            "stream segment=%lu t0=%ld t1=%ld final=%d elapsed_ms=%lu "
+            "total_chars=%lu "
             "delta_chars=%lu text=",
             event->step_index, event->t0, event->t1, event->is_final,
             cpkt_sus_vox_elapsed_ms(events->started), event->text_length,
@@ -260,7 +264,8 @@ static int cpkt_sus_vox_open_audio(cpkt_audio_decoder **out,
     result = cpkt_audio_decoder_open_url(out, options->url, &config);
   }
   if (result != CPKT_AUDIO_OK) {
-    fprintf(stderr, "audio open failed: %s\n", cpkt_audio_result_string(result));
+    fprintf(stderr, "audio open failed: %s\n",
+            cpkt_audio_result_string(result));
     return 0;
   }
   return 1;
@@ -367,8 +372,8 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
          options->language != NULL ? options->language : "auto",
          (double)options->threshold, options->hang_ms, options->budget_ms,
          options->read_frames, options->prebuffer_ms,
-         options->memory_spool_bytes,
-         options->max_spool_bytes, options->cpu_only,
+         options->memory_spool_bytes, options->max_spool_bytes,
+         options->cpu_only,
          options->dump_dir != NULL ? options->dump_dir : "(none)");
   if (events.summary_file != NULL) {
     fprintf(events.summary_file,
@@ -382,13 +387,13 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
             options->language != NULL ? options->language : "auto",
             (double)options->threshold, options->hang_ms, options->budget_ms,
             options->read_frames, options->prebuffer_ms,
-            options->memory_spool_bytes,
-            options->max_spool_bytes, options->cpu_only,
+            options->memory_spool_bytes, options->max_spool_bytes,
+            options->cpu_only,
             options->dump_dir != NULL ? options->dump_dir : "(none)");
   }
 
   result = transcriber->transcribe_audio_decoder_segmented(transcriber, decoder,
-                                                          &segmented_config);
+                                                           &segmented_config);
   if (result != CPKT_SUS_OK) {
     fprintf(stderr, "streaming transcription failed: %s\n",
             cpkt_sus_result_string(result));
@@ -401,10 +406,11 @@ static int cpkt_sus_vox_run(const struct cpkt_sus_vox_options *options) {
     goto cleanup;
   }
 
-  printf("summary segments=%lu final_events=%lu elapsed_ms=%lu final_chars=%lu\n",
-         events.event_count, events.final_count,
-         cpkt_sus_vox_elapsed_ms(events.started),
-         (unsigned long)strlen(final_text));
+  printf(
+      "summary segments=%lu final_events=%lu elapsed_ms=%lu final_chars=%lu\n",
+      events.event_count, events.final_count,
+      cpkt_sus_vox_elapsed_ms(events.started),
+      (unsigned long)strlen(final_text));
   if (events.summary_file != NULL) {
     fprintf(events.summary_file,
             "summary segments=%lu final_events=%lu elapsed_ms=%lu "
@@ -450,18 +456,26 @@ static void cpkt_sus_vox_usage(FILE *out) {
   fprintf(out, "Options:\n");
   fprintf(out, "  --audio PATH                 Decode a local audio file.\n");
   fprintf(out, "  --url URL                    Stream an HTTP(S) audio URL.\n");
-  fprintf(out, "  --dump-dir DIR               Write summary and segment text files.\n");
-  fprintf(out, "  --model NAME                 Cached model name; default tiny.\n");
+  fprintf(
+      out,
+      "  --dump-dir DIR               Write summary and segment text files.\n");
+  fprintf(out,
+          "  --model NAME                 Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH            Load an explicit model file.\n");
   fprintf(out, "  --cache-dir DIR              Model cache directory.\n");
   fprintf(out, "  --language CODE              Language code; default en.\n");
   fprintf(out, "  --threshold VALUE            VOX threshold; default 0.03.\n");
   fprintf(out, "  --hang-ms N                  VOX hang-time; default 1500.\n");
-  fprintf(out, "  --budget-ms N                VOX segment budget; default 0, mode default.\n");
-  fprintf(out, "  --simplex                    Use simplex turn mode instead of continuous.\n");
-  fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
-  fprintf(out, "  --prebuffer-ms N             Audio retained before VOX opens.\n");
-  fprintf(out, "  --cpu-only N                 1 for CPU-only, 0 for backend default.\n");
+  fprintf(out, "  --budget-ms N                VOX segment budget; default 0, "
+               "mode default.\n");
+  fprintf(out, "  --simplex                    Use simplex turn mode instead "
+               "of continuous.\n");
+  fprintf(out,
+          "  --read-frames N              Decoder read size; default 4096.\n");
+  fprintf(out,
+          "  --prebuffer-ms N             Audio retained before VOX opens.\n");
+  fprintf(out, "  --cpu-only N                 1 for CPU-only, 0 for backend "
+               "default.\n");
 }
 
 static int cpkt_sus_vox_parse_options(int argc, char **argv,

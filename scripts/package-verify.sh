@@ -15,9 +15,10 @@ if [ "$#" -gt 0 ]; then
   explicit_targets=1
   targets="$*"
 else
-  targets="x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl"
-  if bash "$repo_root/scripts/osxcross_available.sh"; then
-    targets="$targets arm64-apple-darwin"
+  targets="x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl arm64-apple-darwin"
+  if ! bash "$repo_root/scripts/osxcross_available.sh"; then
+    printf 'arm64-apple-darwin package verification requires a complete local osxcross SDK toolchain\n' >&2
+    exit 1
   fi
 fi
 
@@ -47,11 +48,34 @@ bash "$repo_root/scripts/verify-dist-manifest.sh" "$repo_root/dist" c.pkt.system
 
 for target_id in $targets; do
   archive="$repo_root/dist/c.pkt.systems-$bundle_version-$target_id.tar.gz"
-  cmake \
+  package_assertion_tool_args=()
+  case "$target_id" in
+    *-linux-*)
+      "$repo_root/scripts/cpkt-toolchains.sh" ensure "$target_id" >/dev/null
+      toolchain_report=$("$repo_root/scripts/cpkt-toolchains.sh" discover "$target_id")
+      toolchain_value() {
+        local key=$1 value
+        value=$(printf '%s\n' "$toolchain_report" | sed -n "s/^${key}=//p")
+        if [ -z "$value" ]; then
+          printf 'pinned Bootlin toolchain did not report %s for %s\n' "$key" "$target_id" >&2
+          exit 1
+        fi
+        printf '%s\n' "$value"
+      }
+      toolchain_nm=$(toolchain_value nm)
+      toolchain_ar=$(toolchain_value ar)
+      toolchain_readelf=$(toolchain_value readelf)
+      package_assertion_tool_args=(
+        -DCPKT_NM="$toolchain_nm"
+        -DCPKT_AR="$toolchain_ar"
+        -DCPKT_READELF="$toolchain_readelf")
+      ;;
+  esac
+  bash "$repo_root/scripts/run-package-assertions.sh" \
     -DCPKT_ARCHIVE="$archive" \
     -DCPKT_TARGET_ID="$target_id" \
     -DCPKT_BUNDLE_VERSION="$bundle_version" \
-    -P "$repo_root/cmake/package_assertions.cmake"
+    "${package_assertion_tool_args[@]}"
   cmake \
     -DCPKT_ROOT="$repo_root" \
     -DCPKT_SCAN_LABEL="bundle" \

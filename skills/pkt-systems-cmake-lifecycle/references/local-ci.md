@@ -6,7 +6,7 @@ Fast local confidence:
 
 1. `make build`
 2. `make test`
-3. `make asan`
+3. `make valgrind`
 
 Broader local confidence:
 
@@ -19,19 +19,26 @@ Release confidence:
 2. independent review on the feature branch
 3. final clean `make release` package build from the tagged main commit
 
-`make test-all` includes fast host tests, host release tests when useful, cross tests that can execute locally or through an approved runner, sanitizer tests when affordable, deterministic e2e when part of normal confidence, and benchmark gates when performance is a product property.
+`make test-all` includes fast host tests, host release tests when useful, cross product tests that can execute locally or through an approved runner, native Valgrind checking, native AFL++ fuzz smoke, deterministic e2e when part of normal confidence, and benchmark gates when performance is a product property. Cross runners never execute Valgrind or fuzzing gates.
 
 Do not add a separate umbrella target as a standard lifecycle target. The exhaustive clean-slate release gate is `make release`; expensive pre-release confidence belongs in `make prerelease-hardening` or another documented rehearsal target that does not replace final release.
 
 Recommended production-loop tiers:
 
 - `make finalize-slice`: formatting plus the narrow debug tests needed before committing a small slice.
-- `make prerelease`: local, deterministic pre-release confidence. Include formatting, debug unit tests, sanitizer targets supported by the project, fuzz smoke, Lua tests, local example smoke, and deterministic local e2e when those surfaces exist.
+- `make prerelease`: local, deterministic pre-release confidence. Include formatting, debug unit tests, the native Valgrind target, native fuzz smoke, Lua tests, local example smoke, and deterministic local e2e when those surfaces exist.
 - `make prerelease-live`: opt-in external-provider or credentialed integration tests. Refuse to run unless a project-prefixed environment variable explicitly enables them.
 - `make prerelease-hardening`: the expensive tier. Include `prerelease`, live checks when explicitly enabled, long fuzz runs, benchmark gates when applicable, and the release matrix.
 - `make release-matrix`: incrementally build, test, package, checksum, and verify every release target and optional release artifact. This is the artifact production rehearsal before the final clean release.
 
 These names are preferred over project-specific gate names. Compatibility aliases are acceptable only for already documented public commands.
+
+## Cross-Target Runner Contract
+
+- Each downstream project decides whether to execute cross-target tests under QEMU. QEMU is not an implicit lifecycle requirement merely because a project cross-compiles.
+- Once a project opts in to QEMU testing for a release target such as `aarch64` or `armhf`, those target tests are mandatory release coverage. Include them in `release-matrix` and therefore in the shared prerelease/release proof graph; do not leave an existing QEMU test behind an optional or manual-only target.
+- A project that opts in must fail `release-matrix` and `release` clearly when the required QEMU user-mode runner, target sysroot, or runner configuration is unavailable. Do not silently skip the selected target tests.
+- A project that does not opt in may limit cross-target release coverage to configure, build, link, package, and artifact verification. Native Valgrind and AFL++ gates remain native x86_64 Linux-only and are never QEMU gates.
 
 
 ## Quality Contracts
@@ -61,7 +68,7 @@ Add tests that assert observable behavior:
 - Lua/C interop checks, when a Lua facade deliberately exposes C embedder interop, that validate a Lua-created object from C, obtain a generic core borrowed view, preserve fragmented callback-backed streaming across the boundary without full payload materialization, return status/error values for wrong stack values or wrong userdata, reject wrong `size` or `abi_version`, reject mismatched schema/record pairs, prove Lua registry references preserve retained-object lifetime, verify clear/reset behavior invalidates or updates record view state according to the documented contract, prove Lua-facing and C-interop behavior have parity for success and policy failures, and allow only intentional Lua interop exports while catching accidental core symbol leaks.
 - Source archive extraction, configure, build, version agreement, and test smoke.
 - Source archive manifest exactness: tracked non-ignored files plus deliberate generated release files, no more and no less.
-- Release privacy and relocatability scans for `$HOME`, repository paths, build roots, dependency caches, package-manager temporary paths, parent-relative paths, absolute local `file://` URLs, credentials, VCS metadata, generated service state, sanitizer artifacts, ELF RPATH/RUNPATH, Darwin install names/dependency paths/rpaths, Darwin invalid post-mutation signature risk when `LC_CODE_SIGNATURE` is present, and unstripped binary metadata that exposes local toolchain or home paths.
+- Release privacy and relocatability scans for `$HOME`, repository paths, build roots, dependency caches, package-manager temporary paths, parent-relative paths, absolute local `file://` URLs, credentials, VCS metadata, generated service state, hardening artifacts, ELF RPATH/RUNPATH, Darwin install names/dependency paths/rpaths, Darwin invalid post-mutation signature risk when `LC_CODE_SIGNATURE` is present, and unstripped binary metadata that exposes local toolchain or home paths.
 
 Test registration:
 
@@ -96,20 +103,16 @@ Rules:
 - Breaking API or ABI changes do not automatically imply a major bump. They require engineer discussion under the semver contract.
 
 
-## Sanitizers
+## Native memory checking
 
-Sanitizers are first-class hardening gates, not ad hoc debug flags.
+Valgrind Memcheck is the first-class native memory hardening gate.
 
 Contract:
 
-- `asan` preset builds with AddressSanitizer and UndefinedBehaviorSanitizer where supported.
-- `tsan` preset builds and runs a ThreadSanitizer-compatible subset when the project has concurrency, shared state, callbacks, service wrappers, or lock-sensitive behavior.
-- `msan` preset builds and runs a MemorySanitizer-compatible subset when the toolchain and dependencies support it.
-- Sanitizer tests run serially as separate Make targets.
-- If `make prerelease` already includes a sanitizer target, release procedures should not rerun that same target unless a clean rebuild or changed environment makes the rerun meaningful.
-- Label tests that cannot run under a sanitizer because of external dependency boundaries, unsupported interceptors, or intentional process behavior. The skip must be explicit and narrow.
-- MSan gates may run a smoke subset when external SDK dependencies are not fully MSan-instrumented. Label that subset and document the boundary.
-- Release package verification must fail if sanitizer runtimes, sanitizer symbols, or sanitizer build paths appear in shipped libraries, binaries, CMake metadata, pkg-config files, source archives, Lua artifacts, or checksum-listed artifacts.
+- `valgrind` builds a native x86_64 Linux Bootlin debug facade subset and runs it with leak checking, origin tracking, and a nonzero error exit code. It must not run through cross-compilation, emulation, or QEMU.
+- The gate runs serially and fails clearly when the host has not installed Valgrind.
+- Valgrind does not provide true MemorySanitizer coverage; document that boundary rather than claiming MSan equivalence.
+- Release package verification must fail if hardening runtime paths or build paths appear in shipped artifacts.
 
 
 ## Fuzzing
@@ -119,7 +122,7 @@ Enable fuzzing when the project parses, frames, serializes, accepts untrusted by
 Contract:
 
 - `fuzz/` or `tests/fuzz/` contains fuzz targets and seeds.
-- `fuzz` preset builds with libFuzzer or the selected engine.
+- `fuzz` preset builds with the selected engine; the Bootlin GCC lifecycle selects pinned AFL++ GCC-plugin instrumentation. It runs only on the native x86_64 Linux host, never through cross-compilation, emulation, or QEMU.
 - `make fuzz-smoke` runs bounded short jobs suitable for `prerelease`, `prerelease-hardening`, or `release` when fuzzing is part of the release gate.
 - `make fuzz` runs standard bounded local jobs.
 - `make fuzz-long` is opt-in and may run longer.

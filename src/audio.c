@@ -1152,9 +1152,8 @@ static cpkt_audio_result cpkt_audio_vox_emit(struct cpkt_audio_vox_impl *impl,
   segment.impl = impl;
   segment.frame_count = impl->total_frame_count;
   segment.t0 = cpkt_audio_16k_frame_to_10ms_floor(impl->segment_start_frame);
-  segment.t1 = cpkt_audio_16k_frame_to_10ms_ceil(
-      cpkt_audio_saturating_size_add(impl->segment_start_frame,
-                                     impl->total_frame_count));
+  segment.t1 = cpkt_audio_16k_frame_to_10ms_ceil(cpkt_audio_saturating_size_add(
+      impl->segment_start_frame, impl->total_frame_count));
   segment.segment_index = impl->segment_index;
   segment.hard_cut = hard_cut;
   segment.is_final = is_final;
@@ -1305,10 +1304,9 @@ cpkt_audio_vox_push_f32_mono_16k_impl(cpkt_audio_vox *self, const float *frames,
     }
     if (!impl->open) {
       impl->open = 1;
-      impl->segment_start_frame =
-          frame_position >= impl->prebuffer_count
-              ? frame_position - impl->prebuffer_count
-              : 0U;
+      impl->segment_start_frame = frame_position >= impl->prebuffer_count
+                                      ? frame_position - impl->prebuffer_count
+                                      : 0U;
       impl->silence_frames = 0UL;
       impl->memory_frame_count = 0U;
       impl->total_frame_count = 0U;
@@ -2154,8 +2152,7 @@ static ssize_t cpkt_audio_process_write(int fd, const void *buffer,
 static cpkt_audio_result cpkt_audio_process_spawn(const char *const argv[],
                                                   int pipe_to_child,
                                                   int nonblock_parent,
-                                                  pid_t *pid_out,
-                                                  int *fd_out) {
+                                                  pid_t *pid_out, int *fd_out) {
   int pipe_fds[2];
   int devnull;
   pid_t pid;
@@ -2233,8 +2230,7 @@ static unsigned long cpkt_audio_process_now_ms(void) {
 #endif
 }
 
-static int cpkt_audio_process_elapsed_ms(unsigned long now,
-                                         unsigned long then,
+static int cpkt_audio_process_elapsed_ms(unsigned long now, unsigned long then,
                                          unsigned long *elapsed) {
   if (elapsed == NULL || now == 0UL || then == 0UL || now < then) {
     return 0;
@@ -2402,9 +2398,9 @@ cpkt_audio_capture_start_impl(cpkt_audio_capture *self) {
   ma_result result;
 #if defined(__linux__)
   cpkt_audio_result process_result;
-  const char *const arecord_argv[] = {"arecord", "-q", "-t", "raw", "-f",
-                                      "S16_LE",  "-c", "1",  "-r", "16000",
-                                      NULL};
+  const char *const arecord_argv[] = {"arecord", "-q",     "-t", "raw",
+                                      "-f",      "S16_LE", "-c", "1",
+                                      "-r",      "16000",  NULL};
 #endif
 
   if (self == NULL || self->impl == NULL) {
@@ -2689,8 +2685,9 @@ cpkt_audio_playback_start_impl(cpkt_audio_playback *self) {
   return CPKT_AUDIO_OK;
 }
 
-static void cpkt_audio_playback_note_written(
-    struct cpkt_audio_playback_impl *impl, size_t frame_count) {
+static void
+cpkt_audio_playback_note_written(struct cpkt_audio_playback_impl *impl,
+                                 size_t frame_count) {
   if (impl == NULL || frame_count == 0U) {
     return;
   }
@@ -2700,8 +2697,9 @@ static void cpkt_audio_playback_note_written(
   impl->turn_frames_written += (ma_uint64)frame_count;
 }
 
-static void cpkt_audio_playback_wait_turn_elapsed(
-    struct cpkt_audio_playback_impl *impl, unsigned long extra_ms) {
+static void
+cpkt_audio_playback_wait_turn_elapsed(struct cpkt_audio_playback_impl *impl,
+                                      unsigned long extra_ms) {
   ma_uint64 frames_written;
   unsigned long started_ms;
   unsigned long now_ms;
@@ -2749,9 +2747,9 @@ static cpkt_audio_result cpkt_audio_playback_write_f32_mono_16k_impl(
   ssize_t wrote;
 #if defined(__linux__)
   cpkt_audio_result process_result;
-  const char *const aplay_argv[] = {"aplay", "-q", "-t", "raw", "-f",
-                                    "S16_LE", "-c", "1",  "-r", "16000",
-                                    NULL};
+  const char *const aplay_argv[] = {"aplay", "-q",     "-t", "raw",
+                                    "-f",    "S16_LE", "-c", "1",
+                                    "-r",    "16000",  NULL};
 #endif
 #endif
 
@@ -3621,7 +3619,7 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
   cpkt_audio_vox *vox;
   struct cpkt_audio_vox_impl *impl;
   unsigned long release_frames;
-  unsigned long max_frames;
+  unsigned long max_frames = 0UL;
   unsigned long min_frames;
   unsigned long prebuffer_frames_ul;
   unsigned long release_ms;
@@ -3694,8 +3692,7 @@ cpkt_audio_vox_open(cpkt_audio_vox **out, const cpkt_audio_vox_config *config) {
     return CPKT_AUDIO_ERR_ALLOC;
   }
   if (prebuffer_frames != 0U) {
-    impl->prebuffer_frames =
-        (float *)malloc(sizeof(float) * prebuffer_frames);
+    impl->prebuffer_frames = (float *)malloc(sizeof(float) * prebuffer_frames);
     if (impl->prebuffer_frames == NULL) {
       free(impl->frames);
       free(impl);
@@ -3725,7 +3722,7 @@ CPKT_AUDIO_EXPORT cpkt_audio_result
 cpkt_audio_ptt_open(cpkt_audio_ptt **out, const cpkt_audio_ptt_config *config) {
   cpkt_audio_ptt *ptt;
   struct cpkt_audio_vox_impl *impl;
-  unsigned long max_frames;
+  unsigned long max_frames = 0UL;
   unsigned long min_frames;
   unsigned long min_ms;
   unsigned long memory_spool_bytes;

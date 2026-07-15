@@ -35,23 +35,58 @@ The release matrix is:
 - `aarch64-linux-musl`
 - `armhf-linux-gnu`
 - `armhf-linux-musl`
-- `arm64-apple-darwin`, when osxcross is available
+- `arm64-apple-darwin`
+
+Every Linux configure, build, package smoke, and staged ABI check resolves its
+complete compiler collection from the shared pinned Bootlin cache:
+
+```sh
+${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}
+```
+
+The resolver downloads and SHA-256-verifies the collection when needed; host
+GCC, Clang, and binutils are never Linux build fallbacks. Every Linux
+compile uses its pinned Bootlin GCC collection; Darwin stays
+local-osxcross-only and does not download an Apple SDK.
+
+Pinned third-party source archives use a separate shared verified cache:
+
+```sh
+${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}
+```
+
+CMake hashes every cache hit, downloads a miss to a temporary file, verifies
+the pinned SHA-256, and atomically publishes the archive. Extraction, build,
+and install trees remain under this repository's `.cache/` and are disposable;
+`make clean` and `make release` never remove the shared archive cache. Set
+`-DCPKT_DEPENDENCY_CACHE=/path/to/deps` to use a different shared cache.
 
 ## Release Workflow
 
 ```sh
+make prerelease
 make release
 ```
 
-This builds each dependency tree, runs the ABI/link smoke tests where the target
-can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
+`make prerelease` runs the complete release proof graph without first deleting
+generated state: formatting, deterministic debug and clangd checks, native
+Valgrind and AFL++ smoke checks, then the release matrix. It therefore produces
+and verifies the same package set as the final gate. `make release` removes
+generated state first and then invokes that exact same proof graph; it is the
+final local release action.
+
+The release matrix builds each dependency tree, runs the ABI/link smoke tests
+where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
 writes `dist/c.pkt.systems-<version>.tar.gz` for source builds, writes
 `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
+The c.pkt.systems bundle release requires all listed Linux targets and
+`arm64-apple-darwin`; a missing osxcross SDK is a release failure, never a skip.
 Package verification also extracts each binary tarball and builds downstream
 CMake and pkg-config consumers for every shipped dependency package, asserting
 that static link requirements propagate through the shipped metadata. Linux
 consumers are run when executable locally or through the configured emulator;
-Darwin consumers are configure/link checked when osxcross is available. Source
+Darwin consumers are configure/link checked with the required local osxcross
+toolchain. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,
 verifies that non-git version resolution uses the injected `VERSION` file, and
 builds/runs the facade-only local tests from the extracted tree.
@@ -380,24 +415,30 @@ targets:
 ```sh
 make debug
 make clangd-surface
-make asan
-make tsan
-make msan
+make valgrind
 make fuzz-smoke
+make fuzz
 ```
 
-`asan` also enables UBSan. These sanitizer and fuzz gates instrument repo-owned
-facade targets and the mock Lua sink; they do not build, instrument, or fuzz
-bundled upstream dependencies. `fuzz-smoke` runs bounded smoke passes against
-the mock-backed Lua runtime fuzzer and the public OPC UA facade fuzzer. The OPC
-UA fuzzer reuses the normal debug dependency install tree for linkage instead
-of creating a Clang-owned third-party dependency tree. These instrumentation
-builds live under `build/asan`, `build/tsan`, `build/msan`, `build/fuzz`, and
-`build/opcua-fuzz`; release package targets do not enable sanitizer or fuzzing
-instrumentation.
+`valgrind` is the required native x86_64 Linux Memcheck gate for the repo-owned facade test
+surface. AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
+plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
+runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
+dependency install tree for linkage. These hardening builds live under
+`build/valgrind`, `build/fuzz`, and `build/opcua-fuzz`; they are part of the
+shared prerelease and release proof graph and never instrument release package
+artifacts. Valgrind and AFL++ never run via a cross target, emulator, or QEMU.
 
-`make clangd-surface` configures the debug compile database, verifies that the
-public strict Lua facade declarations have adjacent Doxygen comments for LSP
-hover text, and checks that the shipped examples are present in
-`compile_commands.json`. When `clangd` is installed, the same target also runs
-`clangd --check` against the examples using that compile database.
+`make fuzz-long` is an opt-in extended native fuzz run and requires
+`CPKT_FUZZ_LONG_ENABLE=1`. External-provider checks are likewise separate from
+the deterministic release gate: `CPKT_LIVE_CHECKS=1 make prerelease-live`.
+
+`clang-format` and `clangd` are required host development tools and must be
+installed with the host OS package manager. `make clangd-surface` configures
+the native debug compile database, verifies that every public facade header
+declaration and non-static facade implementation has adjacent Doxygen
+documentation for LSP hover text, and checks that the shipped examples are
+present in `compile_commands.json`. The same target also runs
+`clangd --check` against the examples using that compile database. Cross-target
+CTest and package configurations do not invoke host `clangd`; their compiler,
+target-runner, and package verification gates remain authoritative.

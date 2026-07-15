@@ -16,13 +16,13 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "${CPKT_MACOS_DEPLOYMENT_TARGET}" CACHE STRING "
 
 set(CPKT_OSXCROSS_BIN_DIR "${CPKT_OSXCROSS_ROOT}/bin")
 set(ENV{PATH} "${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}")
-set(CMAKE_C_COMPILER "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-clang" CACHE FILEPATH "")
-set(CMAKE_CXX_COMPILER "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-clang++" CACHE FILEPATH "")
-set(CMAKE_AR "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-ar" CACHE FILEPATH "")
-set(CMAKE_RANLIB "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-ranlib" CACHE FILEPATH "")
-set(CMAKE_LINKER "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-ld" CACHE FILEPATH "")
-set(CMAKE_INSTALL_NAME_TOOL "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-install_name_tool" CACHE FILEPATH "")
-set(CPKT_OTOOL "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-otool" CACHE FILEPATH "")
+set(CMAKE_C_COMPILER "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-clang" CACHE FILEPATH "" FORCE)
+set(CMAKE_CXX_COMPILER "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-clang++" CACHE FILEPATH "" FORCE)
+set(CMAKE_AR "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-ar" CACHE FILEPATH "" FORCE)
+set(CMAKE_RANLIB "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-ranlib" CACHE FILEPATH "" FORCE)
+set(CMAKE_LINKER "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-ld" CACHE FILEPATH "" FORCE)
+set(CMAKE_INSTALL_NAME_TOOL "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-install_name_tool" CACHE FILEPATH "" FORCE)
+set(CPKT_OTOOL "${CPKT_OSXCROSS_BIN_DIR}/${CPKT_OSXCROSS_HOST}-otool" CACHE FILEPATH "" FORCE)
 
 foreach(_cpkt_required_tool
         CMAKE_C_COMPILER
@@ -38,17 +38,27 @@ foreach(_cpkt_required_tool
     endif()
 endforeach()
 
-set(_cpkt_darwin_linker_flag "-fuse-ld=${CMAKE_LINKER}")
+set(_cpkt_darwin_linker_flag "--ld-path=${CMAKE_LINKER}")
 foreach(_cpkt_linker_flags
         CMAKE_EXE_LINKER_FLAGS
         CMAKE_SHARED_LINKER_FLAGS
         CMAKE_MODULE_LINKER_FLAGS)
-    if(NOT "${${_cpkt_linker_flags}}" MATCHES "(^| )-fuse-ld=")
-        set(${_cpkt_linker_flags} "${_cpkt_darwin_linker_flag} ${${_cpkt_linker_flags}}" CACHE STRING "" FORCE)
+    set(_cpkt_existing_linker_flags "${${_cpkt_linker_flags}}")
+    string(REGEX REPLACE "(^| )--ld-path=[^ ]+" " " _cpkt_existing_linker_flags "${_cpkt_existing_linker_flags}")
+    string(REGEX REPLACE "(^| )-fuse-ld=[^ ]+" " " _cpkt_existing_linker_flags "${_cpkt_existing_linker_flags}")
+    string(STRIP "${_cpkt_existing_linker_flags}" _cpkt_existing_linker_flags)
+    if("${_cpkt_existing_linker_flags}" STREQUAL "")
+        set(_cpkt_existing_linker_flags "${_cpkt_darwin_linker_flag}")
+    else()
+        set(_cpkt_existing_linker_flags "${_cpkt_darwin_linker_flag} ${_cpkt_existing_linker_flags}")
+    endif()
+    if(NOT "${_cpkt_existing_linker_flags}" STREQUAL "${${_cpkt_linker_flags}}")
+        set(${_cpkt_linker_flags} "${_cpkt_existing_linker_flags}" CACHE STRING "" FORCE)
     endif()
 endforeach()
 unset(_cpkt_linker_flags)
 unset(_cpkt_darwin_linker_flag)
+unset(_cpkt_existing_linker_flags)
 
 file(GLOB _cpkt_osxcross_sdks LIST_DIRECTORIES true "${CPKT_OSXCROSS_ROOT}/SDK/MacOSX*.sdk")
 if(NOT _cpkt_osxcross_sdks)

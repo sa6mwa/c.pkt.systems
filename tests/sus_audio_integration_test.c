@@ -1,5 +1,5 @@
-#include <stddef.h>
 #include <ctype.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,8 +101,8 @@ static float cpkt_sus_test_env_float(const char *name, float fallback) {
   return (float)parsed;
 }
 
-static int
-cpkt_sus_test_segmented_sink(const cpkt_sus_segmented_event *event, void *user) {
+static int cpkt_sus_test_segmented_sink(const cpkt_sus_segmented_event *event,
+                                        void *user) {
   struct cpkt_sus_test_segmented_events *events;
   size_t copy_size;
 
@@ -134,8 +134,7 @@ cpkt_sus_test_segmented_sink(const cpkt_sus_segmented_event *event, void *user) 
   }
   memcpy(events->text, event->text, copy_size);
   events->text[copy_size] = '\0';
-  if (cpkt_sus_test_contains_expected(events->text, NULL,
-                                      events->expected)) {
+  if (cpkt_sus_test_contains_expected(events->text, NULL, events->expected)) {
     events->matched_expected = 1;
   }
   return 0;
@@ -143,7 +142,7 @@ cpkt_sus_test_segmented_sink(const cpkt_sus_segmented_event *event, void *user) 
 
 static int
 cpkt_sus_test_failing_segmented_sink(const cpkt_sus_segmented_event *event,
-                                    void *user) {
+                                     void *user) {
   unsigned long *count;
 
   (void)event;
@@ -250,8 +249,8 @@ static void cpkt_sus_test_segmented_config(cpkt_sus_segmented_config *config) {
       cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_SEGMENTED_KEEP_MS", 1500UL);
   config->vox_threshold =
       cpkt_sus_test_env_float("CPKT_SUS_INTEGRATION_VOX_THRESHOLD", 0.03f);
-  config->prebuffer_ms = cpkt_sus_test_env_ulong(
-      "CPKT_SUS_INTEGRATION_VOX_PREBUFFER_MS", 50UL);
+  config->prebuffer_ms =
+      cpkt_sus_test_env_ulong("CPKT_SUS_INTEGRATION_VOX_PREBUFFER_MS", 50UL);
   config->memory_spool_bytes = cpkt_sus_test_env_ulong(
       "CPKT_SUS_INTEGRATION_MEMORY_SPOOL_BYTES", 65536UL);
   config->max_spool_bytes = cpkt_sus_test_env_ulong(
@@ -304,12 +303,12 @@ static int cpkt_sus_test_contains_expected(const char *actual_a,
       (actual_b != NULL && strstr(actual_b, expected) != NULL)) {
     return 1;
   }
-  cpkt_sus_test_normalize_text(normalized_actual_a,
-                               sizeof(normalized_actual_a), actual_a);
-  cpkt_sus_test_normalize_text(normalized_actual_b,
-                               sizeof(normalized_actual_b), actual_b);
-  cpkt_sus_test_normalize_text(normalized_expected,
-                               sizeof(normalized_expected), expected);
+  cpkt_sus_test_normalize_text(normalized_actual_a, sizeof(normalized_actual_a),
+                               actual_a);
+  cpkt_sus_test_normalize_text(normalized_actual_b, sizeof(normalized_actual_b),
+                               actual_b);
+  cpkt_sus_test_normalize_text(normalized_expected, sizeof(normalized_expected),
+                               expected);
   if (normalized_expected[0] == '\0') {
     return 1;
   }
@@ -325,8 +324,7 @@ static int cpkt_sus_test_vox_shape_sink(cpkt_audio_vox_segment *segment,
   cpkt_audio_result audio_result;
 
   shape = (struct cpkt_sus_test_vox_shape *)user;
-  if (shape == NULL || segment == NULL ||
-      segment->read_f32_mono_16k == NULL) {
+  if (shape == NULL || segment == NULL || segment->read_f32_mono_16k == NULL) {
     return 1;
   }
   ++shape->count;
@@ -404,9 +402,8 @@ static int cpkt_sus_test_assert_vox_shape(
   }
   do {
     frames_read = 0U;
-    audio_result =
-        decoder->read_f32_mono_16k(decoder, frames, (size_t)read_frames,
-                                   &frames_read);
+    audio_result = decoder->read_f32_mono_16k(
+        decoder, frames, (size_t)read_frames, &frames_read);
     if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
       fprintf(stderr, "failed to decode e2e VOX shape audio: %s\n",
               cpkt_audio_result_string(audio_result));
@@ -487,12 +484,10 @@ static int cpkt_sus_test_open_sus(cpkt_sus **out) {
   return cpkt_sus_open_cached(out, &cache_config) == CPKT_SUS_OK ? 0 : 1;
 }
 
-static int cpkt_sus_test_run_segmented(cpkt_sus *sus,
-                                      const char *audio_path,
-                                      const char *audio_url,
-                                      struct cpkt_sus_test_segmented_events *events,
-                                      struct cpkt_sus_test_progress *progress,
-                                      char **text_out) {
+static int cpkt_sus_test_run_segmented(
+    cpkt_sus *sus, const char *audio_path, const char *audio_url,
+    struct cpkt_sus_test_segmented_events *events,
+    struct cpkt_sus_test_progress *progress, char **text_out) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
@@ -631,9 +626,8 @@ static int cpkt_sus_test_run_direct_vox_segmented(
   }
   do {
     frames_read = 0U;
-    audio_result =
-        decoder->read_f32_mono_16k(decoder, frames, (size_t)read_frames,
-                                   &frames_read);
+    audio_result = decoder->read_f32_mono_16k(
+        decoder, frames, (size_t)read_frames, &frames_read);
     if (audio_result != CPKT_AUDIO_OK && audio_result != CPKT_AUDIO_AT_END) {
       fprintf(stderr, "failed to decode direct VOX audio: %s\n",
               cpkt_audio_result_string(audio_result));
@@ -678,8 +672,7 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_run_segmented_exact_step_final_event(
-    cpkt_sus *sus) {
+static int cpkt_sus_test_run_segmented_exact_step_final_event(cpkt_sus *sus) {
   struct cpkt_sus_test_exact_step_decoder decoder_state;
   struct cpkt_sus_test_segmented_events events;
   cpkt_sus_transcriber *transcriber;
@@ -730,8 +723,8 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_run_segmented_trailing_silence_final_step(
-    cpkt_sus *sus) {
+static int
+cpkt_sus_test_run_segmented_trailing_silence_final_step(cpkt_sus *sus) {
   struct cpkt_sus_test_exact_step_decoder decoder_state;
   struct cpkt_sus_test_segmented_events events;
   cpkt_sus_transcriber *transcriber;
@@ -791,8 +784,9 @@ cleanup:
   return rc;
 }
 
-static int cpkt_sus_test_run_segmented_callback_failure(
-    cpkt_sus *sus, const char *audio_path, const char *audio_url) {
+static int cpkt_sus_test_run_segmented_callback_failure(cpkt_sus *sus,
+                                                        const char *audio_path,
+                                                        const char *audio_url) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
@@ -819,8 +813,8 @@ static int cpkt_sus_test_run_segmented_callback_failure(
   cpkt_sus_test_segmented_config(&segmented_config);
   segmented_config.segmented_sink = cpkt_sus_test_failing_segmented_sink;
   segmented_config.segmented_user = &callback_count;
-  result = transcriber->transcribe_audio_decoder_segmented(
-      transcriber, decoder, &segmented_config);
+  result = transcriber->transcribe_audio_decoder_segmented(transcriber, decoder,
+                                                           &segmented_config);
   if (result != CPKT_SUS_ERR_CALLBACK || callback_count == 0UL) {
     fprintf(stderr, "segmented callback failure was not reported\n");
     goto cleanup;
@@ -838,8 +832,8 @@ cleanup:
 }
 
 static int cpkt_sus_test_run_segmented_abort(cpkt_sus *sus,
-                                            const char *audio_path,
-                                            const char *audio_url) {
+                                             const char *audio_path,
+                                             const char *audio_url) {
   cpkt_audio_decoder *decoder;
   cpkt_sus_transcriber *transcriber;
   cpkt_sus_transcriber_config config;
@@ -866,8 +860,8 @@ static int cpkt_sus_test_run_segmented_abort(cpkt_sus *sus,
   }
 
   cpkt_sus_test_segmented_config(&segmented_config);
-  result = transcriber->transcribe_audio_decoder_segmented(
-      transcriber, decoder, &segmented_config);
+  result = transcriber->transcribe_audio_decoder_segmented(transcriber, decoder,
+                                                           &segmented_config);
   if (result != CPKT_SUS_ABORTED || abort_count == 0UL) {
     fprintf(stderr, "segmented abort was not reported\n");
     goto cleanup;
@@ -938,7 +932,7 @@ int main(void) {
   rc = 1;
 
   if (cpkt_sus_test_run_segmented(sus, audio_path, audio_url, &events,
-                                 &progress, &text) != 0) {
+                                  &progress, &text) != 0) {
     fprintf(stderr, "segmented audio transcription failed\n");
     goto cleanup;
   }
@@ -951,7 +945,8 @@ int main(void) {
   expected_final_segments = cpkt_sus_test_env_ulong(
       "CPKT_SUS_INTEGRATION_EXPECTED_VOX_FINAL_SEGMENTS", 0UL);
   if (expected_segments != 0UL && events.count != expected_segments) {
-    fprintf(stderr, "unexpected segmented event count: expected=%lu actual=%lu\n",
+    fprintf(stderr,
+            "unexpected segmented event count: expected=%lu actual=%lu\n",
             expected_segments, events.count);
     goto cleanup;
   }
@@ -967,7 +962,8 @@ int main(void) {
     goto cleanup;
   }
   if (!events.saw_timestamp) {
-    fprintf(stderr, "segmented transcript callback did not receive timestamps\n");
+    fprintf(stderr,
+            "segmented transcript callback did not receive timestamps\n");
     goto cleanup;
   }
   if (!events.matched_expected ||
@@ -999,14 +995,14 @@ int main(void) {
   }
   if (expected_final_segments != 0UL &&
       direct_events.final_count != expected_final_segments) {
-    fprintf(stderr,
-            "unexpected direct VOX final event count: expected=%lu actual=%lu\n",
-            expected_final_segments, direct_events.final_count);
+    fprintf(
+        stderr,
+        "unexpected direct VOX final event count: expected=%lu actual=%lu\n",
+        expected_final_segments, direct_events.final_count);
     goto cleanup;
   }
   if (!direct_events.saw_timestamp) {
-    fprintf(stderr,
-            "direct VOX segment callback did not receive timestamps\n");
+    fprintf(stderr, "direct VOX segment callback did not receive timestamps\n");
     goto cleanup;
   }
   if (!direct_events.matched_expected ||
@@ -1018,7 +1014,7 @@ int main(void) {
   }
 
   if (cpkt_sus_test_run_segmented_callback_failure(sus, audio_path,
-                                                  audio_url) != 0) {
+                                                   audio_url) != 0) {
     fprintf(stderr, "segmented callback failure transcription failed\n");
     goto cleanup;
   }

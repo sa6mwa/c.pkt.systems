@@ -7,7 +7,7 @@
 #define CPKT_EXAMPLE_READ_FRAMES 4096UL
 
 static int cpkt_example_segmented_sink(const cpkt_sus_segmented_event *event,
-                                      void *user) {
+                                       void *user) {
   FILE *out;
 
   out = (FILE *)user;

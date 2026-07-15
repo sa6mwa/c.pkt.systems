@@ -25,7 +25,8 @@ static void *cpkt_example_alloc(void *user, size_t size) {
   return ptr;
 }
 
-static void *cpkt_example_realloc(void *user, void *ptr, size_t old_size, size_t new_size) {
+static void *cpkt_example_realloc(void *user, void *ptr, size_t old_size,
+                                  size_t new_size) {
   struct cpkt_example_allocator *allocator;
   void *next;
 
@@ -62,7 +63,8 @@ static int cpkt_example_ok(cpkt_lua_runtime_status status) {
 
 int main(int argc, char **argv) {
   static const unsigned char preload_source[] = "return {value = 'chunk'}";
-  static const unsigned char side_effect_source[] = "required_side_effect = 'ok'; return true";
+  static const unsigned char side_effect_source[] =
+      "required_side_effect = 'ok'; return true";
   static const unsigned char buffer_source[] =
       "local host = require('example_host')\n"
       "local chunk = require('example_chunk')\n"
@@ -82,7 +84,8 @@ int main(int argc, char **argv) {
   if (argc != 2) {
     return 2;
   }
-  if (cpkt_lua_runtime_lua_version() == 0 || cpkt_lua_runtime_facade_version() == 0) {
+  if (cpkt_lua_runtime_lua_version() == 0 ||
+      cpkt_lua_runtime_facade_version() == 0) {
     return 3;
   }
 
@@ -100,12 +103,10 @@ int main(int argc, char **argv) {
 
   cpkt_lua_runtime_set_context(runtime, (void *)"example-context");
   if (cpkt_example_ok(cpkt_lua_runtime_open_libs(
-          runtime,
-          CPKT_LUA_RUNTIME_LIB_BASE |
-              CPKT_LUA_RUNTIME_LIB_PACKAGE |
-              CPKT_LUA_RUNTIME_LIB_TABLE |
-              CPKT_LUA_RUNTIME_LIB_STRING |
-              CPKT_LUA_RUNTIME_LIB_MATH)) != 0) {
+          runtime, CPKT_LUA_RUNTIME_LIB_BASE | CPKT_LUA_RUNTIME_LIB_PACKAGE |
+                       CPKT_LUA_RUNTIME_LIB_TABLE |
+                       CPKT_LUA_RUNTIME_LIB_STRING |
+                       CPKT_LUA_RUNTIME_LIB_MATH)) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 5;
   }
@@ -117,46 +118,47 @@ int main(int argc, char **argv) {
     cpkt_lua_runtime_free(runtime);
     return 7;
   }
-  if (cpkt_example_ok(cpkt_lua_runtime_set_package_path(runtime, "first/?.lua")) != 0 ||
-      cpkt_example_ok(cpkt_lua_runtime_prepend_package_path(runtime, "zero/?.lua")) != 0 ||
-      cpkt_example_ok(cpkt_lua_runtime_set_package_cpath(runtime, "first/?.so")) != 0 ||
-      cpkt_example_ok(cpkt_lua_runtime_prepend_package_cpath(runtime, "zero/?.so")) != 0) {
+  if (cpkt_example_ok(
+          cpkt_lua_runtime_set_package_path(runtime, "first/?.lua")) != 0 ||
+      cpkt_example_ok(
+          cpkt_lua_runtime_prepend_package_path(runtime, "zero/?.lua")) != 0 ||
+      cpkt_example_ok(
+          cpkt_lua_runtime_set_package_cpath(runtime, "first/?.so")) != 0 ||
+      cpkt_example_ok(
+          cpkt_lua_runtime_prepend_package_cpath(runtime, "zero/?.so")) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 8;
   }
-  if (cpkt_example_ok(cpkt_lua_runtime_set_global_string(runtime, "example_name", "facade")) != 0 ||
-      cpkt_example_ok(cpkt_lua_runtime_set_global_boolean(runtime, "example_flag", 1)) != 0 ||
-      cpkt_example_ok(cpkt_lua_runtime_set_global_integer(runtime, "example_count", 7)) != 0 ||
-      cpkt_example_ok(cpkt_lua_runtime_set_global_number(runtime, "example_number", 2.5)) != 0) {
+  if (cpkt_example_ok(cpkt_lua_runtime_set_global_string(
+          runtime, "example_name", "facade")) != 0 ||
+      cpkt_example_ok(cpkt_lua_runtime_set_global_boolean(
+          runtime, "example_flag", 1)) != 0 ||
+      cpkt_example_ok(cpkt_lua_runtime_set_global_integer(
+          runtime, "example_count", 7)) != 0 ||
+      cpkt_example_ok(cpkt_lua_runtime_set_global_number(
+          runtime, "example_number", 2.5)) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 9;
   }
   if (cpkt_example_ok(cpkt_lua_runtime_register_c_module(
-          runtime,
-          "example_host",
-          cpkt_lua_runtime_example_open)) != 0) {
+          runtime, "example_host", cpkt_lua_runtime_example_open)) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 10;
   }
   if (cpkt_example_ok(cpkt_lua_runtime_register_lua_module(
-          runtime,
-          "example_chunk",
-          preload_source,
-          sizeof(preload_source) - 1,
+          runtime, "example_chunk", preload_source, sizeof(preload_source) - 1,
           "example_chunk.lua")) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 11;
   }
   if (cpkt_example_ok(cpkt_lua_runtime_register_lua_module(
-          runtime,
-          "example_side_effect",
-          side_effect_source,
-          sizeof(side_effect_source) - 1,
-          "example_side_effect.lua")) != 0) {
+          runtime, "example_side_effect", side_effect_source,
+          sizeof(side_effect_source) - 1, "example_side_effect.lua")) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 12;
   }
-  if (cpkt_example_ok(cpkt_lua_runtime_require(runtime, "example_side_effect")) != 0) {
+  if (cpkt_example_ok(
+          cpkt_lua_runtime_require(runtime, "example_side_effect")) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 13;
   }
@@ -164,17 +166,13 @@ int main(int argc, char **argv) {
   script_argv[0] = "one";
   script_argv[1] = "two";
   if (cpkt_example_ok(cpkt_lua_runtime_run_buffer(
-          runtime,
-          buffer_source,
-          sizeof(buffer_source) - 1,
-          "buffer.lua",
-          2,
-          script_argv,
-          0)) != 0) {
+          runtime, buffer_source, sizeof(buffer_source) - 1, "buffer.lua", 2,
+          script_argv, 0)) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 14;
   }
-  if (cpkt_example_ok(cpkt_lua_runtime_run_file(runtime, argv[1], 2, script_argv, 0)) != 0) {
+  if (cpkt_example_ok(cpkt_lua_runtime_run_file(runtime, argv[1], 2,
+                                                script_argv, 0)) != 0) {
     cpkt_lua_runtime_free(runtime);
     return 15;
   }
@@ -188,19 +186,16 @@ int main(int argc, char **argv) {
   if (status != CPKT_LUA_RUNTIME_OK) {
     return 17;
   }
-  if (cpkt_example_ok(cpkt_lua_runtime_set_traceback(limited_runtime, 1)) != 0 ||
-      cpkt_example_ok(cpkt_lua_runtime_set_instruction_limit(limited_runtime, 1000)) != 0) {
+  if (cpkt_example_ok(cpkt_lua_runtime_set_traceback(limited_runtime, 1)) !=
+          0 ||
+      cpkt_example_ok(
+          cpkt_lua_runtime_set_instruction_limit(limited_runtime, 1000)) != 0) {
     cpkt_lua_runtime_free(limited_runtime);
     return 18;
   }
-  status = cpkt_lua_runtime_run_buffer(
-      limited_runtime,
-      limit_source,
-      sizeof(limit_source) - 1,
-      "limit.lua",
-      0,
-      0,
-      0);
+  status = cpkt_lua_runtime_run_buffer(limited_runtime, limit_source,
+                                       sizeof(limit_source) - 1, "limit.lua", 0,
+                                       0, 0);
   if (status != CPKT_LUA_RUNTIME_ERR_LIMIT) {
     cpkt_lua_runtime_free(limited_runtime);
     return 19;
@@ -210,7 +205,8 @@ int main(int argc, char **argv) {
     cpkt_lua_runtime_free(limited_runtime);
     return 20;
   }
-  if (cpkt_example_ok(cpkt_lua_runtime_clear_instruction_limit(limited_runtime)) != 0) {
+  if (cpkt_example_ok(
+          cpkt_lua_runtime_clear_instruction_limit(limited_runtime)) != 0) {
     cpkt_lua_runtime_free(limited_runtime);
     return 21;
   }

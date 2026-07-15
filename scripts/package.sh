@@ -11,6 +11,11 @@ release_presets="x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linu
 
 cd "$repo_root"
 
+if ! bash "$repo_root/scripts/osxcross_available.sh"; then
+  printf '[package] arm64-apple-darwin-release is required for c.pkt.systems releases; configure a complete local osxcross SDK toolchain\n' >&2
+  exit 1
+fi
+
 for preset in $release_presets; do
   "$CMAKE" --preset "$preset"
   "$CMAKE" --build --preset "$preset"
@@ -18,10 +23,6 @@ for preset in $release_presets; do
   "$CMAKE" --build --preset "package-$preset"
 done
 
-if bash "$repo_root/scripts/osxcross_available.sh"; then
-  "$CMAKE" --preset arm64-apple-darwin-release
-  "$CMAKE" --build --preset arm64-apple-darwin-release
-  "$CMAKE" --build --preset package-arm64-apple-darwin-release
-else
-  printf '[package] skipping arm64-apple-darwin-release: osxcross toolchain not available\n'
-fi
+"$CMAKE" --preset arm64-apple-darwin-release
+"$CMAKE" --build --preset arm64-apple-darwin-release
+"$CMAKE" --build --preset package-arm64-apple-darwin-release

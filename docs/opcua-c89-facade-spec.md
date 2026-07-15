@@ -1,10 +1,10 @@
 # OPC UA C89 Facade Specification
 
-This document defines the completion target for the `cpkt` C89 facade over the
-bundled open62541 OPC UA stack. The facade is not a protocol reimplementation.
-It is a C89-compatible public boundary that owns stable handles, values,
-configuration records, callbacks, lifetime rules, and tests while delegating all
-OPC UA semantics to open62541.
+This document records the production contract for the `cpkt` C89 facade over
+the bundled open62541 OPC UA stack. The facade is not a protocol
+reimplementation. It is a C89-compatible public boundary that owns stable
+handles, values, configuration records, callbacks, lifetime rules, and tests
+while delegating OPC UA semantics to open62541.
 
 ## Goals
 
@@ -102,8 +102,9 @@ The existing facade already covers a useful core workflow:
   callbacks.
 - Native callbacks for client and server escape hatches.
 - Explicit advanced native pass-through entry points for PubSub/MQTT, history,
-  async client services, file/json server configuration, and security plugin
-  configuration.
+  file/json server configuration, and security plugin configuration, plus
+  selected asynchronous client read, write, browse, method-call, and node-add
+  operations.
 - File/json server configuration constructors from explicit JSON bytes and
   explicit file paths, with no implicit config-file discovery.
 - PubSub/MQTT convenience wrappers for common MQTT connection, published data
@@ -146,12 +147,11 @@ typed convenience wrapper.
 Tier 0 remains supported and must not regress. It covers the current API listed
 above and is the minimum smoke-test surface for package consumers.
 
-### Tier 1: Complete Practical C89 Facade
+### Tier 1: Current Practical C89 Facade
 
-Tier 1 is the target for calling the facade complete enough for release as a
-first-class OPC UA surface.
+Tier 1 is the released first-class C89 OPC UA surface.
 
-- Add a general C89 value layer:
+- General C89 value layer:
   - scalar numeric widths needed by OPC UA without using C99 names in public
     signatures;
   - keep boolean, integer, double, string, and byte-string scalar values as the
@@ -163,12 +163,12 @@ first-class OPC UA surface.
     text;
   - native variant/data-value callbacks for unsupported generated or extension
     object payloads.
-- Expand node ids:
+- Expanded node ids:
   - keep null, numeric, string, GUID, and byte-string constructors and
     compare/parse/print helpers as the first stable node-id slice;
   - expanded node ids where a namespace URI or server index is needed;
   - compare, parse, and print helpers.
-- Add generic attribute access:
+- Generic attribute access:
   - keep the direct client/server read helpers for `NodeClass`, `BrowseName`,
     `DisplayName`, `Description`, `DataType`, `ValueRank`, `AccessLevel`, and
     `Executable`, plus client `UserAccessLevel`/`UserExecutable` and
@@ -181,28 +181,28 @@ first-class OPC UA surface.
     `MinimumSamplingInterval`, `Historizing`, `Executable`, and
     `UserExecutable` where upstream supports them;
   - array range and index-range reads/writes through value handles.
-- Add node-management wrappers:
+- Node-management wrappers:
   - keep object/variable/method creation plus delete-node and add/delete-reference
     wrappers as the first stable node-management slice;
   - add/delete nodes and references from client and server;
   - object, variable, method, view, reference type, object type, variable type,
     and data type nodes for common attributes;
   - begin/finish or native callback hooks for complex node construction.
-- Complete browse and path translation:
+- Browse and path translation:
   - keep browse options for direction, reference type, node class mask, result
     mask, max references, continuation points, browse-next, and hierarchical
     browse-path translation as the first stable browse slice;
   - browse options for reference type, direction, node class mask, result mask,
     max references, and continuation point handling;
   - translate browse paths to node ids.
-- Complete methods:
+- Methods:
   - keep multi-output scalar server callbacks, client calls, and method
     argument metadata reads as the first stable method-completion slice;
   - multiple input and output values;
   - method metadata arguments;
   - server method callbacks with borrowed input values and copied output values;
   - async method completion only through an explicitly named async API.
-- Complete subscriptions:
+- Subscriptions:
   - keep create/modify/delete subscriptions, scalar data-change monitored
     items, and monitoring-mode changes as the first stable subscription slice;
   - create/modify/delete subscriptions;
@@ -210,13 +210,13 @@ first-class OPC UA surface.
   - event monitored items with event field callbacks;
   - monitoring mode changes;
   - callback failure and cleanup semantics.
-- Add client discovery and namespace helpers:
+- Client discovery and namespace helpers:
   - keep endpoint URL and server application count/read helpers as the first
     stable discovery slice;
   - get endpoints;
   - find servers;
   - namespace URI/index lookup and namespace registration.
-- Add server configuration helpers:
+- Server configuration helpers:
   - keep application URI, product URI, and application name setters as the
     first stable server configuration slice;
   - application URI, product URI, application name, hostname, endpoint port, and
@@ -227,7 +227,7 @@ first-class OPC UA surface.
     config callbacks so the caller owns blocking filesystem behavior;
   - username/password and anonymous policy helpers;
   - native config callback before startup.
-- Add event helpers:
+- Event helpers:
   - create event, set event field, trigger event;
   - client event monitored items with field extraction through the value layer.
 
@@ -344,18 +344,10 @@ Facade correctness must be proven with observable integration tests.
   C89 header compilation, static/shared consumers, source-tarball builds,
   privacy/relocatability, and stale artifact exclusion.
 
-## Implementation Slices
+## Maintenance Contract
 
-1. Preserve Tier 0 and add this specification to `docs/`.
-2. Add the value/node-id layer and tests.
-3. Add generic client/server attribute wrappers and tests.
-4. Add node-management, browse-next, translate-path, and multi-output method
-   wrappers and tests.
-5. Add subscription/event wrappers and tests.
-6. Add discovery, namespace, and common secure configuration wrappers and tests.
-7. Add Tier 2 convenience wrappers where concrete downstream workflows exist,
-   starting with PubSub/MQTT and history only if the release needs them.
-8. Expand installed examples and package/source verification to assert the
-   documented contract.
-
-Each slice should land as a separate commit with focused tests.
+The documented Tier 1 surface and the selected Tier 2 convenience wrappers are
+implemented. Future additions must preserve the C89 boundary, name native
+escape hatches explicitly, document ownership and asynchronous callback
+lifetimes in `include/cpkt/opcua.h`, and land with focused observable tests plus
+installed-package coverage where the new surface is shipped.

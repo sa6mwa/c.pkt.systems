@@ -99,11 +99,8 @@ typedef void *(*cpkt_lua_runtime_alloc_fn)(void *user, size_t size);
  * copies `min(old_size, new_size)` bytes, and frees the old block through the
  * same allocator. Return NULL on allocation failure.
  */
-typedef void *(*cpkt_lua_runtime_realloc_fn)(
-    void *user,
-    void *ptr,
-    size_t old_size,
-    size_t new_size);
+typedef void *(*cpkt_lua_runtime_realloc_fn)(void *user, void *ptr,
+                                             size_t old_size, size_t new_size);
 
 /**
  * Frees a block from a runtime allocator.
@@ -148,8 +145,8 @@ const char *cpkt_lua_runtime_facade_version(void);
 /**
  * Creates an unrestricted runtime with the default heap allocator.
  *
- * On success, writes a new handle to `*out`. The caller owns the handle and must
- * free it with `cpkt_lua_runtime_free()`.
+ * On success, writes a new handle to `*out`. The caller owns the handle and
+ * must free it with `cpkt_lua_runtime_free()`.
  */
 cpkt_lua_runtime_status cpkt_lua_runtime_new(cpkt_lua_runtime **out);
 
@@ -158,9 +155,8 @@ cpkt_lua_runtime_status cpkt_lua_runtime_new(cpkt_lua_runtime **out);
  *
  * A max_bytes value of 0 means unrestricted.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_new_with_limit(
-    cpkt_lua_runtime **out,
-    size_t max_bytes);
+cpkt_lua_runtime_status cpkt_lua_runtime_new_with_limit(cpkt_lua_runtime **out,
+                                                        size_t max_bytes);
 
 /**
  * Creates a runtime with caller-provided allocation callbacks.
@@ -171,8 +167,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_new_with_limit(
  * facade-owned memory and as the Lua state allocation hook.
  */
 cpkt_lua_runtime_status cpkt_lua_runtime_new_with_allocator(
-    cpkt_lua_runtime **out,
-    const cpkt_lua_runtime_allocator_config *allocator);
+    cpkt_lua_runtime **out, const cpkt_lua_runtime_allocator_config *allocator);
 
 /**
  * Frees a runtime.
@@ -213,16 +208,14 @@ cpkt_lua_runtime_status cpkt_lua_runtime_openlibs(cpkt_lua_runtime *runtime);
  * If the debug library is selected, `debug.sethook` is replaced with a facade
  * error function so Lua code cannot clear or replace instruction-limit hooks.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_open_libs(
-    cpkt_lua_runtime *runtime,
-    int libs);
+cpkt_lua_runtime_status cpkt_lua_runtime_open_libs(cpkt_lua_runtime *runtime,
+                                                   int libs);
 
 /**
  * Enables or disables traceback text in runtime errors.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_traceback(
-    cpkt_lua_runtime *runtime,
-    int enabled);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_traceback(cpkt_lua_runtime *runtime, int enabled);
 
 /**
  * Fails currently executing scripts after approximately the requested number of
@@ -231,92 +224,87 @@ cpkt_lua_runtime_status cpkt_lua_runtime_set_traceback(
  * The limit is also installed on coroutines created through the facade-opened
  * coroutine library.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_instruction_limit(
-    cpkt_lua_runtime *runtime,
-    int instruction_count);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_instruction_limit(cpkt_lua_runtime *runtime,
+                                       int instruction_count);
 
 /**
  * Removes any configured instruction limit.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_clear_instruction_limit(cpkt_lua_runtime *runtime);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_clear_instruction_limit(cpkt_lua_runtime *runtime);
 
 /**
  * Replaces the runtime Lua module search path.
  *
  * Requires the package library to be open before use.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_package_path(
-    cpkt_lua_runtime *runtime,
-    const char *path);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_package_path(cpkt_lua_runtime *runtime, const char *path);
 
 /**
  * Prepends an entry to the runtime Lua module search path.
  *
  * Requires the package library to be open before use.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_path(
-    cpkt_lua_runtime *runtime,
-    const char *path);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_prepend_package_path(cpkt_lua_runtime *runtime,
+                                      const char *path);
 
 /**
  * Replaces the runtime native-module search path.
  *
  * Requires the package library to be open before use.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_package_cpath(
-    cpkt_lua_runtime *runtime,
-    const char *path);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_package_cpath(cpkt_lua_runtime *runtime, const char *path);
 
 /**
  * Prepends an entry to the runtime native-module search path.
  *
  * Requires the package library to be open before use.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_prepend_package_cpath(
-    cpkt_lua_runtime *runtime,
-    const char *path);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_prepend_package_cpath(cpkt_lua_runtime *runtime,
+                                       const char *path);
 
 /**
  * Sets a Lua global string value.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_global_string(
-    cpkt_lua_runtime *runtime,
-    const char *name,
-    const char *value);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_global_string(cpkt_lua_runtime *runtime, const char *name,
+                                   const char *value);
 
 /**
  * Sets a Lua global boolean value.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_global_boolean(
-    cpkt_lua_runtime *runtime,
-    const char *name,
-    int value);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_global_boolean(cpkt_lua_runtime *runtime, const char *name,
+                                    int value);
 
 /**
  * Sets a Lua global number value.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_global_number(
-    cpkt_lua_runtime *runtime,
-    const char *name,
-    double value);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_global_number(cpkt_lua_runtime *runtime, const char *name,
+                                   double value);
 
 /**
  * Sets a Lua global integer value.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_set_global_integer(
-    cpkt_lua_runtime *runtime,
-    const char *name,
-    long value);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_set_global_integer(cpkt_lua_runtime *runtime, const char *name,
+                                    long value);
 
 /**
  * Registers a named C module opener in the runtime preload table.
  *
  * Requires the package library to be open before use.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_register_c_module(
-    cpkt_lua_runtime *runtime,
-    const char *module_name,
-    cpkt_lua_runtime_c_module_open_fn opener);
+cpkt_lua_runtime_status
+cpkt_lua_runtime_register_c_module(cpkt_lua_runtime *runtime,
+                                   const char *module_name,
+                                   cpkt_lua_runtime_c_module_open_fn opener);
 
 /**
  * Copies and registers a named Lua source chunk in the runtime preload table.
@@ -324,47 +312,36 @@ cpkt_lua_runtime_status cpkt_lua_runtime_register_c_module(
  * Requires the package library to be open before use.
  */
 cpkt_lua_runtime_status cpkt_lua_runtime_register_lua_module(
-    cpkt_lua_runtime *runtime,
-    const char *module_name,
-    const unsigned char *source,
-    size_t source_size,
-    const char *chunk_name);
+    cpkt_lua_runtime *runtime, const char *module_name,
+    const unsigned char *source, size_t source_size, const char *chunk_name);
 
 /**
  * Loads a module for side effects and discards the returned module value.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_require(
-    cpkt_lua_runtime *runtime,
-    const char *module_name);
+cpkt_lua_runtime_status cpkt_lua_runtime_require(cpkt_lua_runtime *runtime,
+                                                 const char *module_name);
 
 /**
  * Runs a script file and exposes argv as global `arg`.
  */
-cpkt_lua_runtime_status cpkt_lua_runtime_run_file(
-    cpkt_lua_runtime *runtime,
-    const char *path,
-    int argc,
-    const char *const *argv,
-    int flags);
+cpkt_lua_runtime_status cpkt_lua_runtime_run_file(cpkt_lua_runtime *runtime,
+                                                  const char *path, int argc,
+                                                  const char *const *argv,
+                                                  int flags);
 
 /**
  * Runs a source buffer and exposes argv as global `arg`.
  */
 cpkt_lua_runtime_status cpkt_lua_runtime_run_buffer(
-    cpkt_lua_runtime *runtime,
-    const unsigned char *source,
-    size_t source_size,
-    const char *chunk_name,
-    int argc,
-    const char *const *argv,
-    int flags);
+    cpkt_lua_runtime *runtime, const unsigned char *source, size_t source_size,
+    const char *chunk_name, int argc, const char *const *argv, int flags);
 
 /**
  * Returns the last facade-owned error message.
  *
- * The returned string is owned by the runtime handle and remains valid until the
- * next facade operation that changes the error state or until the runtime is
- * freed.
+ * The returned string is owned by the runtime handle and remains valid until
+ * the next facade operation that changes the error state or until the runtime
+ * is freed.
  */
 const char *cpkt_lua_runtime_error(const cpkt_lua_runtime *runtime);
 

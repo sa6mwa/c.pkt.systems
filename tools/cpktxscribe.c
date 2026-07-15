@@ -207,8 +207,9 @@ static const char *cpktxscribe_cache_phase_name(int phase) {
   }
 }
 
-static int cpktxscribe_cache_status_sink(
-    const cpkt_sus_cache_status_event *event, void *user) {
+static int
+cpktxscribe_cache_status_sink(const cpkt_sus_cache_status_event *event,
+                              void *user) {
   (void)user;
   if (event == NULL) {
     return 0;
@@ -352,50 +353,85 @@ static void cpktxscribe_usage(FILE *out) {
   fprintf(out, "Streams committed transcript text to stdout as VOX segments ");
   fprintf(out, "arrive.\n\n");
   fprintf(out, "Input:\n");
-  fprintf(out, "  --capture                   Open the default capture device.\n");
-  fprintf(out, "  --url URL                    Stream a libcurl-supported URL.\n");
+  fprintf(out,
+          "  --capture                   Open the default capture device.\n");
+  fprintf(out,
+          "  --url URL                    Stream a libcurl-supported URL.\n");
   fprintf(out, "  --encoding auto|wav|flac|mp3 Input hint; default auto.\n");
-  fprintf(out, "  --backend NAME               Capture backend: auto, process, coreaudio.\n");
-  fprintf(out, "  --seconds N                  Capture duration; default 0, until killed.\n");
-  fprintf(out, "  --buffer-ms N                Device ring buffer; default 2000.\n");
-  fprintf(out, "  --period-ms N                Device callback period; default 20.\n");
+  fprintf(out, "  --backend NAME               Capture backend: auto, process, "
+               "coreaudio.\n");
+  fprintf(out, "  --seconds N                  Capture duration; default 0, "
+               "until killed.\n");
+  fprintf(out,
+          "  --buffer-ms N                Device ring buffer; default 2000.\n");
+  fprintf(
+      out,
+      "  --period-ms N                Device callback period; default 20.\n");
   fprintf(out, "\nModel:\n");
-  fprintf(out, "  --model NAME                 Cached model name; default tiny.\n");
+  fprintf(out,
+          "  --model NAME                 Cached model name; default tiny.\n");
   fprintf(out, "  --model-path PATH            Load an explicit model file.\n");
   fprintf(out, "  --cache-dir DIR              Model cache directory.\n");
-  fprintf(out, "  --offline                    Require an existing cached model.\n");
-  fprintf(out, "  --source-url URL             Override cached model source URL.\n");
-  fprintf(out, "  --sha256 HEX                 Override expected model checksum.\n");
-  fprintf(out, "  --insecure-no-checksum       Disable model checksum enforcement.\n");
-  fprintf(out, "  --list-models                Print curated cached models and exit.\n");
+  fprintf(out,
+          "  --offline                    Require an existing cached model.\n");
+  fprintf(out,
+          "  --source-url URL             Override cached model source URL.\n");
+  fprintf(out,
+          "  --sha256 HEX                 Override expected model checksum.\n");
+  fprintf(
+      out,
+      "  --insecure-no-checksum       Disable model checksum enforcement.\n");
+  fprintf(
+      out,
+      "  --list-models                Print curated cached models and exit.\n");
   fprintf(out, "\nTranscription:\n");
   fprintf(out, "  --language CODE              Language code; default auto.\n");
-  fprintf(out, "  --threads N                  Backend thread count; default backend.\n");
-  fprintf(out, "  --cpu-only 0|1               CPU-only runtime request; default 1.\n");
+  fprintf(out, "  --threads N                  Backend thread count; default "
+               "backend.\n");
+  fprintf(
+      out,
+      "  --cpu-only 0|1               CPU-only runtime request; default 1.\n");
   fprintf(out, "  --translate                  Translate to English.\n");
   fprintf(out, "  --timestamps                 Enable backend timestamps.\n");
   fprintf(out, "  --initial-prompt TEXT        Initial backend prompt.\n");
-  fprintf(out, "  --audio-ctx N                Backend audio context override.\n");
+  fprintf(out,
+          "  --audio-ctx N                Backend audio context override.\n");
   fprintf(out, "  --max-tokens N               Backend max tokens override.\n");
   fprintf(out, "\nVOX:\n");
   fprintf(out, "  --vox-threshold VALUE        RMS threshold; default 0.03.\n");
-  fprintf(out, "  --hang-ms N                  Silence release time; default 1500.\n");
+  fprintf(
+      out,
+      "  --hang-ms N                  Silence release time; default 1500.\n");
   fprintf(out, "  --prebuffer-ms N             VOX prebuffer; default 50.\n");
-  fprintf(out, "  --segment-ms N               Segment budget; default 0, mode default.\n");
-  fprintf(out, "  --simplex                    Use simplex turn mode instead of continuous.\n");
-  fprintf(out, "  --read-frames N              Decoder read size; default 4096.\n");
-  fprintf(out, "  --memory-spool-bytes N       RAM before spool; default 65536.\n");
-  fprintf(out, "  --max-spool-bytes N          Max open VOX segment; default 1 GiB.\n");
-  fprintf(out, "  --keep-context 0|1           Carry prior text prompt; default 1.\n");
+  fprintf(out, "  --segment-ms N               Segment budget; default 0, mode "
+               "default.\n");
+  fprintf(out, "  --simplex                    Use simplex turn mode instead "
+               "of continuous.\n");
+  fprintf(out,
+          "  --read-frames N              Decoder read size; default 4096.\n");
+  fprintf(out,
+          "  --memory-spool-bytes N       RAM before spool; default 65536.\n");
+  fprintf(
+      out,
+      "  --max-spool-bytes N          Max open VOX segment; default 1 GiB.\n");
+  fprintf(
+      out,
+      "  --keep-context 0|1           Carry prior text prompt; default 1.\n");
   fprintf(out, "\nOutput:\n");
-  fprintf(out, "  -v, --verbose                Print backend logs to stderr.\n");
-  fprintf(out, "  --metrics                    Print stream metrics to stderr.\n");
-  fprintf(out, "  --progress                   Print backend progress to stderr.\n");
-  fprintf(out, "  --no-final-newline           Do not append a final newline.\n");
+  fprintf(out,
+          "  -v, --verbose                Print backend logs to stderr.\n");
+  fprintf(out,
+          "  --metrics                    Print stream metrics to stderr.\n");
+  fprintf(out,
+          "  --progress                   Print backend progress to stderr.\n");
+  fprintf(out,
+          "  --no-final-newline           Do not append a final newline.\n");
   fprintf(out, "\nExamples:\n");
   fprintf(out, "  cpktxscribe intro.mp3\n");
   fprintf(out, "  cpktxscribe --capture --simplex\n");
-  fprintf(out, "  cpktxscribe https://pkt.systems/trajectory/assets/narration/intro/intro.mp3\n");
+  fprintf(out,
+          "  cpktxscribe "
+          "https://pkt.systems/trajectory/assets/narration/intro/intro.mp3\n");
   fprintf(out, "  cpktxscribe --model small intro.wav\n");
   fprintf(out, "  cpktxscribe --model tiny.sv intro.mp3\n");
   fprintf(out, "  cpktxscribe --model-path ggml-small.bin intro.mp3\n");
@@ -415,12 +451,10 @@ static int cpktxscribe_print_models(void) {
               cpkt_sus_result_string(result));
       return 1;
     }
-    printf("%s\t%s\t%s\t%lu\t%s%s\n",
-           entry.name != NULL ? entry.name : "",
+    printf("%s\t%s\t%s\t%lu\t%s%s\n", entry.name != NULL ? entry.name : "",
            entry.provider != NULL ? entry.provider : "",
            entry.quantization != NULL ? entry.quantization : "",
-           entry.size_bytes,
-           entry.sha256 != NULL ? entry.sha256 : "",
+           entry.size_bytes, entry.sha256 != NULL ? entry.sha256 : "",
            entry.is_default ? "\tdefault" : "");
   }
   return 0;
@@ -522,14 +556,11 @@ static int cpktxscribe_parse_options(int argc, char **argv,
       if (!cpktxscribe_parse_ulong(argv[++i], &options->period_ms)) {
         return 0;
       }
-    } else if (strcmp(argv[i], "--memory-spool-bytes") == 0 &&
-               i + 1 < argc) {
-      if (!cpktxscribe_parse_ulong(argv[++i],
-                                   &options->memory_spool_bytes)) {
+    } else if (strcmp(argv[i], "--memory-spool-bytes") == 0 && i + 1 < argc) {
+      if (!cpktxscribe_parse_ulong(argv[++i], &options->memory_spool_bytes)) {
         return 0;
       }
-    } else if (strcmp(argv[i], "--max-spool-bytes") == 0 &&
-               i + 1 < argc) {
+    } else if (strcmp(argv[i], "--max-spool-bytes") == 0 && i + 1 < argc) {
       if (!cpktxscribe_parse_ulong(argv[++i], &options->max_spool_bytes)) {
         return 0;
       }
@@ -559,7 +590,8 @@ static int cpktxscribe_parse_options(int argc, char **argv,
   if (options->list_models) {
     return 1;
   }
-  if (!options->capture && options->url == NULL && options->input_path == NULL) {
+  if (!options->capture && options->url == NULL &&
+      options->input_path == NULL) {
     return 0;
   }
   if (options->capture &&
@@ -573,7 +605,7 @@ static int cpktxscribe_parse_options(int argc, char **argv,
 }
 
 static int cpktxscribe_segmented_sink(const cpkt_sus_segmented_event *event,
-                                     void *user) {
+                                      void *user) {
   struct cpktxscribe_stream *stream;
   unsigned long offset;
   unsigned long length;
@@ -655,9 +687,9 @@ static int cpktxscribe_open_audio(cpkt_audio_decoder **out,
   return 1;
 }
 
-static void cpktxscribe_fill_transcriber_config(
-    cpkt_sus_transcriber_config *config,
-    const struct cpktxscribe_options *options) {
+static void
+cpktxscribe_fill_transcriber_config(cpkt_sus_transcriber_config *config,
+                                    const struct cpktxscribe_options *options) {
   cpkt_sus_transcriber_config_default(config);
   config->threads = (int)options->threads;
   config->cpu_only = options->cpu_only;
@@ -728,8 +760,8 @@ static int cpktxscribe_capture_segment_sink(cpkt_audio_vox_segment *segment,
 
   transcriber = NULL;
   cpktxscribe_fill_transcriber_config(&transcriber_config, run->options);
-  result = run->sus->create_transcriber(run->sus, &transcriber,
-                                        &transcriber_config);
+  result =
+      run->sus->create_transcriber(run->sus, &transcriber, &transcriber_config);
   if (result != CPKT_SUS_OK) {
     return 1;
   }
@@ -792,7 +824,8 @@ static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
   vox_config.segment_user = &run;
   audio_result = cpkt_audio_vox_open(&vox, &vox_config);
   if (audio_result != CPKT_AUDIO_OK) {
-    fprintf(stderr, "vox open failed: %s\n", cpkt_audio_result_string(audio_result));
+    fprintf(stderr, "vox open failed: %s\n",
+            cpkt_audio_result_string(audio_result));
     goto cleanup;
   }
 
@@ -803,7 +836,8 @@ static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
     goto cleanup;
   }
 
-  end_time = options->seconds != 0UL ? time(NULL) + (time_t)options->seconds : 0;
+  end_time =
+      options->seconds != 0UL ? time(NULL) + (time_t)options->seconds : 0;
   while (options->seconds == 0UL || time(NULL) < end_time) {
     audio_result = capture->wait_ready(capture, 100UL);
     if (audio_result == CPKT_AUDIO_TIMEOUT) {
@@ -815,9 +849,8 @@ static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
       goto cleanup;
     }
     frames_read = 0U;
-    audio_result = capture->read_f32_mono_16k(capture, frames,
-                                              sizeof(frames) / sizeof(frames[0]),
-                                              &frames_read);
+    audio_result = capture->read_f32_mono_16k(
+        capture, frames, sizeof(frames) / sizeof(frames[0]), &frames_read);
     if (audio_result != CPKT_AUDIO_OK) {
       fprintf(stderr, "capture read failed: %s\n",
               cpkt_audio_result_string(audio_result));
@@ -843,7 +876,8 @@ static int cpktxscribe_run_capture(const struct cpktxscribe_options *options,
   }
   audio_result = vox->flush(vox);
   if (audio_result != CPKT_AUDIO_OK) {
-    fprintf(stderr, "vox flush failed: %s\n", cpkt_audio_result_string(audio_result));
+    fprintf(stderr, "vox flush failed: %s\n",
+            cpkt_audio_result_string(audio_result));
     goto cleanup;
   }
   rc = 0;

@@ -335,17 +335,15 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
             "segment index=%lu t0=%ld t1=%ld frames=%lu seconds=%.3f "
             "hard=%d final=%d wav=%s\n",
             segment->segment_index, segment->t0, segment->t1,
-            (unsigned long)total_frames,
-            (double)total_frames / 16000.0, segment->hard_cut,
-            segment->is_final, path);
+            (unsigned long)total_frames, (double)total_frames / 16000.0,
+            segment->hard_cut, segment->is_final, path);
   } else {
     fprintf(stdout,
             "segment index=%lu t0=%ld t1=%ld frames=%lu seconds=%.3f "
             "hard=%d final=%d\n",
             segment->segment_index, segment->t0, segment->t1,
-            (unsigned long)total_frames,
-            (double)total_frames / 16000.0, segment->hard_cut,
-            segment->is_final);
+            (unsigned long)total_frames, (double)total_frames / 16000.0,
+            segment->hard_cut, segment->is_final);
   }
   fflush(stdout);
   if (run->summary != NULL) {
@@ -353,9 +351,8 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
             "segment index=%lu t0=%ld t1=%ld frames=%lu seconds=%.3f "
             "hard=%d final=%d wav=%s\n",
             segment->segment_index, segment->t0, segment->t1,
-            (unsigned long)total_frames,
-            (double)total_frames / 16000.0, segment->hard_cut,
-            segment->is_final, path);
+            (unsigned long)total_frames, (double)total_frames / 16000.0,
+            segment->hard_cut, segment->is_final, path);
     fflush(run->summary);
   }
   sprintf(status, "RX segment=%lu\n", segment_index);
@@ -363,8 +360,9 @@ static int cpkt_live_vox_write_segment(cpkt_audio_vox_segment *segment,
   return 0;
 }
 
-static int cpkt_live_vox_capture_state_sink(
-    const cpkt_audio_capture_state_event *event, void *user) {
+static int
+cpkt_live_vox_capture_state_sink(const cpkt_audio_capture_state_event *event,
+                                 void *user) {
   struct cpkt_live_vox_run *run;
   char line[80];
 
@@ -424,17 +422,18 @@ static void cpkt_live_vox_usage(FILE *out) {
   fprintf(out, "Options:\n");
   fprintf(out, "  --ptt                       Use push-to-talk instead of VOX; "
                "space/p toggles TX, q quits.\n");
-  fprintf(out,
-          "  --no-playback               Do not play captured segments back.\n");
+  fprintf(
+      out,
+      "  --no-playback               Do not play captured segments back.\n");
   fprintf(out, "  --seconds N                 Capture duration; default 0, run "
                "until terminated.\n");
   fprintf(out,
           "  --threshold-milli N         VOX threshold * 1000; default 50.\n");
   fprintf(out, "  --hang-ms N                 VOX hang-time; default 1500.\n");
-  fprintf(out,
-          "  --prebuffer-ms N            VOX prebuffer; default 50.\n");
-  fprintf(out,
-          "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
+  fprintf(out, "  --prebuffer-ms N            VOX prebuffer; default 50.\n");
+  fprintf(
+      out,
+      "  --max-segment-ms N          Hard cut budget; default 0, disabled.\n");
   fprintf(out,
           "  --buffer-ms N               Device ring buffer; default 2000.\n");
   fprintf(
@@ -442,7 +441,8 @@ static void cpkt_live_vox_usage(FILE *out) {
       "  --period-ms N               Device callback period; default 20.\n");
   fprintf(out,
           "  --meter-ms N                Print input peak level every N ms.\n");
-  fprintf(out, "  --backend NAME              auto, process, coreaudio, native.\n");
+  fprintf(out,
+          "  --backend NAME              auto, process, coreaudio, native.\n");
   fprintf(out, "  --dump-dir DIR              Optional WAV dump directory.\n");
   fprintf(out, "  --smoke                     Run no-device smoke check.\n");
 }

@@ -165,8 +165,8 @@ static void cpkt_test_log_sink(const cpkt_sus_log_event *event, void *user) {
   capture->last_message = event->message;
 }
 
-static int cpkt_test_cache_status_sink(
-    const cpkt_sus_cache_status_event *event, void *user) {
+static int cpkt_test_cache_status_sink(const cpkt_sus_cache_status_event *event,
+                                       void *user) {
   struct cpkt_test_cache_status_capture *capture;
 
   capture = (struct cpkt_test_cache_status_capture *)user;
@@ -178,9 +178,8 @@ static int cpkt_test_cache_status_sink(
   }
   ++capture->count;
   if (event->model != NULL) {
-    assert_true(snprintf(capture->last_model, sizeof(capture->last_model),
-                         "%s", event->model) <
-                (int)sizeof(capture->last_model));
+    assert_true(snprintf(capture->last_model, sizeof(capture->last_model), "%s",
+                         event->model) < (int)sizeof(capture->last_model));
   }
   if (event->cache_path != NULL) {
     assert_true(snprintf(capture->last_cache_path,
@@ -415,27 +414,23 @@ static void test_cached_open_contract(void **state) {
   assert_null(model);
 
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_IO);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_IO);
   assert_null(model);
 
   config.model = "";
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_IO);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_IO);
   assert_null(model);
 
   config.model = "not-a-cpkt-model";
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_LOOKUP);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_LOOKUP);
   assert_null(model);
 
   config.model = "small";
   config.sha256 = "not-a-sha";
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_ARG);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_ARG);
   assert_null(model);
 
   config.sha256 = NULL;
@@ -452,15 +447,13 @@ static void test_cached_open_contract(void **state) {
   config.sha256 =
       "88e9294cb41d862d3e2670fb9894c3e46f74fefdd18eadd8f47ee4611406487a";
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_MODEL);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_MODEL);
   assert_null(model);
 
   config.sha256 = NULL;
   config.insecure_no_checksum = 1;
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_MODEL);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_MODEL);
   assert_null(model);
 
   (void)remove("cpkt-sus-test-cache/ggml-small.bin");
@@ -485,30 +478,25 @@ static void test_cached_open_default_cache_dir_precedence(void **state) {
   assert_int_equal(setenv("XDG_CACHE_HOME", "cpkt-sus-xdg-cache", 1), 0);
   assert_int_equal(setenv("HOME", "cpkt-sus-home", 1), 0);
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_IO);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_IO);
   assert_null(model);
   assert_int_equal(status.count, 2);
-  assert_string_equal(
-      status.last_cache_path,
-      "cpkt-sus-xdg-cache/cpkt/susurro/models/ggml-tiny.bin");
+  assert_string_equal(status.last_cache_path,
+                      "cpkt-sus-xdg-cache/cpkt/susurro/models/ggml-tiny.bin");
 
   memset(&status, 0, sizeof(status));
   assert_int_equal(unsetenv("XDG_CACHE_HOME"), 0);
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_IO);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_IO);
   assert_null(model);
   assert_int_equal(status.count, 2);
-  assert_string_equal(
-      status.last_cache_path,
-      "cpkt-sus-home/.cache/cpkt/susurro/models/ggml-tiny.bin");
+  assert_string_equal(status.last_cache_path,
+                      "cpkt-sus-home/.cache/cpkt/susurro/models/ggml-tiny.bin");
 
   memset(&status, 0, sizeof(status));
   assert_int_equal(unsetenv("HOME"), 0);
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_IO);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_IO);
   assert_null(model);
   assert_int_equal(status.count, 0);
 
@@ -551,8 +539,7 @@ static void test_cached_open_downloads_to_temp_before_rename(void **state) {
   config.status_user = &status;
 
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_MODEL);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_MODEL);
   assert_null(model);
   assert_int_equal(status.count, 5);
   assert_int_equal(status.phases[0], CPKT_SUS_CACHE_STATUS_LOOKUP);
@@ -599,8 +586,7 @@ static void test_cached_open_cleans_up_failed_download(void **state) {
   config.status_user = &status;
 
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_NETWORK);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_NETWORK);
   assert_null(model);
   assert_int_equal(status.count, 3);
   assert_int_equal(status.phases[0], CPKT_SUS_CACHE_STATUS_LOOKUP);
@@ -693,9 +679,9 @@ static void test_cached_open_download_begin_abort_cleans_temp(void **state) {
   assert_string_equal(status.last_source_url, source_url);
   assert_false(
       cpkt_test_file_exists("cpkt-sus-download-abort-cache/ggml-small.bin"));
-  assert_int_equal(cpkt_test_dir_entry_count("cpkt-sus-download-abort-cache",
-                                             &entry_count),
-                   0);
+  assert_int_equal(
+      cpkt_test_dir_entry_count("cpkt-sus-download-abort-cache", &entry_count),
+      0);
   assert_int_equal(entry_count, 0);
 
   (void)remove("cpkt-sus-download-abort-cache/ggml-small.bin");
@@ -738,8 +724,7 @@ static void test_cached_open_retries_invalid_existing_cache(void **state) {
   config.cpu_only = 1;
 
   model = (cpkt_sus *)1;
-  assert_int_equal(cpkt_sus_open_cached(&model, &config),
-                   CPKT_SUS_ERR_MODEL);
+  assert_int_equal(cpkt_sus_open_cached(&model, &config), CPKT_SUS_ERR_MODEL);
   assert_null(model);
   assert_true(cpkt_test_file_equals("cpkt-sus-retry-cache/ggml-small.bin",
                                     "stale corrupt cache"));

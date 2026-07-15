@@ -93,15 +93,13 @@ typedef int (*cpkt_opcua_c89_trigger_fn)(void *user);
 int cpkt_opcua_c89_client_exercise_native_server(const char *endpoint);
 int cpkt_opcua_c89_client_exercise_facade_server(const char *endpoint);
 int cpkt_opcua_c89_client_monitor_facade_server_events(
-    const char *endpoint,
-    cpkt_opcua_c89_trigger_fn trigger_fn,
+    const char *endpoint, cpkt_opcua_c89_trigger_fn trigger_fn,
     void *trigger_user);
 
-int cpkt_opcua_c89_server_peer_new(
-    unsigned short port,
-    cpkt_opcua_c89_server_peer **out,
-    char *endpoint_buffer,
-    unsigned long endpoint_buffer_size);
+int cpkt_opcua_c89_server_peer_new(unsigned short port,
+                                   cpkt_opcua_c89_server_peer **out,
+                                   char *endpoint_buffer,
+                                   unsigned long endpoint_buffer_size);
 int cpkt_opcua_c89_server_peer_start(cpkt_opcua_c89_server_peer *peer);
 int cpkt_opcua_c89_server_peer_iterate(cpkt_opcua_c89_server_peer *peer);
 int cpkt_opcua_c89_server_peer_trigger_event(cpkt_opcua_c89_server_peer *peer);
