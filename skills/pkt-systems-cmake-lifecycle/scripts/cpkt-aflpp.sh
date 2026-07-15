@@ -81,6 +81,7 @@ ensure_locked() {
   mkdir -p "$c/archives"
   if ! [[ -f "$archive" ]] || ! printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum -c - >/dev/null 2>&1; then
     rm -f "$archive"; dl="$archive.tmp.$$"
+    install_cleanup_trap -f "$dl"
     if command -v curl >/dev/null; then
       curl -fL --retry 3 --connect-timeout 20 -o "$dl" "https://github.com/AFLplusplus/AFLplusplus/archive/refs/tags/v${version}.tar.gz" || { rm -f "$dl"; die 'AFL++ download failed'; }
     elif command -v wget >/dev/null; then
@@ -88,6 +89,7 @@ ensure_locked() {
     else die 'curl or wget is required to download AFL++'; fi
     printf '%s  %s\n' "$archive_sha256" "$dl" | sha256sum -c - >/dev/null || { rm -f "$dl"; die 'AFL++ checksum mismatch'; }
     mv "$dl" "$archive"
+    trap - EXIT HUP INT TERM
   fi
   tmp="$c/.aflplusplus.$$"; install_cleanup_trap -rf "$tmp"
   mkdir -p "$tmp/extract" "$tmp/root/bin" "$tmp/root/lib/afl"
