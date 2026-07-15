@@ -150,6 +150,8 @@ set(CPKT_BUILD_SHARED ON CACHE INTERNAL "c.pkt.systems release bundles always in
 
 set(CPKT_BUNDLE_VERSION "${PROJECT_VERSION}" CACHE STRING "Published dependency bundle version." FORCE)
 set(CPKT_OPENSSL_VERSION "3.6.2" CACHE STRING "Pinned OpenSSL release.")
+set(CPKT_OPENSSL_BUILD_CONFIG_REVISION "origin-runpath-1" CACHE INTERNAL
+  "OpenSSL Configure contract revision used in dependency cache identity." FORCE)
 set(CPKT_ZLIB_VERSION "1.3.2" CACHE STRING "Pinned zlib release.")
 set(CPKT_CURL_VERSION "8.20.0" CACHE STRING "Pinned curl release.")
 set(CPKT_NGHTTP2_VERSION "1.69.0" CACHE STRING "Pinned nghttp2 release.")
@@ -263,9 +265,11 @@ else()
   set(CPKT_TARGET_ID "${CPKT_TARGET_ARCH_LOWER}-${CPKT_TARGET_OS_LOWER}")
 endif()
 
-set(CPKT_DEPENDENCY_SET_ID
-  "openssl-${CPKT_OPENSSL_VERSION}_zlib-${CPKT_ZLIB_VERSION}_curl-${CPKT_CURL_VERSION}_nghttp2-${CPKT_NGHTTP2_VERSION}_libssh2-${CPKT_LIBSSH2_VERSION}_libxml2-${CPKT_LIBXML2_VERSION}_lua-${CPKT_LUA_VERSION}_miniaudio-${CPKT_MINIAUDIO_VERSION}_whisper-${CPKT_WHISPER_VERSION}_mqtt-c-${CPKT_MQTTC_VERSION}-${CPKT_MQTTC_COMMIT}_open62541-${CPKT_OPEN62541_VERSION}-${CPKT_OPEN62541_PATCHSET}_cmocka-${CPKT_CMOCKA_VERSION}"
+include(cmake/CpktDependencySetIdentity.cmake)
+cpkt_dependency_set_cache_id(_cpkt_dependency_set_id)
+set(CPKT_DEPENDENCY_SET_ID "${_cpkt_dependency_set_id}"
   CACHE INTERNAL "Version key for the pinned third-party dependency set.")
+unset(_cpkt_dependency_set_id)
 include(cmake/CpktDependencyToolchainIdentity.cmake)
 cpkt_dependency_toolchain_cache_id(_cpkt_dependency_toolchain_id)
 set(_cpkt_legacy_external_root "${CMAKE_SOURCE_DIR}/.cache/deps/${CPKT_TARGET_ID}")
@@ -1086,6 +1090,12 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_COMMAND}"
           "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
           -P "${CMAKE_SOURCE_DIR}/tests/dependency_toolchain_identity_test.cmake")
+      add_test(
+        NAME dependency_set_identity
+        COMMAND
+          "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          -P "${CMAKE_SOURCE_DIR}/tests/dependency_set_identity_test.cmake")
       add_test(
         NAME external_project_toolchain_environment
         COMMAND
