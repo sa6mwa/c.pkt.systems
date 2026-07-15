@@ -1139,6 +1139,14 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging"
         TIMEOUT 30)
       add_test(
+        NAME package_assertions_cleanup
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/package_assertions_cleanup_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(package_assertions_cleanup PROPERTIES
+        LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
         NAME package_verify_toolchain_tools
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/package_verify_toolchain_tools_test.sh"

@@ -76,8 +76,13 @@ function(cpkt_assert_archive_exact_matches regex expected_count description)
 endfunction()
 
 function(cpkt_extract_archive_for_assertions out_var)
+  if(NOT DEFINED CPKT_ASSERTION_WORK_ROOT OR "${CPKT_ASSERTION_WORK_ROOT}" STREQUAL "")
+    message(FATAL_ERROR
+      "CPKT_ASSERTION_WORK_ROOT is required; invoke package assertions through scripts/run-package-assertions.sh")
+  endif()
   string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef _extract_suffix)
-  set(_extract_root "${CMAKE_CURRENT_BINARY_DIR}/package-assertions-${_archive_stem}-${_extract_suffix}")
+  set(_extract_root
+    "${CPKT_ASSERTION_WORK_ROOT}/package-assertions-${_archive_stem}-${_extract_suffix}")
   file(REMOVE_RECURSE "${_extract_root}")
   file(MAKE_DIRECTORY "${_extract_root}")
   execute_process(
@@ -184,9 +189,13 @@ function(cpkt_assert_static_archive_lacks_lto archive_path description)
 
   cpkt_find_ar(_cpkt_ar)
   cpkt_find_readelf(_cpkt_readelf)
+  if(NOT DEFINED CPKT_ASSERTION_WORK_ROOT OR "${CPKT_ASSERTION_WORK_ROOT}" STREQUAL "")
+    message(FATAL_ERROR
+      "CPKT_ASSERTION_WORK_ROOT is required; invoke package assertions through scripts/run-package-assertions.sh")
+  endif()
   string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef _archive_extract_suffix)
   set(_archive_extract_dir
-    "${CMAKE_CURRENT_BINARY_DIR}/package-assertions-${_archive_stem}-archive-${_archive_extract_suffix}")
+    "${CPKT_ASSERTION_WORK_ROOT}/package-assertions-${_archive_stem}-archive-${_archive_extract_suffix}")
   file(REMOVE_RECURSE "${_archive_extract_dir}")
   file(MAKE_DIRECTORY "${_archive_extract_dir}")
   execute_process(

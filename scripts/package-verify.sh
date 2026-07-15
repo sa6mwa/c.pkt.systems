@@ -71,12 +71,11 @@ for target_id in $targets; do
         -DCPKT_READELF="$toolchain_readelf")
       ;;
   esac
-  cmake \
+  bash "$repo_root/scripts/run-package-assertions.sh" \
     -DCPKT_ARCHIVE="$archive" \
     -DCPKT_TARGET_ID="$target_id" \
     -DCPKT_BUNDLE_VERSION="$bundle_version" \
-    "${package_assertion_tool_args[@]}" \
-    -P "$repo_root/cmake/package_assertions.cmake"
+    "${package_assertion_tool_args[@]}"
   cmake \
     -DCPKT_ROOT="$repo_root" \
     -DCPKT_SCAN_LABEL="bundle" \

@@ -17,10 +17,20 @@ clean_one() {
   esac
 }
 
+clean_legacy_package_assertions() {
+  shopt -s nullglob
+  for path in "$repo_root"/package-assertions-*; do
+    if [ -d "$path" ]; then
+      rm -rf -- "$path"
+    fi
+  done
+}
+
 mode=${1:-all}
 
 case "$mode" in
   all)
+    clean_legacy_package_assertions
     clean_one "$repo_root/build"
     clean_one "$repo_root/.cache"
     clean_one "$repo_root/dist"
