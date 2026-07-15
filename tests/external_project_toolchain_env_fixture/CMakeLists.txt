@@ -58,3 +58,14 @@ foreach(expected IN ITEMS
     message(FATAL_ERROR "External CMake arguments did not pin ${expected}")
   endif()
 endforeach()
+
+set(CPKT_TARGET_ARCH x86_64)
+set(CPKT_TARGET_LIBC gnu)
+set(CPKT_TARGET_OS Linux)
+cpkt_get_openssl_config_args(openssl_config_args)
+set(expected_openssl_rpath "-Wl,--enable-new-dtags,-rpath,\\\\$$ORIGIN")
+list(FIND openssl_config_args "${expected_openssl_rpath}" found_index)
+if(found_index LESS 0)
+  message(FATAL_ERROR
+    "OpenSSL Configure arguments must preserve \\$$ORIGIN for its generated GNU Makefile")
+endif()
