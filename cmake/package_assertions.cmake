@@ -348,31 +348,7 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
   endforeach()
 endfunction()
 
-function(cpkt_assert_elf_runpath_output_relocatable readelf_output expected_runpath description)
-  set(_expected_found OFF)
-  string(REPLACE "\r\n" "\n" _readelf_output "${readelf_output}")
-  string(REPLACE "\n" ";" _readelf_lines "${_readelf_output}")
-  foreach(_readelf_line IN LISTS _readelf_lines)
-    if(_readelf_line MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[([^]]+)\\]")
-      set(_runpath_list "${CMAKE_MATCH_2}")
-      string(REPLACE ":" ";" _runpath_entries "${_runpath_list}")
-      foreach(_runpath_entry IN LISTS _runpath_entries)
-        if(_runpath_entry MATCHES "^${expected_runpath}$")
-          set(_expected_found ON)
-        endif()
-        if(NOT _runpath_entry MATCHES "^\\$ORIGIN(/.*)?$")
-          message(FATAL_ERROR
-            "${description} has non-relocatable RUNPATH/RPATH entry: ${_runpath_entry}")
-        endif()
-      endforeach()
-    endif()
-  endforeach()
-  if(NOT _expected_found)
-    message(FATAL_ERROR "${description} must have RUNPATH/RPATH [${expected_runpath}]")
-  endif()
-endfunction()
-
-function(cpkt_assert_elf_runpath_file_relocatable file_path expected_runpath description)
+function(cpkt_read_elf_dynamic_section out_var file_path description)
   cpkt_find_readelf(CPKT_READELF_BIN)
   if(NOT EXISTS "${file_path}")
     message(FATAL_ERROR "missing ${description}: ${file_path}")
@@ -387,6 +363,78 @@ function(cpkt_assert_elf_runpath_file_relocatable file_path expected_runpath des
   if(NOT _readelf_result EQUAL 0)
     message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_readelf_error}")
   endif()
+  set(${out_var} "${_readelf_output}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_assert_elf_runtime_metadata_output_relocatable readelf_output description)
+  string(REPLACE "\r\n" "\n" _readelf_output "${readelf_output}")
+  string(REPLACE "\n" ";" _readelf_lines "${_readelf_output}")
+  foreach(_readelf_line IN LISTS _readelf_lines)
+    if(_readelf_line MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[([^]]*)\\]")
+      set(_runpath_list "${CMAKE_MATCH_2}")
+      if(_runpath_list STREQUAL "")
+        message(FATAL_ERROR "${description} has an empty RUNPATH/RPATH entry")
+      endif()
+      string(REPLACE ":" ";" _runpath_entries "${_runpath_list}")
+      foreach(_runpath_entry IN LISTS _runpath_entries)
+        if(_runpath_entry STREQUAL "")
+          message(FATAL_ERROR "${description} has an empty RUNPATH/RPATH entry")
+        endif()
+        if(NOT _runpath_entry MATCHES "^\\$ORIGIN(/.*)?$")
+          message(FATAL_ERROR
+            "${description} has non-relocatable RUNPATH/RPATH entry: ${_runpath_entry}")
+        endif()
+      endforeach()
+    endif()
+  endforeach()
+endfunction()
+
+function(cpkt_assert_elf_runpath_output_relocatable readelf_output expected_runpath description)
+  cpkt_assert_elf_runtime_metadata_output_relocatable(
+    "${readelf_output}"
+    "${description}")
+
+  set(_expected_found OFF)
+  string(REPLACE "\r\n" "\n" _readelf_output "${readelf_output}")
+  string(REPLACE "\n" ";" _readelf_lines "${_readelf_output}")
+  foreach(_readelf_line IN LISTS _readelf_lines)
+    if(_readelf_line MATCHES "\\((RUNPATH|RPATH)\\)[^\n]*\\[([^]]*)\\]")
+      string(REPLACE ":" ";" _runpath_entries "${CMAKE_MATCH_2}")
+      foreach(_runpath_entry IN LISTS _runpath_entries)
+        if(_runpath_entry MATCHES "^${expected_runpath}$")
+          set(_expected_found ON)
+        endif()
+      endforeach()
+    endif()
+  endforeach()
+  if(NOT _expected_found)
+    message(FATAL_ERROR "${description} must have RUNPATH/RPATH [${expected_runpath}]")
+  endif()
+endfunction()
+
+function(cpkt_assert_elf_runtime_metadata_file_relocatable file_path description)
+  cpkt_read_elf_dynamic_section(_readelf_output "${file_path}" "${description}")
+  cpkt_assert_elf_runtime_metadata_output_relocatable(
+    "${_readelf_output}"
+    "${description}")
+endfunction()
+
+function(cpkt_file_is_elf out_var file_path)
+  cpkt_find_readelf(CPKT_READELF_BIN)
+  execute_process(
+    COMMAND "${CPKT_READELF_BIN}" -h "${file_path}"
+    RESULT_VARIABLE _readelf_result
+    OUTPUT_VARIABLE _readelf_output
+    ERROR_QUIET)
+  if(_readelf_result EQUAL 0 AND _readelf_output MATCHES "ELF Header")
+    set(${out_var} ON PARENT_SCOPE)
+  else()
+    set(${out_var} OFF PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(cpkt_assert_elf_runpath_file_relocatable file_path expected_runpath description)
+  cpkt_read_elf_dynamic_section(_readelf_output "${file_path}" "${description}")
   cpkt_assert_elf_runpath_output_relocatable(
     "${_readelf_output}"
     "${expected_runpath}"
@@ -425,12 +473,19 @@ if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_
     "test ELF runpath")
   message(STATUS "CPKT_TEST_ELF_RUNPATH=ok")
 endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA)
+  cpkt_assert_elf_runtime_metadata_file_relocatable(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_ELF}"
+    "test ELF runtime metadata")
+  message(STATUS "CPKT_TEST_ELF_RUNTIME_METADATA=ok")
+endif()
 if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE) OR
-    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH))
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA))
   return()
 endif()
 
@@ -1138,6 +1193,23 @@ else()
       "${_legacy_open62541_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
+  file(GLOB_RECURSE _elf_runtime_candidates
+    LIST_DIRECTORIES FALSE
+    "${_assert_extract_root}/${_archive_stem}/bin/*"
+    "${_assert_extract_root}/${_archive_stem}/lib/*.so*")
+  foreach(_elf_runtime_candidate IN LISTS _elf_runtime_candidates)
+    if(IS_SYMLINK "${_elf_runtime_candidate}")
+      continue()
+    endif()
+    cpkt_file_is_elf(_elf_runtime_candidate_is_elf "${_elf_runtime_candidate}")
+    if(NOT _elf_runtime_candidate_is_elf)
+      continue()
+    endif()
+    get_filename_component(_elf_runtime_candidate_name "${_elf_runtime_candidate}" NAME)
+    cpkt_assert_elf_runtime_metadata_file_relocatable(
+      "${_elf_runtime_candidate}"
+      "${_elf_runtime_candidate_name}")
+  endforeach()
   foreach(_runpath_library
       "lib/libcrypto.so.3"
       "lib/libssl.so.3"

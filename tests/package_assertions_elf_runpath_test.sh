@@ -22,6 +22,10 @@ case "$2" in
     printf 'Dynamic section at offset 0 contains 1 entry:\n'
     printf ' 0x000000000000000e (SONAME)             Library soname: [libmissing.so]\n'
     ;;
+  *empty.so)
+    printf 'Dynamic section at offset 0 contains 1 entry:\n'
+    printf ' 0x000000000000001d (RUNPATH)            Library runpath: []\n'
+    ;;
   *)
     printf 'unexpected readelf target: %s\n' "$2" >&2
     exit 2
@@ -30,7 +34,77 @@ esac
 SH
 chmod +x "$fake_readelf"
 
-touch "$work_dir/valid.so" "$work_dir/absolute.so" "$work_dir/missing.so"
+touch "$work_dir/valid.so" "$work_dir/absolute.so" "$work_dir/missing.so" "$work_dir/empty.so"
+
+output=$(
+  cmake \
+    -DCPKT_READELF="$fake_readelf" \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA=ON \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF="$work_dir/valid.so" \
+    -P "$repo_root/cmake/package_assertions.cmake"
+)
+
+case "$output" in
+  *"CPKT_TEST_ELF_RUNTIME_METADATA=ok"*) ;;
+  *)
+    printf 'package assertion runtime-metadata check rejected valid $ORIGIN metadata\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+
+output=$(
+  cmake \
+    -DCPKT_READELF="$fake_readelf" \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA=ON \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF="$work_dir/missing.so" \
+    -P "$repo_root/cmake/package_assertions.cmake"
+)
+
+case "$output" in
+  *"CPKT_TEST_ELF_RUNTIME_METADATA=ok"*) ;;
+  *)
+    printf 'package assertion runtime-metadata check rejected ELF without runtime metadata\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+
+if output=$(
+    cmake \
+      -DCPKT_READELF="$fake_readelf" \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA=ON \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF="$work_dir/absolute.so" \
+      -P "$repo_root/cmake/package_assertions.cmake" 2>&1
+  ); then
+  printf 'package assertion runtime-metadata check accepted absolute runpath\n%s\n' "$output" >&2
+  exit 1
+fi
+
+case "$output" in
+  *"non-relocatable RUNPATH/RPATH entry:"*"/tmp/cpkt-leak"*) ;;
+  *)
+    printf 'package assertion runtime-metadata failure was not actionable\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+
+if output=$(
+    cmake \
+      -DCPKT_READELF="$fake_readelf" \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA=ON \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_ELF="$work_dir/empty.so" \
+      -P "$repo_root/cmake/package_assertions.cmake" 2>&1
+  ); then
+  printf 'package assertion runtime-metadata check accepted an empty runpath\n%s\n' "$output" >&2
+  exit 1
+fi
+
+case "$output" in
+  *"has an empty RUNPATH/RPATH entry"*) ;;
+  *)
+    printf 'package assertion empty-runpath failure was not actionable\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
 
 output=$(
   cmake \
@@ -62,7 +136,7 @@ if output=$(
 fi
 
 case "$output" in
-  *"non-relocatable RUNPATH/RPATH entry: /tmp/cpkt-leak"*) ;;
+  *"non-relocatable RUNPATH/RPATH entry:"*"/tmp/cpkt-leak"*) ;;
   *)
     printf 'package assertion ELF runpath failure was not actionable\n%s\n' "$output" >&2
     exit 1
