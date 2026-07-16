@@ -9,7 +9,7 @@ RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-li
 E2E_SUS_PRESET ?= release
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice release print-release-version format source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice lifecycle-version-contract release print-release-version format source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
@@ -62,7 +62,8 @@ help:
 	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run the release proof graph plus standard-duration native fuzzing.'
 	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, source-smoke, checksum, and verify all release artifacts.'
 	@printf '  %-30s %s\n' 'finalize-slice' 'Format and run the narrow local pre-commit gate.'
-	@printf '  %-30s %s\n' 'release' 'Clean, then run the same proof graph as prerelease; final local release gate.'
+	@printf '  %-30s %s\n' 'lifecycle-version-contract' 'Run pre-clean release version checks using the reserved temp tag.'
+	@printf '  %-30s %s\n' 'release' 'Run version contract first, clean, then run the prerelease proof graph.'
 	@printf '  %-30s %s\n' 'print-release-version' 'Print the version used by package and release artifacts.'
 	@printf '  %-30s %s\n' 'format' 'Format project-owned C and header files with clang-format.'
 	@printf '\nCleanup:\n'
@@ -237,6 +238,9 @@ release-matrix:
 
 finalize-slice: format debug clangd-surface
 
+lifecycle-version-contract:
+	bash ./tests/release_version_contract_test.sh
+
 print-release-version:
 	@bash ./scripts/release-version.sh "$$(pwd)"
 
@@ -245,6 +249,7 @@ format:
 	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
 
 release:
+	$(MAKE) lifecycle-version-contract
 	$(MAKE) clean
 	$(MAKE) release-pipeline
 

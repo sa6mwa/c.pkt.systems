@@ -53,7 +53,8 @@ for target in \
   test-install-tree valgrind fuzz-smoke fuzz fuzz-long package package-source \
   package-source-smoke package-checksums package-verify verify-release-archives \
   verify-release-privacy release-matrix finalize-slice prerelease prerelease-live \
-  prerelease-hardening release print-release-version format clean clean-dist; do
+  prerelease-hardening lifecycle-version-contract release print-release-version \
+  format clean clean-dist; do
   require_help_target "$target"
 done
 
@@ -70,7 +71,8 @@ for script in \
   scripts/release-version.sh \
   scripts/package-source.sh \
   scripts/source-archive-verify.sh \
-  scripts/package-verify.sh; do
+  scripts/package-verify.sh \
+  tests/release_version_contract_test.sh; do
   require_script "$script"
 done
 
@@ -125,7 +127,8 @@ grep -Eq 'if\(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu"\)' "$repo_root/CMakeLis
   exit 1
 }
 require_ordered_make_recipe prerelease 'release-pipeline'
-require_ordered_make_recipe release 'clean
+require_ordered_make_recipe release 'lifecycle-version-contract
+clean
 release-pipeline'
 require_ordered_make_recipe prerelease-hardening 'prerelease
 fuzz'
@@ -210,12 +213,36 @@ require_script \
 "$repo_root/skills/pkt-systems-cmake-lifecycle/scripts/test-release-tag-contract.sh" >/dev/null
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/release.md \
-  'Tag-dependent version and manifest contract tests are ordinary tests, not late package-verification tests\.' \
-  'lifecycle requires tag-dependent checks before late package verification'
+  '`make release` is the only standard release-flow target that runs this check, and it must run it before `clean`, `release-pipeline`, `release-matrix`, `package-verify`, checksum generation, or artifact production\.' \
+  'lifecycle runs tag-mutating checks first in make release'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/release.md \
+  'Release orchestration belongs to Make, not CMake\.' \
+  'release orchestration is Make-owned'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/local-ci.md \
-  'Lightweight-tag version checks must be early ordinary tests in `test`, `test-all`, `prerelease`, and therefore the pre-matrix portion of `release`\.' \
-  'local CI requires lightweight-tag checks before the release matrix'
+  '`make release` must run that target first, before `clean`, build, package, checksum, or artifact work; `test`, `test-all`, `prerelease`, `release-pipeline`, `release-matrix`, `package-verify`, and other late release-flow commands must not run it\.' \
+  'local CI places tag-mutating checks first in release only'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/local-ci.md \
+  'the pre-clean tag-mutating contract is not a CMake pipeline and should not configure CMake solely to validate tag mutation' \
+  'pre-clean tag contract is not a CMake pipeline'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/release.md \
+  'Treat `v99\.99\.99` as reserved test-only state, never a real release tag: if it already exists, delete it before detecting exact release tags or making untagged assertions so interrupted prior runs recover automatically\.' \
+  'reserved tag stale state recovers automatically'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/release.md \
+  'git -c tag\.gpgSign=false tag v99\.99\.99' \
+  'reserved temp tag creation disables signing'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/release.md \
+  'annotated or signed tag objects must not satisfy the release contract or produce a release version from shared version resolver surfaces' \
+  'shared resolver rejects annotated and signed release tags'
+require_file_contains \
+  scripts/release-version.sh \
+  'candidate_type=\$\(git -C "\$repo_root" cat-file -t "\$candidate_tag"\)' \
+  'shared version resolver checks tag object type'
 require_file_contains \
   scripts/configure-preset.sh \
   '\.cache/deps-build/x86_64-linux-gnu/\*/AFL_' \

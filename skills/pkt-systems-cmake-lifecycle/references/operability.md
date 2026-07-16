@@ -262,6 +262,7 @@ Core targets:
 - `make finalize-slice`
 - `make prerelease`
 - `make prerelease-hardening`
+- `make lifecycle-version-contract`
 - `make release`
 - `make print-release-version`
 - `make format`
@@ -319,6 +320,7 @@ Conditional standard targets, required when the surface exists:
 Make rules:
 
 - `make help` must list every root target intended for humans or agents, including required opt-in environment variables for integration, live, service, and package-manager targets.
+- Release orchestration belongs to Make. CMake is invoked by Make as a build, test, install, and package-configuration surface; do not expose CMake presets or CMake scripts as the public release pipeline or as substitutes for `make release`.
 - `make format` formats project-owned C, headers, examples, tests, and generated single-header inputs with clang-format using the checked-in `.clang-format`.
 - `make print-release-version` prints exactly the version that packaging/release targets will use.
 - `make finalize-slice` is the default pre-commit gate for ordinary implementation slices: format plus the narrow local tests that catch common regressions quickly.
@@ -326,9 +328,10 @@ Make rules:
 - `make prerelease-live` is credentialed or external-provider verification and must refuse to run without an explicit project-prefixed opt-in variable.
 - `make prerelease-hardening` is expensive and may combine deterministic, live, long fuzz, benchmark, and release-matrix gates.
 - `make release-matrix` builds, tests, packages, checksums, and verifies the release target set without requiring a clean tree. `make release` is the clean final pipeline.
+- `make lifecycle-version-contract` is the focused pre-clean release contract for exact lightweight-tag version behavior through release-owned script and Make surfaces. It may create and delete only the reserved temporary lightweight tag used by the project test, must delete any pre-existing reserved tag before exact-tag detection so interrupted prior runs recover automatically, must create the reserved tag with signing disabled so it remains lightweight and noninteractive, must reject annotated or signed semver tag objects on `HEAD`, must clean its own tag with a trap, and must not be called from `test`, `test-all`, `prerelease`, `release-pipeline`, `release-matrix`, or `package-verify`. It should not configure CMake solely to test tag mutation; CMake version behavior is covered when the Make-owned release graph invokes CMake build and package surfaces.
 - `make package-verify` must include release privacy verification for checksum-listed artifacts. `make verify-release-privacy` may exist as a focused gate for the same invariant, but it is not a substitute for including the check in package verification.
 - `make package-source-smoke` extracts the source archive and proves it can configure, build, test, and resolve the same version without repository metadata.
-- `make release` is the final clean release action and gate. It must fail on warnings for project-owned and otherwise controllable code using `-Werror` or the platform equivalent, while allowing documented exclusions for upstream dependency warnings outside practical project control.
+- `make release` is the final clean release action and gate. Its first recipe command must be `make lifecycle-version-contract`, followed by `make clean`, followed by the shared release proof graph. It must fail on warnings for project-owned and otherwise controllable code using `-Werror` or the platform equivalent, while allowing documented exclusions for upstream dependency warnings outside practical project control.
 - Core targets are the default lifecycle vocabulary. Conditional standard targets are not optional once the matching surface exists in the project.
 
 Every target listed in `make help` must work or fail with an actionable missing-prerequisite message.

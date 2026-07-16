@@ -79,4 +79,19 @@ if [ "$resolved" != "2.3.4" ]; then
   exit 1
 fi
 
+git -C "$git_repo" tag -d v2.3.4 >/dev/null
+git -C "$git_repo" tag -a v3.4.5 -m annotated
+resolved=$(bash "$repo_root/scripts/release-version.sh" "$git_repo")
+if [ "$resolved" != "0.0.0" ]; then
+  printf 'annotated tagged git worktree resolved to %s, expected 0.0.0\n' "$resolved" >&2
+  exit 1
+fi
+
+git -C "$git_repo" tag v4.5.6
+resolved=$(bash "$repo_root/scripts/release-version.sh" "$git_repo")
+if [ "$resolved" != "4.5.6" ]; then
+  printf 'lightweight tag must win over annotated tags; resolved to %s, expected 4.5.6\n' "$resolved" >&2
+  exit 1
+fi
+
 printf '[test] version resolution passed\n'

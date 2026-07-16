@@ -13,12 +13,18 @@ if git_top_level=$(git -C "$repo_root" rev-parse --show-toplevel 2>/dev/null); t
 fi
 
 if [ "$git_top_level" = "$repo_root" ]; then
-  version_tag=$(
+  version_tag=
+  candidate_tags=$(
     git -C "$repo_root" tag --points-at HEAD --list 'v[0-9]*.[0-9]*.[0-9]*' 2>/dev/null |
       sed -n '/^v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$/p' |
-      sort -V |
-      tail -n1
+      sort -V
   )
+  for candidate_tag in $candidate_tags; do
+    candidate_type=$(git -C "$repo_root" cat-file -t "$candidate_tag")
+    if [ "$candidate_type" = "commit" ]; then
+      version_tag=$candidate_tag
+    fi
+  done
 
   if [ -z "$version_tag" ]; then
     printf '0.0.0\n'
