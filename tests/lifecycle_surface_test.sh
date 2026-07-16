@@ -205,6 +205,17 @@ require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/toolchains.md \
   'locks/.*per-collection advisory lock files' \
   'lifecycle documents serialized shared toolchain publication'
+require_script \
+  skills/pkt-systems-cmake-lifecycle/scripts/test-release-tag-contract.sh
+"$repo_root/skills/pkt-systems-cmake-lifecycle/scripts/test-release-tag-contract.sh" >/dev/null
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/release.md \
+  'Tag-dependent version and manifest contract tests are ordinary tests, not late package-verification tests\.' \
+  'lifecycle requires tag-dependent checks before late package verification'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/local-ci.md \
+  'Lightweight-tag version checks must be early ordinary tests in `test`, `test-all`, `prerelease`, and therefore the pre-matrix portion of `release`\.' \
+  'local CI requires lightweight-tag checks before the release matrix'
 require_file_contains \
   scripts/configure-preset.sh \
   '\.cache/deps-build/x86_64-linux-gnu/\*/AFL_' \
