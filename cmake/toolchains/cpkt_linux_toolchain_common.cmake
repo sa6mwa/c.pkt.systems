@@ -71,9 +71,9 @@ function(cpkt_configure_bootlin_toolchain target_id)
 
   set(CPKT_TOOLCHAIN_ROOT "${_cpkt_root}" CACHE PATH "Pinned Bootlin compiler collection root." FORCE)
   set(CPKT_TOOLCHAIN_TARGET "${target_id}" CACHE STRING "Pinned Linux compiler collection target." FORCE)
-  set(CPKT_TOOLCHAIN_IDENTITY
+  set(CPKT_TOOLCHAIN_COLLECTION_ID
     "bootlin-${target_id}-${_cpkt_root_name}-${_cpkt_sysroot_relative}"
-    CACHE INTERNAL "Pinned Bootlin dependency cache identity." FORCE)
+    CACHE INTERNAL "Pinned Bootlin compiler collection identifier." FORCE)
   set(CPKT_CXX_STDLIB_STATIC_LIBRARY "${_cpkt_libstdcxx_a}" CACHE FILEPATH "Pinned static C++ runtime archive." FORCE)
   set(CPKT_CXX_LIBGCC_STATIC_LIBRARY "${_cpkt_libgcc_a}" CACHE FILEPATH "Pinned static GCC runtime archive." FORCE)
   set(CMAKE_C_COMPILER "${_cpkt_cc}" CACHE FILEPATH "" FORCE)

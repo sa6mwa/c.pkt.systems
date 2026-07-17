@@ -830,6 +830,35 @@ function(cpkt_add_libssh2)
   set(CPKT_LIBSSH2_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_get_curl_platform_cmake_args out_var)
+  set(_args "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND _args
+      -DENABLE_THREADED_RESOLVER=OFF
+      -DUSE_APPLE_SECTRUST=ON)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Cross-compiling disables curl's CA bundle/path auto-detection.  Ask its
+    # OpenSSL backend to load the target system's configured default trust
+    # locations when callers do not supply CURLOPT_CAINFO or CURLOPT_CAPATH.
+    list(APPEND _args
+      -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags
+      -DCURL_CA_FALLBACK=ON)
+  endif()
+  set(${out_var} "${_args}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_get_curl_static_platform_libs out_var)
+  set(_libs "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND _libs
+      "-framework SystemConfiguration"
+      "-framework Security"
+      "-framework CoreFoundation"
+      "-framework CoreServices")
+  endif()
+  set(${out_var} "${_libs}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_add_curl)
   set(project_name "cpkt_curl_project")
   set(openssl_project "cpkt_openssl_project")
@@ -857,20 +886,13 @@ function(cpkt_add_curl)
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(curl_install_rpath "@loader_path")
-    set(curl_platform_cmake_args
-      -DENABLE_THREADED_RESOLVER=OFF)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(curl_install_rpath "$ORIGIN")
-    set(curl_platform_cmake_args
-      -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--enable-new-dtags)
   else()
     set(curl_install_rpath "")
-    set(curl_platform_cmake_args "")
   endif()
-  set(curl_static_platform_libs "")
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    list(APPEND curl_static_platform_libs "-framework CoreFoundation" "-framework SystemConfiguration")
-  endif()
+  cpkt_get_curl_platform_cmake_args(curl_platform_cmake_args)
+  cpkt_get_curl_static_platform_libs(curl_static_platform_libs)
   cpkt_get_external_cmake_configure_command(cmake_configure_command)
   set(curl_cmake_args
     -DCMAKE_INSTALL_PREFIX=${install_dir}

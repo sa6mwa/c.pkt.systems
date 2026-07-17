@@ -26,6 +26,7 @@ find_package(Threads REQUIRED)
 option(CPKT_BUILD_DEPENDENCIES "Download and build pinned third-party dependencies." ON)
 option(CPKT_BUILD_TESTS "Build ABI/link smoke tests for published dependency artifacts." ON)
 option(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE "Honor explicitly provided dependency roots even when they differ from this compiler's default cache key." OFF)
+option(CPKT_CALLER_OWNED_DEPENDENCY_ROOTS "Treat explicitly overridden dependency roots as caller-owned and skip repo-local lifecycle invalidation for them." OFF)
 option(CPKT_ENABLE_FUZZING "Build AFL++ GCC-plugin facade fuzz targets." OFF)
 option(CPKT_FACADE_ONLY "Build only repo-owned facade hardening targets." OFF)
 option(CPKT_SUS_CPU_ONLY "Build the cpkt_sus whisper.cpp dependency set with CPU backends only." ON)
@@ -41,6 +42,8 @@ function(cpkt_normalize_arch arch out_var)
   endif()
   set(${out_var} "${_cpkt_arch}" PARENT_SCOPE)
 endfunction()
+
+include(cmake/CpktDependencyContract.cmake)
 
 function(cpkt_target_executables_runnable out_var)
   string(TOLOWER "${CMAKE_SYSTEM_NAME}" _cpkt_target_os)
@@ -168,7 +171,7 @@ set(CPKT_BUILD_SHARED ON CACHE INTERNAL "c.pkt.systems release bundles always in
 set(CPKT_BUNDLE_VERSION "${PROJECT_VERSION}" CACHE STRING "Published dependency bundle version." FORCE)
 set(CPKT_OPENSSL_VERSION "3.6.2" CACHE STRING "Pinned OpenSSL release.")
 set(CPKT_OPENSSL_BUILD_CONFIG_REVISION "origin-runpath-1" CACHE INTERNAL
-  "OpenSSL Configure contract revision used in dependency cache identity." FORCE)
+  "OpenSSL Configure contract revision." FORCE)
 set(CPKT_ZLIB_VERSION "1.3.2" CACHE STRING "Pinned zlib release.")
 set(CPKT_CURL_VERSION "8.20.0" CACHE STRING "Pinned curl release.")
 set(CPKT_NGHTTP2_VERSION "1.69.0" CACHE STRING "Pinned nghttp2 release.")
@@ -283,44 +286,68 @@ else()
   set(CPKT_TARGET_ID "${CPKT_TARGET_ARCH_LOWER}-${CPKT_TARGET_OS_LOWER}")
 endif()
 
-include(cmake/CpktDependencySetIdentity.cmake)
-cpkt_dependency_set_cache_id(_cpkt_dependency_set_id)
-set(CPKT_DEPENDENCY_SET_ID "${_cpkt_dependency_set_id}"
-  CACHE INTERNAL "Version key for the pinned third-party dependency set.")
-unset(_cpkt_dependency_set_id)
-include(cmake/CpktDependencyToolchainIdentity.cmake)
-cpkt_dependency_toolchain_cache_id(_cpkt_dependency_toolchain_id)
-set(_cpkt_legacy_external_root "${CMAKE_SOURCE_DIR}/.cache/deps/${CPKT_TARGET_ID}")
-set(_cpkt_legacy_dependency_build_root "${CMAKE_SOURCE_DIR}/.cache/deps-build/${CPKT_TARGET_ID}")
-set(_cpkt_default_external_root
-  "${_cpkt_legacy_external_root}/${CPKT_DEPENDENCY_SET_ID}/${_cpkt_dependency_toolchain_id}")
-set(_cpkt_default_dependency_build_root
-  "${_cpkt_legacy_dependency_build_root}/${CPKT_DEPENDENCY_SET_ID}/${_cpkt_dependency_toolchain_id}")
+set(_cpkt_default_external_root "${CMAKE_SOURCE_DIR}/.cache/deps/${CPKT_TARGET_ID}")
+set(_cpkt_default_dependency_build_root "${CMAKE_SOURCE_DIR}/.cache/deps-build/${CPKT_TARGET_ID}")
+set(_cpkt_external_root_explicit OFF)
+if(DEFINED CPKT_EXTERNAL_ROOT)
+  set(_cpkt_external_root_explicit ON)
+  set(_cpkt_external_root_original "${CPKT_EXTERNAL_ROOT}")
+endif()
+set(_cpkt_dependency_build_root_explicit OFF)
+if(DEFINED CPKT_DEPENDENCY_BUILD_ROOT)
+  set(_cpkt_dependency_build_root_explicit ON)
+  set(_cpkt_dependency_build_root_original "${CPKT_DEPENDENCY_BUILD_ROOT}")
+endif()
 
 if(DEFINED CPKT_EXTERNAL_ROOT)
-  string(FIND "${CPKT_EXTERNAL_ROOT}" "${_cpkt_legacy_external_root}/" _cpkt_external_root_under_legacy)
+  string(FIND "${CPKT_EXTERNAL_ROOT}" "${CMAKE_SOURCE_DIR}/.cache/deps/" _cpkt_external_root_under_cache)
 else()
-  set(_cpkt_external_root_under_legacy -1)
+  set(_cpkt_external_root_under_cache -1)
 endif()
 if(NOT DEFINED CPKT_EXTERNAL_ROOT
-    OR "${CPKT_EXTERNAL_ROOT}" STREQUAL "${_cpkt_legacy_external_root}"
+    OR "${CPKT_EXTERNAL_ROOT}" STREQUAL "${CMAKE_SOURCE_DIR}/.cache/deps"
     OR (NOT CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
-      AND _cpkt_external_root_under_legacy EQUAL 0
+      AND _cpkt_external_root_under_cache EQUAL 0
       AND NOT "${CPKT_EXTERNAL_ROOT}" STREQUAL "${_cpkt_default_external_root}"))
-  set(CPKT_EXTERNAL_ROOT "${_cpkt_default_external_root}" CACHE PATH "Version-keyed install root for dependency artifacts." FORCE)
+  set(CPKT_EXTERNAL_ROOT "${_cpkt_default_external_root}" CACHE PATH "Target-local install root for dependency artifacts." FORCE)
+endif()
+if(_cpkt_external_root_explicit
+    AND (NOT "${_cpkt_external_root_original}" STREQUAL "${CPKT_EXTERNAL_ROOT}"
+      OR "${CPKT_EXTERNAL_ROOT}" STREQUAL "${_cpkt_default_external_root}"))
+  set(_cpkt_external_root_explicit OFF)
 endif()
 if(DEFINED CPKT_DEPENDENCY_BUILD_ROOT)
-  string(FIND "${CPKT_DEPENDENCY_BUILD_ROOT}" "${_cpkt_legacy_dependency_build_root}/" _cpkt_dependency_build_root_under_legacy)
+  string(FIND "${CPKT_DEPENDENCY_BUILD_ROOT}" "${CMAKE_SOURCE_DIR}/.cache/deps-build/" _cpkt_dependency_build_root_under_cache)
 else()
-  set(_cpkt_dependency_build_root_under_legacy -1)
+  set(_cpkt_dependency_build_root_under_cache -1)
 endif()
 if(NOT DEFINED CPKT_DEPENDENCY_BUILD_ROOT
-    OR "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${_cpkt_legacy_dependency_build_root}"
+    OR "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${CMAKE_SOURCE_DIR}/.cache/deps-build"
     OR (NOT CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
-      AND _cpkt_dependency_build_root_under_legacy EQUAL 0
+      AND _cpkt_dependency_build_root_under_cache EQUAL 0
       AND NOT "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${_cpkt_default_dependency_build_root}"))
-  set(CPKT_DEPENDENCY_BUILD_ROOT "${_cpkt_default_dependency_build_root}" CACHE PATH "Version-keyed build root for dependency artifacts." FORCE)
+  set(CPKT_DEPENDENCY_BUILD_ROOT "${_cpkt_default_dependency_build_root}" CACHE PATH "Target-local build root for dependency artifacts." FORCE)
 endif()
+if(_cpkt_dependency_build_root_explicit
+    AND (NOT "${_cpkt_dependency_build_root_original}" STREQUAL "${CPKT_DEPENDENCY_BUILD_ROOT}"
+      OR "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${_cpkt_default_dependency_build_root}"))
+  set(_cpkt_dependency_build_root_explicit OFF)
+endif()
+set(_cpkt_external_root_lifecycle_owned ON)
+if(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
+    AND CPKT_CALLER_OWNED_DEPENDENCY_ROOTS
+    AND _cpkt_external_root_explicit)
+  set(_cpkt_external_root_lifecycle_owned OFF)
+endif()
+set(_cpkt_dependency_build_root_lifecycle_owned ON)
+if(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
+    AND CPKT_CALLER_OWNED_DEPENDENCY_ROOTS
+    AND _cpkt_dependency_build_root_explicit)
+  set(_cpkt_dependency_build_root_lifecycle_owned OFF)
+endif()
+cpkt_refresh_repo_dependency_roots_if_stale(
+  "${_cpkt_external_root_lifecycle_owned}"
+  "${_cpkt_dependency_build_root_lifecycle_owned}")
 
 include(cmake/CpktDependencies.cmake)
 cpkt_configure_dependencies()
@@ -1108,17 +1135,22 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/osxcross_linker_cache_refresh_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
-        NAME dependency_toolchain_identity
+        NAME repo_dependency_cache_policy
         COMMAND
-          "${CMAKE_COMMAND}"
-          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
-          -P "${CMAKE_SOURCE_DIR}/tests/dependency_toolchain_identity_test.cmake")
+          "${CMAKE_SOURCE_DIR}/tests/repo_dependency_cache_policy_test.sh"
+          "${CMAKE_SOURCE_DIR}")
       add_test(
-        NAME dependency_set_identity
+        NAME repo_dependency_stale_root
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/repo_dependency_stale_root_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME curl_system_truststore
         COMMAND
           "${CMAKE_COMMAND}"
           "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
-          -P "${CMAKE_SOURCE_DIR}/tests/dependency_set_identity_test.cmake")
+          "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}/curl-system-truststore-fixture"
+          -P "${CMAKE_SOURCE_DIR}/tests/curl_system_truststore_test.cmake")
       add_test(
         NAME external_project_toolchain_environment
         COMMAND
@@ -1146,7 +1178,8 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/dependency_cache_disabled_test.sh"
           "${CMAKE_SOURCE_DIR}"
-          "${CPKT_EXTERNAL_ROOT}")
+          "${CMAKE_SOURCE_DIR}/build/dependency-cache-disabled-external"
+          "${CMAKE_SOURCE_DIR}/build/dependency-cache-disabled-build")
       add_test(
         NAME privacy_scan_failure
         COMMAND

@@ -422,8 +422,8 @@ file(WRITE "${_stage_root}/lib/cmake/libssh2/libssh2-config-version.cmake"
 set(_cpkt_curl_static_platform_libs "")
 set(_cpkt_curl_static_platform_pc_libs "")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
-  set(_cpkt_curl_static_platform_libs "-framework CoreFoundation;-framework SystemConfiguration")
-  set(_cpkt_curl_static_platform_pc_libs "-framework CoreFoundation -framework SystemConfiguration")
+  set(_cpkt_curl_static_platform_libs "-framework SystemConfiguration;-framework Security;-framework CoreFoundation;-framework CoreServices")
+  set(_cpkt_curl_static_platform_pc_libs "-framework SystemConfiguration -framework Security -framework CoreFoundation -framework CoreServices")
 endif()
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CURL")
 file(WRITE "${_stage_root}/lib/cmake/CURL/CURLConfig.cmake"

@@ -212,6 +212,11 @@ c.pkt.systems applies an MPL-2.0 patch that prefixes the embedded MQTT-C symbols
 inside open62541, so consumers may also link the standalone MQTT-C package
 without duplicate `mqtt_*` symbols from open62541.
 
+The bundled libcurl uses each target platform's system trust store by default
+when the consumer has not set an explicit CA bundle or CA path. Linux targets
+use OpenSSL with libcurl's CA fallback enabled; Darwin targets use curl's
+OpenSSL-backed Apple SecTrust integration.
+
 Direct package-directory lookup is also supported for packages with bundled
 dependencies:
 

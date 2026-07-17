@@ -202,8 +202,12 @@ require_file_contains \
   'explicit dependency root override is required before reusing a non-default dependency cache'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/dependencies.md \
-  'A Bootlin identity must never reuse a host-GCC dependency root' \
-  'dependency cache identity separates pinned Bootlin collections from host GCC'
+  'Repo-local dependency roots are disposable build state' \
+  'dependency lifecycle keeps repo-local roots target-only and disposable'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/dependencies.md \
+  'Normal no-clean entrypoints such as `make prerelease` must rely on explicit stale-root detection' \
+  'dependency lifecycle documents no-clean prerelease stale-root invalidation'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/toolchains.md \
   'locks/.*per-collection advisory lock files' \

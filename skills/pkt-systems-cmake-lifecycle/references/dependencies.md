@@ -53,7 +53,7 @@ deps/
 ```
 
 - The global cache holds verified immutable archives only. Do not put extracted trees, CMake build directories, install prefixes, package-manager state, generated headers, or dependency stamps there.
-- Keep extraction, build, install, and identity-stamp state under the consuming repository's `.cache/`, normally keyed by target ID and dependency identity. A project may delete that local state freely; the next dependency acquisition must reuse the verified global archive without network access.
+- Keep extraction, build, install, and stamp state under the consuming repository's `.cache/`, keyed only by the target ID and the dependency name. Do not put dependency-set IDs, toolchain IDs, version hashes, URLs, compiler metadata, build-option hashes, or other semantic cache IDs in repo-local path names. Repo-local dependency roots are disposable build state; lifecycle entrypoints may delete them freely, and the next dependency acquisition must reuse the verified global archive without network access.
 - Key each archive by its required SHA-256. Archive names are for diagnostics only; never accept an archive because its filename, component name, version, or URL happens to match.
 - Before every cache reuse, calculate SHA-256 and compare it to the dependency's pinned expected digest. A corrupt entry is not a cache hit.
 - Serialize writers with a per-digest lock. The lifecycle serializes project operations, but independent downstream repositories can acquire the same shared cache concurrently.
@@ -77,10 +77,10 @@ Rules for component downloads:
 Rules:
 
 - Do not vendor generated dependency installs into release source.
-- Dependency cache reuse is the default. Do not re-download a verified global archive or rebuild a local dependency root when the requested dependency identity has not changed.
-- When dependency identity changes, invalidate only the relevant local `.cache/` extraction, build, and install roots through `make clean` or a narrower documented dependency-clean target. Retain the global archive cache; it is keyed by the expected SHA-256 and remains safe for any project that still pins that artifact.
-- Dependency identity includes dependency name, version, target ID, source URL, SHA-256, compiler collection identity, toolchain file, ABI-relevant build options, and cache layout version. For a pinned Bootlin build, the compiler collection identity must include the Bootlin target ID, pinned collection release/root, and sysroot identity; GCC version alone and `CMAKE_C_COMPILER_TARGET` are insufficient. A Bootlin identity must never reuse a host-GCC dependency root merely because the compiler version matches.
-- `scripts/deps.sh` should detect stale dependency roots when possible by comparing requested dependency identity to a cached manifest or stamp. On mismatch, fail with an actionable stale-cache diagnostic or refresh through the documented clean path.
+- Shared archive cache reuse is the default. Do not re-download a verified global archive when the requested SHA-256 already exists and verifies.
+- Repo-local dependency builds and install roots are not durable lifecycle cache. `make clean`, `make release`, and dependency-clean targets may delete the repository `.cache/` tree and rebuild it from verified global archives. Normal no-clean entrypoints such as `make prerelease` must rely on explicit stale-root detection: when dependency source, patch, toolchain, ABI-relevant build options, or cache layout changes, delete the affected repo-local target roots and rebuild them from verified global archives. Prefer this simple invalidation model over fragile local path keys.
+- Compiler collection metadata may be recorded for diagnostics and package provenance, but it must not become a repo-local cache path component. For a pinned Bootlin build, diagnostics should include the Bootlin target ID, pinned collection release/root, and sysroot path; GCC version alone and `CMAKE_C_COMPILER_TARGET` are insufficient to describe the selected compiler collection.
+- `scripts/deps.sh` should refresh stale repo-local dependency roots by deleting the disposable local extraction/build/install root and rebuilding from the verified global archive. Stale local state must not be hidden behind longer path names.
 - Do not leak dependency cache paths into package metadata, CMake config files, pkg-config files, binaries, scripts, or release archives.
 - Imported CMake targets and pkg-config metadata must expose only the public dependency contract needed by downstream consumers.
 - Static SDKs may require downstream consumers to provide dependency include and library roots; encode that clearly in CMake package config, pkg-config metadata, tests, and README examples.

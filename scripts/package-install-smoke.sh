@@ -1338,6 +1338,8 @@ case "$target_id" in
     ;;
   arm64-apple-darwin)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "CoreFoundation" "CURL::libcurl link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "CoreServices" "CURL::libcurl link line"
+    assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "Security" "CURL::libcurl link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "SystemConfiguration" "CURL::libcurl link line"
     assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "iconv" "LibXml2::LibXml2 link line"
     ;;
@@ -1534,6 +1536,8 @@ case "$target_id" in
     ;;
   arm64-apple-darwin)
     assert_words_contain "$libcurl_words" "CoreFoundation" "libcurl.pc --static output"
+    assert_words_contain "$libcurl_words" "CoreServices" "libcurl.pc --static output"
+    assert_words_contain "$libcurl_words" "Security" "libcurl.pc --static output"
     assert_words_contain "$libcurl_words" "SystemConfiguration" "libcurl.pc --static output"
     assert_words_contain "$libxml2_words" "-liconv" "libxml-2.0.pc --static output"
     assert_words_not_contain "$libcrypto_words" "-ldl" "libcrypto.pc --static output"

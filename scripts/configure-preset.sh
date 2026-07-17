@@ -48,17 +48,27 @@ fi
 
 if [ "$preset" = "opcua-fuzz" ]; then
   debug_cache="$repo_root/build/debug/CMakeCache.txt"
-  if [ ! -f "$debug_cache" ]; then
-    cmake --preset debug
-  fi
-  external_root=$(sed -n 's/^CPKT_EXTERNAL_ROOT:PATH=//p' "$debug_cache" | tail -n 1)
-  dependency_build_root=$(sed -n 's/^CPKT_DEPENDENCY_BUILD_ROOT:PATH=//p' "$debug_cache" | tail -n 1)
-  if [ -z "$external_root" ] || [ -z "$dependency_build_root" ]; then
+  cmake --preset debug
+  debug_external_root=$(sed -n 's/^CPKT_EXTERNAL_ROOT:PATH=//p' "$debug_cache" | tail -n 1)
+  debug_dependency_build_root=$(sed -n 's/^CPKT_DEPENDENCY_BUILD_ROOT:PATH=//p' "$debug_cache" | tail -n 1)
+  if [ -z "$debug_external_root" ] || [ -z "$debug_dependency_build_root" ]; then
     printf 'failed to read dependency roots from %s\n' "$debug_cache" >&2
     exit 1
   fi
+  mkdir -p "$build_dir"
+  external_root="$build_dir/deps"
+  dependency_build_root="$build_dir/deps-build"
+  for link_path in "$external_root" "$dependency_build_root"; do
+    if [ -e "$link_path" ] && [ ! -L "$link_path" ]; then
+      printf 'cannot replace non-symlink dependency root: %s\n' "$link_path" >&2
+      exit 1
+    fi
+  done
+  ln -sfn "$debug_external_root" "$external_root"
+  ln -sfn "$debug_dependency_build_root" "$dependency_build_root"
   cmake_args+=(
     -DCPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE=ON
+    -DCPKT_CALLER_OWNED_DEPENDENCY_ROOTS=ON
     -DCPKT_BUILD_DEPENDENCIES=OFF
     -DCPKT_EXTERNAL_ROOT="$external_root"
     -DCPKT_DEPENDENCY_BUILD_ROOT="$dependency_build_root"

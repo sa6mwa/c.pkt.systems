@@ -69,8 +69,8 @@ endif()
 if(NOT CPKT_CXX_LIBGCC_STATIC_LIBRARY STREQUAL "${toolchain_root}/runtime/libgcc.a")
   message(FATAL_ERROR "Bootlin static GCC runtime was not selected")
 endif()
-if(NOT CPKT_TOOLCHAIN_IDENTITY STREQUAL "bootlin-x86_64-linux-gnu-${toolchain_name}-x86_64-buildroot-linux-gnu/sysroot")
-  message(FATAL_ERROR "Bootlin dependency cache identity was not selected: \${CPKT_TOOLCHAIN_IDENTITY}")
+if(NOT CPKT_TOOLCHAIN_COLLECTION_ID STREQUAL "bootlin-x86_64-linux-gnu-${toolchain_name}-x86_64-buildroot-linux-gnu/sysroot")
+  message(FATAL_ERROR "Bootlin compiler collection id was not selected: \${CPKT_TOOLCHAIN_COLLECTION_ID}")
 endif()
 EOF
 

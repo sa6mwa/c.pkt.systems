@@ -147,6 +147,14 @@ if ! grep -F -- 'INTERFACE_LINK_LIBRARIES \"CURL::libcurl;m;\${CMAKE_DL_LIBS};Th
   printf 'CpktAudio package metadata no longer preserves libdl for static audio consumers\n' >&2
   exit 1
 fi
+for framework in CoreFoundation CoreServices Security SystemConfiguration; do
+  if ! grep -F -- "-framework ${framework}" "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
+      ! grep -F -- "\"${framework}\" \"CURL::libcurl link line\"" "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1 ||
+      ! grep -F -- "\"${framework}\" \"libcurl.pc --static output\"" "$repo_root/scripts/package-install-smoke.sh" >/dev/null 2>&1; then
+    printf 'Darwin libcurl static package metadata no longer preserves %s framework\n' "$framework" >&2
+    exit 1
+  fi
+done
 if ! grep -F -- 'set(_cpkt_audio_static_private_pc_libs "-ldl -lm -pthread")' \
     "$repo_root/cmake/package_bundle.cmake" >/dev/null 2>&1 ||
     ! grep -F -- 'Libs.private: ${_cpkt_audio_static_private_pc_libs}' \
