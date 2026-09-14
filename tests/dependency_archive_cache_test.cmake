@@ -17,16 +17,12 @@ set(_cpkt_payload_dir "${CPKT_TEST_ROOT}/fixture-payload")
 set(_cpkt_local_root "${CPKT_TEST_ROOT}/local/.cache/deps")
 file(MAKE_DIRECTORY "${_cpkt_payload_dir}")
 file(WRITE "${_cpkt_payload_dir}/fixture-payload.txt" "cpkt dependency archive cache fixture\n")
-function(_cpkt_write_fixture_archive)
-  file(REMOVE "${_cpkt_input}")
-  file(ARCHIVE_CREATE
-    OUTPUT "${_cpkt_input}"
-    PATHS "fixture-payload.txt"
-    FORMAT gnutar
-    COMPRESSION GZip
-    WORKING_DIRECTORY "${_cpkt_payload_dir}")
-endfunction()
-_cpkt_write_fixture_archive()
+file(ARCHIVE_CREATE
+  OUTPUT "${_cpkt_input}"
+  PATHS "fixture-payload.txt"
+  FORMAT gnutar
+  COMPRESSION GZip
+  WORKING_DIRECTORY "${_cpkt_payload_dir}")
 file(SHA256 "${_cpkt_input}" _cpkt_expected_sha256)
 set(_cpkt_url "file://${_cpkt_input}")
 
@@ -50,7 +46,9 @@ endif()
 file(MAKE_DIRECTORY "${_cpkt_local_root}")
 file(COPY_FILE "${_cpkt_archive}" "${_cpkt_local_root}/fixture.tar.gz")
 file(REMOVE_RECURSE "${_cpkt_local_root}")
-file(REMOVE "${_cpkt_input}")
+# Hide the origin for the offline hit, then restore the exact pinned bytes.
+# Regenerating gzip can change its timestamp and therefore its checksum.
+file(RENAME "${_cpkt_input}" "${_cpkt_input}.saved")
 cpkt_acquire_dependency_archive(_cpkt_offline_archive
   NAME "fixture.tar.gz"
   SHA256 "${_cpkt_expected_sha256}"
@@ -60,7 +58,7 @@ if(NOT _cpkt_offline_archive STREQUAL _cpkt_archive)
 endif()
 
 file(WRITE "${_cpkt_archive}" "corrupt archive\n")
-_cpkt_write_fixture_archive()
+file(RENAME "${_cpkt_input}.saved" "${_cpkt_input}")
 cpkt_acquire_dependency_archive(_cpkt_repaired_archive
   NAME "fixture.tar.gz"
   SHA256 "${_cpkt_expected_sha256}"

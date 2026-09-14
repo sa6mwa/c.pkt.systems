@@ -81,4 +81,14 @@ if ! grep -F 'gtar invocation: --sort=name --owner=0 --group=0 --numeric-owner -
   exit 1
 fi
 
-printf '[test] GNU tar lookup passed\n'
+mkdir -p "$source_root/privacy-scan-fixture"
+printf 'generated scratch\n' > "$source_root/privacy-scan-fixture/payload.txt"
+printf 'privacy-scan-fixture/payload.txt\n' >> "$source_root/RELEASE_MANIFEST"
+if bash "$source_root/scripts/package-source.sh" >"$work_root/forbidden.stdout" 2>"$work_root/forbidden.stderr"; then
+  printf 'source packaging accepted privacy scan scratch in its manifest\n' >&2
+  exit 1
+fi
+grep -F 'source archive manifest includes generated/private path: privacy-scan-fixture/payload.txt' \
+  "$work_root/forbidden.stderr" >/dev/null
+
+printf '[test] GNU tar lookup and source scratch exclusion passed\n'

@@ -62,6 +62,8 @@ endfunction()
 
 cpkt_target_executables_runnable(CPKT_CAN_RUN_TARGET_EXECUTABLES)
 
+include(cmake/CpktLocalRuntime.cmake)
+
 set(CPKT_TEST_EXECUTABLE_PREFIX)
 if(CMAKE_CROSSCOMPILING AND CMAKE_CROSSCOMPILING_EMULATOR)
   set(CPKT_TEST_EXECUTABLE_PREFIX ${CMAKE_CROSSCOMPILING_EMULATOR})
@@ -99,6 +101,7 @@ function(cpkt_add_lua_runtime_mock_test target_name source_name)
     src/lua_runtime.c
     tests/lua_mock/lua_mock.c
     ${source_name})
+  cpkt_use_local_runtime(${target_name})
   target_compile_options(${target_name} PRIVATE -std=c99)
   cpkt_add_repo_warning_errors(${target_name})
   target_include_directories(${target_name} PRIVATE
@@ -128,6 +131,49 @@ function(cpkt_configure_afl_target target_name)
   target_compile_options(${target_name} PRIVATE -std=c99)
   cpkt_add_repo_warning_errors(${target_name})
 endfunction()
+
+# Register checks after all targets exist, including facade-only early returns.
+function(cpkt_register_local_runtime_checks)
+  # Environment paths leak into host subprocesses; native tests use ELF paths.
+  get_property(_cpkt_local_tests DIRECTORY PROPERTY TESTS)
+  foreach(_cpkt_test IN LISTS _cpkt_local_tests)
+    get_test_property(${_cpkt_test} ENVIRONMENT _cpkt_test_environment)
+    if(_cpkt_test_environment MATCHES "(^|;)LD_LIBRARY_PATH=")
+      message(FATAL_ERROR "Native test ${_cpkt_test} exports LD_LIBRARY_PATH; use private executable runtime paths")
+    endif()
+  endforeach()
+  if(TARGET cpkt_audio_shared)
+    add_test(NAME local_runtime_rejects_shared_library
+      COMMAND bash "${CMAKE_SOURCE_DIR}/tests/local_executable_runtime_policy_test.sh"
+        "${CPKT_RUNTIME_LOADER}" "$<TARGET_FILE:cpkt_audio_shared>")
+    set_tests_properties(local_runtime_rejects_shared_library PROPERTIES WILL_FAIL TRUE)
+  endif()
+  get_property(_cpkt_local_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+  set(_cpkt_local_executables)
+  foreach(_cpkt_target IN LISTS _cpkt_local_targets)
+    get_target_property(_cpkt_type ${_cpkt_target} TYPE)
+    if(_cpkt_type STREQUAL "EXECUTABLE")
+      list(APPEND _cpkt_local_executables "$<TARGET_FILE:${_cpkt_target}>")
+    endif()
+  endforeach()
+  add_test(NAME local_executable_runtime_policy
+    COMMAND bash "${CMAKE_SOURCE_DIR}/tests/local_executable_runtime_policy_test.sh"
+      "${CPKT_RUNTIME_LOADER}" ${_cpkt_local_executables})
+endfunction()
+
+if(CPKT_BUILD_TESTS AND CPKT_NATIVE_BOOTLIN_RUNTIME)
+  cmake_language(DEFER CALL cpkt_register_local_runtime_checks)
+  add_executable(cpkt_bootlin_runtime_test tests/bootlin_runtime_test.c)
+  target_compile_options(cpkt_bootlin_runtime_test PRIVATE -std=c89)
+  cpkt_add_repo_warning_errors(cpkt_bootlin_runtime_test)
+  cpkt_use_local_runtime(cpkt_bootlin_runtime_test)
+  add_test(NAME bootlin_runtime_process_boundary
+    COMMAND cpkt_bootlin_runtime_test "${CMAKE_SYSROOT}")
+  add_test(NAME local_runtime_rejects_wrong_loader
+    COMMAND bash "${CMAKE_SOURCE_DIR}/tests/local_executable_runtime_policy_test.sh"
+      "${CPKT_RUNTIME_LOADER}.wrong" "$<TARGET_FILE:cpkt_bootlin_runtime_test>")
+  set_tests_properties(local_runtime_rejects_wrong_loader PROPERTIES WILL_FAIL TRUE)
+endif()
 
 if(CPKT_FACADE_ONLY)
   foreach(_cpkt_facade_only_cache_var
@@ -169,22 +215,22 @@ set(CPKT_BUILD_STATIC ON CACHE INTERNAL "c.pkt.systems release bundles always in
 set(CPKT_BUILD_SHARED ON CACHE INTERNAL "c.pkt.systems release bundles always include shared artifacts.")
 
 set(CPKT_BUNDLE_VERSION "${PROJECT_VERSION}" CACHE STRING "Published dependency bundle version." FORCE)
-set(CPKT_OPENSSL_VERSION "3.6.2" CACHE STRING "Pinned OpenSSL release.")
+set(CPKT_OPENSSL_VERSION "3.6.4" CACHE STRING "Pinned OpenSSL release.")
 set(CPKT_OPENSSL_BUILD_CONFIG_REVISION "origin-runpath-1" CACHE INTERNAL
   "OpenSSL Configure contract revision." FORCE)
 set(CPKT_ZLIB_VERSION "1.3.2" CACHE STRING "Pinned zlib release.")
-set(CPKT_CURL_VERSION "8.20.0" CACHE STRING "Pinned curl release.")
-set(CPKT_NGHTTP2_VERSION "1.69.0" CACHE STRING "Pinned nghttp2 release.")
+set(CPKT_CURL_VERSION "8.22.0" CACHE STRING "Pinned curl release.")
+set(CPKT_NGHTTP2_VERSION "1.70.0" CACHE STRING "Pinned nghttp2 release.")
 set(CPKT_LIBSSH2_VERSION "1.11.1" CACHE STRING "Pinned libssh2 release.")
 set(CPKT_CMOCKA_VERSION "2.0.2" CACHE STRING "Pinned cmocka release.")
-set(CPKT_LIBXML2_VERSION "2.15.3" CACHE STRING "Pinned libxml2 release.")
-set(CPKT_LUA_VERSION "5.5.0" CACHE STRING "Pinned Lua release.")
+set(CPKT_LIBXML2_VERSION "2.15.4" CACHE STRING "Pinned libxml2 release.")
+set(CPKT_LUA_VERSION "5.5.1" CACHE STRING "Pinned Lua release.")
 set(CPKT_MINIAUDIO_VERSION "0.11.25" CACHE STRING "Pinned miniaudio release.")
-set(CPKT_WHISPER_VERSION "v1.9.1" CACHE STRING "Pinned whisper.cpp release.")
+set(CPKT_WHISPER_VERSION "v1.9.4" CACHE STRING "Pinned whisper.cpp release.")
 set(CPKT_MQTTC_VERSION "1.1.2" CACHE STRING "Pinned MQTT-C project version.")
-set(CPKT_MQTTC_COMMIT "0f4c34c8cc00b16cfee094745d68b8cdbaecd8e0" CACHE STRING "Pinned MQTT-C commit used by open62541 v1.5.4.")
-set(CPKT_OPEN62541_VERSION "1.5.4" CACHE STRING "Pinned open62541 release.")
-set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-musl-warning-1" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
+set(CPKT_MQTTC_COMMIT "0f4c34c8cc00b16cfee094745d68b8cdbaecd8e0" CACHE STRING "Pinned MQTT-C commit used by open62541 v1.5.8.")
+set(CPKT_OPEN62541_VERSION "1.5.8" CACHE STRING "Pinned open62541 release.")
+set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-2" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SUS_ABI_VERSION "0" CACHE STRING "Susurro/whisper facade ABI major. Do not bump without maintainer approval.")
@@ -540,6 +586,7 @@ endif()
 
 if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
   add_executable(cpktxscribe tools/cpktxscribe.c)
+  cpkt_use_local_runtime(cpktxscribe)
   target_compile_options(cpktxscribe PRIVATE -std=c89)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(cpktxscribe PRIVATE
@@ -648,6 +695,7 @@ if(CPKT_BUILD_TESTS)
   add_executable(cpkt_lua_runtime_c89_example
     examples/lua-runtime-c89/main.c
     examples/lua-runtime-c89/host_module.c)
+  cpkt_use_local_runtime(cpkt_lua_runtime_c89_example)
   cpkt_add_repo_warning_errors(cpkt_lua_runtime_c89_example)
   set_source_files_properties(examples/lua-runtime-c89/main.c PROPERTIES
     COMPILE_OPTIONS "-std=c89")
@@ -659,6 +707,7 @@ if(CPKT_BUILD_TESTS)
   endif()
 
   add_executable(cpkt_opcua_c89_example examples/opcua-c89/main.c)
+  cpkt_use_local_runtime(cpkt_opcua_c89_example)
   target_compile_options(cpkt_opcua_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_opcua_c89_example)
   target_link_libraries(cpkt_opcua_c89_example PRIVATE cpkt_opcua_static)
@@ -667,6 +716,7 @@ if(CPKT_BUILD_TESTS)
   endif()
 
   add_executable(cpkt_audio_sus_c89_example examples/audio-sus-c89/main.c)
+  cpkt_use_local_runtime(cpkt_audio_sus_c89_example)
   target_compile_options(cpkt_audio_sus_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_audio_sus_c89_example)
   target_link_libraries(cpkt_audio_sus_c89_example PRIVATE
@@ -678,6 +728,7 @@ if(CPKT_BUILD_TESTS)
 
   add_executable(cpkt_audio_vox_intro_c89_example
     examples/audio-vox-intro-c89/main.c)
+  cpkt_use_local_runtime(cpkt_audio_vox_intro_c89_example)
   target_compile_options(cpkt_audio_vox_intro_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_audio_vox_intro_c89_example)
   target_link_libraries(cpkt_audio_vox_intro_c89_example PRIVATE
@@ -688,6 +739,7 @@ if(CPKT_BUILD_TESTS)
 
   add_executable(cpkt_audio_live_vox_c89_example
     examples/audio-live-vox-c89/main.c)
+  cpkt_use_local_runtime(cpkt_audio_live_vox_c89_example)
   target_compile_options(cpkt_audio_live_vox_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_audio_live_vox_c89_example)
   target_link_libraries(cpkt_audio_live_vox_c89_example PRIVATE
@@ -699,6 +751,7 @@ if(CPKT_BUILD_TESTS)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_TARGET_LIBC STREQUAL "musl")
     add_executable(cpkt_audio_live_vox_static_c89_example
       examples/audio-live-vox-c89/main.c)
+    cpkt_use_local_runtime(cpkt_audio_live_vox_static_c89_example)
     target_compile_options(cpkt_audio_live_vox_static_c89_example PRIVATE
       -std=c89)
     cpkt_add_repo_warning_errors(cpkt_audio_live_vox_static_c89_example)
@@ -716,6 +769,7 @@ if(CPKT_BUILD_TESTS)
 
   add_executable(cpkt_sus_vox_intro_c89_example
     examples/sus-vox-intro-c89/main.c)
+  cpkt_use_local_runtime(cpkt_sus_vox_intro_c89_example)
   target_compile_options(cpkt_sus_vox_intro_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_sus_vox_intro_c89_example)
   target_link_libraries(cpkt_sus_vox_intro_c89_example PRIVATE
@@ -727,6 +781,7 @@ if(CPKT_BUILD_TESTS)
 
   add_executable(cpkt_sus_live_vox_c89_example
     examples/sus-live-vox-c89/main.c)
+  cpkt_use_local_runtime(cpkt_sus_live_vox_c89_example)
   target_compile_options(cpkt_sus_live_vox_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_sus_live_vox_c89_example)
   target_link_libraries(cpkt_sus_live_vox_c89_example PRIVATE
@@ -739,6 +794,7 @@ if(CPKT_BUILD_TESTS)
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_TARGET_LIBC STREQUAL "musl")
     add_executable(cpkt_sus_live_vox_static_c89_example
       examples/sus-live-vox-c89/main.c)
+    cpkt_use_local_runtime(cpkt_sus_live_vox_static_c89_example)
     target_compile_options(cpkt_sus_live_vox_static_c89_example PRIVATE
       -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sus_live_vox_static_c89_example)
@@ -758,6 +814,7 @@ if(CPKT_BUILD_TESTS)
   endif()
 
   add_executable(cpkt_abi_smoke_shared examples/abi_smoke.c)
+  cpkt_use_local_runtime(cpkt_abi_smoke_shared)
   target_compile_options(cpkt_abi_smoke_shared PRIVATE -std=c99)
   target_link_libraries(cpkt_abi_smoke_shared PRIVATE
     cpkt::curl_shared
@@ -768,6 +825,7 @@ if(CPKT_BUILD_TESTS)
   )
 
   add_executable(cpkt_abi_smoke_static examples/abi_smoke.c)
+  cpkt_use_local_runtime(cpkt_abi_smoke_static)
   target_compile_options(cpkt_abi_smoke_static PRIVATE -std=c99)
   target_link_libraries(cpkt_abi_smoke_static PRIVATE
     cpkt::curl_static
@@ -777,13 +835,16 @@ if(CPKT_BUILD_TESTS)
     cpkt::open62541_static
   )
   add_executable(cpkt_mqttc_smoke_shared examples/mqttc_smoke.c)
+  cpkt_use_local_runtime(cpkt_mqttc_smoke_shared)
   target_compile_options(cpkt_mqttc_smoke_shared PRIVATE -std=c99)
   target_link_libraries(cpkt_mqttc_smoke_shared PRIVATE cpkt::mqttc_shared)
 
   add_executable(cpkt_mqttc_smoke_static examples/mqttc_smoke.c)
+  cpkt_use_local_runtime(cpkt_mqttc_smoke_static)
   target_compile_options(cpkt_mqttc_smoke_static PRIVATE -std=c99)
   target_link_libraries(cpkt_mqttc_smoke_static PRIVATE cpkt::mqttc_static)
   add_executable(cpkt_whisper_smoke_shared examples/whisper_smoke.c)
+  cpkt_use_local_runtime(cpkt_whisper_smoke_shared)
   target_compile_options(cpkt_whisper_smoke_shared PRIVATE -std=c99)
   target_link_libraries(cpkt_whisper_smoke_shared PRIVATE cpkt::whisper_shared)
   add_library(cpkt_static_archive_pic_smoke_core SHARED examples/abi_smoke.c)
@@ -863,6 +924,7 @@ if(CPKT_BUILD_TESTS)
     add_custom_target(package-darwin-smoke-test DEPENDS "${_darwin_smoke_zip}")
   else()
     add_executable(cpkt_abi_test_shared tests/abi_smoke_test.c)
+    cpkt_use_local_runtime(cpkt_abi_test_shared)
     target_link_libraries(cpkt_abi_test_shared PRIVATE
       cpkt::curl_shared
       cpkt::libxml2_shared
@@ -873,6 +935,7 @@ if(CPKT_BUILD_TESTS)
     )
 
     add_executable(cpkt_abi_test_static tests/abi_smoke_test.c)
+    cpkt_use_local_runtime(cpkt_abi_test_static)
     target_link_libraries(cpkt_abi_test_static PRIVATE
       cpkt::curl_static
       cpkt::libxml2_static
@@ -887,6 +950,7 @@ if(CPKT_BUILD_TESTS)
     endif()
 
     add_executable(cpkt_audio_facade_test tests/audio_facade_test.c)
+    cpkt_use_local_runtime(cpkt_audio_facade_test)
     target_compile_options(cpkt_audio_facade_test PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_audio_facade_test)
     target_link_libraries(cpkt_audio_facade_test PRIVATE
@@ -895,17 +959,20 @@ if(CPKT_BUILD_TESTS)
     )
     add_executable(cpkt_audio_process_capture_probe
       tests/audio_process_capture_probe.c)
+    cpkt_use_local_runtime(cpkt_audio_process_capture_probe)
     target_compile_options(cpkt_audio_process_capture_probe PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_audio_process_capture_probe)
     target_link_libraries(cpkt_audio_process_capture_probe PRIVATE
       cpkt_audio_static)
     add_executable(cpkt_audio_process_playback_probe
       tests/audio_process_playback_probe.c)
+    cpkt_use_local_runtime(cpkt_audio_process_playback_probe)
     target_compile_options(cpkt_audio_process_playback_probe PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_audio_process_playback_probe)
     target_link_libraries(cpkt_audio_process_playback_probe PRIVATE
       cpkt_audio_static)
     add_executable(cpkt_sus_facade_test tests/sus_facade_test.c)
+    cpkt_use_local_runtime(cpkt_sus_facade_test)
     target_compile_options(cpkt_sus_facade_test PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_sus_facade_test)
     target_link_libraries(cpkt_sus_facade_test PRIVATE
@@ -914,6 +981,7 @@ if(CPKT_BUILD_TESTS)
     )
     add_executable(cpkt_sus_audio_integration_test
       tests/sus_audio_integration_test.c)
+    cpkt_use_local_runtime(cpkt_sus_audio_integration_test)
     target_compile_options(cpkt_sus_audio_integration_test PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_sus_audio_integration_test)
     target_link_libraries(cpkt_sus_audio_integration_test PRIVATE
@@ -929,6 +997,7 @@ if(CPKT_BUILD_TESTS)
     endif()
 
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
+    cpkt_use_local_runtime(cpkt_lua_runtime_test)
     target_compile_options(cpkt_lua_runtime_test PRIVATE -std=c99)
     cpkt_add_repo_warning_errors(cpkt_lua_runtime_test)
     target_link_libraries(cpkt_lua_runtime_test PRIVATE
@@ -939,6 +1008,7 @@ if(CPKT_BUILD_TESTS)
     add_executable(cpkt_opcua_facade_test
       tests/opcua_facade_test.c
       tests/opcua_c89_boundary_peer.c)
+    cpkt_use_local_runtime(cpkt_opcua_facade_test)
     cpkt_add_repo_warning_errors(cpkt_opcua_facade_test)
     set_source_files_properties(tests/opcua_facade_test.c PROPERTIES
       COMPILE_OPTIONS "-std=c99")
@@ -983,8 +1053,10 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/static_executable_policy_test.sh"
           "$<TARGET_FILE:cpkt_audio_live_vox_static_c89_example>"
           "$<TARGET_FILE:cpkt_sus_live_vox_static_c89_example>")
-      set_tests_properties(sus_live_vox_static_c89_example PROPERTIES
-        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      if(NOT CPKT_NATIVE_BOOTLIN_RUNTIME)
+        set_tests_properties(sus_live_vox_static_c89_example PROPERTIES
+          ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      endif()
     endif()
     add_test(
       NAME sus_live_startup_status
@@ -992,16 +1064,18 @@ if(CPKT_BUILD_TESTS)
         "${CMAKE_SOURCE_DIR}/tests/sus_live_startup_status_test.sh"
         ${CPKT_TEST_EXECUTABLE_PREFIX}
         "$<TARGET_FILE:cpkt_sus_live_vox_c89_example>")
-    set_tests_properties(audio_live_vox_c89_example PROPERTIES
-      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_audio_shared>:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
-    set_tests_properties(audio_sus_c89_example PROPERTIES
-      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
-    set_tests_properties(sus_vox_intro_c89_example PROPERTIES
-      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
-    set_tests_properties(sus_live_vox_c89_example PROPERTIES
-      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
-    set_tests_properties(sus_live_startup_status PROPERTIES
-      ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+    if(NOT CPKT_NATIVE_BOOTLIN_RUNTIME)
+      set_tests_properties(audio_live_vox_c89_example PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_audio_shared>:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      set_tests_properties(audio_sus_c89_example PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      set_tests_properties(sus_vox_intro_c89_example PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      set_tests_properties(sus_live_vox_c89_example PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      set_tests_properties(sus_live_startup_status PROPERTIES
+        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+    endif()
     add_test(
       NAME opcua_word_portability
       COMMAND
@@ -1024,7 +1098,7 @@ if(CPKT_BUILD_TESTS)
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       set_tests_properties(whisper_example_shared PROPERTIES
         ENVIRONMENT "DYLD_LIBRARY_PATH=${CPKT_EXTERNAL_ROOT}/whisper/install/lib")
-    else()
+    elseif(NOT CPKT_NATIVE_BOOTLIN_RUNTIME)
       set_tests_properties(whisper_example_shared PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=${CPKT_EXTERNAL_ROOT}/whisper/install/lib")
     endif()
@@ -1051,8 +1125,10 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/src/audio.c"
           "${CMAKE_SOURCE_DIR}/CMakeLists.txt")
       add_test(NAME sus_facade_unit COMMAND cpkt_sus_facade_test)
-      set_tests_properties(sus_facade_unit PROPERTIES
-        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      if(NOT CPKT_NATIVE_BOOTLIN_RUNTIME)
+        set_tests_properties(sus_facade_unit PROPERTIES
+          ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      endif()
       add_test(
         NAME audio_sus_shared_abi
         COMMAND
@@ -1063,8 +1139,11 @@ if(CPKT_BUILD_TESTS)
           "${CPKT_SUS_ABI_VERSION}")
       add_test(NAME sus_audio_integration COMMAND cpkt_sus_audio_integration_test)
       set_tests_properties(sus_audio_integration PROPERTIES
-        LABELS "integration;opt-in;sus"
-        ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+        LABELS "integration;opt-in;sus")
+      if(NOT CPKT_NATIVE_BOOTLIN_RUNTIME)
+        set_tests_properties(sus_audio_integration PROPERTIES
+          ENVIRONMENT "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:cpkt_sus_shared>:${CPKT_EXTERNAL_ROOT}/whisper/install/lib:${CPKT_EXTERNAL_ROOT}/curl/install/lib:${CPKT_EXTERNAL_ROOT}/openssl/install/lib:${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib:${CPKT_EXTERNAL_ROOT}/libssh2/install/lib:${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+      endif()
       add_test(NAME abi_test_shared COMMAND cpkt_abi_test_shared)
       add_test(NAME abi_test_static COMMAND cpkt_abi_test_static)
       add_test(NAME lua_runtime_unit COMMAND cpkt_lua_runtime_test)
@@ -1203,6 +1282,14 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging"
         TIMEOUT 30)
       add_test(
+        NAME package_failure_diagnostics
+        COMMAND
+          python3 "${CMAKE_SOURCE_DIR}/tests/package_failure_diagnostics_test.py"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(package_failure_diagnostics PROPERTIES
+        LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
         NAME package_verify_toolchain_tools
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/package_verify_toolchain_tools_test.sh"
@@ -1299,6 +1386,7 @@ if(CPKT_ENABLE_FUZZING)
   cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_fuzz fuzz/lua_runtime_fuzz.c)
   cpkt_configure_afl_target(cpkt_lua_runtime_fuzz)
   add_executable(cpkt_opcua_facade_fuzz fuzz/opcua_facade_fuzz.c)
+  cpkt_use_local_runtime(cpkt_opcua_facade_fuzz)
   cpkt_configure_afl_target(cpkt_opcua_facade_fuzz)
   target_include_directories(cpkt_opcua_facade_fuzz PRIVATE "${CMAKE_SOURCE_DIR}/include")
   target_link_libraries(cpkt_opcua_facade_fuzz PRIVATE cpkt_opcua_static)

@@ -25,13 +25,13 @@ typedef enum cpkt_lua_runtime_status {
   CPKT_LUA_RUNTIME_OK = 0,
   /** Invalid argument, missing required callback, or invalid handle. */
   CPKT_LUA_RUNTIME_ERR_ARG = 1,
-  /** Allocation failed in facade-owned or Lua-state-owned memory. */
+  /** Allocation failed, including a runtime-managed byte cap being reached. */
   CPKT_LUA_RUNTIME_ERR_ALLOC = 2,
   /** Lua source failed to load or compile. */
   CPKT_LUA_RUNTIME_ERR_LOAD = 3,
   /** Lua code loaded but failed while running. */
   CPKT_LUA_RUNTIME_ERR_RUNTIME = 4,
-  /** Configured memory or instruction limit was reached. */
+  /** Configured Lua VM instruction limit was reached. */
   CPKT_LUA_RUNTIME_ERR_LIMIT = 5
 } cpkt_lua_runtime_status;
 
@@ -133,12 +133,18 @@ typedef struct cpkt_lua_runtime_allocator_config {
 } cpkt_lua_runtime_allocator_config;
 
 /**
- * Returns the bundled upstream Lua runtime version string.
+ * Returns the static upstream LUA_VERSION string (major/minor, e.g. "Lua 5.5").
+ *
+ * This does not include the patch release; consult the bundle dependency pins
+ * for that version. The caller must not free the returned string.
  */
 const char *cpkt_lua_runtime_lua_version(void);
 
 /**
- * Returns this strict facade API version string.
+ * Returns the static strict facade API revision string (currently "1").
+ *
+ * This is independent of the bundle release and shared-library ABI major.
+ * The caller must not free the returned string.
  */
 const char *cpkt_lua_runtime_facade_version(void);
 
@@ -153,7 +159,8 @@ cpkt_lua_runtime_status cpkt_lua_runtime_new(cpkt_lua_runtime **out);
 /**
  * Creates a runtime with a byte cap for runtime-managed allocations.
  *
- * A max_bytes value of 0 means unrestricted.
+ * A max_bytes value of 0 means unrestricted. A cap-induced allocation failure
+ * returns CPKT_LUA_RUNTIME_ERR_ALLOC, including during construction.
  */
 cpkt_lua_runtime_status cpkt_lua_runtime_new_with_limit(cpkt_lua_runtime **out,
                                                         size_t max_bytes);
@@ -218,8 +225,12 @@ cpkt_lua_runtime_status
 cpkt_lua_runtime_set_traceback(cpkt_lua_runtime *runtime, int enabled);
 
 /**
- * Fails currently executing scripts after approximately the requested number of
- * Lua VM instruction steps.
+ * Installs a count hook that interrupts Lua execution after approximately the
+ * requested number of VM instruction steps with CPKT_LUA_RUNTIME_ERR_LIMIT.
+ *
+ * instruction_count must be positive; use
+ * cpkt_lua_runtime_clear_instruction_limit() to disable it. This is not a
+ * wall-clock timeout and cannot interrupt a blocking C call.
  *
  * The limit is also installed on coroutines created through the facade-opened
  * coroutine library.
@@ -322,7 +333,13 @@ cpkt_lua_runtime_status cpkt_lua_runtime_require(cpkt_lua_runtime *runtime,
                                                  const char *module_name);
 
 /**
- * Runs a script file and exposes argv as global `arg`.
+ * Runs a script file synchronously and replaces the Lua global `arg` table.
+ *
+ * arg[0] is path; arg[1] through arg[argc] copy argv[0] through argv[argc-1].
+ * argc must be non-negative; argv may be NULL only when argc is zero. NULL
+ * entries become empty strings. CPKT_LUA_RUNTIME_OPEN_LIBS opens the standard
+ * libraries before execution. Script return values are discarded; globals and
+ * loaded modules remain in this runtime for subsequent calls.
  */
 cpkt_lua_runtime_status cpkt_lua_runtime_run_file(cpkt_lua_runtime *runtime,
                                                   const char *path, int argc,
@@ -330,7 +347,12 @@ cpkt_lua_runtime_status cpkt_lua_runtime_run_file(cpkt_lua_runtime *runtime,
                                                   int flags);
 
 /**
- * Runs a source buffer and exposes argv as global `arg`.
+ * Runs source_size bytes synchronously; source need not be NUL-terminated.
+ *
+ * source must be non-NULL even for an empty chunk and is borrowed for this
+ * call. arg[0] is chunk_name, or an empty string when NULL. Remaining
+ * arguments, flags, discarded return values, and persistent state follow
+ * cpkt_lua_runtime_run_file().
  */
 cpkt_lua_runtime_status cpkt_lua_runtime_run_buffer(
     cpkt_lua_runtime *runtime, const unsigned char *source, size_t source_size,

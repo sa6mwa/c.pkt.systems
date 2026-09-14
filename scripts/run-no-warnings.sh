@@ -19,7 +19,7 @@ if ! "$@" >"$log_file" 2>&1; then
   exit 1
 fi
 
-if grep -E '(^|[[:space:]:])warning:' "$log_file" >/dev/null 2>&1; then
+if grep -Ei '(^|[[:space:]:])warning:|^CMake (Deprecation )?Warning([[:space:]:]|$)' "$log_file" >/dev/null 2>&1; then
   printf '%s emitted warnings\n' "$description" >&2
   cat "$log_file" >&2
   exit 1

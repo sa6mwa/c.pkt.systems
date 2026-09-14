@@ -1,7 +1,5 @@
 # Lua Facades
 
-## Lua Facades
-
 Enable Lua facade support when the project ships Lua bindings, a Lua C module, Lua runner behavior, or Lua release artifacts.
 
 Repository contract:
@@ -17,14 +15,14 @@ scripts/stage_lua_rock_sources.sh
 Build contract:
 
 - `make lua-rock` renders a development rockspec and installs the Lua module into a repo-local tree under `build/luarocks`.
-- `make lua-test` runs Lua smoke tests against the repo-local installed rock and the supported host Lua runtime.
-- `make lua-env` prints shell exports for running examples against the repo-local rock and installed C SDK prefix.
-- Lua 5.5.0 is the preferred and only supported Lua version for pkt.systems projects. Do not support alternate Lua releases or LuaJIT runtimes.
-- It is acceptable to use host-provided Lua 5.5.0 executables and development libraries to run Lua tooling, tests, and Lua-module builds.
-- It is acceptable to use host-provided LuaRocks for Lua 5.5.0 tooling and source-module builds.
-- Downstream C bindings and modules may use host Lua 5.5.0 headers and libraries during normal development, builds, and tests.
-- When shipping a C or C++ binary that embeds Lua, prefer the prebuilt Lua 5.5.0 libraries from the c.pkt.systems bundle. The upstream Lua 5.5.0 source archive at `https://lua.org/ftp/lua-5.5.0.tar.gz` is the direct-source alternative.
-- Missing non-Lua-5.5.0 runtimes are not failures because they are outside the support contract.
+- `make lua-test` runs Lua smoke tests against the repo-local installed rock and a supported Lua interpreter using the selected collection runtime when loading Bootlin-built modules.
+- `make lua-env` prints Lua module search paths for the repo-local rock and installed C SDK prefix. It must not export native dependency `LD_LIBRARY_PATH`; use the local interpreter built with the selected runtime for examples.
+- Lua 5.5.1 is the preferred and only supported Lua version for pkt.systems projects. Do not support alternate Lua releases or LuaJIT runtimes.
+- Host-provided Lua executables may run host-only tooling. Tests loading Bootlin-built C modules must use a local interpreter/embedding executable with the selected collection runtime; see [toolchains.md](toolchains.md#local-execution-with-the-selected-libc).
+- It is acceptable to use host-provided LuaRocks for Lua 5.5.1 tooling and source-module builds.
+- Bootlin-built C bindings and modules use the selected target Lua headers and libraries, not host development libraries.
+- When shipping a C or C++ binary that embeds Lua, prefer the prebuilt Lua 5.5.1 libraries from the c.pkt.systems bundle. The upstream Lua 5.5.1 source archive at `https://lua.org/ftp/lua-5.5.1.tar.gz` is the direct-source alternative.
+- Missing non-Lua-5.5.1 runtimes are not failures because they are outside the support contract.
 - `scripts/build_lua_rock.sh` accepts the LuaRocks build arguments: compiler, flags, shared-library flag, object extension, library extension, and Lua include directory.
 - If the Lua module links an installed C SDK, discover it through pkg-config first, then a project-prefixed prefix variable, and fail with an actionable message if neither is available.
 - If optional C dependencies can be enabled, probe them at build time and provide force/disable environment variables.

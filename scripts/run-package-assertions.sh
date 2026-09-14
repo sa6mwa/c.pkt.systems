@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-workspace_parent="$repo_root/.cache/package-assertions"
+workspace_parent="$repo_root/build/package-assertions"
 
 mkdir -p "$workspace_parent"
 workspace=$(mktemp -d "$workspace_parent/assertion.XXXXXXXX")

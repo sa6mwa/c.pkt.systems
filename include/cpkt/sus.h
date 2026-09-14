@@ -436,9 +436,10 @@ struct cpkt_sus_transcriber {
   /**
    * Copies the latest committed streaming transcript from this transcriber.
    *
-   * The text is produced by the most recent streaming decoder transcription
-   * call. It is empty before any streaming call that produced text. The caller
-   * must release *text_out with cpkt_sus_string_free.
+   * The text accumulates committed updates from decoder transcription or
+   * individual transcribe_audio_vox_segment calls. It is empty before any
+   * segmented call that produced text. The caller must release *text_out with
+   * cpkt_sus_string_free.
    */
   cpkt_sus_result (*revised_text)(cpkt_sus_transcriber *self, char **text_out);
   /** Releases the transcriber. The loaded model remains owned by its cpkt_sus

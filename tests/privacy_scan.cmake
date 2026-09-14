@@ -145,7 +145,11 @@ function(cpkt_assert_archive_has_no_private_traces archive_path source_label)
 
     string(RANDOM LENGTH 12 ALPHABET 0123456789abcdef _extract_suffix)
     get_filename_component(_archive_name "${archive_path}" NAME_WE)
-    set(_extract_root "${CMAKE_CURRENT_BINARY_DIR}/privacy-scan-${_archive_name}-${_extract_suffix}")
+    # In script mode CMAKE_CURRENT_BINARY_DIR is the caller's working directory.
+    # Anchor scratch to this source tree's build/, independent of that caller.
+    get_filename_component(_scan_build_root
+        "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../build" ABSOLUTE)
+    set(_extract_root "${_scan_build_root}/privacy-scan-${_archive_name}-${_extract_suffix}")
     file(REMOVE_RECURSE "${_extract_root}")
     file(MAKE_DIRECTORY "${_extract_root}")
     execute_process(

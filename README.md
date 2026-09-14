@@ -61,6 +61,20 @@ and install trees remain under this repository's `.cache/` and are disposable;
 `make clean` and `make release` never remove the shared archive cache. Set
 `-DCPKT_DEPENDENCY_CACHE=/path/to/deps` to use a different shared cache.
 
+The Linux compiler collections are pinned to Bootlin stable `2026.08-1`
+(GCC 15.3.0, binutils 2.45.1, Linux headers 5.10.269, glibc 2.44 or musl 1.2.6).
+The repository resolver and bundled lifecycle skill use the same archive hashes.
+AFL++ is built for the selected GCC collection; its plugin cache is not reused
+across collection changes.
+
+The current glibc SDKs require **glibc 2.43 or newer** for the complete shared
+library dependency set on x86_64, aarch64, and armhf. The published 0.9.0 SDKs
+required at most glibc 2.38. This is a deployment compatibility change despite
+unchanged facade ABI majors and `libc.so.6`. The SDK does not bundle glibc.
+Linking SDK static archives into an otherwise dynamically linked executable does
+not remove its libc requirement. Fully static musl builds avoid a dynamic glibc
+requirement; their OS and runtime behavior still needs application verification.
+
 ## Release Workflow
 
 ```sh
@@ -71,14 +85,57 @@ make release
 `make prerelease` runs the complete release proof graph without first deleting
 generated state: formatting, deterministic debug and clangd checks, native
 Valgrind and AFL++ smoke checks, then the release matrix. It therefore produces
-and verifies the same package set as the final gate. `make release` removes
-generated state first and then invokes that exact same proof graph; it is the
-final local release action.
+and verifies the same package set as the final gate. `make release` first runs
+the release-version contract check, then removes repository-local generated
+state and invokes that same proof graph. It builds and verifies local artifacts;
+it does not publish a release, push commits, or create a release tag.
+
+### Release diagnostics
+
+The package matrix reports each target and phase, runs CTest verbosely to retain
+individual test-case progress, and reports a failed command's exit status or a
+signal received by the package script. Failures stop the matrix immediately.
+An exit status such as 143 can mean SIGTERM or an explicit `exit(143)`; it cannot
+identify who sent a signal. Shell traps likewise cannot recover sender identity.
+
+For an unexplained interruption on Linux, capture signals **before** reproducing
+it with the host's `strace`:
+
+```sh
+strace --seccomp-bpf -f -tt -Y -e trace=kill,tgkill,tkill \
+  -e signal=SIGTERM,SIGINT,SIGHUP,SIGQUIT \
+  make release
+```
+
+The trace records signal recipients, sender PIDs and process names when available.
+Correlate these with the package phase and PID in the terminal output. Intentional
+test-child cleanup also appears in the trace; a SIGTERM entry alone is not a
+release failure. Retain the terminal output and do not label an unexplained interruption
+as a fixed flake merely because a subsequent run passes.
+
+Scanners and verification helpers keep repository-local scratch under the
+gitignored `build/`, never beside source files or at the repository root. Focused
+checks may save logs there too. Stream a full clean release to the terminal:
+`make release` deletes `build/`, so a log opened there before the clean would be
+removed during the run.
+
+### Versions and artifacts
+
+An untagged Git checkout produces version `0.0.0`, suitable for a local rehearsal.
+A lightweight `vX.Y.Z` tag pointing at HEAD supplies the release version;
+annotated tags do not qualify. Outside this repository's Git worktree, source
+archives use their injected `VERSION` file. Use `make print-release-version` to
+check the selected version before packaging.
+
+`make build` and `make test` cover the six Linux targets. `make package`,
+`make release-matrix`, and the full release gates also require Darwin.
 
 The release matrix builds each dependency tree, runs the ABI/link smoke tests
 where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
 writes `dist/c.pkt.systems-<version>.tar.gz` for source builds, writes
 `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
+It also packages the Darwin
+`dist/c.pkt.systems-<version>-arm64-apple-darwin-smoke-test.zip`.
 The c.pkt.systems bundle release requires all listed Linux targets and
 `arm64-apple-darwin`; a missing osxcross SDK is a release failure, never a skip.
 Package verification also extracts each binary tarball and builds downstream
@@ -414,8 +471,7 @@ CMake and pkg-config examples. The installed strict Lua facade consumer is
 compiled as C89, links through both CMake and pkg-config metadata, runs the
 example program, and exercises the custom allocator API from the extracted SDK.
 
-Facade hardening is available through debug-only, facade-only presets and Make
-targets:
+Native debug and hardening checks are available through these Make targets:
 
 ```sh
 make debug
@@ -425,8 +481,13 @@ make fuzz-smoke
 make fuzz
 ```
 
-`valgrind` is the required native x86_64 Linux Memcheck gate for the repo-owned facade test
-surface. AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
+`make test-all` combines `debug`, `clangd-surface`, `valgrind`, and `fuzz-smoke`.
+The debug suite includes the real Lua runtime tests, mock-backed Lua tests, and
+C89 embedding examples; there is no separate Lua-test command.
+
+`valgrind` is the required native x86_64 Linux Memcheck gate for
+`cpkt_lua_runtime_mock_test`. It does not cover every facade under Memcheck.
+AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
 plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
 runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
 dependency install tree for linkage. These hardening builds live under
@@ -436,7 +497,19 @@ artifacts. Valgrind and AFL++ never run via a cross target, emulator, or QEMU.
 
 `make fuzz-long` is an opt-in extended native fuzz run and requires
 `CPKT_FUZZ_LONG_ENABLE=1`. External-provider checks are likewise separate from
-the deterministic release gate: `CPKT_LIVE_CHECKS=1 make prerelease-live`.
+the deterministic release gate. To run both speech e2e workflows using the
+native debug preset:
+
+```sh
+CPKT_LIVE_CHECKS=1 make E2E_SUS_PRESET=debug prerelease-live
+```
+
+Dependency updates must follow the [bundle ABI policy](AGENTS.md), including
+embedded libraries and downstream consumers. OpenSSL remains on version 3.
+The [September 2026 audit](docs/dependency-audit-2026-09.md) records selected
+versions, security context, verification results, and supported compatibility
+scope. Direct whisper.cpp/ggml API/ABI compatibility for external consumers is
+out of scope; supported downstream speech use goes through `cpkt_sus`.
 
 `clang-format` and `clangd` are required host development tools and must be
 installed with the host OS package manager. `make clangd-surface` configures
@@ -447,3 +520,20 @@ present in `compile_commands.json`. The same target also runs
 `clangd --check` against the examples using that compile database. Cross-target
 CTest and package configurations do not invoke host `clangd`; their compiler,
 target-runner, and package verification gates remain authoritative.
+
+### Running with the selected Bootlin runtime
+
+Native Linux development executables select the pinned Bootlin loader and libc
+directly: tests, helpers, cpktxscribe, and all in-tree examples. This applies in
+both debug and release builds; these executables are not shipped in the SDK.
+CTest, e2e scripts, and named example targets execute them normally, for example:
+
+```sh
+./build/debug/tools/cpktxscribe --help
+```
+
+Shipped libraries and installed example sources keep normal runtime metadata.
+Temporary SDK verification consumers follow the same link-time policy and run
+directly, including CMake, pkg-config, and installed-example verification builds.
+No runtime launcher is needed. Host subprocesses retain their own runtime.
+Collection-runtime checks do not establish older-host deployment support.

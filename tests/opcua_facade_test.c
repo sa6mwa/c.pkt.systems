@@ -3571,6 +3571,18 @@ static void cpkt_facade_callback_access_control(void **state) {
                    CPKT_OPCUA_ERR_UPSTREAM);
   cpkt_opcua_client_free(rejected_client);
 
+  assert_int_equal(cpkt_opcua_client_new(&rejected_client), CPKT_OPCUA_OK);
+  assert_int_equal(
+      cpkt_opcua_client_connect(rejected_client, endpoint, &status),
+      CPKT_OPCUA_ERR_UPSTREAM);
+  cpkt_opcua_client_free(rejected_client);
+
+  assert_int_equal(cpkt_opcua_client_new(&rejected_client), CPKT_OPCUA_OK);
+  assert_int_equal(cpkt_opcua_client_connect_username(rejected_client, endpoint,
+                                                      "", "", &status),
+                   CPKT_OPCUA_ERR_UPSTREAM);
+  cpkt_opcua_client_free(rejected_client);
+
   thread.running = 0;
   assert_int_equal(pthread_join(thread_id, NULL), 0);
   assert_int_equal(cpkt_opcua_server_shutdown(server, &status), CPKT_OPCUA_OK);

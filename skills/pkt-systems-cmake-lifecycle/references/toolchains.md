@@ -15,12 +15,12 @@ This lifecycle owns C and C++ compiler resolution for pkt.systems C/CMake projec
 
 | Target | Pinned Bootlin collection | Compiler prefix | Sysroot |
 | --- | --- | --- | --- |
-| `x86_64-linux-gnu` | `x86-64--glibc--stable-2025.08-1` | `x86_64-linux` | `x86_64-buildroot-linux-gnu/sysroot` |
-| `x86_64-linux-musl` | `x86-64--musl--stable-2025.08-1` | `x86_64-linux` | `x86_64-buildroot-linux-musl/sysroot` |
-| `aarch64-linux-gnu` | `aarch64--glibc--stable-2025.08-1` | `aarch64-linux` | `aarch64-buildroot-linux-gnu/sysroot` |
-| `aarch64-linux-musl` | `aarch64--musl--stable-2025.08-1` | `aarch64-linux` | `aarch64-buildroot-linux-musl/sysroot` |
-| `armhf-linux-gnu` | `armv7-eabihf--glibc--stable-2025.08-1` | `arm-linux` | `arm-buildroot-linux-gnueabihf/sysroot` |
-| `armhf-linux-musl` | `armv7-eabihf--musl--stable-2025.08-1` | `arm-linux` | `arm-buildroot-linux-musleabihf/sysroot` |
+| `x86_64-linux-gnu` | `x86-64--glibc--stable-2026.08-1` | `x86_64-linux` | `x86_64-buildroot-linux-gnu/sysroot` |
+| `x86_64-linux-musl` | `x86-64--musl--stable-2026.08-1` | `x86_64-linux` | `x86_64-buildroot-linux-musl/sysroot` |
+| `aarch64-linux-gnu` | `aarch64--glibc--stable-2026.08-1` | `aarch64-linux` | `aarch64-buildroot-linux-gnu/sysroot` |
+| `aarch64-linux-musl` | `aarch64--musl--stable-2026.08-1` | `aarch64-linux` | `aarch64-buildroot-linux-musl/sysroot` |
+| `armhf-linux-gnu` | `armv7-eabihf--glibc--stable-2026.08-1` | `arm-linux` | `arm-buildroot-linux-gnueabihf/sysroot` |
+| `armhf-linux-musl` | `armv7-eabihf--musl--stable-2026.08-1` | `arm-linux` | `arm-buildroot-linux-musleabihf/sysroot` |
 
 The resolver pins each tarball SHA-256. Change a Bootlin pin only by updating its archive name, URL architecture, checksum, compiler prefix, and sysroot as one atomic lifecycle change.
 
@@ -166,3 +166,67 @@ skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 ```
 
 For a changed pin, also run `ensure` and a configure/build using that target. For AFL++ changes, run `cpkt-aflpp.sh ensure`, compile a small target through the wrapper, and prove `afl-showmap` observes distinct execution paths.
+
+## Local execution with the selected libc
+
+The complete Bootlin collection owns the runtime used to verify target code,
+including on a native host. Classify executables by whether they are shipped,
+not by build type: release-mode tests and in-tree examples are still local
+verification artifacts.
+
+Use one CMake helper to configure the collection ELF interpreter and private
+runtime search paths on every non-shipped development executable: the local
+CLI, unit/integration tests, compiled helpers, examples, benchmarks, fuzzers,
+and instrumentation builds. Apply this to existing targets; do not create a
+second test CLI. Native CTest, e2e scripts, and Make example targets execute
+these binaries directly. Their project-built children select the same runtime
+from their own ELF metadata. Fully static executables need no dynamic loader.
+Foreign targets retain QEMU and the matching sysroot; do not apply a native
+loader path to foreign executables. Never apply ELF flags to Darwin targets.
+
+Keep these settings private to executable targets. Account for indirect
+runtime dependencies: ELF DT_RUNPATH alone does not propagate to grandchildren;
+local-executable DT_RPATH can provide this coverage. Include required compiler,
+C++, and instrumentation runtimes where applicable. Check actual resolution;
+a loader path or RPATH alone is not evidence of complete host-library exclusion.
+
+Shipped libraries, executable artifacts, installed example sources, and exported
+CMake/pkg-config metadata must not acquire collection-cache paths. An install
+rule alone does not settle whether a target is shipped: prove that packaging
+excludes local executables. Keep shared/static release behavior as defined by
+the project and test actual release artifacts separately from local builds.
+
+Temporary SDK verification consumers are also non-shipped executables. Configure
+their CMake targets with the same helper; non-CMake/pkg-config verification links
+use that helper's compiler/linker settings as well. Apply these settings only to
+the generated verification project or its local build flags, never to installed
+SDK metadata or example sources. Execute the resulting binaries directly.
+Do not retain a generic runtime launcher, wrapper-specific tests, or a parallel
+execution mode. Direct ELF interpreter selection preserves normal child exec
+and `/proc/self/exe` behavior.
+
+Do not export collection or project dependency library paths into native test
+or example environments: even a bundled libcurl can contaminate a host child
+process. Use private executable search paths instead. Host shells, Python, Git, ripgrep,
+CMake, and Valgrind remain host programs. Do not intercept arbitrary execs or
+introduce a process broker, container, or namespace solely to select libc.
+Native AFL++ and Valgrind must be verified against the chosen target runtime.
+Host tools do not establish the correctness of target-library runtime selection.
+
+For Lua modules, the process loading the module owns the runtime. Prefer a local
+embedding/interpreter executable built with this same policy. Changing module
+linking cannot select its process's libc; host-only Lua tooling can remain host
+programs. Installed-SDK consumers must compile with the selected collection and
+run with its runtime without exporting local verification flags through the SDK.
+
+Verify actual loaded runtime objects, direct and child execution, self-executable
+behavior where used, independent host commands, Lua behavior, shared/static
+consumers, and final artifact metadata. Add negative checks for missing or
+mismatched runtimes and accidental host resolution. Record coverage limitations;
+this is not hermetic execution or proof of older deployment-libc compatibility.
+Ensure runtime checks also cover reduced/facade-only configurations; early
+configuration returns must not bypass the checks. Execute runnable SDK consumers
+as well as building and inspecting them, including direct-package metadata paths.
+Run supported development/instrumentation configurations and the actual release
+artifact checks. Measure workload changes caused by libc updates rather than
+assuming unchanged performance.

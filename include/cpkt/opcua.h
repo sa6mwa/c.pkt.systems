@@ -390,7 +390,9 @@ typedef cpkt_opcua_status (*cpkt_opcua_client_native_config_fn)(
 typedef cpkt_opcua_status (*cpkt_opcua_server_native_config_fn)(
     void *native_server_config, void *user);
 /** Return zero/GOOD to accept a username/password session, or an upstream
- * status to reject it. */
+ * status to reject it. Username and password are borrowed for this callback;
+ * use their explicit lengths, not NUL termination. Anonymous sessions are
+ * governed by allow_anonymous and do not invoke this callback. */
 typedef cpkt_opcua_status (*cpkt_opcua_login_fn)(const char *username,
                                                  size_t username_length,
                                                  const unsigned char *password,
@@ -756,7 +758,12 @@ cpkt_opcua_result cpkt_opcua_server_set_default_security(
 cpkt_opcua_result cpkt_opcua_server_set_access_control(
     cpkt_opcua_server *server, int allow_anonymous, const char *username,
     const char *password, cpkt_opcua_status *status_out);
-/** Configure username/password login through a C89 callback before startup. */
+/** Configure username/password login through a non-NULL C89 callback before
+ * startup. Non-zero allow_anonymous permits anonymous sessions independently
+ * of fn. Tokens with both username and password empty are rejected before fn
+ * is invoked.
+ * The user pointer is borrowed and must remain valid while callbacks can run.
+ */
 cpkt_opcua_result cpkt_opcua_server_set_access_control_callback(
     cpkt_opcua_server *server, int allow_anonymous, cpkt_opcua_login_fn fn,
     void *user, cpkt_opcua_status *status_out);

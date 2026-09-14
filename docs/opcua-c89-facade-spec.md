@@ -8,7 +8,7 @@ while delegating OPC UA semantics to open62541.
 
 ## Goals
 
-- Ship open62541 v1.5.4 as part of the `c.pkt.systems` SDK, with license,
+- Ship open62541 v1.5.8 as part of the `c.pkt.systems` SDK, with license,
   dependency provenance, docs, examples, static libraries, shared libraries, and
   source distribution artifacts covered by package verification.
 - Provide a C89-compatible `include/cpkt/opcua.h` facade that lets C89 consumers
@@ -56,8 +56,8 @@ while delegating OPC UA semantics to open62541.
   the existing vendor patch flow with SPDX headers where applicable.
 - MPL-2.0 license text and upstream notices must be included in binary and
   source artifacts. Source archives must include the source needed to rebuild
-  from the tarball and must use the repository `VERSION` fallback when `.git` is
-  absent.
+  from the tarball and must use the injected archive `VERSION` fallback when
+  the tree is not itself a Git worktree.
 
 ## Current Facade Surface
 
@@ -225,7 +225,10 @@ Tier 1 is the released first-class C89 OPC UA surface.
   - certificate/private-key/trust-list setup from explicit buffers;
   - certificate/private-key/trust-list setup from explicit paths through native
     config callbacks so the caller owns blocking filesystem behavior;
-  - username/password and anonymous policy helpers;
+  - username/password and anonymous policy helpers: `allow_anonymous` controls
+    anonymous access independently of the credential callback; the callback
+    handles username/password sessions only, and tokens with both fields empty
+    are rejected before it is invoked;
   - native config callback before startup.
 - Event helpers:
   - create event, set event field, trigger event;

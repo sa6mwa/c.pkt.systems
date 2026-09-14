@@ -23,6 +23,32 @@ cmake_toolchain_file=
 cmake_toolchain_args=()
 target_command_env=()
 
+# These generated consumers are local verification executables, not SDK payload.
+cpkt_configure_consumer_runtime() {
+  local source_dir=$1
+  cat >> "$source_dir/CMakeLists.txt" <<EOF
+
+set(CPKT_LOCAL_RUNTIME_EXTRA_PATHS "$prefix/lib" "${runtime_library_path//:/;}")
+include("$repo_root/cmake/CpktLocalRuntime.cmake")
+function(cpkt_consumer_runtime directory)
+  get_property(targets DIRECTORY "\${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+  foreach(target IN LISTS targets)
+    get_target_property(kind \${target} TYPE)
+    if(kind STREQUAL "EXECUTABLE")
+      cpkt_use_local_runtime(\${target})
+    endif()
+  endforeach()
+  get_property(children DIRECTORY "\${directory}" PROPERTY SUBDIRECTORIES)
+  foreach(child IN LISTS children)
+    cpkt_consumer_runtime("\${child}")
+  endforeach()
+endfunction()
+cpkt_consumer_runtime("\${CMAKE_CURRENT_SOURCE_DIR}")
+string(REPLACE ";" "\n" local_runtime_flags "\${CPKT_LOCAL_RUNTIME_LINK_OPTIONS}")
+file(WRITE "\${CMAKE_BINARY_DIR}/local-runtime-flags.txt" "\${local_runtime_flags}")
+EOF
+}
+
 cpkt_infer_cxx_from_cc() {
   case "$1" in
     *gcc) printf '%sg++\n' "${1%gcc}" ;;
@@ -214,7 +240,7 @@ cpkt_run_checked() {
     cat "$log_file" >&2
     exit 1
   fi
-  if grep -E '(^|[[:space:]:])warning:' "$log_file" >/dev/null 2>&1; then
+  if grep -Ei '(^|[[:space:]:])warning:|^CMake (Deprecation )?Warning([[:space:]:]|$)' "$log_file" >/dev/null 2>&1; then
     printf '%s emitted warnings\n' "$description" >&2
     cat "$log_file" >&2
     exit 1
@@ -1249,18 +1275,30 @@ cmake_args=(
   -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
   -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
-  -DCpktSus_DIR="$prefix/lib/cmake/CpktSus" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
+if [ "$target_id" != arm64-apple-darwin ]; then
+  cmake_args+=("-DCpktSus_DIR=$prefix/lib/cmake/CpktSus")
+fi
 if [ -n "$cmake_toolchain_file" ]; then
   cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=$cmake_toolchain_file")
   cmake_args+=("${cmake_toolchain_args[@]}")
   cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
+cpkt_configure_consumer_runtime "$cmake_source_dir"
 cpkt_run_checked "cmake aggregate consumer configure" cmake "${cmake_args[@]}"
 cpkt_cmake_build_checked "cmake aggregate consumer build" "$cmake_build_dir"
+# Reuse exactly the helper's linker options for non-CMake consumers as well.
+example_link_toolchain_flags=$pkg_config_link_toolchain_flags
+mapfile -t local_runtime_options < "$cmake_build_dir/local-runtime-flags.txt"
+if [ "${#local_runtime_options[@]}" -gt 0 ]; then
+  printf -v local_runtime_flags ' %q' "${local_runtime_options[@]}"
+  pkg_config_link_toolchain_flags+="$local_runtime_flags"
+  printf -v example_runtime_options ' %s' "${local_runtime_options[@]}"
+  example_link_toolchain_flags+="$example_runtime_options"
+fi
 
 assert_words_contain() {
   words=$1
@@ -1413,6 +1451,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   direct_cmake_args+=("${cmake_toolchain_args[@]}")
   direct_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
+cpkt_configure_consumer_runtime "$direct_source_dir"
 cpkt_run_checked "cmake direct package consumers configure" cmake "${direct_cmake_args[@]}"
 cpkt_cmake_build_checked "cmake direct package consumers build" "$direct_build_dir"
 
@@ -1492,6 +1531,7 @@ if [ -n "$cmake_toolchain_file" ]; then
   example_cmake_args+=("${cmake_toolchain_args[@]}")
   example_cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
+cpkt_configure_consumer_runtime "$example_cmake_source_dir"
 cpkt_run_checked "installed examples cmake configure" cmake "${example_cmake_args[@]}"
 cpkt_cmake_build_checked "installed examples cmake build" "$example_cmake_build_dir"
 
@@ -1821,7 +1861,7 @@ example_pkg_config_output="$work_root/bin/cpkt_example_pkg_config_consumer"
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_static_flag $pkg_config_compile_toolchain_flags $common_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "example pkg-config consumer build" \
     "$installed_examples_dir/pkg-config-consumer/build.sh" "$example_pkg_config_output"
 
@@ -1845,7 +1885,7 @@ lua_runtime_example_pkg_config_output="$work_root/bin/cpkt_lua_runtime_c89_pkg_e
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "lua runtime pkg-config example build" \
     "$installed_examples_dir/lua-runtime-c89/build-pkg-config.sh" "$lua_runtime_example_pkg_config_output"
 
@@ -1853,7 +1893,7 @@ opcua_example_pkg_config_output="$work_root/bin/cpkt_opcua_c89_pkg_example"
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "opcua pkg-config example build" \
     "$installed_examples_dir/opcua-c89/build-pkg-config.sh" "$opcua_example_pkg_config_output"
 
@@ -1861,7 +1901,7 @@ audio_sus_example_pkg_config_output="$work_root/bin/cpkt_audio_sus_c89_pkg_examp
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "audio sus pkg-config example build" \
     "$installed_examples_dir/audio-sus-c89/build-pkg-config.sh" "$audio_sus_example_pkg_config_output"
 
@@ -1869,7 +1909,7 @@ audio_vox_example_pkg_config_output="$work_root/bin/cpkt_audio_vox_intro_c89_pkg
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "audio vox intro pkg-config example build" \
     "$installed_examples_dir/audio-vox-intro-c89/build-pkg-config.sh" "$audio_vox_example_pkg_config_output"
 
@@ -1877,7 +1917,7 @@ audio_live_vox_example_pkg_config_output="$work_root/bin/cpkt_audio_live_vox_c89
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "audio live vox pkg-config example build" \
     "$installed_examples_dir/audio-live-vox-c89/build-pkg-config.sh" "$audio_live_vox_example_pkg_config_output"
 
@@ -1885,7 +1925,7 @@ sus_vox_example_pkg_config_output="$work_root/bin/cpkt_sus_vox_intro_c89_pkg_exa
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "sus vox intro pkg-config example build" \
     "$installed_examples_dir/sus-vox-intro-c89/build-pkg-config.sh" "$sus_vox_example_pkg_config_output"
 
@@ -1893,7 +1933,7 @@ sus_live_vox_example_pkg_config_output="$work_root/bin/cpkt_sus_live_vox_c89_pkg
 CPKT_SDK_PREFIX="$prefix" \
 CC="$cc" \
 CPKT_EXAMPLE_CFLAGS="$pkg_config_compile_toolchain_flags" \
-CPKT_EXAMPLE_LDFLAGS="$pkg_config_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
+CPKT_EXAMPLE_LDFLAGS="$example_link_toolchain_flags $pkg_config_static_flag $example_runtime_ldflags $static_extra_libs" \
   cpkt_run_checked "sus live vox pkg-config example build" \
     "$installed_examples_dir/sus-live-vox-c89/build-pkg-config.sh" "$sus_live_vox_example_pkg_config_output"
 
@@ -1910,12 +1950,26 @@ cpkt_pkg_config_smoke() {
 
 cpkt_pkg_config_smoke openssl cpkt_ssl.c
 
+# Verify every temporary native consumer before executing it directly.
+if [ "${#local_runtime_options[@]}" -gt 0 ]; then
+  local_consumers=()
+  for consumer in "$cmake_build_dir"/cpkt_* "$direct_build_dir"/cpkt_* \
+      "$example_cmake_build_dir"/bin/* "$work_root"/bin/*; do
+    if [ -f "$consumer" ] && [ -x "$consumer" ]; then
+      local_consumers+=("$consumer")
+    fi
+  done
+  consumer_loader=${local_runtime_options[0]#-Wl,--dynamic-linker,}
+  bash "$repo_root/tests/local_executable_runtime_policy_test.sh" \
+    "$consumer_loader" "${local_consumers[@]}"
+fi
+
 if [ "$run_consumers" -eq 0 ]; then
   exit 0
 fi
 
 case "$target_id" in
-  *-linux-*)
+  aarch64-linux-*|armhf-linux-*)
     if [ -n "${LD_LIBRARY_PATH:-}" ]; then
       LD_LIBRARY_PATH="$prefix/lib${runtime_library_path:+:$runtime_library_path}:$LD_LIBRARY_PATH"
     else
@@ -1924,6 +1978,18 @@ case "$target_id" in
     export LD_LIBRARY_PATH
     ;;
 esac
+
+# Direct find_package consumers and the default pkg-config OpenSSL link must
+# execute as well as build; they exercise distinct exported metadata surfaces.
+for consumer in "$direct_build_dir"/cpkt_direct_* "$work_root/bin/cpkt_pkg_openssl_default"; do
+  printf 'Running package consumer: %s\n' "${consumer##*/}"
+  if [ -z "$run_prefix" ]; then
+    "$consumer"
+  else
+    # shellcheck disable=SC2086
+    $run_prefix "$consumer"
+  fi
+done
 
 if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_zlib"

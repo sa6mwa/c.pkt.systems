@@ -252,7 +252,7 @@ typedef struct cpkt_audio_vox_state_event {
 struct cpkt_audio_vox_segment {
   /** Private implementation pointer. Callers must not inspect or modify it. */
   void *impl;
-  /** Number of mono 16000 Hz PCM frames in frames. */
+  /** Total mono 16000 Hz PCM frames available through the segment reader. */
   size_t frame_count;
   /** Segment start time in 10 ms units on the input PCM timeline. */
   long t0;

@@ -113,6 +113,13 @@ for forbidden in .git .cache build dist; do
   fi
 done
 
+for scratch in "$source_root"/privacy-scan-*; do
+  if [ -e "$scratch" ] || [ -L "$scratch" ]; then
+    printf 'source archive includes generated/private path: %s\n' "${scratch##*/}" >&2
+    exit 1
+  fi
+done
+
 for required in \
   CMakeLists.txt \
   Makefile \
@@ -131,9 +138,7 @@ for required in \
   cmake/CpktDependencies.cmake \
   vendor/open62541/patches/series \
   vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch \
-  vendor/open62541/patches/0002-avoid-glibc-private-stdio-limit-header-on-musl.patch \
-  vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch \
-  vendor/open62541/patches/0004-avoid-cert-store-path-strncpy-warning.patch
+  vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch
 do
   if [ ! -f "$source_root/$required" ]; then
     printf 'source archive is missing required payload: %s\n' "$required" >&2

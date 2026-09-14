@@ -7,6 +7,7 @@ CMAKE := cmake
 CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 E2E_SUS_PRESET ?= release
+
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
 
 .PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice lifecycle-version-contract release print-release-version format source-archive verify-source-archive clean clean-dist

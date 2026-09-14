@@ -10,7 +10,7 @@ source_dir=$1
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 cache_root="$work_dir/toolchains"
-toolchain_name=x86-64--glibc--stable-2025.08-1
+toolchain_name=x86-64--glibc--stable-2026.08-1
 toolchain_root="$cache_root/roots/$toolchain_name"
 sysroot="$toolchain_root/x86_64-buildroot-linux-gnu/sysroot"
 prefix=x86_64-linux

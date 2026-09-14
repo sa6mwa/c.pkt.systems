@@ -79,6 +79,10 @@ while IFS= read -r relative_path; do
     VERSION|RELEASE_MANIFEST)
       continue
       ;;
+    privacy-scan-*)
+      printf 'source archive manifest includes generated/private path: %s\n' "$relative_path" >&2
+      exit 1
+      ;;
   esac
   if [ ! -f "$repo_root/$relative_path" ]; then
     printf 'source archive manifest path is not a regular file: %s\n' "$relative_path" >&2

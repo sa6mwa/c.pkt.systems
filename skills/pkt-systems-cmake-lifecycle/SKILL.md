@@ -19,6 +19,7 @@ This skill is the process authority. It must not require external example reposi
 
 ## Non-Negotiables
 
+- No scanner, test, verifier, packaging helper, or other tool may create temporary files or directories in the repository root or source directories. Put repository-local scratch under the repository's `build/`, which must be excluded by a checked-in `/build/` rule in `.gitignore`. Resolve that location independently of the caller's working directory; see [references/operability.md](references/operability.md#generated-workspaces).
 - Do not tell the user or future agents to derive this lifecycle from other repositories.
 - Do not write source-repository provenance, workstation-local paths, parent-relative project paths, credentials, or temporary machine paths into generated repository files.
 - Release artifacts must be relocatable and must not contain `$HOME`, source repository paths, build directory paths, dependency cache paths, package-manager temporary paths, or any absolute local workstation path. The release gate must expand and scan all checksum-listed artifacts, including nested source rocks and nested source archives, inspect runtime loader metadata, and fail before release on any local path or non-relocatable runtime path.
@@ -80,6 +81,10 @@ Suggested starting sets:
 - Ordinary feature or fix: inspect first, then load only the affected surface references. Do not run the migration procedure unless the feature requires lifecycle restructuring.
 - Cross-target, compiler, or C++ facade work: `toolchains`, `operability`, `packaging`, and any API/dependency references affected by the product change.
 - Release: `release`, `packaging`, `local-ci`, `toolchains`, and any optional surface references whose artifacts or gates are part of the release.
+
+## Test and example runtime
+
+Follow [references/toolchains.md](references/toolchains.md#local-execution-with-the-selected-libc): one CMake helper selects the Bootlin runtime for all non-shipped development executables, including local CLIs, tests, examples, and fuzzers, regardless of build type. Execute these directly from CTest and e2e. Apply the same link-time policy to temporary SDK/downstream verification consumers; do not retain a runtime launcher or a second execution mode. Preserve host subprocess runtimes and shipped artifact linking; verify the packaging boundary.
 
 ## Toolchain Command Surface
 

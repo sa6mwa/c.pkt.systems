@@ -49,8 +49,10 @@ and receiver-shell CLI stay aligned.
 ## Non-Goals
 
 - Do not expose miniaudio or whisper.cpp headers as part of the facade API.
-- Do not guarantee miniaudio or whisper.cpp ABI stability to downstream
-  consumers. The facades own the public ABI.
+- Do not expose upstream ABI details through the facade API. Supported downstream
+  whisper.cpp/ggml use goes through `cpkt_sus`; direct upstream API/ABI
+  compatibility for external consumers is out of scope. Preserve the facade
+  and bundled integration under the [bundle compatibility policy](../AGENTS.md).
 - Do not perform implicit network access from ordinary constructors.
 - Do not silently download a model unless the caller explicitly uses the cached
   model path.
@@ -75,11 +77,15 @@ Current source pins used by the facades:
 | Dependency | Version | Source | SHA-256 |
 | --- | --- | --- | --- |
 | miniaudio | `0.11.25` | `https://github.com/mackron/miniaudio/archive/refs/tags/0.11.25.tar.gz` | `b900edcffe979816e2560a0580b9b1216d674b4f17fbadeca8f777a7f8ab0274` |
-| whisper.cpp | `v1.9.1` | `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.1.tar.gz` | `147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447` |
+| whisper.cpp | `v1.9.4` | `https://github.com/ggml-org/whisper.cpp/archive/refs/tags/v1.9.4.tar.gz` | `57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae` |
 
-These pins are build inputs for the facades, not public ABI promises. Changing
-either upstream version requires updating dependency identity, license/provenance
+Changing either upstream version requires checking compatibility within the
+supported consumer boundary, plus updating dependency identity, license/provenance
 metadata, package verification expectations, and facade tests as needed.
+For whisper.cpp/ggml, verify the public `cpkt_sus` API/ABI, bundled integration,
+shared/static consumers, and speech e2e behavior. A breaking change within the
+supported boundary requires deliberate maintainer approval under the bundle
+compatibility policy.
 
 ## Licensing And Provenance
 
@@ -170,7 +176,7 @@ through `cpkt_sus_backend_capabilities()`.
 
 Future GPU-enabled artifacts must follow target-specific dependency detection.
 Backend autodetection must inspect the configured target toolchain and
-dependency root, not incidental host packages. With whisper.cpp v1.9.1 and
+dependency root, not incidental host packages. With whisper.cpp v1.9.4 and
 `GGML_BACKEND_DL=OFF`, ggml links backend libraries into the `ggml` target; the
 Vulkan backend links `Vulkan::Vulkan`. Therefore a future `libcpktsus` artifact
 compiled with Vulkan or CUDA must either bundle the required runtime/link

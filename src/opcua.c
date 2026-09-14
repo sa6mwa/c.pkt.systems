@@ -5167,6 +5167,13 @@ static UA_StatusCode cpkt_opcua_access_control_login_callback(
   if (server == NULL || server->access_login_fn == NULL) {
     return UA_STATUSCODE_BADUSERACCESSDENIED;
   }
+  /* open62541 calls this for anonymous sessions only after checking
+   * allowAnonymous. Empty username/password tokens are rejected upstream.
+   * Keep the facade callback limited to username/password authentication. */
+  if (userName != NULL && password != NULL && userName->length == 0 &&
+      password->length == 0) {
+    return UA_STATUSCODE_GOOD;
+  }
   username_data = NULL;
   username_length = 0;
   if (userName != NULL) {

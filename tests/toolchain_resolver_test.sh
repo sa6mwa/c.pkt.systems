@@ -22,7 +22,7 @@ grep -Fq 'with_cache_lock "$(cache_root)/locks/bootlin-$name.lock" install_bootl
 grep -Fq 'if bootlin_ready "$root" "$prefix" "$root/$sysroot_rel"; then return; fi' "$bootlin" ||
   fail 'Bootlin root readiness is not rechecked after acquiring the collection lock'
 
-bootlin_name=x86-64--glibc--stable-2025.08-1
+bootlin_name=x86-64--glibc--stable-2026.08-1
 bootlin_root="$cache/roots/$bootlin_name"
 bootlin_sysroot="$bootlin_root/x86_64-buildroot-linux-gnu/sysroot"
 mkdir -p "$bootlin_root/bin" "$bootlin_sysroot/usr/include" "$bootlin_sysroot/usr/lib" "$bootlin_root/runtime"
@@ -78,7 +78,7 @@ mkdir -p "$(dirname "$output")"
 printf "%s\\n" "replacement archive" > "$output"'
 make_executable "$fake_bin/sha256sum" '#!/bin/sh
 case "$1" in
-  *.tmp.*) printf "%s  %s\\n" "760acd5c3159448b618e237b61935335baada74fe0cdc0d7611826cb49b41c8c" "$1" ;;
+  *.tmp.*) printf "%s  %s\\n" "cde893afab04ac7dcd15c46aac214ff550441b982536124c88a71146a0eeedd3" "$1" ;;
   *) printf "%s  %s\\n" "corrupt" "$1" ;;
 esac'
 make_executable "$fake_bin/tar" '#!/bin/sh

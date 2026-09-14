@@ -2,6 +2,7 @@
 /build/
 /dist/
 /package-assertions-*/
+/privacy-scan-*/
 /CMakeUserPresets.json
 /stash/
 /VERSION

@@ -7,7 +7,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 source_dir=$1
-assertion_parent="$source_dir/.cache/package-assertions"
+assertion_parent="$source_dir/build/package-assertions"
 work_dir=$(mktemp -d)
 trap 'rm -rf -- "$work_dir"' EXIT
 
@@ -90,6 +90,10 @@ if [[ ! -f "$work_dir/signalled-workspace" ]]; then
   exit 1
 fi
 signalled_workspace=$(<"$work_dir/signalled-workspace")
+case "$signalled_workspace" in
+  "$assertion_parent"/assertion.*) ;;
+  *) printf 'package assertions used scratch outside build/: %s\n' "$signalled_workspace" >&2; exit 1 ;;
+esac
 if [[ -e "$signalled_workspace" ]]; then
   printf 'terminated package assertions left workspace: %s\n' "$signalled_workspace" >&2
   exit 1

@@ -40,19 +40,19 @@ make_bootlin_collection() {
 }
 
 make_bootlin_collection \
-  x86-64--glibc--stable-2025.08-1 \
+  x86-64--glibc--stable-2026.08-1 \
   x86_64-linux \
   x86_64-buildroot-linux-gnu/sysroot
 
 bootlin_description=$(CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin_resolver" discover x86_64-linux-gnu)
 require_line 'source=bootlin' "$bootlin_description"
 require_line 'status=ready' "$bootlin_description"
-require_line "cc=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-gcc" "$bootlin_description"
-require_line "ld=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-ld" "$bootlin_description"
-require_line "nm=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-nm" "$bootlin_description"
+require_line "cc=$cache/roots/x86-64--glibc--stable-2026.08-1/bin/x86_64-linux-gcc" "$bootlin_description"
+require_line "ld=$cache/roots/x86-64--glibc--stable-2026.08-1/bin/x86_64-linux-ld" "$bootlin_description"
+require_line "nm=$cache/roots/x86-64--glibc--stable-2026.08-1/bin/x86_64-linux-nm" "$bootlin_description"
 bootlin_env=$(CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin_resolver" env x86_64-linux-gnu)
-printf '%s\n' "$bootlin_env" | grep -Fq "export CC=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-gcc" || fail 'Bootlin env did not export the pinned compiler'
-printf '%s\n' "$bootlin_env" | grep -Fq "export LD=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-ld" || fail 'Bootlin env did not export the pinned linker'
-printf '%s\n' "$bootlin_env" | grep -Fq "export NM=$cache/roots/x86-64--glibc--stable-2025.08-1/bin/x86_64-linux-nm" || fail 'Bootlin env did not export the pinned nm'
+printf '%s\n' "$bootlin_env" | grep -Fq "export CC=$cache/roots/x86-64--glibc--stable-2026.08-1/bin/x86_64-linux-gcc" || fail 'Bootlin env did not export the pinned compiler'
+printf '%s\n' "$bootlin_env" | grep -Fq "export LD=$cache/roots/x86-64--glibc--stable-2026.08-1/bin/x86_64-linux-ld" || fail 'Bootlin env did not export the pinned linker'
+printf '%s\n' "$bootlin_env" | grep -Fq "export NM=$cache/roots/x86-64--glibc--stable-2026.08-1/bin/x86_64-linux-nm" || fail 'Bootlin env did not export the pinned nm'
 
 printf 'toolchain resolver tests passed\n'

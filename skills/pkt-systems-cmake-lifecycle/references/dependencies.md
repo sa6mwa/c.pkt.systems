@@ -14,6 +14,23 @@ Projects consume external C dependencies as SDK bundles from `c.pkt.systems`. Th
 - Reuse downloaded SDK bundles and per-target dependency install roots across debug, release, hardening, e2e, fuzz, benchmark, and package builds.
 - Bundled SDK mode, host dependency mode, and conservative auto mode when a project benefits from all three.
 
+## Upgrade compatibility
+
+Apply the repository's supported consumer and ABI boundary to dependency and
+compiler-collection upgrades. Compare against the latest published artifacts,
+not the previous development commit. Minor/patch version numbers and unchanged
+SONAMEs alone do not establish compatibility. Check public ABI, bundled consumer
+support, static link closure, package metadata, and deployment runtime requirements.
+A newer collection can raise required glibc symbol versions without changing
+`libc.so.6`; passing tests with that collection does not prove older-host support.
+
+Proceed with compatible upgrades after verification. A breaking transition needs
+a consequence analysis and explicit maintainer approval before changing the
+supported contract. Record affected consumers, required rebuilds/deployment
+changes, verification coverage, and release communication. Respect an explicitly
+facade-only support boundary for embedded backends instead of inventing a support
+commitment for their private or upstream interfaces.
+
 ## Upstream Components
 
 The usual upstream project owner for pkt.systems C lifecycle dependencies is `github.com/sa6mwa/`. Unless a project explicitly documents another source, fetch dependency archives from each upstream project's GitHub Releases page, not from source checkouts, branch archives, local sibling repositories, package-manager mirrors, or generated artifacts copied between worktrees.

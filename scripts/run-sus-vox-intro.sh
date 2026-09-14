@@ -52,17 +52,16 @@ mkdir -p "$model_cache"
 rm -rf "$dump_dir"
 mkdir -p "$dump_dir"
 
-external_root=$(sed -n 's/^CPKT_EXTERNAL_ROOT:PATH=//p' "$build_dir/CMakeCache.txt" | tail -n 1)
-if [ -z "$external_root" ]; then
-  printf 'failed to read CPKT_EXTERNAL_ROOT from %s/CMakeCache.txt\n' "$build_dir" >&2
-  exit 2
-fi
-
-library_path="$(dirname "$example_bin"):$external_root/whisper/install/lib:$external_root/curl/install/lib:$external_root/openssl/install/lib:$external_root/nghttp2/install/lib:$external_root/libssh2/install/lib:$external_root/zlib/install/lib"
+# Native Linux executables carry their own private runtime paths.
 if [ "$(uname -s)" = "Darwin" ]; then
+  external_root=$(sed -n 's/^CPKT_EXTERNAL_ROOT:PATH=//p' "$build_dir/CMakeCache.txt" | tail -n 1)
+  if [ -z "$external_root" ]; then
+    printf 'failed to read CPKT_EXTERNAL_ROOT from %s/CMakeCache.txt\n' "$build_dir" >&2
+    exit 2
+  fi
+
+  library_path="$(dirname "$example_bin"):$external_root/whisper/install/lib:$external_root/curl/install/lib:$external_root/openssl/install/lib:$external_root/nghttp2/install/lib:$external_root/libssh2/install/lib:$external_root/zlib/install/lib"
   export DYLD_LIBRARY_PATH="$library_path${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
-else
-  export LD_LIBRARY_PATH="$library_path${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
 
 printf '[sus-vox-intro] audio=%s\n' "$audio_path"

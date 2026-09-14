@@ -47,6 +47,24 @@ if ! grep -F 'warning command emitted warnings' "$work_root/stderr" >/dev/null 2
   exit 1
 fi
 
+for warning in \
+    'CMake Warning:' \
+    'CMake Warning (dev) at CMakeLists.txt:1:' \
+    'CMake Deprecation Warning at CMakeLists.txt:1:'; do
+  if bash "$repo_root/scripts/run-no-warnings.sh" \
+      "CMake configure" sh -c 'printf "%s\n" "$1"' sh "$warning" \
+      >"$work_root/cmake-stdout" 2>"$work_root/cmake-stderr"; then
+    printf 'CMake warning unexpectedly passed: %s\n' "$warning" >&2
+    exit 1
+  fi
+  if ! grep -F 'CMake configure emitted warnings' "$work_root/cmake-stderr" >/dev/null ||
+      ! grep -F "$warning" "$work_root/cmake-stderr" >/dev/null; then
+    printf 'CMake warning failure lost its description or diagnostic\n' >&2
+    cat "$work_root/cmake-stderr" >&2
+    exit 1
+  fi
+done
+
 require_file_lacks \
   "$repo_root/Makefile" \
   'bash ./scripts/run-no-warnings.sh "build $$preset" $(CMAKE) --build --preset "$$preset";' \

@@ -54,9 +54,7 @@ scripts/source-archive-verify.sh
 cmake/CpktDependencies.cmake
 vendor/open62541/patches/series
 vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch
-vendor/open62541/patches/0002-avoid-glibc-private-stdio-limit-header-on-musl.patch
 vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch
-vendor/open62541/patches/0004-avoid-cert-store-path-strncpy-warning.patch
 '
 
 make_archive() {
@@ -147,6 +145,14 @@ printf 'VERSION\nRELEASE_MANIFEST\nscripts/release-version.sh\n' > "$fixture_roo
 printf 'stale\n' > "$fixture_root/dist/stale.txt"
 expect_verify_failure "$(make_archive forbidden-dist c.pkt.systems-1.2.3)" \
   "source archive includes generated/private path: dist"
+
+fixture_root="$work_root/forbidden-privacy-scan/stage/c.pkt.systems-1.2.3"
+mkdir -p "$fixture_root/privacy-scan-fixture"
+printf '1.2.3\n' > "$fixture_root/VERSION"
+write_release_version_script "$fixture_root"
+printf 'VERSION\nRELEASE_MANIFEST\nscripts/release-version.sh\n' > "$fixture_root/RELEASE_MANIFEST"
+expect_verify_failure "$(make_archive forbidden-privacy-scan c.pkt.systems-1.2.3)" \
+  "source archive includes generated/private path: privacy-scan-fixture"
 
 fixture_root="$work_root/manifest-mismatch/stage/c.pkt.systems-1.2.3"
 mkdir -p "$fixture_root"

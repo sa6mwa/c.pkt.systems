@@ -407,7 +407,7 @@ function(cpkt_add_openssl)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/openssl/openssl/releases/download/openssl-${CPKT_OPENSSL_VERSION}/openssl-${CPKT_OPENSSL_VERSION}.tar.gz"
-      URL_HASH "SHA256=aaf51a1fe064384f811daeaeb4ec4dce7340ec8bd893027eee676af31e83a04f"
+      URL_HASH "SHA256=9bffaa1ad1e07b354c21bd3324ec02fa15579f45a7d0494b3e74bc449b7333ef"
       DOWNLOAD_NAME "openssl-${CPKT_OPENSSL_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -535,7 +535,7 @@ function(cpkt_add_nghttp2)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/nghttp2/nghttp2/releases/download/v${CPKT_NGHTTP2_VERSION}/nghttp2-${CPKT_NGHTTP2_VERSION}.tar.gz"
-      URL_HASH "SHA256=c866b7477cbb7512ab6863a685027adbb1bb8da8fc3bab7429ed43d3281d5aa9"
+      URL_HASH "SHA256=aa317e2cf9dca6afa0aed68f8fad6ff303ec6982e25a78c75c0b65e2b9b3ded5"
       DOWNLOAD_NAME "nghttp2-${CPKT_NGHTTP2_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -944,7 +944,7 @@ function(cpkt_add_curl)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://curl.se/download/curl-${CPKT_CURL_VERSION}.tar.xz"
-      URL_HASH "SHA256=63fe2dc148ba0ceae89922ef838f7e5c946272c2e78b7c59fab4b79d3ce2b896"
+      URL_HASH "SHA256=f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7"
       DOWNLOAD_NAME "${curl_download_name}"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -1031,7 +1031,7 @@ function(cpkt_add_libxml2)
     set(libxml2_platform_cmake_args
       -DCMAKE_SHARED_LINKER_FLAGS=-liconv)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    set(libxml2_shared_library "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}.16.1.3")
+    set(libxml2_shared_library "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}.16.1.4")
     set(libxml2_shared_link "${install_dir}/lib/libxml2${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(libxml2_install_rpath "$ORIGIN")
     set(libxml2_platform_cmake_args
@@ -1096,7 +1096,7 @@ function(cpkt_add_libxml2)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name_shared}
       URL "https://download.gnome.org/sources/libxml2/2.15/libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
-      URL_HASH "SHA256=78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07"
+      URL_HASH "SHA256=98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821"
       DOWNLOAD_NAME "libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -1120,7 +1120,7 @@ function(cpkt_add_libxml2)
 
     cpkt_cached_external_project_add(${project_name_static}
       URL "https://download.gnome.org/sources/libxml2/2.15/libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
-      URL_HASH "SHA256=78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07"
+      URL_HASH "SHA256=98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821"
       DOWNLOAD_NAME "libxml2-${CPKT_LIBXML2_VERSION}.tar.xz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -1185,13 +1185,13 @@ function(cpkt_add_lua)
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(lua_shared_library "liblua.5.5.0${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(lua_shared_library "liblua.${CPKT_LUA_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(lua_shared_soname "liblua.5.5${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(lua_shared_link "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(lua_shared_link_flags -dynamiclib -Wl,-install_name,@rpath/${lua_shared_soname})
     set(lua_shared_libs -lm)
   else()
-    set(lua_shared_library "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}.5.5.0")
+    set(lua_shared_library "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}.${CPKT_LUA_VERSION}")
     set(lua_shared_soname "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}.5.5")
     set(lua_shared_link "liblua${CMAKE_SHARED_LIBRARY_SUFFIX}")
     set(lua_shared_link_flags -shared -Wl,-soname,${lua_shared_soname})
@@ -1250,7 +1250,7 @@ function(cpkt_add_lua)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://lua.org/ftp/lua-${CPKT_LUA_VERSION}.tar.gz"
-      URL_HASH "SHA256=57ccc32bbbd005cab75bcc52444052535af691789dba2b9016d5c50640d68b3d"
+      URL_HASH "SHA256=1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce"
       DOWNLOAD_NAME "lua-${CPKT_LUA_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -1661,7 +1661,7 @@ function(cpkt_add_whisper)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name_shared}
       URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
-      URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
+      URL_HASH "SHA256=57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae"
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -1689,7 +1689,7 @@ function(cpkt_add_whisper)
 
     cpkt_cached_external_project_add(${project_name_static}
       URL "https://github.com/ggml-org/whisper.cpp/archive/refs/tags/${CPKT_WHISPER_VERSION}.tar.gz"
-      URL_HASH "SHA256=147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447"
+      URL_HASH "SHA256=57e280cee375ab02425b806ad5146b99f6eb9357e3c2b31357c8a6af2e2e44ae"
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -1825,7 +1825,7 @@ function(cpkt_add_open62541)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name_shared}
       URL "https://github.com/open62541/open62541/archive/refs/tags/v${CPKT_OPEN62541_VERSION}.tar.gz"
-      URL_HASH "SHA256=fb5aafc19c67a91368d1f71d9ee4acf0f4b47a0d65c66db4ed738691828779c7"
+      URL_HASH "SHA256=cf7951baf253c0537b3397e4ce3ff13930542abcb6ffc3b9cb082af88f95c300"
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
@@ -1858,7 +1858,7 @@ function(cpkt_add_open62541)
 
     cpkt_cached_external_project_add(${project_name_static}
       URL "https://github.com/open62541/open62541/archive/refs/tags/v${CPKT_OPEN62541_VERSION}.tar.gz"
-      URL_HASH "SHA256=fb5aafc19c67a91368d1f71d9ee4acf0f4b47a0d65c66db4ed738691828779c7"
+      URL_HASH "SHA256=cf7951baf253c0537b3397e4ce3ff13930542abcb6ffc3b9cb082af88f95c300"
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"

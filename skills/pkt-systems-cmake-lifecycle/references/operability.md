@@ -175,6 +175,14 @@ Rules:
 - Do not make normal build/test targets depend on `make clean`; fast local CI/CD depends on cache reuse.
 
 
+## Generated Workspaces
+
+- Put repository-local extraction trees, scan workspaces, generated fixtures, probes, and other temporary output under `<repository>/build/`. Never create them beside source files or at the repository root, even briefly. Final artifacts still belong in `dist/`; dependency and toolchain caches retain their documented locations.
+- Require a checked-in `/build/` entry in `.gitignore` before creating generated workspaces. An extra ignore pattern for a leaked root-level directory is not a substitute for fixing its producer.
+- Resolve the repository root from the script/module location or an explicit validated root, then create a unique workspace below `build/`. Do not use the caller's working directory as a scratch root. In `cmake -P` script mode, `CMAKE_CURRENT_BINARY_DIR` can be the repository root; it does not establish a safe build location.
+- Clean owned workspaces on success and on catchable failure/interruption paths. Abrupt termination must leave any residue only under `build/`, recoverable with `make clean`.
+- Verify the boundary by invoking helpers from the repository root and another working directory, exercising failed extraction/scanning as well as success. Check that no source/root scratch appeared and that generated workspaces cannot enter git or source-archive manifests. Source archive verification must reject generated scratch, including empty directories.
+
 ## CMake Presets
 
 Required configure presets:
