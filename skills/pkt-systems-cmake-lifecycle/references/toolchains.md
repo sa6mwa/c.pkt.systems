@@ -70,12 +70,11 @@ Refresh apt metadata and install this complete baseline as one transaction:
 ```sh
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  autoconf automake binutils bison build-essential bzip2 ca-certificates \
+  autoconf automake binutils bison bzip2 ca-certificates \
   ccrypt clang clang-format clangd cmake cpio curl default-jre-headless flex \
-  fuse-overlayfs gawk gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf git \
-  git-crypt git-lfs help2man libc6-dev-arm64-cross libc6-dev-armhf-cross \
+  fuse-overlayfs gawk git git-crypt git-lfs help2man \
   libbz2-dev libclang-rt-dev libcurl4-openssl-dev libcairo2-dev liblzma-dev \
-  libssl-dev libtool libxml2-dev libx11-dev lld llvm-dev musl-tools \
+  libssl-dev libtool libxml2-dev libx11-dev lld llvm-dev make \
   ninja-build nodejs npm patch perl pkg-config podman python-is-python3 \
   python3 python3-pip python3-venv qemu-user ripgrep slirp4netns texinfo \
   uidmap unzip uuid-dev valgrind wget xar xz-utils zip zlib1g-dev
@@ -84,9 +83,10 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
 This baseline supplies build/Autotools tools, native quality tools, source and
 archive utilities, Node-based project utilities, Java-based generators,
 containers with rootless networking, QEMU cross-target runners, and headers
-needed to build osxcross and common pkt.systems dependencies. `musl-tools`
-provides the host `musl-gcc`; distro GNU cross compilers and cross libc headers
-are installed for general workstation work and diagnostics.
+needed to build osxcross and common pkt.systems dependencies. Host tools are
+workstation support only; they must never enter Linux C/C++ compiler discovery.
+Provision the pinned Bootlin collections through the lifecycle resolver before
+configuring every pkt.systems Linux C/C++ build.
 
 `valgrind` and `clangd` are explicit lifecycle quality prerequisites even when
 an earlier workstation helper did not list them. Confirm the required host
@@ -119,8 +119,6 @@ The conventional non-repository locations are:
 
 | Purpose | Conventional location |
 | --- | --- |
-| musl-cross-make source checkout | `$HOME/src/musl-cross-make` |
-| local musl cross toolchains | `$HOME/.local/cross` |
 | osxcross source checkout | `$HOME/src/osxcross` |
 | osxcross arm64 collection | `$HOME/.local/cross/osxcross` |
 | c.pkt.systems immutable toolchain cache | `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}` |
@@ -128,40 +126,6 @@ The conventional non-repository locations are:
 Keep these outside all source repositories. They may be overridden with
 workstation-local paths, but never written into source, generated packages, or
 release artifacts.
-
-### Local musl cross-toolchain workspace
-
-For the broader pkt.systems development environment, clone or fast-forward the
-operator-approved `musl-cross-make` checkout and build these local convenience
-toolchains into the conventional prefix:
-
-```sh
-git clone --depth=1 https://github.com/richfelker/musl-cross-make.git "$HOME/src/musl-cross-make"
-make -C "$HOME/src/musl-cross-make" clean
-make -C "$HOME/src/musl-cross-make" -j"$(nproc)" \
-  TARGET=aarch64-linux-musl OUTPUT="$HOME/.local/cross/aarch64-linux-musl"
-make -C "$HOME/src/musl-cross-make" \
-  TARGET=aarch64-linux-musl OUTPUT="$HOME/.local/cross/aarch64-linux-musl" install
-make -C "$HOME/src/musl-cross-make" clean
-make -C "$HOME/src/musl-cross-make" -j"$(nproc)" \
-  TARGET=arm-linux-musleabihf OUTPUT="$HOME/.local/cross/arm-linux-musleabihf"
-make -C "$HOME/src/musl-cross-make" \
-  TARGET=arm-linux-musleabihf OUTPUT="$HOME/.local/cross/arm-linux-musleabihf" install
-ln -sf libc.so "$HOME/.local/cross/aarch64-linux-musl/aarch64-linux-musl/lib/ld-musl-aarch64.so.1"
-ln -sf libc.so "$HOME/.local/cross/arm-linux-musleabihf/arm-linux-musleabihf/lib/ld-musl-armhf.so.1"
-```
-
-For an existing checkout, fast-forward it before rebuilding. The loader
-symlinks are required for the expected local toolchain layout. Add local
-cross-compiler bins to the developer shell only when needed:
-
-```sh
-export PATH="$HOME/.local/cross/aarch64-linux-musl/bin:$HOME/.local/cross/arm-linux-musleabihf/bin:$HOME/.local/cross/osxcross/bin:$PATH"
-```
-
-These are general workstation tools only. Do not substitute distro cross
-compilers or `musl-cross-make` outputs for c.pkt.systems build targets: this
-lifecycle's pinned Bootlin collections own the shipped Linux target toolchains.
 
 ### Darwin osxcross input and setup
 
