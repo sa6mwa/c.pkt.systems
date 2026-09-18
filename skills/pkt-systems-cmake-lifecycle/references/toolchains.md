@@ -6,7 +6,7 @@ This lifecycle owns C and C++ compiler resolution for pkt.systems C/CMake projec
 
 - Every ordinary Linux build uses the pinned Bootlin GCC collection for its target. Its triple-prefixed `gcc`, `g++`, `ld`, `ar`, `ranlib`, `strip`, `nm`, `objcopy`, `objdump`, `addr2line`, `gdb`, and `readelf`, plus its sysroot libc and headers, are one inseparable collection.
 - Do not use `/usr/bin/cc`, `gcc`, `clang`, distro cross compilers, or unpinned compiler paths as a fallback. A cached Bootlin collection is the only Linux default.
-- `arm64-apple-darwin` remains local-osxcross-only. The lifecycle discovers a complete osxcross collection but must not download Apple SDKs or Darwin compiler collections.
+- `arm64-apple-darwin` uses a local, project-pinned osxcross collection. The lifecycle must not download Apple SDKs or Darwin compiler collections. Once that collection is ready, the lifecycle may provision its separately pinned, Linux-host `mig` helper as described below.
 - Native memory checking uses host-provided Valgrind against executables compiled by the selected Bootlin collection. It is a required gate on the native x86_64 Linux host, but it is not an MSan substitute. Never run Valgrind through cross-compilation, an emulator, or QEMU.
 - Native fuzzing uses a pinned cached AFL++ release built with the matching x86_64 Bootlin GCC plugin headers. AFL++ compiler wrappers must delegate to the selected Bootlin `gcc`/`g++`; never use host GCC or Clang for project targets. Never run fuzzing through cross-compilation, an emulator, or QEMU.
 - `clang-format` and `clangd` are host OS development-tool prerequisites only. They must not enter CMake compiler or linker discovery. `clangd` validation is a native development-host editor gate: register and run it only against the native host compile database. Cross-target CTest, package, and release configurations must not invoke it or rely on host `clangd` to emulate a target compiler or sysroot ABI; prove those targets through their selected compiler, supported target runner, and package verification gates.
@@ -52,6 +52,80 @@ eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
 ```
 
 `ensure all` downloads the six Linux Bootlin collections and reports Darwin osxcross status. It never installs an Apple SDK. `discover` reports all resolved paths, including the selected compiler, linker, binutils, sysroot, static GNU C++ runtime archives, and source. `env` emits shell exports only; it does not modify login-shell files.
+
+## Development-machine provisioning
+
+These instructions establish a Linux development workstation for both
+pkt.systems Go work and C/CMake work. They are workstation prerequisites, not
+SDK contents and not release-artifact dependencies. Use the host package
+manager with explicit operator authorization where it needs `sudo`; do not
+embed package-manager actions in ordinary project builds.
+
+On a Debian/Ubuntu host, install the following capability groups before
+provisioning toolchains:
+
+- build and Autotools tooling: `build-essential`, `binutils`, `clang`, `lld`,
+  `cmake`, `ninja-build`, `make`, `autoconf`, `automake`, `libtool`, `patch`,
+  `pkg-config`, `perl`, `python3`, `python3-venv`, `bison`, `flex`, and
+  `gawk`;
+- archive, download, and source tools: `git`, `git-lfs`, `git-crypt`, `curl`,
+  `wget`, `ca-certificates`, `bzip2`, `xz-utils`, `zip`, `unzip`, `xar`, and
+  `cpio`;
+- native development and dependency headers: `libbz2-dev`, `liblzma-dev`,
+  `libssl-dev`, `libxml2-dev`, `uuid-dev`, `zlib1g-dev`, `libx11-dev`,
+  `libcurl4-openssl-dev`, and `libcairo2-dev`;
+- target verification and local integration tools: `qemu-user`, `podman`,
+  `fuse-overlayfs`, `slirp4netns`, `uidmap`, `help2man`, and `texinfo`;
+- native-only quality tools: `valgrind`, `clang-format`, and `clangd`.
+
+Install Go separately according to the Go components' selected Go-version
+policy. The C/CMake provisioning baseline deliberately does not select, pin,
+or update Go. Do not substitute distro cross compilers or `musl-cross-make`
+outputs for the lifecycle's pinned Bootlin collections; the resolver owns the
+shipped Linux target toolchains.
+
+### Darwin osxcross input and setup
+
+The Apple SDK is proprietary input supplied by the developer. Before Darwin
+provisioning, the developer must sign in to Apple Developer Downloads with an
+account entitled to obtain Xcode, download the approved Xcode archive manually,
+and place it at a local path they control. For the currently used SDK source,
+that archive is normally named `Xcode_26.4.1_Apple_silicon.xip`; accept an
+equivalent locally extracted Xcode/SDK only when its SDK version is the
+project-approved one.
+
+Never put that archive in a repository, a c.pkt.systems dependency cache, an
+SDK artifact, or a source archive. Never try to fetch it with `curl`, request
+Apple credentials, or use `sudo` to discover, extract, or install it. If it is
+absent, stop with an actionable prerequisite naming the expected local archive
+or extracted SDK path. `xar`, `cpio`, `xz`, `bzip2`, `libxml2` development
+headers, OpenSSL development headers, Python, and the normal build tools above
+are required to turn the approved local Xcode input into osxcross's packaged
+`MacOSX*.sdk` input.
+
+Provision osxcross from a project-approved pinned source revision, preserve the
+revision and SDK-version provenance in the workstation setup, build only the
+needed Darwin architectures, and publish the resulting local collection outside
+the repository (the conventional location is
+`$HOME/.local/cross/osxcross`). Set `OSXCROSS_ROOT` when another location is
+used. A moving `master` checkout is not a reproducible lifecycle toolchain.
+
+After osxcross can produce a Darwin arm64 Mach-O smoke executable, provision
+the host-side MIG helper and verify the complete collection:
+
+```sh
+scripts/cpkt-toolchains.sh ensure arm64-apple-darwin
+scripts/cpkt-toolchains.sh discover arm64-apple-darwin
+```
+
+`ensure arm64-apple-darwin` does not obtain Apple content. It uses the pinned
+x86_64 Linux GNU Bootlin collection to build the pinned PureDarwin-derived MIG
+as a static Linux host executable in the shared toolchain cache. `mig` invokes
+the local osxcross target compiler to preprocess Darwin definitions. It is
+build-only tooling: do not bundle it, its source, or its license in the SDK.
+Require `discover` to report `status=ready`, the osxcross compiler/binutils,
+`mig`, `migcom`, and the pinned `mig_revision` before configuring a Darwin
+build.
 
 ## CMake Setup
 
