@@ -892,6 +892,47 @@ int main(void) {
   return 0;
 }
 EOF
+cat > "$cmake_source_dir/cpkt_gssapi_facade_strict.c" <<'EOF'
+#include <cpkt/gssapi.h>
+
+int main(void) {
+  cpkt_gss_oid_set *mechanisms;
+  cpkt_gss_status minor;
+  cpkt_gss_status status;
+
+  mechanisms = 0;
+  status = cpkt_gss_indicate_mechanisms(&minor, &mechanisms);
+  if (cpkt_gss_status_is_error(status) || mechanisms == 0 ||
+      cpkt_gss_oid_set_count(mechanisms) == 0 ||
+      cpkt_gss_name_type_hostbased_service() == 0) {
+    return 1;
+  }
+  status = cpkt_gss_release_oid_set(&minor, &mechanisms);
+  return cpkt_gss_status_is_error(status) || mechanisms != 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_postgres_facade_strict.c" <<'EOF'
+#include <cpkt/postgres.h>
+
+int main(void) {
+  cpkt_postgres *pg;
+
+  if (cpkt_postgres_library_version() <= 0) {
+    return 1;
+  }
+  pg = cpkt_postgres_new("host=/tmp/cpkt-postgres-no-socket connect_timeout=1");
+  if (pg == 0 || pg->tx == 0 || pg->send == 0 || pg->receive == 0 ||
+      pg->reset == 0 || pg->close == 0) {
+    return 2;
+  }
+  if (pg->status(pg) != CPKT_POSTGRES_CONNECTION_BAD) {
+    pg->close(pg);
+    return 3;
+  }
+  pg->close(pg);
+  return 0;
+}
+EOF
 cat > "$cmake_source_dir/cpkt_lua_runtime_strict.c" <<'EOF'
 #include <cpkt/lua_runtime.h>
 
@@ -1172,6 +1213,8 @@ find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
 find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
+find_package(CpktGssapi CONFIG REQUIRED)
+find_package(CpktPostgres CONFIG REQUIRED)
 find_package(open62541 CONFIG REQUIRED)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   find_package(CpktSus CONFIG REQUIRED)
@@ -1201,6 +1244,8 @@ cpkt_add_static_smoke(cpkt_cmake_mqttc cpkt_mqttc.c MQTT-C::mqttc)
 cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541)
 cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+cpkt_add_static_smoke(cpkt_cmake_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
+cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_zlib cpkt_zlib.c ZLIB::ZLIB)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_crypto cpkt_crypto.c OpenSSL::Crypto)
@@ -1213,9 +1258,15 @@ cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_mqttc cpkt_mqttc.c MQTT-C::mqtt
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_open62541 cpkt_open62541.c open62541::open62541)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
 set_source_files_properties(cpkt_audio_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_gssapi_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_postgres_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   cpkt_add_static_smoke(cpkt_cmake_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
@@ -1276,6 +1327,8 @@ cmake_args=(
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
   -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
+  -DCpktGssapi_DIR="$prefix/lib/cmake/CpktGssapi" \
+  -DCpktPostgres_DIR="$prefix/lib/cmake/CpktPostgres" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
@@ -1366,6 +1419,13 @@ assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" 
 assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libggml.a" "cpkt::audio link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libcpkt_opcua.a" "cpkt::opcua link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libopen62541.a" "cpkt::opcua link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_gssapi_facade.dir/link.txt" "$prefix/lib/libcpkt_gssapi.a" "cpkt::gssapi link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_gssapi_facade.dir/link.txt" "$prefix/lib/libgssapi_krb5.a" "cpkt::gssapi link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libcpkt_postgres.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libpq.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libldap.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/liblutil.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libsasl2.a" "cpkt::postgres link line"
 case "$target_id" in
   *-linux-gnu)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_crypto.dir/link.txt" "-ldl" "OpenSSL::Crypto link line"
@@ -1558,6 +1618,8 @@ lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
 audio_words=$(pkg_config_words cpkt-audio)
 open62541_words=$(pkg_config_words open62541)
 opcua_words=$(pkg_config_words cpkt-opcua)
+gssapi_words=$(pkg_config_words cpkt-gssapi)
+postgres_words=$(pkg_config_words cpkt-postgres)
 sus_words=$(pkg_config_words cpkt-sus)
 openssl_default_words=$(pkg_config_default_words openssl)
 
@@ -1636,6 +1698,13 @@ assert_words_contain "$opcua_words" "-lopen62541" "cpkt-opcua.pc --static output
 assert_words_contain "$opcua_words" "-lssl" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lcrypto" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lm" "cpkt-opcua.pc --static output"
+assert_words_contain "$gssapi_words" "-lcpkt_gssapi" "cpkt-gssapi.pc --static output"
+assert_words_contain "$gssapi_words" "-lgssapi_krb5" "cpkt-gssapi.pc --static output"
+assert_words_contain "$postgres_words" "-lcpkt_postgres" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-lpq" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-lldap" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-llutil" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-lsasl2" "cpkt-postgres.pc --static output"
 assert_words_contain "$sus_words" "-lcpktsus" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lwhisper" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lggml" "cpkt-sus.pc --static output"
@@ -1659,7 +1728,7 @@ cpkt_pkg_config_static_smoke() {
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
   source_flags=$common_flags
   case "$source_name" in
-    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sus_facade_strict.c)
       source_flags=$common_c89_flags
       ;;
   esac
@@ -1685,6 +1754,22 @@ cpkt_pkg_config_static_smoke() {
           bundled["-lcpktsus"] = 1
           bundled["-lopen62541"] = 1
           bundled["-lcpkt_opcua"] = 1
+          bundled["-lcpkt_gssapi"] = 1
+          bundled["-lgssapi_krb5"] = 1
+          bundled["-lkrb5"] = 1
+          bundled["-lk5crypto"] = 1
+          bundled["-lcom_err"] = 1
+          bundled["-lkrb5support"] = 1
+          bundled["-lprofile"] = 1
+          bundled["-lverto"] = 1
+          bundled["-lcpkt_postgres"] = 1
+          bundled["-lpq"] = 1
+          bundled["-lpq-oauth"] = 1
+          bundled["-lpgcommon_shlib"] = 1
+          bundled["-lpgport"] = 1
+          bundled["-lldap"] = 1
+          bundled["-llber"] = 1
+          bundled["-lsasl2"] = 1
         }
         {
           for (i = 1; i <= NF; ++i) {
@@ -1715,7 +1800,7 @@ cpkt_pkg_config_static_multi_smoke() {
   output_path="$work_root/bin/$output_name"
   source_flags=$common_flags
   case "$source_name" in
-    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sus_facade_strict.c)
       source_flags=$common_c89_flags
       ;;
   esac
@@ -1848,6 +1933,8 @@ cpkt_pkg_config_static_smoke lua cpkt_lua.c
 cpkt_pkg_config_static_smoke mqtt-c cpkt_mqttc.c
 cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
 cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-gssapi cpkt_gssapi_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-postgres cpkt_postgres_facade_strict.c
 case "$target_id" in
   *-linux-*)
     cpkt_pkg_config_static_smoke cpkt-audio cpkt_audio_facade_strict.c
@@ -2003,6 +2090,8 @@ if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_mqttc"
   "$cmake_build_dir/cpkt_cmake_open62541"
   "$cmake_build_dir/cpkt_cmake_opcua_facade"
+  "$cmake_build_dir/cpkt_cmake_gssapi_facade"
+  "$cmake_build_dir/cpkt_cmake_postgres_facade"
   "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   "$cmake_build_dir/cpkt_cmake_all"
   "$work_root/bin/cpkt_pkg_zlib"
@@ -2017,6 +2106,8 @@ if [ -z "$run_prefix" ]; then
   "$work_root/bin/cpkt_pkg_mqtt-c"
   "$work_root/bin/cpkt_pkg_open62541"
   "$work_root/bin/cpkt_pkg_cpkt-opcua"
+  "$work_root/bin/cpkt_pkg_cpkt-gssapi"
+  "$work_root/bin/cpkt_pkg_cpkt-postgres"
   case "$target_id" in
     *-linux-*) "$work_root/bin/cpkt_pkg_sus_mixed_cxx" ;;
   esac
@@ -2060,6 +2151,10 @@ else
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_opcua_facade"
   # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_gssapi_facade"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_postgres_facade"
+  # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_all"
@@ -2087,6 +2182,10 @@ else
   $run_prefix "$work_root/bin/cpkt_pkg_open62541"
   # shellcheck disable=SC2086
   $run_prefix "$work_root/bin/cpkt_pkg_cpkt-opcua"
+  # shellcheck disable=SC2086
+  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-gssapi"
+  # shellcheck disable=SC2086
+  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-postgres"
   case "$target_id" in
     *-linux-*)
       # shellcheck disable=SC2086

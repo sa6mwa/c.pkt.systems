@@ -7,10 +7,11 @@ CMAKE := cmake
 CTEST := ctest
 RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
 E2E_SUS_PRESET ?= release
+E2E_POSTGRES_PRESET ?= release
 
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice lifecycle-version-contract release print-release-version format source-archive verify-source-archive clean clean-dist
+.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-postgres e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice lifecycle-version-contract release print-release-version format source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
@@ -36,6 +37,7 @@ help:
 	@printf '  %-30s %s\n' 'examples' 'Build and smoke-test source-tree examples.'
 	@printf '  %-30s %s\n' 'clangd-surface' 'Verify compile_commands and public hover comments for examples.'
 	@printf '  %-30s %s\n' 'e2e-sus' 'Run opt-in sus audio e2e with cached remote MP3 and tiny model.'
+	@printf '  %-30s %s\n' 'e2e-postgres' 'Run PostgreSQL and CockroachDB client e2e; requires both connection strings.'
 	@printf '  %-30s %s\n' 'e2e-cpktxscribe' 'Run opt-in cpktxscribe URL e2e with remote MP3 and tiny model.'
 	@printf '  %-30s %s\n' 'example-audio-vox-intro' 'Run cached intro.mp3 VOX calibration and dump WAV segments.'
 	@printf '  %-30s %s\n' 'example-audio-live-vox' 'Run live microphone VOX capture and dump WAV segments.'
@@ -134,6 +136,11 @@ e2e-sus:
 	$(CMAKE) --preset $(E2E_SUS_PRESET)
 	$(CMAKE) --build --preset $(E2E_SUS_PRESET) --target cpkt_sus_audio_integration_test
 	bash ./scripts/e2e-sus.sh "$$(pwd)/build/$(E2E_SUS_PRESET)/cpkt_sus_audio_integration_test" "$$(pwd)/build/$(E2E_SUS_PRESET)"
+
+e2e-postgres:
+	$(CMAKE) --preset $(E2E_POSTGRES_PRESET)
+	$(CMAKE) --build --preset $(E2E_POSTGRES_PRESET) --target cpkt_postgres_integration_test
+	bash ./scripts/e2e-postgres.sh "$$(pwd)/build/$(E2E_POSTGRES_PRESET)/cpkt_postgres_integration_test"
 
 e2e-cpktxscribe:
 	$(CMAKE) --preset debug

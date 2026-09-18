@@ -41,6 +41,27 @@ bootlin_env=$(CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" env x86_64-linux-gnu)
 grep -Fq "export CC=$bootlin_root/bin/x86_64-linux-gcc" <<<"$bootlin_env" || fail 'Bootlin environment omitted the compiler'
 grep -Fq "export LD=$bootlin_root/bin/x86_64-linux-ld" <<<"$bootlin_env" || fail 'Bootlin environment omitted the linker'
 
+darwin_root="$cache/osxcross"
+darwin_prefix=arm64-apple-darwin25
+mkdir -p "$darwin_root/bin"
+for tool in clang clang++ ld ar ranlib strip nm otool; do
+  make_executable "$darwin_root/bin/$darwin_prefix-$tool" '#!/bin/sh\nexit 0'
+done
+host_mig_revision=88753c478c97b9a08bcdb66cecc68ba5881ff3af
+host_mig_root="$cache/roots/host-mig-puredarwin-$host_mig_revision-x86_64-linux-gnu"
+mkdir -p "$host_mig_root/bin" "$host_mig_root/libexec"
+make_executable "$host_mig_root/bin/mig" '#!/bin/sh\nexit 0'
+make_executable "$host_mig_root/bin/mig-upstream" '#!/bin/sh\nexit 0'
+make_executable "$host_mig_root/libexec/migcom" '#!/bin/sh\nprintf "%s\\n" cpkt-host-mig'
+printf 'component=host-mig\n' > "$host_mig_root/TOOLCHAIN"
+darwin_description=$(OSXCROSS_ROOT="$darwin_root" CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" discover arm64-apple-darwin)
+require_line 'source=osxcross+bootlin-host-mig' "$darwin_description"
+require_line 'status=ready' "$darwin_description"
+require_line "mig=$host_mig_root/bin/mig" "$darwin_description"
+require_line "migcom=$host_mig_root/libexec/migcom" "$darwin_description"
+require_line "mig_revision=$host_mig_revision" "$darwin_description"
+OSXCROSS_ROOT="$darwin_root" CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" ensure arm64-apple-darwin >/dev/null
+
 make_executable "$fake_bin/curl" '#!/bin/sh
 while [ "$#" -gt 0 ]; do
   case "$1" in

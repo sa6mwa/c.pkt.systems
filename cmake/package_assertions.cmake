@@ -626,6 +626,19 @@ if(DEFINED CPKT_OPEN62541_PATCHSET AND NOT "${CPKT_OPEN62541_PATCHSET}" STREQUAL
   message(FATAL_ERROR
     "configured open62541 patchset ${CPKT_OPEN62541_PATCHSET} does not match package manifest patchset ${_manifest_open62541_patchset}")
 endif()
+if(NOT _manifest_text MATCHES "(^|\n)postgresql_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing postgresql_version")
+endif()
+set(_manifest_postgresql_version "${CMAKE_MATCH_2}")
+string(REGEX MATCH "^[0-9]+" _manifest_postgresql_major_version "${_manifest_postgresql_version}")
+if(NOT _manifest_text MATCHES "(^|\n)postgres_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing postgres_abi_version")
+endif()
+set(_manifest_postgres_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)gssapi_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing gssapi_abi_version")
+endif()
+set(_manifest_gssapi_abi_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing mqtt_c_version")
 endif()
@@ -655,6 +668,22 @@ if(DEFINED CPKT_SUS_ABI_VERSION AND NOT "${CPKT_SUS_ABI_VERSION}" STREQUAL "")
   endif()
 else()
   set(CPKT_SUS_ABI_VERSION "${_manifest_sus_abi_version}")
+endif()
+if(DEFINED CPKT_POSTGRES_ABI_VERSION AND NOT "${CPKT_POSTGRES_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_POSTGRES_ABI_VERSION}" STREQUAL "${_manifest_postgres_abi_version}")
+    message(FATAL_ERROR
+      "configured PostgreSQL ABI ${CPKT_POSTGRES_ABI_VERSION} does not match package manifest ABI ${_manifest_postgres_abi_version}")
+  endif()
+else()
+  set(CPKT_POSTGRES_ABI_VERSION "${_manifest_postgres_abi_version}")
+endif()
+if(DEFINED CPKT_GSSAPI_ABI_VERSION AND NOT "${CPKT_GSSAPI_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_GSSAPI_ABI_VERSION}" STREQUAL "${_manifest_gssapi_abi_version}")
+    message(FATAL_ERROR
+      "configured GSSAPI ABI ${CPKT_GSSAPI_ABI_VERSION} does not match package manifest ABI ${_manifest_gssapi_abi_version}")
+  endif()
+else()
+  set(CPKT_GSSAPI_ABI_VERSION "${_manifest_gssapi_abi_version}")
 endif()
 file(REMOVE_RECURSE "${_manifest_extract_root}")
 
@@ -787,6 +816,8 @@ foreach(_path
     "include/cpkt/lua_runtime.h"
     "include/cpkt/sus.h"
     "include/cpkt/opcua.h"
+    "include/cpkt/gssapi.h"
+    "include/cpkt/postgres.h"
     "lib/libminiaudio.a"
     "lib/libwhisper.a"
     "lib/libggml.a"
@@ -799,9 +830,22 @@ foreach(_path
     "lib/libcpkt_lua_runtime.a"
     "lib/libcpktsus.a"
     "lib/libcpkt_opcua.a"
+    "lib/libcpkt_gssapi.a"
+    "lib/libcpkt_postgres.a"
+    "lib/libpq.a"
+    "lib/libpq-oauth.a"
+    "lib/libpgcommon_shlib.a"
+    "lib/libpgport.a"
+    "lib/libldap.a"
+    "lib/liblber.a"
+    "lib/liblutil.a"
+    "lib/libsasl2.a"
+    "lib/libgssapi_krb5.a"
     "lib/cmake/Lua/LuaConfig.cmake"
     "lib/cmake/Lua/LuaConfigVersion.cmake"
     "lib/cmake/miniaudio/miniaudioConfig.cmake"
+    "lib/cmake/CpktGssapi/CpktGssapiConfig.cmake"
+    "lib/cmake/CpktGssapi/CpktGssapiConfigVersion.cmake"
     "lib/cmake/miniaudio/miniaudioConfigVersion.cmake"
     "lib/cmake/whisper/whisperConfig.cmake"
     "lib/cmake/whisper/whisperConfigVersion.cmake"
@@ -815,6 +859,8 @@ foreach(_path
     "lib/cmake/CpktSus/CpktSusConfigVersion.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
+    "lib/cmake/CpktPostgres/CpktPostgresConfig.cmake"
+    "lib/cmake/CpktPostgres/CpktPostgresConfigVersion.cmake"
     "lib/cmake/open62541/open62541Config.cmake"
     "lib/cmake/open62541/open62541ConfigVersion.cmake"
     "lib/pkgconfig/lua.pc"
@@ -826,6 +872,8 @@ foreach(_path
     "lib/pkgconfig/cpkt-lua-runtime.pc"
     "lib/pkgconfig/cpkt-sus.pc"
     "lib/pkgconfig/cpkt-opcua.pc"
+    "lib/pkgconfig/cpkt-gssapi.pc"
+    "lib/pkgconfig/cpkt-postgres.pc"
     "lib/pkgconfig/open62541.pc"
     "share/c.pkt.systems/manifest.txt"
     "share/c.pkt.systems/sus-model-catalog.tsv"
@@ -833,6 +881,8 @@ foreach(_path
     "share/doc/c.pkt.systems/README.md"
     "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/docs/gssapi-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/docs/postgres-c89-facade-spec.md"
     "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/examples/abi_smoke.c"
     "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
@@ -873,6 +923,10 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md"
     "share/doc/c.pkt.systems/third_party/mqtt-c/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/LICENSE"
+    "share/doc/c.pkt.systems/third_party/mit-kerberos/LICENSE"
+    "share/doc/c.pkt.systems/third_party/cyrus-sasl/LICENSE"
+    "share/doc/c.pkt.systems/third_party/openldap/LICENSE"
+    "share/doc/c.pkt.systems/third_party/postgresql/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/patches/series"
     "share/doc/c.pkt.systems/third_party/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
     "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch")
@@ -1059,6 +1113,52 @@ foreach(_forbidden_header_token
 endforeach()
 file(REMOVE_RECURSE "${_opcua_facade_header_extract_root}")
 
+cpkt_extract_archive_for_assertions(_postgres_facade_header_extract_root)
+set(_postgres_facade_header "${_postgres_facade_header_extract_root}/${_archive_stem}/include/cpkt/postgres.h")
+if(NOT EXISTS "${_postgres_facade_header}")
+  message(FATAL_ERROR "missing PostgreSQL C89 facade header: ${_postgres_facade_header}")
+endif()
+file(READ "${_postgres_facade_header}" _postgres_facade_header_text)
+foreach(_forbidden_header_token
+    "libpq"
+    "postgres_ext"
+    "PGconn"
+    "PGresult"
+    "PGcancel"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint64_t"
+    "int64_t"
+    "long long"
+    "extern \\\"C\\\""
+    "inline")
+  if(_postgres_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "PostgreSQL C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_postgres_facade_header_extract_root}")
+
+cpkt_extract_archive_for_assertions(_gssapi_facade_header_extract_root)
+set(_gssapi_facade_header "${_gssapi_facade_header_extract_root}/${_archive_stem}/include/cpkt/gssapi.h")
+if(NOT EXISTS "${_gssapi_facade_header}")
+  message(FATAL_ERROR "missing GSSAPI C89 facade header: ${_gssapi_facade_header}")
+endif()
+file(READ "${_gssapi_facade_header}" _gssapi_facade_header_text)
+foreach(_forbidden_header_token
+    "gssapi/"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint32_t"
+    "int32_t"
+    "long long"
+    "extern \\\"C\\\""
+    "inline")
+  if(_gssapi_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "GSSAPI C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_gssapi_facade_header_extract_root}")
+
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime([^/]*)?\\.dylib$"
@@ -1076,6 +1176,14 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "^${_archive_stem_re}/lib/libcpkt_opcua([^/]*)?\\.dylib$"
     3
     "OPC UA facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_gssapi([^/]*)?\\.dylib$"
+    3
+    "GSSAPI facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_postgres([^/]*)?\\.dylib$"
+    3
+    "PostgreSQL facade Darwin shared library entries")
   foreach(_path
       "lib/libssl.dylib"
       "lib/libcrypto.dylib"
@@ -1104,7 +1212,14 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libcpktsus.dylib"
       "lib/libcpktsus.${CPKT_SUS_ABI_VERSION}.dylib"
-      "lib/libcpktsus.${CPKT_BUNDLE_VERSION}.dylib")
+      "lib/libcpktsus.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_gssapi.dylib"
+      "lib/libcpkt_gssapi.${CPKT_GSSAPI_ABI_VERSION}.dylib"
+      "lib/libcpkt_gssapi.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_postgres.dylib"
+      "lib/libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib"
+      "lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libpq.5.dylib")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
@@ -1145,6 +1260,14 @@ else()
     "^${_archive_stem_re}/lib/libcpkt_opcua\\.so([^/]*)?$"
     3
     "OPC UA facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_gssapi\\.so([^/]*)?$"
+    3
+    "GSSAPI facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_postgres\\.so([^/]*)?$"
+    3
+    "PostgreSQL facade Linux shared library entries")
   foreach(_path
       "lib/libssl.so"
       "lib/libcrypto.so"
@@ -1188,7 +1311,14 @@ else()
       "lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpktsus.so"
       "lib/libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
-      "lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}")
+      "lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_gssapi.so"
+      "lib/libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}"
+      "lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_postgres.so"
+      "lib/libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"
+      "lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libpq.so.5.${_manifest_postgresql_major_version}")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
 
@@ -1248,6 +1378,14 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
     "libcpktsus SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}"
+    "libcpkt_gssapi SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"
+    "libcpkt_postgres SONAME")
   cpkt_assert_elf_lacks_needed(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "libstdc\\+\\+\\.so[^]]*"
@@ -1268,6 +1406,14 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "^cpkt_sus_"
     "libcpktsus public ABI surface")
+  cpkt_assert_dynamic_exports_match(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
+    "^cpkt_gss_"
+    "libcpkt_gssapi public ABI surface")
+  cpkt_assert_dynamic_exports_match(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+    "^cpkt_postgres_"
+    "libcpkt_postgres public ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

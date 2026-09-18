@@ -230,11 +230,17 @@ set(CPKT_WHISPER_VERSION "v1.9.4" CACHE STRING "Pinned whisper.cpp release.")
 set(CPKT_MQTTC_VERSION "1.1.2" CACHE STRING "Pinned MQTT-C project version.")
 set(CPKT_MQTTC_COMMIT "0f4c34c8cc00b16cfee094745d68b8cdbaecd8e0" CACHE STRING "Pinned MQTT-C commit used by open62541 v1.5.8.")
 set(CPKT_OPEN62541_VERSION "1.5.8" CACHE STRING "Pinned open62541 release.")
+set(CPKT_KRB5_VERSION "1.22.2" CACHE STRING "Pinned MIT Kerberos release.")
+set(CPKT_CYRUS_SASL_VERSION "2.1.28" CACHE STRING "Pinned Cyrus SASL release.")
+set(CPKT_OPENLDAP_VERSION "2.6.15" CACHE STRING "Pinned OpenLDAP LTS release.")
+set(CPKT_POSTGRESQL_VERSION "18.6" CACHE STRING "Pinned PostgreSQL/libpq release.")
 set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-2" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SUS_ABI_VERSION "0" CACHE STRING "Susurro/whisper facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPCUA_ABI_VERSION "0" CACHE STRING "OPC UA facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_GSSAPI_ABI_VERSION "0" CACHE STRING "GSSAPI facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_POSTGRES_ABI_VERSION "0" CACHE STRING "PostgreSQL facade ABI major. Do not bump without maintainer approval.")
 if(NOT CPKT_SUS_CPU_ONLY)
   message(FATAL_ERROR "CPKT_SUS_CPU_ONLY=OFF is reserved for a later GPU-backend packaging phase")
 endif()
@@ -675,6 +681,110 @@ if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_opcua_shared cpkt_deps)
 endif()
 
+add_library(cpkt_gssapi_static STATIC src/gssapi.c)
+target_compile_features(cpkt_gssapi_static PRIVATE c_std_90)
+set_target_properties(cpkt_gssapi_static PROPERTIES
+  C_STANDARD 90
+  C_STANDARD_REQUIRED YES
+  C_EXTENSIONS OFF)
+cpkt_add_repo_warning_errors(cpkt_gssapi_static)
+target_include_directories(cpkt_gssapi_static
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_gssapi_static PUBLIC cpkt::gssapi_krb5_static)
+target_compile_definitions(cpkt_gssapi_static PRIVATE CPKT_GSSAPI_FACADE_VERSION="${CPKT_GSSAPI_ABI_VERSION}")
+set_target_properties(cpkt_gssapi_static PROPERTIES
+  OUTPUT_NAME cpkt_gssapi
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_gssapi_shared SHARED src/gssapi.c)
+target_compile_features(cpkt_gssapi_shared PRIVATE c_std_90)
+set_target_properties(cpkt_gssapi_shared PROPERTIES
+  C_STANDARD 90
+  C_STANDARD_REQUIRED YES
+  C_EXTENSIONS OFF)
+cpkt_add_repo_warning_errors(cpkt_gssapi_shared)
+target_include_directories(cpkt_gssapi_shared
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_gssapi_shared PUBLIC cpkt::gssapi_krb5_shared)
+target_compile_definitions(cpkt_gssapi_shared PRIVATE CPKT_GSSAPI_FACADE_VERSION="${CPKT_GSSAPI_ABI_VERSION}")
+set_target_properties(cpkt_gssapi_shared PROPERTIES
+  OUTPUT_NAME cpkt_gssapi
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_GSSAPI_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_gssapi_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_gssapi_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
+if(CPKT_BUILD_DEPENDENCIES)
+  add_dependencies(cpkt_gssapi_static cpkt_deps)
+  add_dependencies(cpkt_gssapi_shared cpkt_deps)
+endif()
+
+add_library(cpkt_postgres_static STATIC src/postgres.c)
+target_compile_features(cpkt_postgres_static PRIVATE c_std_90)
+set_target_properties(cpkt_postgres_static PROPERTIES
+  C_STANDARD 90
+  C_STANDARD_REQUIRED YES
+  C_EXTENSIONS OFF)
+cpkt_add_repo_warning_errors(cpkt_postgres_static)
+target_include_directories(cpkt_postgres_static
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_postgres_static PUBLIC cpkt::postgresql_static PRIVATE Threads::Threads)
+target_compile_definitions(cpkt_postgres_static PRIVATE CPKT_POSTGRES_FACADE_VERSION="${CPKT_POSTGRES_ABI_VERSION}")
+set_target_properties(cpkt_postgres_static PROPERTIES
+  OUTPUT_NAME cpkt_postgres
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_postgres_shared SHARED src/postgres.c)
+target_compile_features(cpkt_postgres_shared PRIVATE c_std_90)
+set_target_properties(cpkt_postgres_shared PROPERTIES
+  C_STANDARD 90
+  C_STANDARD_REQUIRED YES
+  C_EXTENSIONS OFF)
+cpkt_add_repo_warning_errors(cpkt_postgres_shared)
+target_include_directories(cpkt_postgres_shared
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_postgres_shared PUBLIC cpkt::postgresql_shared PRIVATE Threads::Threads)
+target_compile_definitions(cpkt_postgres_shared PRIVATE CPKT_POSTGRES_FACADE_VERSION="${CPKT_POSTGRES_ABI_VERSION}")
+set_target_properties(cpkt_postgres_shared PROPERTIES
+  OUTPUT_NAME cpkt_postgres
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_POSTGRES_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_postgres_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # libldap uses OpenLDAP's static liblutil internally.  Keep that private
+  # implementation detail out of the facade's ELF ABI while preserving every
+  # cpkt_postgres_* symbol defined by this target's own object files.
+  target_link_options(cpkt_postgres_shared PRIVATE "-Wl,--exclude-libs,ALL")
+  set_target_properties(cpkt_postgres_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
+if(CPKT_BUILD_DEPENDENCIES)
+  add_dependencies(cpkt_postgres_static cpkt_deps)
+  add_dependencies(cpkt_postgres_shared cpkt_deps)
+endif()
+
 if(CPKT_BUILD_TESTS)
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"
@@ -873,7 +983,8 @@ if(CPKT_BUILD_TESTS)
     cpkt_lua_runtime_static
     cpkt_audio_static
     cpkt_sus_static
-    cpkt_opcua_static)
+    cpkt_opcua_static
+    cpkt_gssapi_static)
   set_target_properties(cpkt_static_archive_pic_smoke_facades PROPERTIES
     LINKER_LANGUAGE CXX)
   if(CPKT_BUILD_DEPENDENCIES)
@@ -988,12 +1099,30 @@ if(CPKT_BUILD_TESTS)
       cpkt_audio_static
       cpkt_sus_shared
     )
+    add_executable(cpkt_postgres_receiver_test tests/postgres_receiver_test.c)
+    cpkt_use_local_runtime(cpkt_postgres_receiver_test)
+    target_compile_options(cpkt_postgres_receiver_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_postgres_receiver_test)
+    target_link_libraries(cpkt_postgres_receiver_test PRIVATE cpkt_postgres_static)
+    add_executable(cpkt_postgres_integration_test tests/postgres_integration_test.c)
+    cpkt_use_local_runtime(cpkt_postgres_integration_test)
+    target_compile_options(cpkt_postgres_integration_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_postgres_integration_test)
+    target_link_libraries(cpkt_postgres_integration_test PRIVATE cpkt_postgres_static)
+    add_executable(cpkt_gssapi_facade_test tests/gssapi_facade_test.c)
+    cpkt_use_local_runtime(cpkt_gssapi_facade_test)
+    target_compile_options(cpkt_gssapi_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_gssapi_facade_test)
+    target_link_libraries(cpkt_gssapi_facade_test PRIVATE cpkt_gssapi_static)
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_audio_facade_test cpkt_deps)
       add_dependencies(cpkt_audio_process_capture_probe cpkt_deps)
       add_dependencies(cpkt_audio_process_playback_probe cpkt_deps)
       add_dependencies(cpkt_sus_facade_test cpkt_deps)
       add_dependencies(cpkt_sus_audio_integration_test cpkt_deps)
+      add_dependencies(cpkt_postgres_receiver_test cpkt_deps)
+      add_dependencies(cpkt_postgres_integration_test cpkt_deps)
+      add_dependencies(cpkt_gssapi_facade_test cpkt_deps)
     endif()
 
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
@@ -1158,6 +1287,11 @@ if(CPKT_BUILD_TESTS)
         NAME opcua_boundary_server_c89_client_c89
         COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
+      add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
+      add_test(
+        NAME postgres_e2e_harness
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_e2e_harness_test.sh")
+      add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
       set_tests_properties(
         opcua_facade_integration
         opcua_boundary_server_c99_client_c89
@@ -1354,6 +1488,16 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_header_facade_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME postgres_header_facade
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/postgres_header_facade_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME gssapi_header_facade
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/gssapi_header_facade_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
         NAME audio_sus_spec_consistency
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_spec_consistency_test.sh"
@@ -1414,6 +1558,10 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_MQTTC_COMMIT=${CPKT_MQTTC_COMMIT}
         -DCPKT_OPEN62541_VERSION=${CPKT_OPEN62541_VERSION}
         -DCPKT_OPEN62541_PATCHSET=${CPKT_OPEN62541_PATCHSET}
+        -DCPKT_KRB5_VERSION=${CPKT_KRB5_VERSION}
+        -DCPKT_CYRUS_SASL_VERSION=${CPKT_CYRUS_SASL_VERSION}
+        -DCPKT_OPENLDAP_VERSION=${CPKT_OPENLDAP_VERSION}
+        -DCPKT_POSTGRESQL_VERSION=${CPKT_POSTGRESQL_VERSION}
         -DCPKT_LUA_RUNTIME_ABI_VERSION=${CPKT_LUA_RUNTIME_ABI_VERSION}
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
@@ -1425,6 +1573,12 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_OPCUA_ABI_VERSION=${CPKT_OPCUA_ABI_VERSION}
         -DCPKT_OPCUA_STATIC_LIBRARY=$<TARGET_FILE:cpkt_opcua_static>
         -DCPKT_OPCUA_SHARED_LIBRARY=$<TARGET_FILE:cpkt_opcua_shared>
+        -DCPKT_GSSAPI_ABI_VERSION=${CPKT_GSSAPI_ABI_VERSION}
+        -DCPKT_GSSAPI_STATIC_LIBRARY=$<TARGET_FILE:cpkt_gssapi_static>
+        -DCPKT_GSSAPI_SHARED_LIBRARY=$<TARGET_FILE:cpkt_gssapi_shared>
+        -DCPKT_POSTGRES_ABI_VERSION=${CPKT_POSTGRES_ABI_VERSION}
+        -DCPKT_POSTGRES_STATIC_LIBRARY=$<TARGET_FILE:cpkt_postgres_static>
+        -DCPKT_POSTGRES_SHARED_LIBRARY=$<TARGET_FILE:cpkt_postgres_shared>
         -DCPKT_WHISPER_VERSION=${CPKT_WHISPER_VERSION}
         -DCPKT_SUS_ABI_VERSION=${CPKT_SUS_ABI_VERSION}
         -DCPKT_SUS_BACKEND_CAPABILITIES=${CPKT_SUS_BACKEND_CAPABILITIES}
@@ -1442,6 +1596,10 @@ if(CPKT_BUILD_DEPENDENCIES)
       cpkt_audio_shared
       cpkt_opcua_static
       cpkt_opcua_shared
+      cpkt_gssapi_static
+      cpkt_gssapi_shared
+      cpkt_postgres_static
+      cpkt_postgres_shared
       cpkt_sus_static
       cpkt_sus_shared
     VERBATIM

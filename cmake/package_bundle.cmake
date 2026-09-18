@@ -17,6 +17,10 @@ foreach(_required
     CPKT_MQTTC_COMMIT
     CPKT_OPEN62541_VERSION
     CPKT_OPEN62541_PATCHSET
+    CPKT_KRB5_VERSION
+    CPKT_CYRUS_SASL_VERSION
+    CPKT_OPENLDAP_VERSION
+    CPKT_POSTGRESQL_VERSION
     CPKT_LUA_RUNTIME_ABI_VERSION
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
@@ -32,7 +36,13 @@ foreach(_required
     CPKT_SUS_SHARED_LIBRARY
     CPKT_OPCUA_ABI_VERSION
     CPKT_OPCUA_STATIC_LIBRARY
-    CPKT_OPCUA_SHARED_LIBRARY)
+    CPKT_OPCUA_SHARED_LIBRARY
+    CPKT_GSSAPI_ABI_VERSION
+    CPKT_GSSAPI_STATIC_LIBRARY
+    CPKT_GSSAPI_SHARED_LIBRARY
+    CPKT_POSTGRES_ABI_VERSION
+    CPKT_POSTGRES_STATIC_LIBRARY
+    CPKT_POSTGRES_SHARED_LIBRARY)
   if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
     message(FATAL_ERROR "${_required} is required")
   endif()
@@ -53,6 +63,7 @@ set(_checksums_path "${CPKT_DIST_DIR}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECK
 set(_cpkt_static_library_suffix ".a")
 set(_cpkt_whisper_package_version "${CPKT_WHISPER_VERSION}")
 string(REGEX REPLACE "^v" "" _cpkt_whisper_package_version "${_cpkt_whisper_package_version}")
+string(REGEX MATCH "^[0-9]+" _cpkt_postgresql_major_version "${CPKT_POSTGRESQL_VERSION}")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_shared_library_suffix ".dylib")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
@@ -67,6 +78,13 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.dylib")
   set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.${CPKT_OPCUA_ABI_VERSION}.dylib")
   set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_gssapi_shared_library_link_name "libcpkt_gssapi.dylib")
+  set(_cpkt_gssapi_shared_library_abi_name "libcpkt_gssapi.${CPKT_GSSAPI_ABI_VERSION}.dylib")
+  set(_cpkt_gssapi_shared_library_real_name "libcpkt_gssapi.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_postgres_shared_library_link_name "libcpkt_postgres.dylib")
+  set(_cpkt_postgres_shared_library_abi_name "libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib")
+  set(_cpkt_postgres_shared_library_real_name "libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_postgresql_shared_library_name "libpq.5.dylib")
   set(_cpkt_libssh2_shared_library_name "libssh2.1.dylib")
   set(_cpkt_libxml2_shared_library_name "libxml2.dylib")
   set(_cpkt_lua_shared_library_name "liblua.dylib")
@@ -86,6 +104,13 @@ else()
   set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.so")
   set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.so.${CPKT_OPCUA_ABI_VERSION}")
   set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_gssapi_shared_library_link_name "libcpkt_gssapi.so")
+  set(_cpkt_gssapi_shared_library_abi_name "libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}")
+  set(_cpkt_gssapi_shared_library_real_name "libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_postgres_shared_library_link_name "libcpkt_postgres.so")
+  set(_cpkt_postgres_shared_library_abi_name "libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}")
+  set(_cpkt_postgres_shared_library_real_name "libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_postgresql_shared_library_name "libpq.so.5.${_cpkt_postgresql_major_version}")
   set(_cpkt_libssh2_shared_library_name "libssh2.so")
   set(_cpkt_libxml2_shared_library_name "libxml2.so")
   set(_cpkt_lua_shared_library_name "liblua.so")
@@ -108,7 +133,7 @@ function(cpkt_stage_dependency_install dependency_name)
   endforeach()
 endfunction()
 
-foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541)
+foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541 krb5 cyrus-sasl openldap postgresql)
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
 
@@ -197,6 +222,22 @@ cpkt_stage_facade_library(
   "${_cpkt_opcua_shared_library_real_name}"
   "${_cpkt_opcua_shared_library_abi_name}"
   "${_cpkt_opcua_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "GSSAPI facade"
+  "${CPKT_GSSAPI_STATIC_LIBRARY}"
+  "libcpkt_gssapi"
+  "${CPKT_GSSAPI_SHARED_LIBRARY}"
+  "${_cpkt_gssapi_shared_library_real_name}"
+  "${_cpkt_gssapi_shared_library_abi_name}"
+  "${_cpkt_gssapi_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "PostgreSQL facade"
+  "${CPKT_POSTGRES_STATIC_LIBRARY}"
+  "libcpkt_postgres"
+  "${CPKT_POSTGRES_SHARED_LIBRARY}"
+  "${_cpkt_postgres_shared_library_real_name}"
+  "${_cpkt_postgres_shared_library_abi_name}"
+  "${_cpkt_postgres_shared_library_link_name}")
 
 if(CPKT_TARGET_ID MATCHES "-linux-")
   if(NOT DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY OR "${CPKT_CXX_STDLIB_STATIC_LIBRARY}" STREQUAL "")
@@ -764,6 +805,82 @@ file(WRITE "${_stage_root}/lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
 )
 cpkt_write_config_version("CpktOpcUa" "CpktOpcUa" "${CPKT_OPEN62541_VERSION}")
 
+set(_cpkt_gssapi_static_system_libraries "")
+set(_cpkt_gssapi_static_private_pc_libraries "-pthread")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  list(APPEND _cpkt_gssapi_static_system_libraries resolv)
+  string(APPEND _cpkt_gssapi_static_private_pc_libraries " -ldl -lresolv")
+elseif(CPKT_TARGET_ID MATCHES "-apple-darwin$")
+  list(APPEND _cpkt_gssapi_static_system_libraries resolv "-Wl,-framework,Kerberos")
+  string(APPEND _cpkt_gssapi_static_private_pc_libraries " -lresolv -Wl,-framework,Kerberos")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktGssapi")
+file(WRITE "${_stage_root}/lib/cmake/CpktGssapi/CpktGssapiConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_gssapi_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktGssapi_FOUND TRUE)\n"
+  "set(CpktGssapi_VERSION \"${CPKT_KRB5_VERSION}\")\n"
+  "if(NOT TARGET cpkt::gssapi)\n"
+  "  add_library(cpkt::gssapi STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::gssapi PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_gssapi_prefix}/lib/libcpkt_gssapi${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_gssapi_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_gssapi_prefix}/lib/libgssapi_krb5${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libkrb5${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libk5crypto${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libcom_err${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libkrb5support${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libprofile${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libverto${_cpkt_static_library_suffix};\${CMAKE_DL_LIBS};Threads::Threads;${_cpkt_gssapi_static_system_libraries}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::gssapi_shared)\n"
+  "  add_library(cpkt::gssapi_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::gssapi_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_gssapi_prefix}/lib/libcpkt_gssapi${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_gssapi_prefix}/include\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktGssapi" "CpktGssapi" "${CPKT_KRB5_VERSION}")
+
+set(_cpkt_postgres_static_system_libraries "m")
+set(_cpkt_postgres_static_private_pc_libraries "-lm")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  list(APPEND _cpkt_postgres_static_system_libraries resolv)
+  string(APPEND _cpkt_postgres_static_private_pc_libraries " -lresolv -ldl -pthread")
+elseif(CPKT_TARGET_ID MATCHES "-apple-darwin$")
+  list(APPEND _cpkt_postgres_static_system_libraries resolv "-Wl,-framework,Kerberos")
+  string(APPEND _cpkt_postgres_static_private_pc_libraries " -lresolv -Wl,-framework,Kerberos")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktPostgres")
+file(WRITE "${_stage_root}/lib/cmake/CpktPostgres/CpktPostgresConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_postgres_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_postgres_prefix}/lib/cmake/OpenSSL\")\n"
+  "set(ZLIB_DIR \"\${_cpkt_postgres_prefix}/lib/cmake/zlib\")\n"
+  "set(CURL_DIR \"\${_cpkt_postgres_prefix}/lib/cmake/CURL\")\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "find_dependency(ZLIB CONFIG REQUIRED)\n"
+  "find_dependency(CURL CONFIG REQUIRED)\n"
+  "set(CpktPostgres_FOUND TRUE)\n"
+  "set(CpktPostgres_VERSION \"${CPKT_POSTGRESQL_VERSION}\")\n"
+  "set(_cpkt_postgres_static_system_libraries \"${_cpkt_postgres_static_system_libraries}\")\n"
+  "if(NOT TARGET cpkt::postgres)\n"
+  "  add_library(cpkt::postgres STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::postgres PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_postgres_prefix}/lib/libcpkt_postgres${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_postgres_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_postgres_prefix}/lib/libpq${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libpq-oauth${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libpgcommon_shlib${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libpgport${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libldap${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/liblber${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/liblutil${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libsasl2${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libgssapi_krb5${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libkrb5${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libk5crypto${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libcom_err${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libkrb5support${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libprofile${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libverto${_cpkt_static_library_suffix};CURL::libcurl;OpenSSL::SSL;OpenSSL::Crypto;ZLIB::ZLIB;\${CMAKE_DL_LIBS};Threads::Threads;\${_cpkt_postgres_static_system_libraries}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::postgres_shared)\n"
+  "  add_library(cpkt::postgres_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::postgres_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_postgres_prefix}/lib/libcpkt_postgres${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_postgres_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_postgres_prefix}/lib/${_cpkt_postgresql_shared_library_name}\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktPostgres" "CpktPostgres" "${CPKT_POSTGRESQL_VERSION}")
+
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/mqtt-c")
 file(WRITE "${_stage_root}/lib/cmake/mqtt-c/mqtt-cConfig.cmake"
   "include(CMakeFindDependencyMacro)\n"
@@ -1009,6 +1126,33 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-opcua.pc"
   "Libs: -L\${libdir} -lcpkt_opcua\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-postgres.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-postgres\n"
+  "Description: C89 PostgreSQL/libpq facade from c.pkt.systems\n"
+  "Version: ${CPKT_POSTGRESQL_VERSION}\n"
+  "Requires.private: libcurl libssl libcrypto zlib\n"
+  "Libs: -L\${libdir} -lcpkt_postgres\n"
+  "Libs.private: -lpq -lpq-oauth -lpgcommon_shlib -lpgport -lldap -llber -llutil -lsasl2 -lgssapi_krb5 -lkrb5 -lk5crypto -lcom_err -lkrb5support -lprofile -lverto ${_cpkt_postgres_static_private_pc_libraries}\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-gssapi.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-gssapi\n"
+  "Description: C89 GSSAPI facade from c.pkt.systems\n"
+  "Version: ${CPKT_KRB5_VERSION}\n"
+  "Libs: -L\${libdir} -lcpkt_gssapi\n"
+  "Libs.private: -lgssapi_krb5 -lkrb5 -lk5crypto -lcom_err -lkrb5support -lprofile -lverto ${_cpkt_gssapi_static_private_pc_libraries}\n"
+  "Cflags: -I\${includedir}\n"
+)
 file(WRITE "${_stage_root}/lib/pkgconfig/mqtt-c.pc"
   "prefix=\${pcfiledir}/../..\n"
   "exec_prefix=\${prefix}\n"
@@ -1041,10 +1185,16 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "mqtt_c_commit=${CPKT_MQTTC_COMMIT}\n"
   "open62541_version=${CPKT_OPEN62541_VERSION}\n"
   "open62541_patchset=${CPKT_OPEN62541_PATCHSET}\n"
+  "krb5_version=${CPKT_KRB5_VERSION}\n"
+  "cyrus_sasl_version=${CPKT_CYRUS_SASL_VERSION}\n"
+  "openldap_version=${CPKT_OPENLDAP_VERSION}\n"
+  "postgresql_version=${CPKT_POSTGRESQL_VERSION}\n"
   "lua_runtime_abi_version=${CPKT_LUA_RUNTIME_ABI_VERSION}\n"
   "audio_abi_version=${CPKT_AUDIO_ABI_VERSION}\n"
   "sus_abi_version=${CPKT_SUS_ABI_VERSION}\n"
   "opcua_abi_version=${CPKT_OPCUA_ABI_VERSION}\n"
+  "postgres_abi_version=${CPKT_POSTGRES_ABI_VERSION}\n"
+  "gssapi_abi_version=${CPKT_GSSAPI_ABI_VERSION}\n"
 )
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
@@ -1065,6 +1215,12 @@ file(COPY_FILE
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/audio-sus-facade-spec.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/postgres-c89-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/postgres-c89-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/gssapi-c89-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/gssapi-c89-facade-spec.md")
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
   "${_stage_root}/share/doc/c.pkt.systems/docs/sus-model-catalog.tsv")
@@ -1094,6 +1250,10 @@ cpkt_stage_license("miniaudio" "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio/src/LICE
 cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src/LICENSE")
 cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
 cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src/LICENSE")
+cpkt_stage_license("mit-kerberos" "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5/src/NOTICE")
+cpkt_stage_license("cyrus-sasl" "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl/src/COPYING")
+cpkt_stage_license("openldap" "${CPKT_DEPENDENCY_BUILD_ROOT}/openldap/src/LICENSE")
+cpkt_stage_license("postgresql" "${CPKT_DEPENDENCY_BUILD_ROOT}/postgresql/src/COPYRIGHT")
 file(MAKE_DIRECTORY "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models")
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/third_party/kblab-whisper-models/LICENSE"

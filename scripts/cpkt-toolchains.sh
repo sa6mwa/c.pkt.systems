@@ -23,7 +23,7 @@ download_file() {
   local url=$1 destination=$2
   if command -v curl >/dev/null 2>&1; then curl -fL --retry 3 --connect-timeout 20 --output "$destination" "$url"
   elif command -v wget >/dev/null 2>&1; then wget -O "$destination" "$url"
-  else die 'curl or wget is required to download Bootlin toolchains'; fi
+  else die 'curl or wget is required to download pinned toolchain archives'; fi
 }
 
 install_cleanup_trap() {
@@ -122,6 +122,93 @@ osxcross_candidate() {
   printf 'osxcross|%s|%s\n' "$root" "$prefix"
 }
 
+host_mig_meta() {
+  # PureDarwin's portable MIG is APSL-derived.  It is a host-only build
+  # toolchain component and is never installed into c.pkt.systems artifacts.
+  printf '%s\n' '88753c478c97b9a08bcdb66cecc68ba5881ff3af|38a278e3e3ee2211bd859ee5ba764146c4b6e047c2ee4618e12d9d11e79a4774'
+}
+
+host_mig_values() {
+  local revision sha256 root
+  IFS='|' read -r revision sha256 <<<"$(host_mig_meta)"
+  root="$(cache_root)/roots/host-mig-puredarwin-${revision}-x86_64-linux-gnu"
+  printf '%s|%s|%s|%s\n' "$revision" "$sha256" "PureDarwin-${revision}.tar.gz" "$root"
+}
+
+host_mig_ready() {
+  local root=$1
+  [[ -x "$root/bin/mig" ]] && [[ -x "$root/bin/mig-upstream" ]] &&
+    [[ -x "$root/libexec/migcom" ]] && [[ -f "$root/TOOLCHAIN" ]]
+}
+
+install_host_mig() {
+  local values revision sha256 archive_name root
+  values=$(host_mig_values)
+  IFS='|' read -r revision sha256 archive_name root <<<"$values"
+  if host_mig_ready "$root"; then return; fi
+  # MIG executes on this x86_64 Linux builder; it must not be compiled by
+  # osxcross, which would produce an unusable Darwin executable.
+  install_bootlin x86_64-linux-gnu
+  with_cache_lock "$(cache_root)/locks/host-mig-${revision}-x86_64-linux-gnu.lock" \
+    install_host_mig_locked "$revision" "$sha256" "$archive_name" "$root"
+}
+
+install_host_mig_locked() {
+  local revision=$1 sha256=$2 archive_name=$3 root=$4
+  local archive_dir archive tmp extract source_root build_root values bootlin_arch bootlin_name bootlin_sha bootlin_prefix bootlin_sysroot bootlin_root bootlin_cc
+  if host_mig_ready "$root"; then return; fi
+  command -v bison >/dev/null 2>&1 || die 'bison is required to provision the pinned host MIG toolchain'
+  command -v flex >/dev/null 2>&1 || die 'flex is required to provision the pinned host MIG toolchain'
+  values=$(bootlin_values x86_64-linux-gnu)
+  IFS='|' read -r bootlin_arch bootlin_name bootlin_sha bootlin_prefix bootlin_sysroot bootlin_root <<<"$values"
+  bootlin_cc="$bootlin_root/bin/$bootlin_prefix-gcc"
+  [[ -x "$bootlin_cc" ]] || die "pinned Bootlin host compiler is missing: $bootlin_cc"
+
+  archive_dir="$(cache_root)/archives"; archive="$archive_dir/$archive_name"
+  mkdir -p "$archive_dir" "$(cache_root)/roots"
+  if [[ -f "$archive" ]] && [[ "$(sha256_file "$archive")" != "$sha256" ]]; then
+    printf 'cpkt-toolchains: discarding corrupt cached archive: %s\n' "$archive" >&2
+    rm -f -- "$archive"
+  fi
+  if [[ ! -f "$archive" ]]; then
+    tmp="$archive.tmp.$$"; install_cleanup_trap "$tmp" -f
+    download_file "https://codeload.github.com/PureDarwin/PureDarwin/tar.gz/$revision" "$tmp"
+    [[ "$(sha256_file "$tmp")" == "$sha256" ]] || die "checksum mismatch for $archive_name"
+    mv "$tmp" "$archive"; trap - EXIT HUP INT TERM
+  fi
+
+  extract="$(cache_root)/roots/.extract-host-mig-${revision}.$$"
+  install_cleanup_trap "$extract" -rf
+  mkdir -p "$extract"; tar -C "$extract" -xf "$archive"
+  source_root="$extract/PureDarwin-$revision"
+  [[ -f "$source_root/tools/mig/parser.y" ]] && [[ -f "$source_root/tools/mig/mig.sh" ]] ||
+    die "unexpected host MIG source archive layout: $archive_name"
+  build_root="$extract/build"; mkdir -p "$build_root"
+  (
+    cd "$build_root"
+    bison -d -b y "$source_root/tools/mig/parser.y"
+    flex -o "$build_root/lexxer.yy.c" "$source_root/tools/mig/lexxer.l"
+  )
+  mkdir -p "$extract/root/bin" "$extract/root/libexec"
+  "$bootlin_cc" -static -s -O2 -DNDEBUG -std=c11 -D_GNU_SOURCE \
+    '-DMIG_VERSION="cpkt-host-mig"' \
+    '-D__private_extern__=__attribute__((visibility("hidden")))' \
+    -D__LITTLE_ENDIAN__=1 \
+    -I"$build_root" -I"$source_root/tools/mig" -I"$source_root/tools/cctools/include/foreign" \
+    "$source_root/tools/mig"/{error,global,header,mig,routine,server,statement,string,type,user,utils}.c \
+    "$build_root/y.tab.c" "$build_root/lexxer.yy.c" \
+    -o "$extract/root/libexec/migcom"
+  cp "$source_root/tools/mig/mig.sh" "$extract/root/bin/mig-upstream"
+  printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/mig-upstream" -arch arm64 "$@"' > "$extract/root/bin/mig"
+  chmod 755 "$extract/root/bin/mig" "$extract/root/bin/mig-upstream" "$extract/root/libexec/migcom"
+  printf 'component=host-mig\nrevision=%s\nsource_sha256=%s\nhost_toolchain=%s\n' \
+    "$revision" "$sha256" "$bootlin_name" > "$extract/root/TOOLCHAIN"
+  "$extract/root/libexec/migcom" -version | grep -Fxq cpkt-host-mig ||
+    die 'pinned host MIG compiler did not execute correctly'
+  rm -rf "$root"; mv "$extract/root" "$root"; rm -rf "$extract"; trap - EXIT HUP INT TERM
+  host_mig_ready "$root" || die "incomplete pinned host MIG toolchain: $root"
+}
+
 install_bootlin() {
   local target=$1 values arch name sha256 prefix sysroot_rel root
   values=$(bootlin_values "$target")
@@ -173,16 +260,24 @@ print_bootlin_target() {
 }
 
 print_darwin_target() {
-  local candidate source root prefix
-  printf 'target=arm64-apple-darwin\ncache=%s\nsource=osxcross\ndownloadable=no\n' "$(cache_root)"
-  if ! candidate=$(osxcross_candidate); then printf 'status=missing\nnote=Configure OSXCROSS_ROOT with a complete local osxcross SDK toolchain.\n'; return; fi
+  local candidate source root prefix values revision sha256 archive_name mig_root
+  printf 'target=arm64-apple-darwin\ncache=%s\nsource=osxcross+bootlin-host-mig\ndownloadable=partially\n' "$(cache_root)"
+  if ! candidate=$(osxcross_candidate); then printf 'status=missing\nnote=Configure OSXCROSS_ROOT with a complete local osxcross SDK toolchain, then run: %s ensure arm64-apple-darwin\n' "$0"; return; fi
   IFS='|' read -r source root prefix <<<"$candidate"
-  printf 'status=ready\nroot=%s\nprefix=%s\ncc=%s\ncxx=%s\nld=%s\nar=%s\nranlib=%s\nstrip=%s\nnm=%s\notool=%s\n' \
-    "$root" "$prefix" "$root/bin/$prefix-clang" "$root/bin/$prefix-clang++" "$root/bin/$prefix-ld" "$root/bin/$prefix-ar" "$root/bin/$prefix-ranlib" "$root/bin/$prefix-strip" "$root/bin/$prefix-nm" "$root/bin/$prefix-otool"
+  values=$(host_mig_values)
+  IFS='|' read -r revision sha256 archive_name mig_root <<<"$values"
+  if ! host_mig_ready "$mig_root"; then
+    printf 'status=missing\nroot=%s\nprefix=%s\nmig_revision=%s\nnote=Run: %s ensure arm64-apple-darwin\n' \
+      "$root" "$prefix" "$revision" "$0"
+    return
+  fi
+  printf 'status=ready\nroot=%s\nprefix=%s\ncc=%s\ncxx=%s\nld=%s\nar=%s\nranlib=%s\nstrip=%s\nnm=%s\notool=%s\nmig=%s\nmigcom=%s\nmig_root=%s\nmig_revision=%s\n' \
+    "$root" "$prefix" "$root/bin/$prefix-clang" "$root/bin/$prefix-clang++" "$root/bin/$prefix-ld" "$root/bin/$prefix-ar" "$root/bin/$prefix-ranlib" "$root/bin/$prefix-strip" "$root/bin/$prefix-nm" "$root/bin/$prefix-otool" \
+    "$mig_root/bin/mig" "$mig_root/libexec/migcom" "$mig_root" "$revision"
 }
 
 report_target() { require_target "$1"; if is_linux_target "$1"; then print_bootlin_target "$1"; else print_darwin_target; fi; }
-ensure_target() { require_target "$1"; if is_linux_target "$1"; then install_bootlin "$1"; else osxcross_candidate >/dev/null || die 'arm64-apple-darwin requires a complete local osxcross SDK toolchain'; fi; report_target "$1"; }
+ensure_target() { require_target "$1"; if is_linux_target "$1"; then install_bootlin "$1"; else osxcross_candidate >/dev/null || die 'arm64-apple-darwin requires a complete local osxcross SDK toolchain'; install_host_mig; fi; report_target "$1"; }
 
 print_env() {
   local target=$1 description key value
@@ -208,6 +303,8 @@ Commands:
 Linux policy: every compiler, linker, binutil, and libc comes from the pinned
 Bootlin collection. Host GCC, Clang, and binutils are never candidates.
 Darwin policy: discover a local osxcross collection; do not download Apple SDKs.
+`ensure arm64-apple-darwin` also provisions a pinned static host MIG compiler
+using the x86_64 Bootlin collection; it is build machinery only, never shipped.
 USAGE
 }
 

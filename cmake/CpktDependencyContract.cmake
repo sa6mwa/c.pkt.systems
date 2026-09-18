@@ -150,8 +150,13 @@ function(cpkt_refresh_repo_dependency_roots_if_stale
       CPKT_DEPENDENCY_BUILD_ROOT
       CPKT_TOOLCHAIN_ROOT
       CPKT_OSXCROSS_ROOT
+      CPKT_DARWIN_HOST_MIG_REVISION
       CPKT_OPENSSL_VERSION
       CPKT_OPENSSL_BUILD_CONFIG_REVISION
+      CPKT_KRB5_VERSION
+      CPKT_CYRUS_SASL_VERSION
+      CPKT_OPENLDAP_VERSION
+      CPKT_POSTGRESQL_VERSION
       CPKT_ZLIB_VERSION
       CPKT_CURL_VERSION
       CPKT_NGHTTP2_VERSION
@@ -166,6 +171,7 @@ function(cpkt_refresh_repo_dependency_roots_if_stale
       CPKT_OPEN62541_VERSION
       CPKT_OPEN62541_PATCHSET
       CPKT_DEPENDENCY_BUILD_TYPE
+      CPKT_DEPENDENCY_BUILD_JOBS
       CPKT_SUS_CPU_ONLY)
     cpkt_append_dependency_contract_var(_contract "${_var}")
   endforeach()
@@ -175,10 +181,15 @@ function(cpkt_refresh_repo_dependency_roots_if_stale
     "${CMAKE_SOURCE_DIR}/cmake/CpktDependencies.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
+    "${CMAKE_SOURCE_DIR}/cmake/copy_autotools_library_artifacts.cmake"
+    "${CMAKE_SOURCE_DIR}/cmake/disable_autotools_absolute_rpath.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/install_lua.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_single_pass.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/patch_openssl_buildinfo.cmake"
+    "${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake"
+    "${CMAKE_SOURCE_DIR}/cmake/patch_openldap_lutil_link.cmake"
+    "${CMAKE_SOURCE_DIR}/cmake/patch_krb5_macos_cross.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/patch_zlib_single_pass.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/strip_dependency_install_tree.cmake")
