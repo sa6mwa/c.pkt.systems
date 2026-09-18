@@ -55,34 +55,113 @@ eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
 
 ## Development-machine provisioning
 
-These instructions establish a Linux development workstation for both
-pkt.systems Go work and C/CMake work. They are workstation prerequisites, not
-SDK contents and not release-artifact dependencies. Use the host package
-manager with explicit operator authorization where it needs `sudo`; do not
-embed package-manager actions in ordinary project builds.
+These instructions establish the complete Debian/Ubuntu Linux development
+workstation baseline used across pkt.systems Go work and C/CMake work. They
+are workstation prerequisites, not SDK contents and not release-artifact
+dependencies. They deliberately describe the required state rather than
+shipping or invoking a machine-provisioning script from this skill. Use the
+host package manager with explicit operator authorization where it needs
+`sudo`; do not embed package-manager actions in ordinary project builds.
 
-On a Debian/Ubuntu host, install the following capability groups before
-provisioning toolchains:
+### Host packages
 
-- build and Autotools tooling: `build-essential`, `binutils`, `clang`, `lld`,
-  `cmake`, `ninja-build`, `make`, `autoconf`, `automake`, `libtool`, `patch`,
-  `pkg-config`, `perl`, `python3`, `python3-venv`, `bison`, `flex`, and
-  `gawk`;
-- archive, download, and source tools: `git`, `git-lfs`, `git-crypt`, `curl`,
-  `wget`, `ca-certificates`, `bzip2`, `xz-utils`, `zip`, `unzip`, `xar`, and
-  `cpio`;
-- native development and dependency headers: `libbz2-dev`, `liblzma-dev`,
-  `libssl-dev`, `libxml2-dev`, `uuid-dev`, `zlib1g-dev`, `libx11-dev`,
-  `libcurl4-openssl-dev`, and `libcairo2-dev`;
-- target verification and local integration tools: `qemu-user`, `podman`,
-  `fuse-overlayfs`, `slirp4netns`, `uidmap`, `help2man`, and `texinfo`;
-- native-only quality tools: `valgrind`, `clang-format`, and `clangd`.
+Refresh apt metadata and install this complete baseline as one transaction:
 
-Install Go separately according to the Go components' selected Go-version
-policy. The C/CMake provisioning baseline deliberately does not select, pin,
-or update Go. Do not substitute distro cross compilers or `musl-cross-make`
-outputs for the lifecycle's pinned Bootlin collections; the resolver owns the
-shipped Linux target toolchains.
+```sh
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  autoconf automake binutils bison build-essential bzip2 ca-certificates \
+  ccrypt clang clang-format clangd cmake cpio curl default-jre-headless flex \
+  fuse-overlayfs gawk gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf git \
+  git-crypt git-lfs help2man libc6-dev-arm64-cross libc6-dev-armhf-cross \
+  libbz2-dev libclang-rt-dev libcurl4-openssl-dev libcairo2-dev liblzma-dev \
+  libssl-dev libtool libxml2-dev libx11-dev lld llvm-dev musl-tools \
+  ninja-build nodejs npm patch perl pkg-config podman python-is-python3 \
+  python3 python3-pip python3-venv qemu-user ripgrep slirp4netns texinfo \
+  uidmap unzip uuid-dev valgrind wget xar xz-utils zip zlib1g-dev
+```
+
+This baseline supplies build/Autotools tools, native quality tools, source and
+archive utilities, Node-based project utilities, Java-based generators,
+containers with rootless networking, QEMU cross-target runners, and headers
+needed to build osxcross and common pkt.systems dependencies. `musl-tools`
+provides the host `musl-gcc`; distro GNU cross compilers and cross libc headers
+are installed for general workstation work and diagnostics.
+
+`valgrind` and `clangd` are explicit lifecycle quality prerequisites even when
+an earlier workstation helper did not list them. Confirm the required host
+command surfaces before treating the workstation as ready:
+
+```sh
+command -v git cmake ninja podman qemu-aarch64 valgrind clang-format clangd
+cmake --version
+```
+
+`cmake` must be at least 3.24 for pkt.systems components that require that
+version. On older Ubuntu releases, install a compatible CMake through the
+organization-approved host package source before continuing.
+
+Install Go independently using the version policy of the Go components being
+worked on. This baseline intentionally does not select, pin, or update Go.
+It likewise does not install `nerdctl` or `containerd`.
+
+### Developer identity and local source roots
+
+Perform source checkouts and cross-toolchain builds as the regular developer
+account, never as root. Seed the shared Git defaults for that account:
+
+```sh
+git config --global init.defaultBranch trunk
+git config --global log.showSignature true
+```
+
+The conventional non-repository locations are:
+
+| Purpose | Conventional location |
+| --- | --- |
+| musl-cross-make source checkout | `$HOME/src/musl-cross-make` |
+| local musl cross toolchains | `$HOME/.local/cross` |
+| osxcross source checkout | `$HOME/src/osxcross` |
+| osxcross arm64 collection | `$HOME/.local/cross/osxcross` |
+| c.pkt.systems immutable toolchain cache | `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}` |
+
+Keep these outside all source repositories. They may be overridden with
+workstation-local paths, but never written into source, generated packages, or
+release artifacts.
+
+### Local musl cross-toolchain workspace
+
+For the broader pkt.systems development environment, clone or fast-forward the
+operator-approved `musl-cross-make` checkout and build these local convenience
+toolchains into the conventional prefix:
+
+```sh
+git clone --depth=1 https://github.com/richfelker/musl-cross-make.git "$HOME/src/musl-cross-make"
+make -C "$HOME/src/musl-cross-make" clean
+make -C "$HOME/src/musl-cross-make" -j"$(nproc)" \
+  TARGET=aarch64-linux-musl OUTPUT="$HOME/.local/cross/aarch64-linux-musl"
+make -C "$HOME/src/musl-cross-make" \
+  TARGET=aarch64-linux-musl OUTPUT="$HOME/.local/cross/aarch64-linux-musl" install
+make -C "$HOME/src/musl-cross-make" clean
+make -C "$HOME/src/musl-cross-make" -j"$(nproc)" \
+  TARGET=arm-linux-musleabihf OUTPUT="$HOME/.local/cross/arm-linux-musleabihf"
+make -C "$HOME/src/musl-cross-make" \
+  TARGET=arm-linux-musleabihf OUTPUT="$HOME/.local/cross/arm-linux-musleabihf" install
+ln -sf libc.so "$HOME/.local/cross/aarch64-linux-musl/aarch64-linux-musl/lib/ld-musl-aarch64.so.1"
+ln -sf libc.so "$HOME/.local/cross/arm-linux-musleabihf/arm-linux-musleabihf/lib/ld-musl-armhf.so.1"
+```
+
+For an existing checkout, fast-forward it before rebuilding. The loader
+symlinks are required for the expected local toolchain layout. Add local
+cross-compiler bins to the developer shell only when needed:
+
+```sh
+export PATH="$HOME/.local/cross/aarch64-linux-musl/bin:$HOME/.local/cross/arm-linux-musleabihf/bin:$HOME/.local/cross/osxcross/bin:$PATH"
+```
+
+These are general workstation tools only. Do not substitute distro cross
+compilers or `musl-cross-make` outputs for c.pkt.systems build targets: this
+lifecycle's pinned Bootlin collections own the shipped Linux target toolchains.
 
 ### Darwin osxcross input and setup
 
@@ -95,20 +174,43 @@ equivalent locally extracted Xcode/SDK only when its SDK version is the
 project-approved one.
 
 Never put that archive in a repository, a c.pkt.systems dependency cache, an
-SDK artifact, or a source archive. Never try to fetch it with `curl`, request
-Apple credentials, or use `sudo` to discover, extract, or install it. If it is
-absent, stop with an actionable prerequisite naming the expected local archive
-or extracted SDK path. `xar`, `cpio`, `xz`, `bzip2`, `libxml2` development
-headers, OpenSSL development headers, Python, and the normal build tools above
-are required to turn the approved local Xcode input into osxcross's packaged
-`MacOSX*.sdk` input.
+SDK artifact, or a source archive. Do not place Apple credentials in scripts,
+environment files, or source. The former workstation helper's authenticated
+download pathway is not lifecycle policy: the developer supplies the Xcode
+input manually. If it is absent, stop with an actionable prerequisite naming
+the expected local archive or extracted SDK path. `xar`, `cpio`, `xz`, `bzip2`,
+`libxml2` development headers, OpenSSL development headers, Python, and the
+normal build tools above are required to turn the approved local Xcode input
+into osxcross's packaged `MacOSX*.sdk` input.
 
-Provision osxcross from a project-approved pinned source revision, preserve the
-revision and SDK-version provenance in the workstation setup, build only the
-needed Darwin architectures, and publish the resulting local collection outside
-the repository (the conventional location is
-`$HOME/.local/cross/osxcross`). Set `OSXCROSS_ROOT` when another location is
-used. A moving `master` checkout is not a reproducible lifecycle toolchain.
+Provision osxcross as a regular developer user from a project-approved pinned
+source revision. Keep its source under `$HOME/src/osxcross`, record the exact
+revision and input SDK version in local workstation records, and publish only
+the generated collection to `$HOME/.local/cross/osxcross` (or the path named by
+`OSXCROSS_ROOT`). A moving `master` checkout is not a reproducible lifecycle
+toolchain.
+
+The provisioning sequence is:
+
+1. Clone or fast-forward the approved osxcross revision; do not overwrite a
+   non-checkout directory.
+2. Use osxcross's SDK packaging helper on the developer-supplied Xcode archive.
+   Place the resulting `MacOSX*.sdk.tar.{xz,bz2,gz}` package in the checkout's
+   `tarballs/` directory. Reuse a matching existing package when present.
+3. Build the required architecture only. The current baseline is
+   `ENABLE_ARCHS=arm64` and `OSX_VERSION_MIN=11.0`; use the packaged SDK's
+   version as `SDK_VERSION`, set `UNATTENDED=1`, and set `TARGET_DIR` to the
+   osxcross collection path.
+4. Locate the generated `arm64-apple-darwin*-clang`, compile a trivial C
+   program, and use `file` to prove the result is a 64-bit arm64 Mach-O
+   executable. A compiler executable alone is not sufficient evidence that the
+   workstation has a usable Darwin SDK.
+5. Remove the original Xcode archive after successful SDK packaging unless the
+   developer explicitly needs to retain their locally controlled copy.
+
+The workstation must not configure a c.pkt.systems Darwin build until this
+Mach-O smoke check passes. Do not distribute osxcross, the SDK package, the
+Xcode archive, or their Apple license material with a c.pkt.systems SDK.
 
 After osxcross can produce a Darwin arm64 Mach-O smoke executable, provision
 the host-side MIG helper and verify the complete collection:
