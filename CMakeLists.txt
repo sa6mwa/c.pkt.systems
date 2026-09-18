@@ -96,6 +96,19 @@ function(cpkt_add_repo_warning_errors target_name)
   endif()
 endfunction()
 
+# CMake's C90 standard mapping does not express c.pkt.systems' C89 contract.
+# Keep the compiler invocation explicit for every project-owned C89 target.
+function(cpkt_configure_c89_target target_name)
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(${target_name} PRIVATE
+      -std=c89
+      -Wall
+      -Wextra
+      -Wpedantic
+      -pedantic-errors)
+  endif()
+endfunction()
+
 function(cpkt_add_lua_runtime_mock_test target_name source_name)
   add_executable(${target_name}
     src/lua_runtime.c
@@ -682,11 +695,7 @@ if(CPKT_BUILD_DEPENDENCIES)
 endif()
 
 add_library(cpkt_gssapi_static STATIC src/gssapi.c)
-target_compile_features(cpkt_gssapi_static PRIVATE c_std_90)
-set_target_properties(cpkt_gssapi_static PROPERTIES
-  C_STANDARD 90
-  C_STANDARD_REQUIRED YES
-  C_EXTENSIONS OFF)
+cpkt_configure_c89_target(cpkt_gssapi_static)
 cpkt_add_repo_warning_errors(cpkt_gssapi_static)
 target_include_directories(cpkt_gssapi_static
   PUBLIC
@@ -698,11 +707,7 @@ set_target_properties(cpkt_gssapi_static PROPERTIES
   POSITION_INDEPENDENT_CODE ON)
 
 add_library(cpkt_gssapi_shared SHARED src/gssapi.c)
-target_compile_features(cpkt_gssapi_shared PRIVATE c_std_90)
-set_target_properties(cpkt_gssapi_shared PROPERTIES
-  C_STANDARD 90
-  C_STANDARD_REQUIRED YES
-  C_EXTENSIONS OFF)
+cpkt_configure_c89_target(cpkt_gssapi_shared)
 cpkt_add_repo_warning_errors(cpkt_gssapi_shared)
 target_include_directories(cpkt_gssapi_shared
   PUBLIC
@@ -732,11 +737,7 @@ if(CPKT_BUILD_DEPENDENCIES)
 endif()
 
 add_library(cpkt_postgres_static STATIC src/postgres.c)
-target_compile_features(cpkt_postgres_static PRIVATE c_std_90)
-set_target_properties(cpkt_postgres_static PROPERTIES
-  C_STANDARD 90
-  C_STANDARD_REQUIRED YES
-  C_EXTENSIONS OFF)
+cpkt_configure_c89_target(cpkt_postgres_static)
 cpkt_add_repo_warning_errors(cpkt_postgres_static)
 target_include_directories(cpkt_postgres_static
   PUBLIC
@@ -748,11 +749,7 @@ set_target_properties(cpkt_postgres_static PROPERTIES
   POSITION_INDEPENDENT_CODE ON)
 
 add_library(cpkt_postgres_shared SHARED src/postgres.c)
-target_compile_features(cpkt_postgres_shared PRIVATE c_std_90)
-set_target_properties(cpkt_postgres_shared PROPERTIES
-  C_STANDARD 90
-  C_STANDARD_REQUIRED YES
-  C_EXTENSIONS OFF)
+cpkt_configure_c89_target(cpkt_postgres_shared)
 cpkt_add_repo_warning_errors(cpkt_postgres_shared)
 target_include_directories(cpkt_postgres_shared
   PUBLIC
