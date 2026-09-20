@@ -299,11 +299,12 @@ Use this asset pipeline instead:
    Do not encode the payload as a hand-maintained C string literal.
 2. Use a CMake custom command or CMake-script generator to convert that file
    into a build-tree `.inc` file containing only comma-separated `0xNN` byte
-   literals: no declaration, braces, string literals, or other wrapper. Make
-   the source asset, generator, and generated `.inc` explicit build dependencies
-   of the consuming target. Read the asset as bytes: never normalize encoding,
-   line endings, or a final newline. Wrap generated physical lines at 72 columns
-   or fewer so the generated source is safely within conservative C89 limits.
+   literals with no trailing comma: no declaration, braces, string literals, or
+   other wrapper. Make the source asset, generator, and generated `.inc` explicit
+   build dependencies of the consuming target. Read the asset as bytes: never
+   normalize encoding, line endings, or a final newline. Wrap generated physical
+   lines at 72 columns or fewer so the generated source is safely within
+   conservative C89 limits.
    Generate to a unique temporary file beside the final output and atomically
    rename it only after success; each asset/configuration needs its own output
    path so a parallel build can never compile a partial or colliding `.inc`.
