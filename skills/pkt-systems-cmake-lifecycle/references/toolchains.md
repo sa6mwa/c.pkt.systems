@@ -301,23 +301,27 @@ Use this asset pipeline instead:
    into a build-tree `.inc` file containing only comma-separated `0xNN` byte
    literals: no declaration, braces, string literals, or other wrapper. Make
    the source asset, generator, and generated `.inc` explicit build dependencies
-   of the consuming target.
+   of the consuming target. Read the asset as bytes: never normalize encoding,
+   line endings, or a final newline. Wrap generated physical lines at 72 columns
+   or fewer so the generated source is safely within conservative C89 limits.
 3. Include that generated file directly in a single project-owned C89 array,
    for example `static const unsigned char asset[] = {` followed by
    `#include "generated/asset.inc"` and `};`. When the public or internal API
-   requires a C string, C-string mode must append exactly one generated trailing
-   NUL after the byte-exact payload. Otherwise expose the array together with
-   its explicit byte length.
+   requires a C string, C-string mode is valid only when the canonical payload
+   contains no NUL byte and must append exactly one generated trailing `0x00`
+   after the byte-exact payload. Otherwise expose the array together with its
+   explicit byte length.
 4. Keep the generated array's storage lifetime sufficient for every consumer.
    Do not replace it with a deferred reconstruction cache or an accessor that
    materializes a combined string.
 
 The generator must preserve every canonical payload byte in order and produce
 deterministic output. Test the generated asset against the canonical file for
-exact payload length and content, and separately test the one-byte generated
-terminator when C-string mode applies. Test code may use split literals or joins
-to construct fixtures, but that exemption never permits the production
-implementation or a shipped deliverable to require reconstruction.
+exact payload length and content, preserve final-newline behavior, enforce the
+generated-line limit, and separately test the one-byte generated terminator and
+the no-NUL input rule when C-string mode applies. Test code may use split
+literals or joins to construct fixtures, but that exemption never permits the
+production implementation or a shipped deliverable to require reconstruction.
 
 This rule does not prohibit an intentionally segmented product design, such as
 a streaming transport whose API deliberately exposes chunks. Such an exception
