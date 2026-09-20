@@ -323,6 +323,10 @@ Use this asset pipeline instead:
    generated `0x00` terminator. Keep generated `.inc` files private to the
    consuming implementation source; do not include them from public headers or
    install them. An exception requires an intentional shipped-artifact contract.
+6. When the generated asset is needed to build shipped code, include its
+   canonical asset and generator in every source archive and release manifest.
+   Keep the build-tree `.inc` out of those payloads; an extracted source archive
+   must regenerate it successfully without files from the original checkout.
 
 The generator must preserve every canonical payload byte in order and produce
 deterministic output. Test the generated asset against the canonical file for
@@ -330,9 +334,11 @@ exact payload length and content, preserve final-newline behavior, enforce the
 generated-line limit, and separately test the one-byte generated terminator and
 the no-NUL input rule when C-string mode applies. Test raw empty-payload
 rejection, empty C-string output, and a clean parallel build to prove the
-generator's dependency and atomic-publication contract. Test code may use split
-literals or joins to construct fixtures, but that exemption never permits the
-production implementation or a shipped deliverable to require reconstruction.
+generator's dependency and atomic-publication contract. Extract the source
+archive and prove it regenerates the asset before compiling the consumer. Test
+code may use split literals or joins to construct fixtures, but that exemption
+never permits the production implementation or a shipped deliverable to require
+reconstruction.
 
 This rule does not prohibit an intentionally segmented product design, such as
 a streaming transport whose API deliberately exposes chunks. Such an exception
