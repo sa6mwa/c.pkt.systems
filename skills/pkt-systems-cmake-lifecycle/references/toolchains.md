@@ -304,6 +304,9 @@ Use this asset pipeline instead:
    of the consuming target. Read the asset as bytes: never normalize encoding,
    line endings, or a final newline. Wrap generated physical lines at 72 columns
    or fewer so the generated source is safely within conservative C89 limits.
+   Generate to a unique temporary file beside the final output and atomically
+   rename it only after success; each asset/configuration needs its own output
+   path so a parallel build can never compile a partial or colliding `.inc`.
 3. Include that generated file directly in a single project-owned C89 array,
    for example `static const unsigned char asset[] = {` followed by
    `#include "generated/asset.inc"` and `};`. When the public or internal API
@@ -314,12 +317,19 @@ Use this asset pipeline instead:
 4. Keep the generated array's storage lifetime sufficient for every consumer.
    Do not replace it with a deferred reconstruction cache or an accessor that
    materializes a combined string.
+5. Reject an empty canonical payload in raw-byte mode: a zero-length array is
+   not portable C89. C-string mode may represent an empty payload as the one
+   generated `0x00` terminator. Keep generated `.inc` files private to the
+   consuming implementation source; do not include them from public headers or
+   install them. An exception requires an intentional shipped-artifact contract.
 
 The generator must preserve every canonical payload byte in order and produce
 deterministic output. Test the generated asset against the canonical file for
 exact payload length and content, preserve final-newline behavior, enforce the
 generated-line limit, and separately test the one-byte generated terminator and
-the no-NUL input rule when C-string mode applies. Test code may use split
+the no-NUL input rule when C-string mode applies. Test raw empty-payload
+rejection, empty C-string output, and a clean parallel build to prove the
+generator's dependency and atomic-publication contract. Test code may use split
 literals or joins to construct fixtures, but that exemption never permits the
 production implementation or a shipped deliverable to require reconstruction.
 
