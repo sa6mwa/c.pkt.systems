@@ -335,10 +335,11 @@ generated-line limit, and separately test the one-byte generated terminator and
 the no-NUL input rule when C-string mode applies. Test raw empty-payload
 rejection, empty C-string output, and a clean parallel build to prove the
 generator's dependency and atomic-publication contract. Extract the source
-archive and prove it regenerates the asset before compiling the consumer. Test
-code may use split literals or joins to construct fixtures, but that exemption
-never permits the production implementation or a shipped deliverable to require
-reconstruction.
+archive and prove it regenerates the asset before compiling the consumer.
+Generate the same asset in two independent clean build trees and byte-compare
+the `.inc` outputs to prove reproducible generated source. Test code may use
+split literals or joins to construct fixtures, but that exemption never permits
+the production implementation or a shipped deliverable to require reconstruction.
 
 This rule does not prohibit an intentionally segmented product design, such as
 a streaming transport whose API deliberately exposes chunks. Such an exception
