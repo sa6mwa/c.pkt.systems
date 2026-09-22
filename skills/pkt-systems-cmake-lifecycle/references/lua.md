@@ -45,6 +45,11 @@ Facade contract:
 - The Lua facade should mirror the main public workflows: client, agent, session, response/output handles, streaming sinks/readers, tool registries, tool presets, auth/login helpers, and protocol handlers when those exist.
 - Omit C-only embedding surfaces that do not map cleanly to Lua, such as custom allocators, `FILE *`, raw C source/sink constructors, C map definitions, or callback types that would force unsafe lifetime rules.
 - Lua large-value APIs should expose spooled or callback-backed variants that avoid materializing full payloads when the C API can stream or spool.
+- A Lua callback-backed source or sink must pin every native owner it may use
+  after invoking a callback; prohibit re-entrant terminal or close operations
+  through callback cleanup; and avoid registry-reference cycles with weak
+  references or scoped pins. Add an ASan regression that forces collection
+  inside read, write, and close callbacks.
 - Lua errors should expose structured status, status string, HTTP status when relevant, message, detail, server code, and request id when the C error surface has them.
 - Lua tests should cover method-call DX, ownership/finalizer cleanup, spooled readers/writers, and parity for major C workflows.
 
