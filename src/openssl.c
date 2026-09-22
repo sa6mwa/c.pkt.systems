@@ -30,6 +30,10 @@ struct cpkt_openssl_sha512_context {
   SHA512_CTX native;
 };
 
+struct cpkt_openssl_atomic_u64 {
+  uint64_t native;
+};
+
 static uint64_t cpkt_openssl_native_u64(cpkt_openssl_u64 value) {
   uint64_t native;
 
@@ -774,4 +778,108 @@ int cpkt_openssl_SSL_set_value_uint(
   return SSL_set_value_uint(ssl, (uint32_t) value_class,
                             (uint32_t) value_id,
                             cpkt_openssl_native_u64(value));
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_atomic_u64_new. */
+cpkt_openssl_atomic_u64 *cpkt_openssl_atomic_u64_new(
+    cpkt_openssl_u64 initial_value) {
+  cpkt_openssl_atomic_u64 *value;
+
+  value = (cpkt_openssl_atomic_u64 *) malloc(sizeof(*value));
+  if (value != NULL) {
+    value->native = cpkt_openssl_native_u64(initial_value);
+  }
+  return value;
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_atomic_u64_free. */
+void cpkt_openssl_atomic_u64_free(cpkt_openssl_atomic_u64 *value) {
+  free(value);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_CRYPTO_atomic_add64. */
+int cpkt_openssl_CRYPTO_atomic_add64(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 amount,
+    cpkt_openssl_u64 *result_out, CRYPTO_RWLOCK *lock) {
+  uint64_t result;
+  int status;
+
+  if (value == NULL) {
+    return 0;
+  }
+  result = 0;
+  status = CRYPTO_atomic_add64(&value->native, cpkt_openssl_native_u64(amount),
+                               result_out == NULL ? NULL : &result, lock);
+  if (status != 0 && result_out != NULL) {
+    *result_out = cpkt_openssl_public_u64(result);
+  }
+  return status;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_CRYPTO_atomic_and. */
+int cpkt_openssl_CRYPTO_atomic_and(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 mask,
+    cpkt_openssl_u64 *result_out, CRYPTO_RWLOCK *lock) {
+  uint64_t result;
+  int status;
+
+  if (value == NULL) {
+    return 0;
+  }
+  result = 0;
+  status = CRYPTO_atomic_and(&value->native, cpkt_openssl_native_u64(mask),
+                             result_out == NULL ? NULL : &result, lock);
+  if (status != 0 && result_out != NULL) {
+    *result_out = cpkt_openssl_public_u64(result);
+  }
+  return status;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_CRYPTO_atomic_load. */
+int cpkt_openssl_CRYPTO_atomic_load(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 *result_out,
+    CRYPTO_RWLOCK *lock) {
+  uint64_t result;
+  int status;
+
+  if (value == NULL) {
+    return 0;
+  }
+  result = 0;
+  status = CRYPTO_atomic_load(&value->native,
+                              result_out == NULL ? NULL : &result, lock);
+  if (status != 0 && result_out != NULL) {
+    *result_out = cpkt_openssl_public_u64(result);
+  }
+  return status;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_CRYPTO_atomic_or. */
+int cpkt_openssl_CRYPTO_atomic_or(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 mask,
+    cpkt_openssl_u64 *result_out, CRYPTO_RWLOCK *lock) {
+  uint64_t result;
+  int status;
+
+  if (value == NULL) {
+    return 0;
+  }
+  result = 0;
+  status = CRYPTO_atomic_or(&value->native, cpkt_openssl_native_u64(mask),
+                            result_out == NULL ? NULL : &result, lock);
+  if (status != 0 && result_out != NULL) {
+    *result_out = cpkt_openssl_public_u64(result);
+  }
+  return status;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_CRYPTO_atomic_store. */
+int cpkt_openssl_CRYPTO_atomic_store(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 replacement,
+    CRYPTO_RWLOCK *lock) {
+  if (value == NULL) {
+    return 0;
+  }
+  return CRYPTO_atomic_store(&value->native,
+                             cpkt_openssl_native_u64(replacement), lock);
 }

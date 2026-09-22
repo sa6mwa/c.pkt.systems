@@ -190,6 +190,8 @@ typedef struct cpkt_openssl_param_i64 cpkt_openssl_param_i64;
 typedef struct cpkt_openssl_param_u64 cpkt_openssl_param_u64;
 /** Opaque C89 shell for OpenSSL's SHA-384/SHA-512 native state. */
 typedef struct cpkt_openssl_sha512_context cpkt_openssl_sha512_context;
+/** Opaque aligned native storage for OpenSSL atomic 64-bit operations. */
+typedef struct cpkt_openssl_atomic_u64 cpkt_openssl_atomic_u64;
 
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
@@ -463,5 +465,31 @@ CPKT_OPENSSL_API int cpkt_openssl_SSL_get_value_uint(
 CPKT_OPENSSL_API int cpkt_openssl_SSL_set_value_uint(
     SSL *ssl, unsigned long value_class, unsigned long value_id,
     cpkt_openssl_u64 value);
+/** Allocates an aligned C89 shell for OpenSSL atomic 64-bit operations. */
+CPKT_OPENSSL_API cpkt_openssl_atomic_u64 *cpkt_openssl_atomic_u64_new(
+    cpkt_openssl_u64 initial_value);
+/** Releases an OpenSSL atomic-value shell after concurrent use has stopped. */
+CPKT_OPENSSL_API void cpkt_openssl_atomic_u64_free(
+    cpkt_openssl_atomic_u64 *value);
+/** C89 adapter for CRYPTO_atomic_add64. */
+CPKT_OPENSSL_API int cpkt_openssl_CRYPTO_atomic_add64(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 amount,
+    cpkt_openssl_u64 *result_out, CRYPTO_RWLOCK *lock);
+/** C89 adapter for CRYPTO_atomic_and. */
+CPKT_OPENSSL_API int cpkt_openssl_CRYPTO_atomic_and(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 mask,
+    cpkt_openssl_u64 *result_out, CRYPTO_RWLOCK *lock);
+/** C89 adapter for CRYPTO_atomic_load. */
+CPKT_OPENSSL_API int cpkt_openssl_CRYPTO_atomic_load(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 *result_out,
+    CRYPTO_RWLOCK *lock);
+/** C89 adapter for CRYPTO_atomic_or. */
+CPKT_OPENSSL_API int cpkt_openssl_CRYPTO_atomic_or(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 mask,
+    cpkt_openssl_u64 *result_out, CRYPTO_RWLOCK *lock);
+/** C89 adapter for CRYPTO_atomic_store. */
+CPKT_OPENSSL_API int cpkt_openssl_CRYPTO_atomic_store(
+    cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 replacement,
+    CRYPTO_RWLOCK *lock);
 
 #endif
