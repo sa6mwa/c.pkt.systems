@@ -31,6 +31,19 @@ representation and adapter functions. Records that embed such values,
 including OpenSSL's SSL poll items, have C89 records and adapters too; callers
 do not construct native `uint64_t` or `uintptr_t` records.
 
+The batch BIO method callbacks use facade-owned BIO method and BIO shells.
+`cpkt_openssl_BIO_new` and `cpkt_openssl_BIO_new_ex` pin their callback context
+in OpenSSL's dedicated callback-argument slot; applications must not overwrite
+that slot on a facade BIO. Close each facade BIO before its method. A close
+attempt from a batch callback, or a method close while a facade BIO or callback
+remains active, returns zero and leaves ownership unchanged.
+
+The facade's legacy and extended BIO callback setters use the same pinned
+context. When their operation identifies send or receive message batches, the
+argument is a borrowed `cpkt_openssl_bio_mmsg_callback_args`; its messages and
+the record are valid only for that callback invocation. For other operations,
+the argument retains the upstream borrowed byte-pointer semantics.
+
 For the current x86_64 GNU OpenSSL 3.6.4 configuration, 6,468 public header
 functions are present. Only the mechanically classified typed-adapter subset
 (currently 74 direct signatures, plus record-dependent callers) needs new

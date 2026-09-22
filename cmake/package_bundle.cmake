@@ -1,11 +1,13 @@
 foreach(_required
     CPKT_SOURCE_DIR
+    CPKT_STRIP_BIN
     CPKT_EXTERNAL_ROOT
     CPKT_DEPENDENCY_BUILD_ROOT
     CPKT_DIST_DIR
     CPKT_TARGET_ID
     CPKT_BUNDLE_VERSION
     CPKT_OPENSSL_VERSION
+    CPKT_OPENSSL_ABI_VERSION
     CPKT_ZLIB_VERSION
     CPKT_CURL_VERSION
     CPKT_NGHTTP2_VERSION
@@ -23,6 +25,8 @@ foreach(_required
     CPKT_POSTGRESQL_VERSION
     CPKT_SQLITE_VERSION
     CPKT_LUA_RUNTIME_ABI_VERSION
+    CPKT_OPENSSL_STATIC_LIBRARY
+    CPKT_OPENSSL_SHARED_LIBRARY
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
     CPKT_LUA_RUNTIME_SHARED_LIBRARY
@@ -58,6 +62,9 @@ endforeach()
 if(NOT EXISTS "${CPKT_EXTERNAL_ROOT}")
   message(FATAL_ERROR "dependency install root does not exist: ${CPKT_EXTERNAL_ROOT}")
 endif()
+if(NOT EXISTS "${CPKT_STRIP_BIN}")
+  message(FATAL_ERROR "target strip tool does not exist: ${CPKT_STRIP_BIN}")
+endif()
 
 include("${CPKT_SOURCE_DIR}/cmake/gnu_tar.cmake")
 cpkt_find_gnu_tar(_cpkt_gnu_tar)
@@ -76,6 +83,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_openssl_shared_library_link_name "libcpkt_openssl.dylib")
+  set(_cpkt_openssl_shared_library_abi_name "libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib")
+  set(_cpkt_openssl_shared_library_real_name "libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.dylib")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib")
@@ -108,6 +118,9 @@ else()
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.so")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_openssl_shared_library_link_name "libcpkt_openssl.so")
+  set(_cpkt_openssl_shared_library_abi_name "libcpkt_openssl.so.${CPKT_OPENSSL_ABI_VERSION}")
+  set(_cpkt_openssl_shared_library_real_name "libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.so")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.so.${CPKT_BUNDLE_VERSION}")
@@ -175,9 +188,11 @@ if(_legacy_open62541_shared_libraries)
 endif()
 file(COPY "${CPKT_LUA_RUNTIME_INCLUDE_DIR}/cpkt" DESTINATION "${_stage_root}/include")
 function(cpkt_stage_facade_library facade_label static_source static_name shared_source shared_real_name shared_abi_name shared_link_name)
+  set(_facade_static_destination
+    "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}")
   file(COPY_FILE
     "${static_source}"
-    "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}"
+    "${_facade_static_destination}"
   )
   get_filename_component(_facade_shared_library_dir "${shared_source}" DIRECTORY)
   set(_facade_shared_library_real_path "${_facade_shared_library_dir}/${shared_real_name}")
@@ -189,6 +204,19 @@ function(cpkt_stage_facade_library facade_label static_source static_name shared
     "${_facade_shared_library_real_path}"
     "${_stage_root}/lib/${shared_real_name}"
   )
+  foreach(_facade_staged_binary
+      "${_facade_static_destination}"
+      "${_stage_root}/lib/${shared_real_name}")
+    execute_process(
+      COMMAND "${CPKT_STRIP_BIN}" -S "${_facade_staged_binary}"
+      RESULT_VARIABLE _facade_strip_result
+      ERROR_VARIABLE _facade_strip_error
+    )
+    if(NOT _facade_strip_result EQUAL 0)
+      message(FATAL_ERROR
+        "failed to strip ${facade_label} package artifact ${_facade_staged_binary}: ${_facade_strip_error}")
+    endif()
+  endforeach()
   execute_process(
     COMMAND "${CMAKE_COMMAND}" -E create_symlink
       "${shared_real_name}"
@@ -209,6 +237,14 @@ function(cpkt_stage_facade_library facade_label static_source static_name shared
   endif()
 endfunction()
 
+cpkt_stage_facade_library(
+  "OpenSSL C89 facade"
+  "${CPKT_OPENSSL_STATIC_LIBRARY}"
+  "libcpkt_openssl"
+  "${CPKT_OPENSSL_SHARED_LIBRARY}"
+  "${_cpkt_openssl_shared_library_real_name}"
+  "${_cpkt_openssl_shared_library_abi_name}"
+  "${_cpkt_openssl_shared_library_link_name}")
 cpkt_stage_facade_library(
   "Lua runtime facade"
   "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
@@ -406,6 +442,33 @@ file(WRITE "${_stage_root}/lib/cmake/OpenSSL/OpenSSLConfig.cmake"
   "endif()\n"
 )
 cpkt_write_config_version("OpenSSL" "OpenSSL" "${CPKT_OPENSSL_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktOpenSSL")
+file(WRITE "${_stage_root}/lib/cmake/CpktOpenSSL/CpktOpenSSLConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_openssl_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_openssl_facade_prefix}/lib/cmake/OpenSSL\")\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "set(CpktOpenSSL_FOUND TRUE)\n"
+  "set(CpktOpenSSL_VERSION \"${CPKT_OPENSSL_VERSION}\")\n"
+  "if(NOT TARGET cpkt::openssl)\n"
+  "  add_library(cpkt::openssl STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::openssl PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_openssl_facade_prefix}/lib/libcpkt_openssl${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_openssl_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"OpenSSL::SSL;OpenSSL::Crypto\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::openssl_shared)\n"
+  "  add_library(cpkt::openssl_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::openssl_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_openssl_facade_prefix}/lib/libcpkt_openssl${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_openssl_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktOpenSSL" "CpktOpenSSL" "${CPKT_OPENSSL_VERSION}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/zlib")
 file(WRITE "${_stage_root}/lib/cmake/zlib/ZLIBConfig.cmake"
@@ -1194,6 +1257,19 @@ file(WRITE "${_stage_root}/lib/pkgconfig/openssl.pc"
   "Libs: -L\${libdir} -lssl -lcrypto\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-openssl.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-openssl\n"
+  "Description: C89 OpenSSL facade from c.pkt.systems\n"
+  "Version: ${CPKT_OPENSSL_VERSION}\n"
+  "Requires.private: openssl\n"
+  "Libs: -L\${libdir} -lcpkt_openssl\n"
+  "Cflags: -I\${includedir}\n"
+)
 file(WRITE "${_stage_root}/lib/pkgconfig/zlib.pc"
   "prefix=\${pcfiledir}/../..\n"
   "exec_prefix=\${prefix}\n"
@@ -1525,6 +1601,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "openldap_version=${CPKT_OPENLDAP_VERSION}\n"
   "postgresql_version=${CPKT_POSTGRESQL_VERSION}\n"
   "sqlite_version=${CPKT_SQLITE_VERSION}\n"
+  "openssl_abi_version=${CPKT_OPENSSL_ABI_VERSION}\n"
   "lua_runtime_abi_version=${CPKT_LUA_RUNTIME_ABI_VERSION}\n"
   "audio_abi_version=${CPKT_AUDIO_ABI_VERSION}\n"
   "sus_abi_version=${CPKT_SUS_ABI_VERSION}\n"
@@ -1560,6 +1637,9 @@ file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/gssapi-c89-facade-spec.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/gssapi-c89-facade-spec.md")
 file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/openssl-c89-facade-surface.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/openssl-c89-facade-surface.md")
+file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/sasl-c89-facade-spec.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/sasl-c89-facade-spec.md")
 file(COPY_FILE
@@ -1594,9 +1674,9 @@ cpkt_stage_license("nghttp2" "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2/src/COPYING"
 cpkt_stage_license("libxml2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2/src/Copyright")
 cpkt_stage_license("lua" "${CPKT_DEPENDENCY_BUILD_ROOT}/lua/src/src/lua.h")
 cpkt_stage_license("miniaudio" "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio/src/LICENSE")
-cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src/LICENSE")
+cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src-static/LICENSE")
 cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
-cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src/LICENSE")
+cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src-static/LICENSE")
 cpkt_stage_license("mit-kerberos" "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5/src/NOTICE")
 cpkt_stage_license("cyrus-sasl" "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl/src/COPYING")
 cpkt_stage_license("openldap" "${CPKT_DEPENDENCY_BUILD_ROOT}/openldap/src/LICENSE")

@@ -2,6 +2,113 @@
 
 #include <string.h>
 
+typedef struct openssl_mmsg_test_context {
+  cpkt_openssl_bio *bio;
+  int calls;
+  int close_result;
+  int legacy_callback_calls;
+  int extended_callback_calls;
+} openssl_mmsg_test_context;
+
+typedef struct openssl_padded_native_message {
+  BIO_MSG message;
+  unsigned char padding[7];
+} openssl_padded_native_message;
+
+static int openssl_mmsg_test_messages(const cpkt_openssl_bio_message *messages,
+                                      size_t message_count) {
+  if (message_count == 1U) {
+    return 1;
+  }
+  if (message_count != 2U || messages[0].data == 0 || messages[1].data == 0 ||
+      messages[0].data_length != 1U || messages[1].data_length != 2U ||
+      memcmp(messages[0].data, "a", 1U) != 0 ||
+      memcmp(messages[1].data, "bc", 2U) != 0) {
+    return 0;
+  }
+  return 1;
+}
+
+static int openssl_mmsg_test_create(BIO *bio) {
+  BIO_set_init(bio, 1);
+  return 1;
+}
+
+static int openssl_mmsg_test_callback(void *context, BIO *bio,
+                                      cpkt_openssl_bio_message *messages,
+                                      size_t message_stride,
+                                      size_t message_count,
+                                      cpkt_openssl_u64 flags,
+                                      size_t *processed_out) {
+  openssl_mmsg_test_context *test_context;
+
+  test_context = (openssl_mmsg_test_context *)context;
+  if (test_context == 0 || bio != cpkt_openssl_BIO_native(test_context->bio) ||
+      messages == 0 || message_stride != sizeof(*messages) ||
+      !openssl_mmsg_test_messages(messages, message_count) ||
+      cpkt_openssl_u64_high_word(flags) != 0UL ||
+      cpkt_openssl_u64_low_word(flags) != 0UL || processed_out == 0) {
+    return 0;
+  }
+  ++test_context->calls;
+  test_context->close_result = cpkt_openssl_BIO_close(test_context->bio);
+  *processed_out = message_count;
+  return 1;
+}
+
+static long openssl_mmsg_test_legacy_callback(void *context, BIO *bio,
+                                              int operation,
+                                              const void *argument,
+                                              int argument_integer,
+                                              long argument_long, long result) {
+  openssl_mmsg_test_context *test_context;
+  const cpkt_openssl_bio_mmsg_callback_args *arguments;
+
+  test_context = (openssl_mmsg_test_context *)context;
+  arguments = (const cpkt_openssl_bio_mmsg_callback_args *)argument;
+  if (test_context == 0 || bio != cpkt_openssl_BIO_native(test_context->bio) ||
+      (operation & BIO_CB_SENDMMSG) == 0 || arguments == 0 ||
+      arguments->messages == 0 ||
+      arguments->message_stride != sizeof(*arguments->messages) ||
+      !openssl_mmsg_test_messages(arguments->messages,
+                                  arguments->message_count) ||
+      cpkt_openssl_u64_high_word(arguments->flags) != 0UL ||
+      cpkt_openssl_u64_low_word(arguments->flags) != 0UL ||
+      arguments->processed_out == 0 || argument_integer != 0 ||
+      argument_long != 0L || result < 0L) {
+    return 0L;
+  }
+  ++test_context->legacy_callback_calls;
+  return 1L;
+}
+
+static long openssl_mmsg_test_extended_callback(
+    void *context, BIO *bio, int operation, const void *argument,
+    size_t argument_length, int argument_integer, long argument_long,
+    int result, size_t *processed_out) {
+  openssl_mmsg_test_context *test_context;
+  const cpkt_openssl_bio_mmsg_callback_args *arguments;
+
+  test_context = (openssl_mmsg_test_context *)context;
+  arguments = (const cpkt_openssl_bio_mmsg_callback_args *)argument;
+  (void)argument_length;
+  if (test_context == 0 || bio != cpkt_openssl_BIO_native(test_context->bio) ||
+      (operation & BIO_CB_RECVMMSG) == 0 || arguments == 0 ||
+      arguments->messages == 0 ||
+      arguments->message_stride != sizeof(*arguments->messages) ||
+      !openssl_mmsg_test_messages(arguments->messages,
+                                  arguments->message_count) ||
+      cpkt_openssl_u64_high_word(arguments->flags) != 0UL ||
+      cpkt_openssl_u64_low_word(arguments->flags) != 0UL ||
+      arguments->processed_out == 0 || argument_integer != 0 ||
+      argument_long != 0L || result < 0 ||
+      (processed_out != 0 && processed_out != arguments->processed_out)) {
+    return 0L;
+  }
+  ++test_context->extended_callback_calls;
+  return 1L;
+}
+
 int main(void) {
   ASN1_ENUMERATED *enumerated;
   ASN1_INTEGER *integer;
@@ -27,13 +134,19 @@ int main(void) {
   cpkt_openssl_i64 signed_value;
   cpkt_openssl_bio_message receive_message;
   cpkt_openssl_bio_message send_message;
+  cpkt_openssl_bio *facade_bio;
+  cpkt_openssl_bio *plain_facade_bio;
+  cpkt_openssl_bio_method *facade_method;
+  cpkt_openssl_bio_method *plain_facade_method;
   cpkt_openssl_param_i64 *signed_parameter;
   cpkt_openssl_poll_descriptor poll_descriptor;
   cpkt_openssl_param_u64 *unsigned_parameter;
   cpkt_openssl_ssl_poll_item poll_item;
   cpkt_openssl_u64 options;
   cpkt_openssl_u64 returned;
+  openssl_padded_native_message padded_messages[2];
   size_t processed;
+  openssl_mmsg_test_context mmsg_context;
 
   options = cpkt_openssl_u64_make(0UL, 0x4000UL);
   if (cpkt_openssl_u64_high_word(options) != 0UL ||
@@ -48,21 +161,22 @@ int main(void) {
   atomic_lock = CRYPTO_THREAD_lock_new();
   atomic_value = cpkt_openssl_atomic_u64_new(cpkt_openssl_u64_make(0UL, 1UL));
   if (atomic_lock == 0 || atomic_value == 0 ||
-      cpkt_openssl_CRYPTO_atomic_add64(
-          atomic_value, cpkt_openssl_u64_make(0UL, 2UL), &returned,
-          atomic_lock) != 1 ||
+      cpkt_openssl_CRYPTO_atomic_add64(atomic_value,
+                                       cpkt_openssl_u64_make(0UL, 2UL),
+                                       &returned, atomic_lock) != 1 ||
       !cpkt_openssl_u64_equal(returned, cpkt_openssl_u64_make(0UL, 3UL)) ||
-      cpkt_openssl_CRYPTO_atomic_and(
-          atomic_value, cpkt_openssl_u64_make(0UL, 1UL), &returned,
-          atomic_lock) != 1 ||
+      cpkt_openssl_CRYPTO_atomic_and(atomic_value,
+                                     cpkt_openssl_u64_make(0UL, 1UL), &returned,
+                                     atomic_lock) != 1 ||
       !cpkt_openssl_u64_equal(returned, cpkt_openssl_u64_make(0UL, 1UL)) ||
-      cpkt_openssl_CRYPTO_atomic_or(
-          atomic_value, cpkt_openssl_u64_make(0UL, 2UL), &returned,
-          atomic_lock) != 1 ||
+      cpkt_openssl_CRYPTO_atomic_or(atomic_value,
+                                    cpkt_openssl_u64_make(0UL, 2UL), &returned,
+                                    atomic_lock) != 1 ||
       !cpkt_openssl_u64_equal(returned, cpkt_openssl_u64_make(0UL, 3UL)) ||
       cpkt_openssl_CRYPTO_atomic_store(
           atomic_value, cpkt_openssl_u64_make(0UL, 5UL), atomic_lock) != 1 ||
-      cpkt_openssl_CRYPTO_atomic_load(atomic_value, &returned, atomic_lock) != 1 ||
+      cpkt_openssl_CRYPTO_atomic_load(atomic_value, &returned, atomic_lock) !=
+          1 ||
       !cpkt_openssl_u64_equal(returned, cpkt_openssl_u64_make(0UL, 5UL))) {
     cpkt_openssl_atomic_u64_free(atomic_value);
     CRYPTO_THREAD_lock_free(atomic_lock);
@@ -103,9 +217,9 @@ int main(void) {
   if (BIO_new_bio_dgram_pair(&dgram_left, 0U, &dgram_right, 0U) != 1) {
     return 23;
   }
-  if (cpkt_openssl_BIO_sendmmsg(
-          dgram_left, &send_message, sizeof(send_message), 1U,
-          cpkt_openssl_u64_make(0UL, 0UL), &processed) != 1) {
+  if (cpkt_openssl_BIO_sendmmsg(dgram_left, &send_message, sizeof(send_message),
+                                1U, cpkt_openssl_u64_make(0UL, 0UL),
+                                &processed) != 1) {
     BIO_free(dgram_left);
     BIO_free(dgram_right);
     return 24;
@@ -128,7 +242,8 @@ int main(void) {
     BIO_free(dgram_right);
     return 27;
   }
-  if (cpkt_openssl_BIO_get_rpoll_descriptor(dgram_left, &poll_descriptor) != 0) {
+  if (cpkt_openssl_BIO_get_rpoll_descriptor(dgram_left, &poll_descriptor) !=
+      0) {
     BIO_free(dgram_left);
     BIO_free(dgram_right);
     return 28;
@@ -143,15 +258,127 @@ int main(void) {
   }
   memset(&poll_item, 0, sizeof(poll_item));
   poll_item.descriptor.value_kind = 999UL;
-  if (cpkt_openssl_SSL_poll(
-          &poll_item, 1U, sizeof(poll_item), 0,
-          cpkt_openssl_u64_make(0UL, 0UL), &processed) != 0) {
+  if (cpkt_openssl_SSL_poll(&poll_item, 1U, sizeof(poll_item), 0,
+                            cpkt_openssl_u64_make(0UL, 0UL), &processed) != 0) {
     BIO_free(dgram_left);
     BIO_free(dgram_right);
     return 25;
   }
   BIO_free(dgram_left);
   BIO_free(dgram_right);
+  facade_method = cpkt_openssl_BIO_meth_new(BIO_TYPE_NONE, "cpkt-mmsg");
+  plain_facade_method = cpkt_openssl_BIO_meth_new(BIO_TYPE_NONE, "cpkt-plain");
+  if (facade_method == 0 || plain_facade_method == 0 ||
+      BIO_meth_set_create(
+          (BIO_METHOD *)cpkt_openssl_BIO_meth_native(facade_method),
+          openssl_mmsg_test_create) != 1 ||
+      BIO_meth_set_create(
+          (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
+          openssl_mmsg_test_create) != 1 ||
+      cpkt_openssl_BIO_meth_set_sendmmsg(facade_method,
+                                         openssl_mmsg_test_callback) != 1 ||
+      cpkt_openssl_BIO_meth_set_recvmmsg(facade_method,
+                                         openssl_mmsg_test_callback) != 1 ||
+      cpkt_openssl_BIO_meth_get_sendmmsg(facade_method) !=
+          openssl_mmsg_test_callback ||
+      cpkt_openssl_BIO_meth_get_recvmmsg(facade_method) !=
+          openssl_mmsg_test_callback) {
+    cpkt_openssl_BIO_meth_close(facade_method);
+    cpkt_openssl_BIO_meth_close(plain_facade_method);
+    return 30;
+  }
+  plain_facade_bio = cpkt_openssl_BIO_new(plain_facade_method, 0);
+  if (plain_facade_bio == 0 ||
+      cpkt_openssl_BIO_meth_close(plain_facade_method) != 0) {
+    cpkt_openssl_BIO_close(plain_facade_bio);
+    cpkt_openssl_BIO_meth_close(plain_facade_method);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 31;
+  }
+  if (cpkt_openssl_BIO_close(plain_facade_bio) != 1) {
+    cpkt_openssl_BIO_meth_close(plain_facade_method);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 31;
+  }
+  plain_facade_bio = 0;
+  if (cpkt_openssl_BIO_meth_close(plain_facade_method) != 1) {
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 31;
+  }
+  memset(&mmsg_context, 0, sizeof(mmsg_context));
+  facade_bio = cpkt_openssl_BIO_new_ex(0, facade_method, &mmsg_context);
+  mmsg_context.bio = facade_bio;
+  cpkt_openssl_BIO_set_callback(facade_bio, openssl_mmsg_test_legacy_callback);
+  if (facade_bio == 0 || cpkt_openssl_BIO_native(facade_bio) == 0 ||
+      cpkt_openssl_BIO_get_callback(facade_bio) !=
+          openssl_mmsg_test_legacy_callback) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 32;
+  }
+  if (cpkt_openssl_BIO_sendmmsg(cpkt_openssl_BIO_native(facade_bio),
+                                &send_message, sizeof(send_message), 1U,
+                                cpkt_openssl_u64_make(0UL, 0UL),
+                                &processed) != 1) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 33;
+  }
+  if (mmsg_context.legacy_callback_calls != 2) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 34;
+  }
+  memset(padded_messages, 0, sizeof(padded_messages));
+  padded_messages[0].message.data = "a";
+  padded_messages[0].message.data_len = 1U;
+  padded_messages[1].message.data = "bc";
+  padded_messages[1].message.data_len = 2U;
+  if (BIO_sendmmsg(cpkt_openssl_BIO_native(facade_bio),
+                   &padded_messages[0].message, sizeof(padded_messages[0]), 2U,
+                   0U, &processed) != 1) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 34;
+  }
+  if (mmsg_context.calls != 2) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 39;
+  }
+  if (mmsg_context.legacy_callback_calls != 4) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 40;
+  }
+  cpkt_openssl_BIO_set_callback(facade_bio, 0);
+  cpkt_openssl_BIO_set_callback_ex(facade_bio,
+                                   openssl_mmsg_test_extended_callback);
+  if (cpkt_openssl_BIO_get_callback(facade_bio) != 0 ||
+      cpkt_openssl_BIO_get_callback_ex(facade_bio) !=
+          openssl_mmsg_test_extended_callback) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 35;
+  }
+  if (cpkt_openssl_BIO_recvmmsg(cpkt_openssl_BIO_native(facade_bio),
+                                &receive_message, sizeof(receive_message), 1U,
+                                cpkt_openssl_u64_make(0UL, 0UL),
+                                &processed) != 1) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 36;
+  }
+  if (mmsg_context.extended_callback_calls != 2 || mmsg_context.calls != 3 ||
+      mmsg_context.close_result != 0) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 37;
+  }
+  if (cpkt_openssl_BIO_close(facade_bio) != 1 ||
+      cpkt_openssl_BIO_meth_close(facade_method) != 1) {
+    return 38;
+  }
   signed_value = cpkt_openssl_i64_make(0xffffffffUL, 0xfffffffeUL);
   if (cpkt_openssl_i64_high_word(signed_value) != 0xffffffffUL ||
       cpkt_openssl_i64_low_word(signed_value) != 0xfffffffeUL ||
@@ -161,22 +388,23 @@ int main(void) {
   }
   signed_parameter = 0;
   unsigned_parameter = 0;
-  if (cpkt_openssl_OSSL_PARAM_construct_int64(
-          &signed_parameter, "signed", signed_value) != 1 ||
-      cpkt_openssl_OSSL_PARAM_construct_uint64(
-          &unsigned_parameter, "unsigned", options) != 1 ||
-      !cpkt_openssl_i64_equal(
-          cpkt_openssl_param_i64_value(signed_parameter), signed_value) ||
-      !cpkt_openssl_u64_equal(
-          cpkt_openssl_param_u64_value(unsigned_parameter), options)) {
+  if (cpkt_openssl_OSSL_PARAM_construct_int64(&signed_parameter, "signed",
+                                              signed_value) != 1 ||
+      cpkt_openssl_OSSL_PARAM_construct_uint64(&unsigned_parameter, "unsigned",
+                                               options) != 1 ||
+      !cpkt_openssl_i64_equal(cpkt_openssl_param_i64_value(signed_parameter),
+                              signed_value) ||
+      !cpkt_openssl_u64_equal(cpkt_openssl_param_u64_value(unsigned_parameter),
+                              options)) {
     cpkt_openssl_param_i64_free(signed_parameter);
     cpkt_openssl_param_u64_free(unsigned_parameter);
     return 7;
   }
   native_parameter = cpkt_openssl_param_i64_native(signed_parameter);
-  if (cpkt_openssl_OSSL_PARAM_set_int64(
-          native_parameter, cpkt_openssl_i64_make(0UL, 7UL)) != 1 ||
-      cpkt_openssl_OSSL_PARAM_get_int64(&native_parameter[0], &signed_value) != 1 ||
+  if (cpkt_openssl_OSSL_PARAM_set_int64(native_parameter,
+                                        cpkt_openssl_i64_make(0UL, 7UL)) != 1 ||
+      cpkt_openssl_OSSL_PARAM_get_int64(&native_parameter[0], &signed_value) !=
+          1 ||
       !cpkt_openssl_i64_equal(signed_value, cpkt_openssl_i64_make(0UL, 7UL))) {
     cpkt_openssl_param_i64_free(signed_parameter);
     cpkt_openssl_param_u64_free(unsigned_parameter);
@@ -185,7 +413,8 @@ int main(void) {
   native_parameter = cpkt_openssl_param_u64_native(unsigned_parameter);
   if (cpkt_openssl_OSSL_PARAM_set_uint64(
           native_parameter, cpkt_openssl_u64_make(0UL, 9UL)) != 1 ||
-      cpkt_openssl_OSSL_PARAM_get_uint64(&native_parameter[0], &returned) != 1 ||
+      cpkt_openssl_OSSL_PARAM_get_uint64(&native_parameter[0], &returned) !=
+          1 ||
       !cpkt_openssl_u64_equal(returned, cpkt_openssl_u64_make(0UL, 9UL))) {
     cpkt_openssl_param_i64_free(signed_parameter);
     cpkt_openssl_param_u64_free(unsigned_parameter);
@@ -196,7 +425,8 @@ int main(void) {
       cpkt_openssl_OSSL_PARAM_BLD_push_int64(
           parameter_builder, "signed", cpkt_openssl_i64_make(0UL, 11UL)) != 1 ||
       cpkt_openssl_OSSL_PARAM_BLD_push_uint64(
-          parameter_builder, "unsigned", cpkt_openssl_u64_make(0UL, 12UL)) != 1) {
+          parameter_builder, "unsigned", cpkt_openssl_u64_make(0UL, 12UL)) !=
+          1) {
     OSSL_PARAM_BLD_free(parameter_builder);
     cpkt_openssl_param_i64_free(signed_parameter);
     cpkt_openssl_param_u64_free(unsigned_parameter);
@@ -258,8 +488,8 @@ int main(void) {
   if (!cpkt_openssl_u64_equal(
           cpkt_openssl_CT_POLICY_EVAL_CTX_get_time(policy_context), options) ||
       !cpkt_openssl_u64_equal(cpkt_openssl_SCT_get_timestamp(sct), options) ||
-      cpkt_openssl_OSSL_set_max_threads(
-          library_context, cpkt_openssl_u64_make(0UL, 1UL)) != 1 ||
+      cpkt_openssl_OSSL_set_max_threads(library_context,
+                                        cpkt_openssl_u64_make(0UL, 1UL)) != 1 ||
       cpkt_openssl_u64_is_zero(
           cpkt_openssl_OSSL_get_max_threads(library_context))) {
     CT_POLICY_EVAL_CTX_free(policy_context);
@@ -283,7 +513,7 @@ int main(void) {
     return 16;
   }
   algorithm = cpkt_openssl_PKCS5_pbe2_set_scrypt(
-      EVP_aes_128_cbc(), salt, (int) sizeof(salt), iv,
+      EVP_aes_128_cbc(), salt, (int)sizeof(salt), iv,
       cpkt_openssl_u64_make(0UL, 16UL), cpkt_openssl_u64_make(0UL, 1UL),
       cpkt_openssl_u64_make(0UL, 1UL));
   if (algorithm == 0) {
@@ -298,11 +528,9 @@ int main(void) {
     return 19;
   }
   returned = cpkt_openssl_u64_make(0UL, 1UL);
-  if (cpkt_openssl_SSL_get_value_uint(
-          0, 0x100000000UL, 0UL, &returned) != 0 ||
+  if (cpkt_openssl_SSL_get_value_uint(0, 0x100000000UL, 0UL, &returned) != 0 ||
       !cpkt_openssl_u64_is_zero(returned) ||
-      cpkt_openssl_SSL_set_value_uint(
-          0, 0UL, 0x100000000UL, options) != 0) {
+      cpkt_openssl_SSL_set_value_uint(0, 0UL, 0x100000000UL, options) != 0) {
     SSL_CTX_free(context);
     return 20;
   }

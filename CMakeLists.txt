@@ -1628,7 +1628,8 @@ if(CPKT_BUILD_TESTS)
             --symbol-tool "${CMAKE_READELF}"
             --clang "${CPKT_OPENSSL_API_INVENTORY_CLANG}"
             --output "${CMAKE_BINARY_DIR}/openssl-api-inventory-test/inventory.json"
-            --work-dir "${CMAKE_BINARY_DIR}/openssl-api-inventory-test")
+            --work-dir "${CMAKE_BINARY_DIR}/openssl-api-inventory-test"
+            --facade-header "${CMAKE_SOURCE_DIR}/include/cpkt/openssl.h")
       endif()
       add_test(
         NAME openssl_header_facade
@@ -1742,6 +1743,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_TARGET_ID=${CPKT_TARGET_ID}
         -DCPKT_BUNDLE_VERSION=${CPKT_BUNDLE_VERSION}
         -DCPKT_OPENSSL_VERSION=${CPKT_OPENSSL_VERSION}
+        -DCPKT_OPENSSL_ABI_VERSION=${CPKT_OPENSSL_ABI_VERSION}
         -DCPKT_ZLIB_VERSION=${CPKT_ZLIB_VERSION}
         -DCPKT_CURL_VERSION=${CPKT_CURL_VERSION}
         -DCPKT_NGHTTP2_VERSION=${CPKT_NGHTTP2_VERSION}
@@ -1759,6 +1761,8 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_POSTGRESQL_VERSION=${CPKT_POSTGRESQL_VERSION}
         -DCPKT_SQLITE_VERSION=${CPKT_SQLITE_VERSION}
         -DCPKT_LUA_RUNTIME_ABI_VERSION=${CPKT_LUA_RUNTIME_ABI_VERSION}
+        -DCPKT_OPENSSL_STATIC_LIBRARY=$<TARGET_FILE:cpkt_openssl_static>
+        -DCPKT_OPENSSL_SHARED_LIBRARY=$<TARGET_FILE:cpkt_openssl_shared>
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>
@@ -1788,10 +1792,13 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_SUS_SHARED_LIBRARY=$<TARGET_FILE:cpkt_sus_shared>
         -DCPKT_CXX_STDLIB_STATIC_LIBRARY=${CPKT_CXX_STDLIB_STATIC_LIBRARY}
         -DCPKT_CXX_LIBGCC_STATIC_LIBRARY=${CPKT_CXX_LIBGCC_STATIC_LIBRARY}
+        -DCPKT_STRIP_BIN=${CMAKE_STRIP}
         -DCPKT_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/package_bundle.cmake
     DEPENDS
       cpkt_deps_all
+      cpkt_openssl_static
+      cpkt_openssl_shared
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
       cpkt_audio_static

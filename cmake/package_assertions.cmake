@@ -585,6 +585,10 @@ foreach(_required_model_catalog_entry
     message(FATAL_ERROR "sus model catalog metadata is missing required entry: ${_required_model_catalog_entry}")
   endif()
 endforeach()
+if(NOT _manifest_text MATCHES "(^|\n)openssl_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing openssl_abi_version")
+endif()
+set(_manifest_openssl_abi_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)lua_runtime_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing lua_runtime_abi_version")
 endif()
@@ -648,6 +652,14 @@ if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_version=([A-Za-z0-9_.+-]+)(\n|$)")
 endif()
 if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_commit=([A-Fa-f0-9]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing mqtt_c_commit")
+endif()
+if(DEFINED CPKT_OPENSSL_ABI_VERSION AND NOT "${CPKT_OPENSSL_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_OPENSSL_ABI_VERSION}" STREQUAL "${_manifest_openssl_abi_version}")
+    message(FATAL_ERROR
+      "configured OpenSSL facade ABI ${CPKT_OPENSSL_ABI_VERSION} does not match package manifest ABI ${_manifest_openssl_abi_version}")
+  endif()
+else()
+  set(CPKT_OPENSSL_ABI_VERSION "${_manifest_openssl_abi_version}")
 endif()
 if(DEFINED CPKT_LUA_RUNTIME_ABI_VERSION AND NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "")
   if(NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "${_manifest_lua_runtime_abi_version}")
@@ -779,15 +791,84 @@ function(cpkt_assert_dynamic_exports_match file_path allowed_symbol_regex descri
   endforeach()
 endfunction()
 
+# Compare the defined dynamic table with a target-specific, source-controlled
+# allowlist. A prefix check would accept accidental cpkt_openssl_* ABI entries.
+function(cpkt_assert_dynamic_exports_equal file_path allowlist_path description)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+  if(NOT EXISTS "${allowlist_path}")
+    message(FATAL_ERROR "missing export allowlist for ${description}: ${allowlist_path}")
+  endif()
+  cpkt_find_nm(_cpkt_nm)
+  if(CPKT_TARGET_ID MATCHES "darwin")
+    set(_nm_args -gU "${file_path}")
+  else()
+    set(_nm_args -D --defined-only "${file_path}")
+  endif()
+  execute_process(
+    COMMAND "${_cpkt_nm}" ${_nm_args}
+    RESULT_VARIABLE _nm_result
+    OUTPUT_VARIABLE _nm_output
+    ERROR_VARIABLE _nm_error
+  )
+  if(NOT _nm_result EQUAL 0)
+    message(FATAL_ERROR
+      "failed to inspect defined dynamic exports from ${description}: ${file_path}\n${_nm_error}")
+  endif()
+  set(_actual_symbols "")
+  string(ASCII 9 _symbol_tab)
+  string(REPLACE "\n" ";" _nm_lines "${_nm_output}")
+  foreach(_nm_line IN LISTS _nm_lines)
+    string(STRIP "${_nm_line}" _nm_line)
+    if(_nm_line STREQUAL "")
+      continue()
+    endif()
+    string(REPLACE "${_symbol_tab}" " " _nm_line "${_nm_line}")
+    string(REGEX REPLACE "^.* " "" _symbol_name "${_nm_line}")
+    if(_symbol_name STREQUAL "" OR _symbol_name STREQUAL "${_nm_line}")
+      message(FATAL_ERROR
+        "unable to parse defined dynamic export from ${description}: ${_nm_line}")
+    endif()
+    if(_symbol_name STREQUAL "_init" OR _symbol_name STREQUAL "_fini")
+      continue()
+    endif()
+    list(APPEND _actual_symbols "${_symbol_name}")
+  endforeach()
+  list(REMOVE_DUPLICATES _actual_symbols)
+  list(SORT _actual_symbols)
+
+  file(STRINGS "${allowlist_path}" _expected_symbols
+    REGEX "^[ \\t]*[^# \\t]")
+  set(_expected_symbols_stripped "")
+  foreach(_expected_symbol IN LISTS _expected_symbols)
+    string(STRIP "${_expected_symbol}" _expected_symbol)
+    list(APPEND _expected_symbols_stripped "${_expected_symbol}")
+  endforeach()
+  list(REMOVE_DUPLICATES _expected_symbols_stripped)
+  list(SORT _expected_symbols_stripped)
+  if(NOT "${_actual_symbols}" STREQUAL "${_expected_symbols_stripped}")
+    string(REPLACE ";" "\n" _actual_display "${_actual_symbols}")
+    string(REPLACE ";" "\n" _expected_display "${_expected_symbols_stripped}")
+    message(FATAL_ERROR
+      "${description} dynamic export allowlist mismatch\nexpected:\n${_expected_display}\nactual:\n${_actual_display}")
+  endif()
+endfunction()
+
 foreach(_path
+    "include/cpkt/openssl.h"
     "include/openssl/ssl.h"
+    "lib/libcpkt_openssl.a"
     "lib/libssl.a"
     "lib/libcrypto.a"
     "lib/cmake/OpenSSL/OpenSSLConfig.cmake"
     "lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake"
+    "lib/cmake/CpktOpenSSL/CpktOpenSSLConfig.cmake"
+    "lib/cmake/CpktOpenSSL/CpktOpenSSLConfigVersion.cmake"
     "lib/pkgconfig/libssl.pc"
     "lib/pkgconfig/libcrypto.pc"
     "lib/pkgconfig/openssl.pc"
+    "lib/pkgconfig/cpkt-openssl.pc"
     "include/curl/curl.h"
     "lib/libcurl.a"
     "lib/cmake/CURL/CURLConfig.cmake"
@@ -896,6 +977,7 @@ foreach(_path
     "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
     "share/doc/c.pkt.systems/docs/gssapi-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/docs/openssl-c89-facade-surface.md"
     "share/doc/c.pkt.systems/docs/postgres-c89-facade-spec.md"
     "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/examples/abi_smoke.c"
@@ -1175,6 +1257,10 @@ file(REMOVE_RECURSE "${_gssapi_facade_header_extract_root}")
 
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_openssl([^/]*)?\\.dylib$"
+    3
+    "OpenSSL C89 facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime([^/]*)?\\.dylib$"
     3
     "Lua runtime facade Darwin shared library entries")
@@ -1218,6 +1304,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libopen62541.dylib"
       "lib/libopen62541.1.5.dylib"
       "lib/libopen62541.1.5.8.dylib"
+      "lib/libcpkt_openssl.dylib"
+      "lib/libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib"
+      "lib/libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
@@ -1241,6 +1330,10 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
   cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib"
+    "libcpkt_openssl Darwin install name")
+  cpkt_assert_darwin_install_name(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
     "@rpath/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
     "libcpkt_lua_runtime Darwin install name")
@@ -1259,8 +1352,16 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "${_packaged_darwin_dylib}"
       "${_packaged_darwin_dylib_name}")
   endforeach()
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_openssl.txt"
+    "libcpkt_openssl extracted SDK ABI surface")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_openssl\\.so([^/]*)?$"
+    3
+    "OpenSSL C89 facade Linux shared library entries")
   cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime\\.so([^/]*)?$"
     3
@@ -1320,6 +1421,9 @@ else()
       "lib/libopen62541.so"
       "lib/libopen62541.so.1.5"
       "lib/libopen62541.so.1.5.8"
+      "lib/libcpkt_openssl.so"
+      "lib/libcpkt_openssl.so.${CPKT_OPENSSL_ABI_VERSION}"
+      "lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
       "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
@@ -1374,6 +1478,7 @@ else()
       "lib/libcurl.so.4.8.0"
       "lib/libxml2.so.16.1.4"
       "lib/libmqttc.so.1.1.2"
+      "lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpktaudio.so"
       "lib/libcpktsus.so"
@@ -1386,6 +1491,10 @@ else()
       "\\$ORIGIN"
       "${_runpath_library}")
   endforeach()
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_openssl.so.${CPKT_OPENSSL_ABI_VERSION}"
+    "libcpkt_openssl SONAME")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
@@ -1438,6 +1547,10 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
     "^cpkt_postgres_"
     "libcpkt_postgres public ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_openssl.txt"
+    "libcpkt_openssl extracted SDK ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

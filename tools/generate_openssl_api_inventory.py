@@ -65,6 +65,21 @@ ABI_ONLY_EXPORTS = {
 C89_TYPED_ADAPTER_PATTERN = re.compile(
     r"\b(?:int64_t|uint64_t|BN_ULONG|SHA_LONG64)\b|\blong\s+long\b")
 
+# BIO_MMSG_CB_ARGS reaches public callbacks through a generic pointer rather
+# than through a function declaration. Keep its facade helpers explicit so an
+# AST signature scan cannot accidentally omit that usable-record boundary.
+RECORD_FACADE_HELPERS = {
+    "BIO_MMSG_CB_ARGS": {
+        "cpkt_openssl_BIO_set_callback",
+        "cpkt_openssl_BIO_get_callback",
+        "cpkt_openssl_BIO_set_callback_ex",
+        "cpkt_openssl_BIO_get_callback_ex",
+    },
+}
+
+FACADE_FUNCTION_PATTERN = re.compile(
+    r"\b(cpkt_openssl_[A-Za-z0-9_]+)\s*\(")
+
 
 def read_num_files(paths: Iterable[pathlib.Path]) -> Set[str]:
     names: Set[str] = set()
@@ -204,6 +219,11 @@ def record_dependent_functions(declarations: Dict[str, Dict[str, Any]],
                    parameter["type"] for parameter in declaration["parameters"]]))
 
 
+def facade_functions(path: pathlib.Path) -> Set[str]:
+    return set(FACADE_FUNCTION_PATTERN.findall(
+        path.read_text(encoding="utf-8")))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--include-dir", required=True, type=pathlib.Path)
@@ -214,6 +234,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clang", required=True)
     parser.add_argument("--output", required=True, type=pathlib.Path)
     parser.add_argument("--work-dir", required=True, type=pathlib.Path)
+    parser.add_argument("--facade-header", type=pathlib.Path)
     parser.add_argument("--target")
     parser.add_argument("--sysroot", type=pathlib.Path)
     return parser.parse_args()
@@ -251,6 +272,26 @@ def main() -> int:
     unresolved = set(exported_public_abi - set(declarations))
     unclassified_unresolved = sorted(unresolved - ABI_ONLY_EXPORTS)
 
+    typed_functions = sorted(
+        name for name, declaration in declarations.items()
+        if requires_c89_typed_adapter(declaration))
+    record_functions = record_dependent_functions(
+        declarations, typed_record_aliases)
+    required_facade_functions = {
+        "cpkt_openssl_" + name
+        for name in typed_functions + record_functions
+    }
+    for record_name, helpers in RECORD_FACADE_HELPERS.items():
+        if record_name in typed_record_aliases:
+            required_facade_functions.update(helpers)
+    missing_facade_functions: List[str] = []
+    if args.facade_header:
+        if not args.facade_header.is_file():
+            raise ValueError("facade header is missing: " +
+                             str(args.facade_header))
+        missing_facade_functions = sorted(
+            required_facade_functions - facade_functions(args.facade_header))
+
     inventory = {
         "schema": 2,
         "nominal_function_count": len(nominal),
@@ -260,13 +301,12 @@ def main() -> int:
         "feature_disabled_functions": sorted(nominal - dynamic),
         "compatibility_exports": sorted(dynamic & COMPATIBILITY_EXPORTS),
         "functions": {name: declarations[name] for name in sorted(declarations)},
-        "c89_typed_adapter_functions": sorted(
-            name for name, declaration in declarations.items()
-            if requires_c89_typed_adapter(declaration)),
+        "c89_typed_adapter_functions": typed_functions,
         "c89_typed_adapter_records": typed_records,
         "c89_typed_adapter_record_aliases": sorted(typed_record_aliases),
-        "c89_record_dependent_functions": record_dependent_functions(
-            declarations, typed_record_aliases),
+        "c89_record_dependent_functions": record_functions,
+        "c89_required_facade_functions": sorted(required_facade_functions),
+        "missing_c89_facade_functions": missing_facade_functions,
         "abi_only_exports": sorted(unresolved),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +315,9 @@ def main() -> int:
     if unclassified_unresolved:
         raise ValueError("unclassified ABI exports without a public header declaration: " +
                          ", ".join(unclassified_unresolved))
+    if missing_facade_functions:
+        raise ValueError("OpenSSL C89 facade omits required functions: " +
+                         ", ".join(missing_facade_functions))
     return 0
 
 

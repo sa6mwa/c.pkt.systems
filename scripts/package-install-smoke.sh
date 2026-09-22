@@ -217,7 +217,7 @@ fi
 
 mkdir -p "$repo_root/build"
 work_root=$(mktemp -d "$repo_root/build/cpkt-install-smoke.XXXXXX")
-trap 'rm -rf "$work_root"' EXIT
+trap 'cmake -E remove_directory "$work_root"' EXIT
 diagnostic_dir="$work_root/diagnostics"
 mkdir -p "$diagnostic_dir"
 
@@ -485,6 +485,41 @@ int main(void) {
   return 0;
 }
 EOF
+cat > "$cmake_source_dir/cpkt_openssl_facade_strict.c" <<'EOF'
+#include <cpkt/openssl.h>
+
+int main(void) {
+  cpkt_openssl_u64 value;
+
+  value = cpkt_openssl_u64_make(0UL, 1UL);
+  return cpkt_openssl_u64_low_word(value) == 1UL ? 0 : 1;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_openssl_private_sentinel.c" <<'EOF'
+extern unsigned long cpkt_openssl_native_u64(void);
+
+int main(void) {
+  return (int)cpkt_openssl_native_u64();
+}
+EOF
+openssl_private_sentinel_log="$diagnostic_dir/cpkt-openssl-private-sentinel.log"
+# Exact dynamic-table inspection proves the approved ABI. This separate
+# extracted-SDK link failure proves an unadvertised internal helper cannot be
+# reached by manually declaring it downstream.
+# shellcheck disable=SC2086
+if openssl_private_sentinel_output=$("$cc" -std=c89 -Wall -Wextra -Wpedantic \
+    -pedantic-errors -Werror "$cmake_source_dir/cpkt_openssl_private_sentinel.c" \
+    -L "$prefix/lib" -lcpkt_openssl $pkg_config_link_toolchain_flags \
+    -o "$work_root/bin/cpkt_openssl_private_sentinel" 2>&1); then
+  printf 'private OpenSSL facade sentinel linked from extracted SDK\n' >&2
+  exit 1
+fi
+printf '%s\n' "$openssl_private_sentinel_output" > "$openssl_private_sentinel_log"
+if ! grep -F 'cpkt_openssl_native_u64' "$openssl_private_sentinel_log" >/dev/null 2>&1; then
+  printf 'private OpenSSL facade sentinel failed for an unrelated reason:\n' >&2
+  cat "$openssl_private_sentinel_log" >&2
+  exit 1
+fi
 cat > "$cmake_source_dir/cpkt_libssh2.c" <<'EOF'
 #include <libssh2.h>
 
@@ -1295,6 +1330,7 @@ find_package(Lua CONFIG REQUIRED)
 find_package(miniaudio CONFIG REQUIRED)
 find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
+find_package(CpktOpenSSL CONFIG REQUIRED)
 find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
 find_package(CpktGssapi CONFIG REQUIRED)
@@ -1312,6 +1348,12 @@ function(cpkt_add_static_smoke target_name source_name link_target)
   target_link_libraries("\${target_name}" PRIVATE "\${link_target}")
 endfunction()
 
+function(cpkt_add_shared_smoke target_name source_name link_target)
+  add_executable("\${target_name}" "\${source_name}")
+  target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries("\${target_name}" PRIVATE "\${link_target}")
+endfunction()
+
 function(cpkt_add_static_archive_pic_smoke target_name source_name link_target)
   add_library("\${target_name}" SHARED "\${source_name}")
   target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
@@ -1322,6 +1364,8 @@ cpkt_add_static_smoke(cpkt_cmake_zlib cpkt_zlib.c ZLIB::ZLIB)
 cpkt_add_static_smoke(cpkt_cmake_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
 cpkt_add_static_smoke(cpkt_cmake_crypto cpkt_crypto.c OpenSSL::Crypto)
 cpkt_add_static_smoke(cpkt_cmake_ssl cpkt_ssl.c OpenSSL::SSL)
+cpkt_add_static_smoke(cpkt_cmake_openssl_facade cpkt_openssl_facade_strict.c cpkt::openssl)
+cpkt_add_shared_smoke(cpkt_cmake_openssl_facade_shared cpkt_openssl_facade_strict.c cpkt::openssl_shared)
 cpkt_add_static_smoke(cpkt_cmake_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_smoke(cpkt_cmake_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
@@ -1338,6 +1382,7 @@ cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_zlib cpkt_zlib.c ZLIB::ZLIB)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_crypto cpkt_crypto.c OpenSSL::Crypto)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_ssl cpkt_ssl.c OpenSSL::SSL)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_openssl_facade cpkt_openssl_facade_strict.c cpkt::openssl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
@@ -1351,6 +1396,8 @@ cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_postgres_facade cpkt_postgres_f
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
 set_source_files_properties(cpkt_audio_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_openssl_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
@@ -1419,6 +1466,7 @@ cmake_args=(
   -Dminiaudio_DIR="$prefix/lib/cmake/miniaudio" \
   -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCpktOpenSSL_DIR="$prefix/lib/cmake/CpktOpenSSL" \
   -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -DCpktGssapi_DIR="$prefix/lib/cmake/CpktGssapi" \
@@ -1505,6 +1553,9 @@ assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib
 assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib/libz.a" "CURL::libcurl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "$prefix/lib/libz.a" "LibXml2::LibXml2 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_mqttc.dir/link.txt" "$prefix/lib/libmqttc.a" "MQTT-C::mqttc link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_openssl_facade.dir/link.txt" "$prefix/lib/libcpkt_openssl.a" "cpkt::openssl link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_openssl_facade.dir/link.txt" "$prefix/lib/libssl.a" "cpkt::openssl link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_openssl_facade.dir/link.txt" "$prefix/lib/libcrypto.a" "cpkt::openssl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libssl.a" "open62541::open62541 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libcrypto.a" "open62541::open62541 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio link line"
@@ -1703,6 +1754,7 @@ pkg_config_default_words() {
 libcrypto_words=$(pkg_config_words libcrypto)
 libssl_words=$(pkg_config_words libssl)
 openssl_words=$(pkg_config_words openssl)
+cpkt_openssl_words=$(pkg_config_words cpkt-openssl)
 zlib_words=$(pkg_config_words zlib)
 nghttp2_words=$(pkg_config_words libnghttp2)
 libssh2_words=$(pkg_config_words libssh2)
@@ -1760,6 +1812,9 @@ esac
 assert_words_contain "$libssl_words" "-lcrypto" "libssl.pc --static output"
 assert_words_contain "$openssl_words" "-lssl" "openssl.pc --static output"
 assert_words_contain "$openssl_words" "-lcrypto" "openssl.pc --static output"
+assert_words_contain "$cpkt_openssl_words" "-lcpkt_openssl" "cpkt-openssl.pc --static output"
+assert_words_contain "$cpkt_openssl_words" "-lssl" "cpkt-openssl.pc --static output"
+assert_words_contain "$cpkt_openssl_words" "-lcrypto" "cpkt-openssl.pc --static output"
 assert_words_contain "$openssl_default_words" "-lssl" "openssl.pc output"
 assert_words_contain "$openssl_default_words" "-lcrypto" "openssl.pc output"
 assert_words_contain "$libssh2_words" "-lcrypto" "libssh2.pc --static output"
@@ -1830,7 +1885,7 @@ cpkt_pkg_config_static_smoke() {
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
   source_flags=$common_flags
   case "$source_name" in
-    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sasl_facade_strict.c|cpkt_sqlite_facade_strict.c|cpkt_sus_facade_strict.c)
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_openssl_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sasl_facade_strict.c|cpkt_sqlite_facade_strict.c|cpkt_sus_facade_strict.c)
       source_flags=$common_c89_flags
       ;;
   esac
@@ -2031,6 +2086,7 @@ cpkt_pkg_config_static_smoke libnghttp2 cpkt_nghttp2.c
 cpkt_pkg_config_static_smoke libcrypto cpkt_crypto.c
 cpkt_pkg_config_static_smoke libssl cpkt_ssl.c
 cpkt_pkg_config_static_smoke openssl cpkt_ssl.c
+cpkt_pkg_config_static_smoke cpkt-openssl cpkt_openssl_facade_strict.c
 cpkt_pkg_config_static_smoke libssh2 cpkt_libssh2.c
 cpkt_pkg_config_static_smoke libcurl cpkt_curl.c
 cpkt_pkg_config_static_smoke libxml-2.0 cpkt_libxml2.c
@@ -2143,6 +2199,7 @@ cpkt_pkg_config_smoke() {
 }
 
 cpkt_pkg_config_smoke openssl cpkt_ssl.c
+cpkt_pkg_config_smoke cpkt-openssl cpkt_openssl_facade_strict.c
 
 # Verify every temporary native consumer before executing it directly.
 if [ "${#local_runtime_options[@]}" -gt 0 ]; then
@@ -2175,7 +2232,7 @@ esac
 
 # Direct find_package consumers and the default pkg-config OpenSSL link must
 # execute as well as build; they exercise distinct exported metadata surfaces.
-for consumer in "$direct_build_dir"/cpkt_direct_* "$work_root/bin/cpkt_pkg_openssl_default"; do
+for consumer in "$direct_build_dir"/cpkt_direct_* "$work_root/bin/cpkt_pkg_openssl_default" "$work_root/bin/cpkt_pkg_cpkt-openssl_default"; do
   printf 'Running package consumer: %s\n' "${consumer##*/}"
   if [ -z "$run_prefix" ]; then
     "$consumer"
@@ -2190,6 +2247,7 @@ if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_nghttp2"
   "$cmake_build_dir/cpkt_cmake_crypto"
   "$cmake_build_dir/cpkt_cmake_ssl"
+  "$cmake_build_dir/cpkt_cmake_openssl_facade_shared"
   "$cmake_build_dir/cpkt_cmake_libssh2"
   "$cmake_build_dir/cpkt_cmake_curl"
   "$cmake_build_dir/cpkt_cmake_libxml2"
@@ -2243,6 +2301,8 @@ else
   $run_prefix "$cmake_build_dir/cpkt_cmake_crypto"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_ssl"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_openssl_facade_shared"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_libssh2"
   # shellcheck disable=SC2086
