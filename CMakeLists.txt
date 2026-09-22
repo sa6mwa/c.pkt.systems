@@ -1713,6 +1713,17 @@ if(CPKT_BUILD_TESTS)
             --output "${CMAKE_BINARY_DIR}/nghttp2-api-inventory-test/inventory.json"
             --work-dir "${CMAKE_BINARY_DIR}/nghttp2-api-inventory-test"
             --facade-header "${CPKT_NGHTTP2_FACADE_HEADER}")
+        add_test(
+          NAME libssh2_api_inventory
+          COMMAND
+            python3
+            "${CMAKE_SOURCE_DIR}/tools/generate_libssh2_api_inventory.py"
+            --include-dir "$<TARGET_PROPERTY:cpkt::libssh2_shared,INTERFACE_INCLUDE_DIRECTORIES>"
+            --library "$<TARGET_PROPERTY:cpkt::libssh2_shared,IMPORTED_LOCATION>"
+            --symbol-tool "${CMAKE_NM}"
+            --clang "${CPKT_OPENSSL_API_INVENTORY_CLANG}"
+            --output "${CMAKE_BINARY_DIR}/libssh2-api-inventory-test/inventory.json"
+            --work-dir "${CMAKE_BINARY_DIR}/libssh2-api-inventory-test")
       endif()
       add_test(
         NAME openssl_header_facade
