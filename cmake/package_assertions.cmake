@@ -830,6 +830,8 @@ foreach(_path
     "include/cpkt/opcua.h"
     "include/cpkt/gssapi.h"
     "include/cpkt/postgres.h"
+    "include/krb5.h"
+    "include/com_err.h"
     "lib/libminiaudio.a"
     "lib/libwhisper.a"
     "lib/libggml.a"

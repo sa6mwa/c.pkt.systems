@@ -53,3 +53,15 @@ case "$sqlite_plan" in
     exit 1
     ;;
 esac
+
+krb5_plan=$(cmake --build "$build_dir" --target cpkt_deps_krb5 -- -n)
+case "$krb5_plan" in
+  *"cpkt_krb5_static_project"*|*"cpkt_krb5_shared_project"*) ;;
+  *) printf 'Kerberos component build plan does not include Kerberos\n' >&2; exit 1 ;;
+esac
+case "$krb5_plan" in
+  *"cpkt_deps_all"*|*"cpkt_cyrus_sasl_project"*|*"cpkt_openldap_project"*|*"cpkt_postgresql_project"*)
+    printf 'Kerberos component build plan includes an unrelated dependency closure\n' >&2
+    exit 1
+    ;;
+esac

@@ -307,6 +307,10 @@ mkdir -p "$work_root/bin"
 
 common_flags="-std=c99 -Wall -Wextra -Wpedantic -isystem $prefix/include"
 common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"
+cpkt_run_checked "strict C89 Kerberos SDK header consumer" \
+  "$cc" -std=c89 -Wall -Wextra -Wpedantic -pedantic-errors -Werror \
+  -isystem "$prefix/include" -fsyntax-only \
+  "$repo_root/tests/krb5_sdk_header_c89.c"
 assert_package_file() {
   package_path=$1
   if [ ! -f "$prefix/$package_path" ]; then

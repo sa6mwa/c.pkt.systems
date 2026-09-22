@@ -1,10 +1,40 @@
-# Dependency roadmap
+# Dependency roadmap and implementation queue
 
-This roadmap records the next third-party capabilities to add to the
-c.pkt.systems SDK. It is a planning document, not a pin or a compatibility
-commitment. Each implementation must select a stable upstream release, audit
-that exact source archive and its enabled bundled code, preserve upstream ABI
-metadata, and pass the full release matrix before shipment.
+This is the ordered TODO for dependency and facade work in c.pkt.systems. It
+is not a pin or compatibility commitment: each item still needs its exact
+upstream audit, ABI review, and release-matrix evidence before shipment.
+
+## Current implementation queue
+
+- [ ] **Repair the Kerberos SDK header closure.** Stage and ship the generated
+  `com_err.h` required by the shipped `krb5.h`; add extracted-SDK coverage that
+  compiles a strict-C89 Kerberos consumer. Build only the `krb5` component and
+  its required closure to prove the component build boundary.
+- [ ] **Add `cpkt_openssl`.** Provide the complete public OpenSSL C89 facade
+  over the bundled crypto and TLS libraries, with separate CMake and
+  pkg-config packages.
+- [ ] **Add `cpkt_nghttp2`.** Provide the complete public nghttp2 C89 facade,
+  including callback, session, frame, and error interfaces.
+- [ ] **Add `cpkt_libssh2`.** Provide the complete public libssh2 C89 facade,
+  including session, authentication, channel, SFTP, SCP, and public-key APIs.
+- [ ] **Add `cpkt_mqttc`.** Provide the complete public MQTT-C C89 facade,
+  including client lifecycle, packet handling, callbacks, and transport
+  integration.
+- [ ] **Sweep `cpkt_postgres` for complete libpq coverage.** Assert every
+  supported libpq public operation is represented by the C89 receiver-shell
+  facade and verify that Postgres-only facade work builds only its dependency
+  closure.
+- [ ] **Sweep `cpkt_sqlite` for complete SQLite coverage.** Assert every
+  enabled public SQLite API is represented by the C89 facade and verify that
+  SQLite-only facade work builds only SQLite and its platform closure.
+- [ ] **Add `cpkt_lua` last.** `cpkt_lua_runtime` is already the priority
+  embedding-policy facade. This later item is a complete C89 facade for the
+  full public Lua C API, not a replacement for `cpkt_lua_runtime`.
+
+The direct C89 downstream interfaces for curl, zlib, miniaudio, OpenLDAP,
+Cyrus SASL, and the core MIT Kerberos/GSSAPI APIs remain available without new
+facades. SQLite has no bundled third-party library dependency; its runtime
+closure is limited to platform facilities.
 
 ## Distribution policy
 
@@ -27,9 +57,11 @@ target:
 
 ## Public API rule: C89 facades
 
-No upstream API is the c.pkt.systems public interface. Each adopted component
-will have a small, independently versioned C89 facade, built as both a shared
+An upstream API that is not fully usable by a strict-C89 downstream consumer
+must have a small, independently versioned C89 facade, built as both a shared
 and static library and accompanied by CMake and pkg-config metadata.
+Upstream interfaces that are already strict-C89 compatible may remain direct
+SDK interfaces.
 
 The facade must:
 

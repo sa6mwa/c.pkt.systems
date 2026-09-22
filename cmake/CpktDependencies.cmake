@@ -1989,6 +1989,7 @@ function(cpkt_add_krb5)
   set(profile_static_library "${install_dir}/lib/libprofile${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(verto_static_library "${install_dir}/lib/libverto${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(gssapi_shared_library "${install_dir}/lib/libgssapi_krb5${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(com_err_header "${install_dir}/include/com_err.h")
   set(krb5_static_platform_libraries "")
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND krb5_static_platform_libraries resolv)
@@ -1997,7 +1998,6 @@ function(cpkt_add_krb5)
   endif()
   cpkt_get_target_triple(target_triple)
   cpkt_get_external_c_flags(external_cflags)
-  cpkt_get_autotools_link_flags(external_ldflags)
   set(env_args "")
   cpkt_append_pinned_external_toolchain_env_args(env_args)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -2014,7 +2014,9 @@ function(cpkt_add_krb5)
   list(APPEND env_args
     # Kerberos static archives are part of the public GSSAPI closure.
     "CFLAGS=${external_cflags} -fPIC"
-    "LDFLAGS=${external_ldflags}"
+    # Kerberos is explicitly configured with --disable-rpath. Do not pass the
+    # generic Autotools $ORIGIN flag into its configure probes.
+    "LDFLAGS="
     # Keep Kerberos defaults independent of the disposable build/install root.
     # Applications may override all three with the standard environment knobs.
     "DEFCCNAME=FILE:/tmp/krb5cc_%{uid}"
@@ -2118,6 +2120,11 @@ function(cpkt_add_krb5)
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/krb5 install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/gssapi install DESTDIR=${stage_dir}
+        # MIT Kerberos' include install omits the generated public com_err.h,
+        # although its installed krb5.h includes it directly.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${static_build_dir}/include/com_err.h"
+          "${stage_dir}/usr/include/com_err.h"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
         COMMAND ${strip_install_command}
@@ -2189,6 +2196,9 @@ function(cpkt_add_krb5)
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib/krb5 install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib/gssapi install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${shared_build_dir}/include/com_err.h"
+          "${stage_dir}/usr/include/com_err.h"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
         COMMAND ${krb5_darwin_install_name_normalize_command}
@@ -2214,6 +2224,7 @@ function(cpkt_add_krb5)
     cpkt_require_dependency_file("${gssapi_static_library}" "MIT Kerberos GSSAPI static library")
     cpkt_require_dependency_file("${gssapi_shared_library}" "MIT Kerberos GSSAPI shared library")
     cpkt_require_dependency_file("${install_dir}/include/gssapi/gssapi.h" "MIT Kerberos GSSAPI header")
+    cpkt_require_dependency_file("${com_err_header}" "MIT Kerberos com_err header")
   endif()
   set(CPKT_KRB5_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
