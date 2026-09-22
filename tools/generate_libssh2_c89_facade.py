@@ -9,6 +9,11 @@ from typing import Dict, Iterable, List, Tuple
 
 
 HEADER_NAMES = ("libssh2.h", "libssh2_sftp.h", "libssh2_publickey.h")
+FUNCTION_PATTERN = re.compile(
+    r"^LIBSSH2_API\s+(?P<result>.*?)\s*"
+    r"(?P<name>libssh2_[A-Za-z0-9_]+)\s*"
+    r"\((?P<parameters>.*?)\)\s*;",
+    re.DOTALL | re.MULTILINE)
 REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
     ("ssize_t", "cpkt_libssh2_ssize"),
     ("uint32_t", "cpkt_libssh2_u32"),
@@ -21,8 +26,37 @@ REPLACEMENTS: Tuple[Tuple[str, str], ...] = (
 )
 
 
+CALLBACK_CASTS = {
+    "LIBSSH2_ALLOC_FUNC": "cpkt_libssh2_native_alloc_func",
+    "LIBSSH2_FREE_FUNC": "cpkt_libssh2_native_free_func",
+    "LIBSSH2_REALLOC_FUNC": "cpkt_libssh2_native_realloc_func",
+    "LIBSSH2_PASSWD_CHANGEREQ_FUNC": "cpkt_libssh2_native_passwd_func",
+    "LIBSSH2_USERAUTH_PUBLICKEY_SIGN_FUNC":
+        "cpkt_libssh2_native_publickey_sign_func",
+    "LIBSSH2_USERAUTH_KBDINT_RESPONSE_FUNC":
+        "cpkt_libssh2_native_kbdint_func",
+    "LIBSSH2_USERAUTH_SK_SIGN_FUNC": "cpkt_libssh2_native_sk_sign_func",
+}
+
+SPECIAL_FUNCTIONS = {
+    "libssh2_scp_recv",
+    "libssh2_scp_recv2",
+    "libssh2_scp_send64",
+    "libssh2_sftp_open_ex_r",
+    "libssh2_sftp_readdir_ex",
+    "libssh2_sftp_seek64",
+    "libssh2_sftp_tell64",
+    "libssh2_sftp_fstat_ex",
+    "libssh2_sftp_fstatvfs",
+    "libssh2_sftp_statvfs",
+    "libssh2_sftp_stat_ex",
+}
+
+
 def transform(text: str) -> str:
-    text = text.replace("LIBSSH2_", "CPKT_LIBSSH2_")
+    text = text.replace("LIBSSH2CHANNEL_", "CPKT_LIBSSH2_CHANNEL_")
+    text = text.replace("LIBSSH2SFTP_", "CPKT_LIBSSH2_SFTP_")
+    text = re.sub(r"(?<!CPKT_)LIBSSH2_", "CPKT_LIBSSH2_", text)
     text = text.replace("libssh2_", "cpkt_libssh2_")
     for native, facade in REPLACEMENTS:
         text = re.sub(r"\b" + re.escape(native) + r"\b", facade, text)
@@ -144,12 +178,19 @@ typedef struct cpkt_libssh2_sftp_statvfs {
 } cpkt_libssh2_sftp_statvfs_t;
 
 typedef struct cpkt_libssh2_stat {
-  cpkt_libssh2_u64 size;
+  cpkt_libssh2_u64 device;
+  cpkt_libssh2_u64 inode;
   unsigned long mode;
-  unsigned long uid;
-  unsigned long gid;
-  long mtime;
-  long atime;
+  cpkt_libssh2_u64 links;
+  cpkt_libssh2_u64 uid;
+  cpkt_libssh2_u64 gid;
+  cpkt_libssh2_u64 rdevice;
+  cpkt_libssh2_i64 size;
+  cpkt_libssh2_i64 block_size;
+  cpkt_libssh2_i64 blocks;
+  cpkt_libssh2_i64 atime;
+  cpkt_libssh2_i64 mtime;
+  cpkt_libssh2_i64 ctime;
 } cpkt_libssh2_stat;
 
 {body}
@@ -162,10 +203,379 @@ typedef struct cpkt_libssh2_stat {
 """.replace("{body}", body)
 
 
+def normalize(value: str) -> str:
+    return " ".join(value.split())
+
+
+def split_parameters(parameters: str) -> Iterable[str]:
+    if normalize(parameters) == "void":
+        return []
+    depth = 0
+    result: List[str] = []
+    current: List[str] = []
+    for character in parameters:
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        if character == "," and depth == 0:
+            result.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+    tail = "".join(current).strip()
+    if tail:
+        result.append(tail)
+    return result
+
+
+def parameter_type_and_name(parameter: str) -> Tuple[str, str]:
+    callback_name = re.search(r"\(\s*\*\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)",
+                              parameter)
+    if callback_name:
+        return parameter, callback_name.group(1)
+    normalized = normalize(parameter)
+    array_match = re.match(
+        r"(?P<type>.+?)(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\[\s*\]$",
+        normalized)
+    if array_match:
+        return array_match.group("type").rstrip() + " *", array_match.group("name")
+    match = re.match(r"(?P<type>.+?)(?P<name>[A-Za-z_][A-Za-z0-9_]*)$",
+                     normalized)
+    if not match:
+        raise ValueError("cannot identify parameter name: " + parameter)
+    return match.group("type").rstrip(), match.group("name")
+
+
+def function_definitions(headers: Dict[str, str]) -> str:
+    matches = []
+    for name in HEADER_NAMES:
+        matches.extend(FUNCTION_PATTERN.finditer(headers[name]))
+    if len(matches) != 138:
+        raise ValueError("expected 138 linkable libssh2 functions, found " +
+                         str(len(matches)))
+    definitions: List[str] = []
+    for match in matches:
+        native_result = normalize(match.group("result"))
+        native_name = match.group("name")
+        if native_name in SPECIAL_FUNCTIONS:
+            continue
+        public_result = transform(match.group("result")).strip()
+        public_name = transform(native_name)
+        parameters = match.group("parameters")
+        call_arguments = []
+        for parameter in split_parameters(parameters):
+            native_type, name = parameter_type_and_name(parameter)
+            callback_cast = next(
+                (cast for macro, cast in CALLBACK_CASTS.items()
+                 if macro in native_type), None)
+            if callback_cast is not None:
+                call_arguments.append("(" + callback_cast + ")" + name)
+            else:
+                call_arguments.append("(" + native_type + ")" + name)
+        call = native_name + "(" + ", ".join(call_arguments) + ")"
+        definition = "CPKT_LIBSSH2_API {} {}({}) {{\n".format(
+            public_result, public_name, transform(parameters).strip())
+        if native_result == "void":
+            definition += "  {};\n".format(call)
+        else:
+            definition += "  return ({}){};\n".format(public_result, call)
+        definition += "}\n"
+        definitions.append(definition)
+    return "\n".join(definitions)
+
+
+def special_function_definitions() -> str:
+    return r"""
+CPKT_LIBSSH2_API cpkt_libssh2_channel *
+cpkt_libssh2_scp_recv(cpkt_libssh2_session *session, const char *path,
+                      cpkt_libssh2_stat *stat) {
+  struct stat native_stat;
+  LIBSSH2_CHANNEL *channel;
+  channel = libssh2_scp_recv((LIBSSH2_SESSION *)session, path, &native_stat);
+  if (channel != NULL && stat != NULL) {
+    cpkt_libssh2_stat_from_native(stat, &native_stat);
+  }
+  return (cpkt_libssh2_channel *)channel;
+}
+
+CPKT_LIBSSH2_API cpkt_libssh2_channel *
+cpkt_libssh2_scp_recv2(cpkt_libssh2_session *session, const char *path,
+                       cpkt_libssh2_stat *stat) {
+  libssh2_struct_stat native_stat;
+  LIBSSH2_CHANNEL *channel;
+  channel = libssh2_scp_recv2((LIBSSH2_SESSION *)session, path, &native_stat);
+  if (channel != NULL && stat != NULL) {
+    cpkt_libssh2_stat_from_native(stat, &native_stat);
+  }
+  return (cpkt_libssh2_channel *)channel;
+}
+
+CPKT_LIBSSH2_API cpkt_libssh2_channel *
+cpkt_libssh2_scp_send64(cpkt_libssh2_session *session, const char *path,
+                        int mode, cpkt_libssh2_i64 size, time_t mtime,
+                        time_t atime) {
+  return (cpkt_libssh2_channel *)libssh2_scp_send64(
+      (LIBSSH2_SESSION *)session, path, mode, cpkt_libssh2_i64_to_native(size),
+      mtime, atime);
+}
+
+CPKT_LIBSSH2_API cpkt_libssh2_sftp_handle *
+cpkt_libssh2_sftp_open_ex_r(cpkt_libssh2_sftp *sftp, const char *filename,
+                            size_t filename_len, unsigned long flags,
+                            long mode, int open_type,
+                            cpkt_libssh2_sftp_attributes *attrs) {
+  LIBSSH2_SFTP_ATTRIBUTES native_attrs;
+  LIBSSH2_SFTP_ATTRIBUTES *native_attrs_pointer;
+  native_attrs_pointer = NULL;
+  if (attrs != NULL) {
+    cpkt_libssh2_sftp_attributes_to_native(&native_attrs, attrs);
+    native_attrs_pointer = &native_attrs;
+  }
+  return (cpkt_libssh2_sftp_handle *)libssh2_sftp_open_ex_r(
+      (LIBSSH2_SFTP *)sftp, filename, filename_len, flags, mode, open_type,
+      native_attrs_pointer);
+}
+
+CPKT_LIBSSH2_API int
+cpkt_libssh2_sftp_readdir_ex(cpkt_libssh2_sftp_handle *handle, char *buffer,
+                             size_t buffer_maxlen, char *longentry,
+                             size_t longentry_maxlen,
+                             cpkt_libssh2_sftp_attributes *attrs) {
+  LIBSSH2_SFTP_ATTRIBUTES native_attrs;
+  int result;
+  result = libssh2_sftp_readdir_ex((LIBSSH2_SFTP_HANDLE *)handle, buffer,
+      buffer_maxlen, longentry, longentry_maxlen,
+      attrs == NULL ? NULL : &native_attrs);
+  if (result >= 0 && attrs != NULL) {
+    cpkt_libssh2_sftp_attributes_from_native(attrs, &native_attrs);
+  }
+  return result;
+}
+
+CPKT_LIBSSH2_API void
+cpkt_libssh2_sftp_seek64(cpkt_libssh2_sftp_handle *handle,
+                         cpkt_libssh2_u64 offset) {
+  libssh2_sftp_seek64((LIBSSH2_SFTP_HANDLE *)handle,
+                      cpkt_libssh2_u64_to_native(offset));
+}
+
+CPKT_LIBSSH2_API cpkt_libssh2_u64
+cpkt_libssh2_sftp_tell64(cpkt_libssh2_sftp_handle *handle) {
+  return cpkt_libssh2_u64_from_native(
+      libssh2_sftp_tell64((LIBSSH2_SFTP_HANDLE *)handle));
+}
+
+CPKT_LIBSSH2_API int
+cpkt_libssh2_sftp_fstat_ex(cpkt_libssh2_sftp_handle *handle,
+                           cpkt_libssh2_sftp_attributes *attrs,
+                           int setstat) {
+  LIBSSH2_SFTP_ATTRIBUTES native_attrs;
+  int result;
+  if (attrs == NULL) {
+    return libssh2_sftp_fstat_ex((LIBSSH2_SFTP_HANDLE *)handle, NULL, setstat);
+  }
+  if (setstat != 0) {
+    cpkt_libssh2_sftp_attributes_to_native(&native_attrs, attrs);
+  }
+  result = libssh2_sftp_fstat_ex((LIBSSH2_SFTP_HANDLE *)handle, &native_attrs,
+                                 setstat);
+  if (result == 0 && setstat == 0) {
+    cpkt_libssh2_sftp_attributes_from_native(attrs, &native_attrs);
+  }
+  return result;
+}
+
+CPKT_LIBSSH2_API int
+cpkt_libssh2_sftp_fstatvfs(cpkt_libssh2_sftp_handle *handle,
+                           cpkt_libssh2_sftp_statvfs_t *statvfs) {
+  LIBSSH2_SFTP_STATVFS native_statvfs;
+  int result;
+  if (statvfs == NULL) {
+    return libssh2_sftp_fstatvfs((LIBSSH2_SFTP_HANDLE *)handle, NULL);
+  }
+  result = libssh2_sftp_fstatvfs((LIBSSH2_SFTP_HANDLE *)handle,
+                                 &native_statvfs);
+  if (result == 0) {
+    cpkt_libssh2_sftp_statvfs_from_native(statvfs, &native_statvfs);
+  }
+  return result;
+}
+
+CPKT_LIBSSH2_API int
+cpkt_libssh2_sftp_statvfs(cpkt_libssh2_sftp *sftp, const char *path,
+                          size_t path_len,
+                          cpkt_libssh2_sftp_statvfs_t *statvfs) {
+  LIBSSH2_SFTP_STATVFS native_statvfs;
+  int result;
+  if (statvfs == NULL) {
+    return libssh2_sftp_statvfs((LIBSSH2_SFTP *)sftp, path, path_len, NULL);
+  }
+  result = libssh2_sftp_statvfs((LIBSSH2_SFTP *)sftp, path, path_len,
+                                &native_statvfs);
+  if (result == 0) {
+    cpkt_libssh2_sftp_statvfs_from_native(statvfs, &native_statvfs);
+  }
+  return result;
+}
+
+CPKT_LIBSSH2_API int
+cpkt_libssh2_sftp_stat_ex(cpkt_libssh2_sftp *sftp, const char *path,
+                          unsigned int path_len, int stat_type,
+                          cpkt_libssh2_sftp_attributes *attrs) {
+  LIBSSH2_SFTP_ATTRIBUTES native_attrs;
+  int result;
+  if (attrs == NULL) {
+    return libssh2_sftp_stat_ex((LIBSSH2_SFTP *)sftp, path, path_len,
+                                stat_type, NULL);
+  }
+  if (stat_type == LIBSSH2_SFTP_SETSTAT) {
+    cpkt_libssh2_sftp_attributes_to_native(&native_attrs, attrs);
+  }
+  result = libssh2_sftp_stat_ex((LIBSSH2_SFTP *)sftp, path, path_len,
+                                stat_type, &native_attrs);
+  if (result == 0 && stat_type != LIBSSH2_SFTP_SETSTAT) {
+    cpkt_libssh2_sftp_attributes_from_native(attrs, &native_attrs);
+  }
+  return result;
+}
+"""
+
+
+def adapter_helpers() -> str:
+    fields = (
+        "f_bsize", "f_frsize", "f_blocks", "f_bfree", "f_bavail",
+        "f_files", "f_ffree", "f_favail", "f_fsid", "f_flag",
+        "f_namemax",
+    )
+    statvfs = "\n".join(
+        "  public_value->{0} = cpkt_libssh2_u64_from_native(native_value->{0});".format(field)
+        for field in fields)
+    return r"""typedef void *(*cpkt_libssh2_native_alloc_func)(size_t,
+                                                       void **);
+typedef void (*cpkt_libssh2_native_free_func)(void *, void **);
+typedef void *(*cpkt_libssh2_native_realloc_func)(void *, size_t, void **);
+typedef void (*cpkt_libssh2_native_passwd_func)(LIBSSH2_SESSION *, char **,
+                                                 int *, void **);
+typedef int (*cpkt_libssh2_native_publickey_sign_func)(LIBSSH2_SESSION *,
+    unsigned char **, size_t *, const unsigned char *, size_t, void **);
+typedef void (*cpkt_libssh2_native_kbdint_func)(const char *, int,
+    const char *, int, int, const LIBSSH2_USERAUTH_KBDINT_PROMPT *,
+    LIBSSH2_USERAUTH_KBDINT_RESPONSE *, void **);
+typedef int (*cpkt_libssh2_native_sk_sign_func)(LIBSSH2_SESSION *,
+    LIBSSH2_SK_SIG_INFO *, const unsigned char *, size_t, int, uint8_t,
+    const char *, const unsigned char *, size_t, void **);
+
+static libssh2_uint64_t
+cpkt_libssh2_u64_to_native(cpkt_libssh2_u64 value) {
+  return ((libssh2_uint64_t)(value.high & 0xffffffffUL) << 32) |
+         (libssh2_uint64_t)(value.low & 0xffffffffUL);
+}
+
+static cpkt_libssh2_u64
+cpkt_libssh2_u64_from_native(libssh2_uint64_t value) {
+  cpkt_libssh2_u64 result;
+  result.high = (unsigned long)((value >> 32) & 0xffffffffUL);
+  result.low = (unsigned long)(value & 0xffffffffUL);
+  return result;
+}
+
+static libssh2_int64_t
+cpkt_libssh2_i64_to_native(cpkt_libssh2_i64 value) {
+  return (libssh2_int64_t)cpkt_libssh2_u64_to_native(value);
+}
+
+static cpkt_libssh2_i64
+cpkt_libssh2_i64_from_native(libssh2_int64_t value) {
+  return cpkt_libssh2_u64_from_native((libssh2_uint64_t)value);
+}
+
+static void
+cpkt_libssh2_sftp_attributes_to_native(LIBSSH2_SFTP_ATTRIBUTES *native_value,
+    const cpkt_libssh2_sftp_attributes *public_value) {
+  native_value->flags = public_value->flags;
+  native_value->filesize = cpkt_libssh2_u64_to_native(public_value->filesize);
+  native_value->uid = public_value->uid;
+  native_value->gid = public_value->gid;
+  native_value->permissions = public_value->permissions;
+  native_value->atime = public_value->atime;
+  native_value->mtime = public_value->mtime;
+}
+
+static void
+cpkt_libssh2_sftp_attributes_from_native(
+    cpkt_libssh2_sftp_attributes *public_value,
+    const LIBSSH2_SFTP_ATTRIBUTES *native_value) {
+  public_value->flags = native_value->flags;
+  public_value->filesize = cpkt_libssh2_u64_from_native(native_value->filesize);
+  public_value->uid = native_value->uid;
+  public_value->gid = native_value->gid;
+  public_value->permissions = native_value->permissions;
+  public_value->atime = native_value->atime;
+  public_value->mtime = native_value->mtime;
+}
+
+static void
+cpkt_libssh2_sftp_statvfs_from_native(
+    cpkt_libssh2_sftp_statvfs_t *public_value,
+    const LIBSSH2_SFTP_STATVFS *native_value) {
+{statvfs}
+}
+
+static void
+cpkt_libssh2_stat_from_native(cpkt_libssh2_stat *public_value,
+                              const libssh2_struct_stat *native_value) {
+  public_value->device = cpkt_libssh2_u64_from_native(
+      (libssh2_uint64_t)native_value->st_dev);
+  public_value->inode = cpkt_libssh2_u64_from_native(
+      (libssh2_uint64_t)native_value->st_ino);
+  public_value->mode = (unsigned long)native_value->st_mode;
+  public_value->links = cpkt_libssh2_u64_from_native(
+      (libssh2_uint64_t)native_value->st_nlink);
+  public_value->uid = cpkt_libssh2_u64_from_native(
+      (libssh2_uint64_t)native_value->st_uid);
+  public_value->gid = cpkt_libssh2_u64_from_native(
+      (libssh2_uint64_t)native_value->st_gid);
+  public_value->rdevice = cpkt_libssh2_u64_from_native(
+      (libssh2_uint64_t)native_value->st_rdev);
+  public_value->size = cpkt_libssh2_i64_from_native(
+      (libssh2_int64_t)native_value->st_size);
+  public_value->block_size = cpkt_libssh2_i64_from_native(
+      (libssh2_int64_t)native_value->st_blksize);
+  public_value->blocks = cpkt_libssh2_i64_from_native(
+      (libssh2_int64_t)native_value->st_blocks);
+  public_value->atime = cpkt_libssh2_i64_from_native(
+      (libssh2_int64_t)native_value->st_atime);
+  public_value->mtime = cpkt_libssh2_i64_from_native(
+      (libssh2_int64_t)native_value->st_mtime);
+  public_value->ctime = cpkt_libssh2_i64_from_native(
+      (libssh2_int64_t)native_value->st_ctime);
+}
+""".replace("{statvfs}", statvfs)
+
+
+def facade_source(headers: Dict[str, str]) -> str:
+    return """/* Generated by tools/generate_libssh2_c89_facade.py; do not edit. */
+#include <libssh2.h>
+#include <libssh2_sftp.h>
+#include <libssh2_publickey.h>
+
+#include <cpkt/libssh2.h>
+
+{helpers}
+
+{definitions}
+{special_definitions}
+""".replace("{helpers}", adapter_helpers()).replace(
+        "{definitions}", function_definitions(headers)).replace(
+            "{special_definitions}", special_function_definitions())
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--include-dir", required=True, type=pathlib.Path)
     parser.add_argument("--header", required=True, type=pathlib.Path)
+    parser.add_argument("--source", required=True, type=pathlib.Path)
     return parser.parse_args()
 
 
@@ -184,9 +594,11 @@ def main() -> int:
         path = header_dir / name
         if not path.is_file():
             raise ValueError("required input is missing: " + str(path))
-        headers[name] = path.read_text(encoding="utf-8")
+        headers[name] = path.read_text(encoding="utf-8").replace("\\\n", " ")
     args.header.parent.mkdir(parents=True, exist_ok=True)
     args.header.write_text(public_header(headers), encoding="utf-8")
+    args.source.parent.mkdir(parents=True, exist_ok=True)
+    args.source.write_text(facade_source(headers), encoding="utf-8")
     return 0
 
 

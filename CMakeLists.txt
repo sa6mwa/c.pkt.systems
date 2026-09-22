@@ -274,6 +274,7 @@ set(CPKT_POSTGRES_ABI_VERSION "0" CACHE STRING "PostgreSQL facade ABI major. Do 
 set(CPKT_SQLITE_ABI_VERSION "0" CACHE STRING "SQLite facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPENSSL_ABI_VERSION "0" CACHE STRING "OpenSSL C89 facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_NGHTTP2_ABI_VERSION "0" CACHE STRING "nghttp2 C89 facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_LIBSSH2_ABI_VERSION "0" CACHE STRING "libssh2 C89 facade ABI major. Do not bump without maintainer approval.")
 if(NOT CPKT_SUS_CPU_ONLY)
   message(FATAL_ERROR "CPKT_SUS_CPU_ONLY=OFF is reserved for a later GPU-backend packaging phase")
 endif()
@@ -504,18 +505,72 @@ set(CPKT_LIBSSH2_FACADE_INCLUDE_DIR
   "${CPKT_LIBSSH2_FACADE_GENERATED_DIR}/include")
 set(CPKT_LIBSSH2_FACADE_HEADER
   "${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}/cpkt/libssh2.h")
+set(CPKT_LIBSSH2_FACADE_SOURCE
+  "${CPKT_LIBSSH2_FACADE_GENERATED_DIR}/src/libssh2.c")
 add_custom_command(
-  OUTPUT "${CPKT_LIBSSH2_FACADE_HEADER}"
+  OUTPUT "${CPKT_LIBSSH2_FACADE_HEADER}" "${CPKT_LIBSSH2_FACADE_SOURCE}"
   COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tools/generate_libssh2_c89_facade.py"
     --include-dir "$<TARGET_PROPERTY:cpkt::libssh2_static,INTERFACE_INCLUDE_DIRECTORIES>"
     --header "${CPKT_LIBSSH2_FACADE_HEADER}"
+    --source "${CPKT_LIBSSH2_FACADE_SOURCE}"
   DEPENDS
     "${CMAKE_SOURCE_DIR}/tools/generate_libssh2_c89_facade.py"
   VERBATIM)
+set_source_files_properties("${CPKT_LIBSSH2_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_libssh2_facade_generated
-  DEPENDS "${CPKT_LIBSSH2_FACADE_HEADER}")
+  DEPENDS "${CPKT_LIBSSH2_FACADE_HEADER}" "${CPKT_LIBSSH2_FACADE_SOURCE}")
 add_dependencies(cpkt_libssh2_facade_generated cpkt_libssh2_project)
+
+add_library(cpkt_libssh2_static STATIC "${CPKT_LIBSSH2_FACADE_SOURCE}")
+add_dependencies(cpkt_libssh2_static cpkt_libssh2_facade_generated)
+cpkt_configure_c89_target(cpkt_libssh2_static)
+cpkt_add_repo_warning_errors(cpkt_libssh2_static)
+target_compile_definitions(cpkt_libssh2_static PRIVATE CPKT_LIBSSH2_STATIC)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  # libssh2 exposes long long in its public header; the generated facade does not.
+  target_compile_options(cpkt_libssh2_static PRIVATE
+    -Wno-long-long
+    -Wno-deprecated-declarations)
+endif()
+target_include_directories(cpkt_libssh2_static PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_libssh2_static PUBLIC cpkt::libssh2_static)
+set_target_properties(cpkt_libssh2_static PROPERTIES
+  OUTPUT_NAME cpkt_libssh2
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_libssh2_shared SHARED "${CPKT_LIBSSH2_FACADE_SOURCE}")
+add_dependencies(cpkt_libssh2_shared cpkt_libssh2_facade_generated)
+cpkt_configure_c89_target(cpkt_libssh2_shared)
+cpkt_add_repo_warning_errors(cpkt_libssh2_shared)
+target_compile_definitions(cpkt_libssh2_shared PRIVATE CPKT_LIBSSH2_BUILDING_SHARED)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(cpkt_libssh2_shared PRIVATE
+    -Wno-long-long
+    -Wno-deprecated-declarations)
+endif()
+target_include_directories(cpkt_libssh2_shared PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_libssh2_shared PUBLIC cpkt::libssh2_shared)
+set_target_properties(cpkt_libssh2_shared PROPERTIES
+  OUTPUT_NAME cpkt_libssh2
+  C_VISIBILITY_PRESET hidden
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_LIBSSH2_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_libssh2_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_libssh2_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
 
 add_library(cpkt_openssl_static STATIC src/openssl.c)
 cpkt_configure_c89_target(cpkt_openssl_static)
@@ -1310,6 +1365,11 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_libssh2_header_facade_test)
     target_include_directories(cpkt_libssh2_header_facade_test PRIVATE
       "${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}")
+    add_executable(cpkt_libssh2_facade_test tests/libssh2_facade_test.c)
+    cpkt_use_local_runtime(cpkt_libssh2_facade_test)
+    target_compile_options(cpkt_libssh2_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_libssh2_facade_test)
+    target_link_libraries(cpkt_libssh2_facade_test PRIVATE cpkt_libssh2_static)
     add_executable(cpkt_sasl_facade_test tests/sasl_facade_test.c)
     cpkt_use_local_runtime(cpkt_sasl_facade_test)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
@@ -1482,6 +1542,7 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME openssl_facade COMMAND cpkt_openssl_facade_test)
       add_test(NAME nghttp2_facade COMMAND cpkt_nghttp2_facade_test)
       add_test(NAME libssh2_header_facade COMMAND cpkt_libssh2_header_facade_test)
+      add_test(NAME libssh2_facade COMMAND cpkt_libssh2_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(
         NAME postgres_e2e_harness
@@ -1752,7 +1813,8 @@ if(CPKT_BUILD_TESTS)
             --symbol-tool "${CMAKE_NM}"
             --clang "${CPKT_OPENSSL_API_INVENTORY_CLANG}"
             --output "${CMAKE_BINARY_DIR}/libssh2-api-inventory-test/inventory.json"
-            --work-dir "${CMAKE_BINARY_DIR}/libssh2-api-inventory-test")
+            --work-dir "${CMAKE_BINARY_DIR}/libssh2-api-inventory-test"
+            --facade-header "${CPKT_LIBSSH2_FACADE_HEADER}")
       endif()
       add_test(
         NAME openssl_header_facade
@@ -1792,6 +1854,17 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SYSTEM_NAME}"
           "${CMAKE_NM}"
           "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_nghttp2.txt"
+          "${CMAKE_C_COMPILER}"
+          "${CMAKE_SYSROOT}")
+      add_test(
+        NAME libssh2_export_policy
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/libssh2_export_policy_test.sh"
+          "$<TARGET_FILE:cpkt_libssh2_shared>"
+          "${CMAKE_SYSTEM_NAME}"
+          "${CMAKE_NM}"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_libssh2.txt"
           "${CMAKE_C_COMPILER}"
           "${CMAKE_SYSROOT}")
       add_test(
@@ -1892,6 +1965,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_NGHTTP2_VERSION=${CPKT_NGHTTP2_VERSION}
         -DCPKT_NGHTTP2_ABI_VERSION=${CPKT_NGHTTP2_ABI_VERSION}
         -DCPKT_LIBSSH2_VERSION=${CPKT_LIBSSH2_VERSION}
+        -DCPKT_LIBSSH2_ABI_VERSION=${CPKT_LIBSSH2_ABI_VERSION}
         -DCPKT_CMOCKA_VERSION=${CPKT_CMOCKA_VERSION}
         -DCPKT_LIBXML2_VERSION=${CPKT_LIBXML2_VERSION}
         -DCPKT_LUA_VERSION=${CPKT_LUA_VERSION}
@@ -1910,6 +1984,9 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_NGHTTP2_FACADE_INCLUDE_DIR=${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}
         -DCPKT_NGHTTP2_STATIC_LIBRARY=$<TARGET_FILE:cpkt_nghttp2_static>
         -DCPKT_NGHTTP2_SHARED_LIBRARY=$<TARGET_FILE:cpkt_nghttp2_shared>
+        -DCPKT_LIBSSH2_FACADE_INCLUDE_DIR=${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}
+        -DCPKT_LIBSSH2_STATIC_LIBRARY=$<TARGET_FILE:cpkt_libssh2_static>
+        -DCPKT_LIBSSH2_SHARED_LIBRARY=$<TARGET_FILE:cpkt_libssh2_shared>
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>
@@ -1948,6 +2025,8 @@ if(CPKT_BUILD_DEPENDENCIES)
       cpkt_openssl_shared
       cpkt_nghttp2_static
       cpkt_nghttp2_shared
+      cpkt_libssh2_static
+      cpkt_libssh2_shared
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
       cpkt_audio_static

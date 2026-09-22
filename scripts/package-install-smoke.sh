@@ -519,6 +519,13 @@ int main(void) {
   return (int)cpkt_nghttp2_native_u64();
 }
 EOF
+cat > "$cmake_source_dir/cpkt_libssh2_private_sentinel.c" <<'EOF'
+extern unsigned long cpkt_libssh2_u64_to_native(void);
+
+int main(void) {
+  return (int)cpkt_libssh2_u64_to_native();
+}
+EOF
 openssl_private_sentinel_log="$diagnostic_dir/cpkt-openssl-private-sentinel.log"
 # Exact dynamic-table inspection proves the approved ABI. This separate
 # extracted-SDK link failure proves an unadvertised internal helper cannot be
@@ -554,11 +561,36 @@ if ! grep -F 'cpkt_nghttp2_native_u64' "$nghttp2_private_sentinel_log" >/dev/nul
   cat "$nghttp2_private_sentinel_log" >&2
   exit 1
 fi
+libssh2_private_sentinel_log="$diagnostic_dir/cpkt-libssh2-private-sentinel.log"
+if libssh2_private_sentinel_output=$("$cc" -std=c89 -Wall -Wextra -Wpedantic \
+    -pedantic-errors -Werror "$cmake_source_dir/cpkt_libssh2_private_sentinel.c" \
+    -L "$prefix/lib" -lcpkt_libssh2 $pkg_config_link_toolchain_flags \
+    -o "$work_root/bin/cpkt_libssh2_private_sentinel" 2>&1); then
+  printf 'private libssh2 facade sentinel linked from extracted SDK\n' >&2
+  exit 1
+fi
+printf '%s\n' "$libssh2_private_sentinel_output" > "$libssh2_private_sentinel_log"
+if ! grep -F 'cpkt_libssh2_u64_to_native' "$libssh2_private_sentinel_log" >/dev/null 2>&1; then
+  printf 'private libssh2 facade sentinel failed for an unrelated reason:\n' >&2
+  cat "$libssh2_private_sentinel_log" >&2
+  exit 1
+fi
 cat > "$cmake_source_dir/cpkt_libssh2.c" <<'EOF'
 #include <libssh2.h>
 
 int main(void) {
   return libssh2_version(0) == 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_libssh2_facade_strict.c" <<'EOF'
+#include <cpkt/libssh2.h>
+
+int main(void) {
+  cpkt_libssh2_u64 value;
+
+  value.high = 0UL;
+  value.low = 0UL;
+  return cpkt_libssh2_version(0) == 0 || value.high != 0UL;
 }
 EOF
 cat > "$cmake_source_dir/cpkt_curl.c" <<'EOF'
@@ -1366,6 +1398,7 @@ find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
 find_package(CpktOpenSSL CONFIG REQUIRED)
 find_package(CpktNghttp2 CONFIG REQUIRED)
+find_package(CpktLibssh2 CONFIG REQUIRED)
 find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
 find_package(CpktGssapi CONFIG REQUIRED)
@@ -1403,6 +1436,8 @@ cpkt_add_static_smoke(cpkt_cmake_openssl_facade cpkt_openssl_facade_strict.c cpk
 cpkt_add_shared_smoke(cpkt_cmake_openssl_facade_shared cpkt_openssl_facade_strict.c cpkt::openssl_shared)
 cpkt_add_static_smoke(cpkt_cmake_nghttp2_facade cpkt_nghttp2_facade_strict.c cpkt::nghttp2)
 cpkt_add_shared_smoke(cpkt_cmake_nghttp2_facade_shared cpkt_nghttp2_facade_strict.c cpkt::nghttp2_facade_shared)
+cpkt_add_static_smoke(cpkt_cmake_libssh2_facade cpkt_libssh2_facade_strict.c cpkt::libssh2)
+cpkt_add_shared_smoke(cpkt_cmake_libssh2_facade_shared cpkt_libssh2_facade_strict.c cpkt::libssh2_facade_shared)
 cpkt_add_static_smoke(cpkt_cmake_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_smoke(cpkt_cmake_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
@@ -1421,6 +1456,7 @@ cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_crypto cpkt_crypto.c OpenSSL::C
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_ssl cpkt_ssl.c OpenSSL::SSL)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_openssl_facade cpkt_openssl_facade_strict.c cpkt::openssl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2_facade cpkt_nghttp2_facade_strict.c cpkt::nghttp2)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libssh2_facade cpkt_libssh2_facade_strict.c cpkt::libssh2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
@@ -1506,6 +1542,7 @@ cmake_args=(
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
   -DCpktOpenSSL_DIR="$prefix/lib/cmake/CpktOpenSSL" \
   -DCpktNghttp2_DIR="$prefix/lib/cmake/CpktNghttp2" \
+  -DCpktLibssh2_DIR="$prefix/lib/cmake/CpktLibssh2" \
   -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -DCpktGssapi_DIR="$prefix/lib/cmake/CpktGssapi" \
@@ -2127,6 +2164,7 @@ cpkt_pkg_config_static_smoke libssl cpkt_ssl.c
 cpkt_pkg_config_static_smoke openssl cpkt_ssl.c
 cpkt_pkg_config_static_smoke cpkt-openssl cpkt_openssl_facade_strict.c
 cpkt_pkg_config_static_smoke cpkt-nghttp2 cpkt_nghttp2_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-libssh2 cpkt_libssh2_facade_strict.c
 cpkt_pkg_config_static_smoke libssh2 cpkt_libssh2.c
 cpkt_pkg_config_static_smoke libcurl cpkt_curl.c
 cpkt_pkg_config_static_smoke libxml-2.0 cpkt_libxml2.c
@@ -2241,6 +2279,7 @@ cpkt_pkg_config_smoke() {
 cpkt_pkg_config_smoke openssl cpkt_ssl.c
 cpkt_pkg_config_smoke cpkt-openssl cpkt_openssl_facade_strict.c
 cpkt_pkg_config_smoke cpkt-nghttp2 cpkt_nghttp2_facade_strict.c
+cpkt_pkg_config_smoke cpkt-libssh2 cpkt_libssh2_facade_strict.c
 
 # Verify every temporary native consumer before executing it directly.
 if [ "${#local_runtime_options[@]}" -gt 0 ]; then

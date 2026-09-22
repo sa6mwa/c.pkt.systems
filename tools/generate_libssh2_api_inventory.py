@@ -4,6 +4,7 @@
 import argparse
 import json
 import pathlib
+import re
 import subprocess
 import sys
 from typing import Any, Dict, Iterable, List, Set
@@ -57,6 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clang", required=True)
     parser.add_argument("--output", required=True, type=pathlib.Path)
     parser.add_argument("--work-dir", required=True, type=pathlib.Path)
+    parser.add_argument("--facade-header", required=True, type=pathlib.Path)
     parser.add_argument("--target")
     parser.add_argument("--sysroot", type=pathlib.Path)
     return parser.parse_args()
@@ -77,7 +79,7 @@ def main() -> int:
         header_dir / "libssh2_sftp.h",
         header_dir / "libssh2_publickey.h",
     )
-    for path in headers + (args.library,):
+    for path in headers + (args.library, args.facade_header):
         if not path.is_file():
             raise ValueError("required input is missing: " + str(path))
     args.work_dir.mkdir(parents=True, exist_ok=True)
@@ -110,6 +112,15 @@ def main() -> int:
         raise ValueError(
             "libssh2 dynamic exports without public declarations: " +
             ", ".join(missing))
+    facade_text = args.facade_header.read_text(encoding="utf-8")
+    missing_facade = sorted(
+        "cpkt_" + name for name in dynamic
+        if not re.search(r"\bcpkt_" + re.escape(name) + r"\s*\(",
+                         facade_text))
+    if missing_facade:
+        raise ValueError(
+            "libssh2 dynamic exports without C89 facade declarations: " +
+            ", ".join(missing_facade))
     inventory = {
         "schema": 1,
         "headers": [path.name for path in headers],
@@ -117,6 +128,7 @@ def main() -> int:
         "declared_public_function_count": len(public),
         "functions": {name: public[name] for name in sorted(public)},
         "dynamic_functions": sorted(dynamic),
+        "facade_header": str(args.facade_header),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
