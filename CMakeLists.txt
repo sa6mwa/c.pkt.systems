@@ -1850,6 +1850,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_ZLIB_VERSION=${CPKT_ZLIB_VERSION}
         -DCPKT_CURL_VERSION=${CPKT_CURL_VERSION}
         -DCPKT_NGHTTP2_VERSION=${CPKT_NGHTTP2_VERSION}
+        -DCPKT_NGHTTP2_ABI_VERSION=${CPKT_NGHTTP2_ABI_VERSION}
         -DCPKT_LIBSSH2_VERSION=${CPKT_LIBSSH2_VERSION}
         -DCPKT_CMOCKA_VERSION=${CPKT_CMOCKA_VERSION}
         -DCPKT_LIBXML2_VERSION=${CPKT_LIBXML2_VERSION}
@@ -1866,6 +1867,9 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_LUA_RUNTIME_ABI_VERSION=${CPKT_LUA_RUNTIME_ABI_VERSION}
         -DCPKT_OPENSSL_STATIC_LIBRARY=$<TARGET_FILE:cpkt_openssl_static>
         -DCPKT_OPENSSL_SHARED_LIBRARY=$<TARGET_FILE:cpkt_openssl_shared>
+        -DCPKT_NGHTTP2_FACADE_INCLUDE_DIR=${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}
+        -DCPKT_NGHTTP2_STATIC_LIBRARY=$<TARGET_FILE:cpkt_nghttp2_static>
+        -DCPKT_NGHTTP2_SHARED_LIBRARY=$<TARGET_FILE:cpkt_nghttp2_shared>
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>
@@ -1902,6 +1906,8 @@ if(CPKT_BUILD_DEPENDENCIES)
       cpkt_deps_all
       cpkt_openssl_static
       cpkt_openssl_shared
+      cpkt_nghttp2_static
+      cpkt_nghttp2_shared
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
       cpkt_audio_static

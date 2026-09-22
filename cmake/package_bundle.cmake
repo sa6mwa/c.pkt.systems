@@ -8,6 +8,7 @@ foreach(_required
     CPKT_BUNDLE_VERSION
     CPKT_OPENSSL_VERSION
     CPKT_OPENSSL_ABI_VERSION
+    CPKT_NGHTTP2_ABI_VERSION
     CPKT_ZLIB_VERSION
     CPKT_CURL_VERSION
     CPKT_NGHTTP2_VERSION
@@ -27,6 +28,9 @@ foreach(_required
     CPKT_LUA_RUNTIME_ABI_VERSION
     CPKT_OPENSSL_STATIC_LIBRARY
     CPKT_OPENSSL_SHARED_LIBRARY
+    CPKT_NGHTTP2_FACADE_INCLUDE_DIR
+    CPKT_NGHTTP2_STATIC_LIBRARY
+    CPKT_NGHTTP2_SHARED_LIBRARY
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
     CPKT_LUA_RUNTIME_SHARED_LIBRARY
@@ -86,6 +90,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_openssl_shared_library_link_name "libcpkt_openssl.dylib")
   set(_cpkt_openssl_shared_library_abi_name "libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib")
   set(_cpkt_openssl_shared_library_real_name "libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_nghttp2_shared_library_link_name "libcpkt_nghttp2.dylib")
+  set(_cpkt_nghttp2_shared_library_abi_name "libcpkt_nghttp2.${CPKT_NGHTTP2_ABI_VERSION}.dylib")
+  set(_cpkt_nghttp2_shared_library_real_name "libcpkt_nghttp2.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.dylib")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib")
@@ -121,6 +128,9 @@ else()
   set(_cpkt_openssl_shared_library_link_name "libcpkt_openssl.so")
   set(_cpkt_openssl_shared_library_abi_name "libcpkt_openssl.so.${CPKT_OPENSSL_ABI_VERSION}")
   set(_cpkt_openssl_shared_library_real_name "libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_nghttp2_shared_library_link_name "libcpkt_nghttp2.so")
+  set(_cpkt_nghttp2_shared_library_abi_name "libcpkt_nghttp2.so.${CPKT_NGHTTP2_ABI_VERSION}")
+  set(_cpkt_nghttp2_shared_library_real_name "libcpkt_nghttp2.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.so")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.so.${CPKT_BUNDLE_VERSION}")
@@ -187,6 +197,9 @@ if(_legacy_open62541_shared_libraries)
   file(REMOVE ${_legacy_open62541_shared_libraries})
 endif()
 file(COPY "${CPKT_LUA_RUNTIME_INCLUDE_DIR}/cpkt" DESTINATION "${_stage_root}/include")
+file(COPY_FILE
+  "${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}/cpkt/nghttp2.h"
+  "${_stage_root}/include/cpkt/nghttp2.h")
 function(cpkt_stage_facade_library facade_label static_source static_name shared_source shared_real_name shared_abi_name shared_link_name)
   set(_facade_static_destination
     "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}")
@@ -245,6 +258,14 @@ cpkt_stage_facade_library(
   "${_cpkt_openssl_shared_library_real_name}"
   "${_cpkt_openssl_shared_library_abi_name}"
   "${_cpkt_openssl_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "nghttp2 C89 facade"
+  "${CPKT_NGHTTP2_STATIC_LIBRARY}"
+  "libcpkt_nghttp2"
+  "${CPKT_NGHTTP2_SHARED_LIBRARY}"
+  "${_cpkt_nghttp2_shared_library_real_name}"
+  "${_cpkt_nghttp2_shared_library_abi_name}"
+  "${_cpkt_nghttp2_shared_library_link_name}")
 cpkt_stage_facade_library(
   "Lua runtime facade"
   "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
@@ -469,6 +490,33 @@ file(WRITE "${_stage_root}/lib/cmake/CpktOpenSSL/CpktOpenSSLConfig.cmake"
   "endif()\n"
 )
 cpkt_write_config_version("CpktOpenSSL" "CpktOpenSSL" "${CPKT_OPENSSL_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktNghttp2")
+file(WRITE "${_stage_root}/lib/cmake/CpktNghttp2/CpktNghttp2Config.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_nghttp2_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(nghttp2_DIR \"\${_cpkt_nghttp2_facade_prefix}/lib/cmake/nghttp2\")\n"
+  "find_dependency(nghttp2 CONFIG REQUIRED)\n"
+  "set(CpktNghttp2_FOUND TRUE)\n"
+  "set(CpktNghttp2_VERSION \"${CPKT_NGHTTP2_VERSION}\")\n"
+  "if(NOT TARGET cpkt::nghttp2)\n"
+  "  add_library(cpkt::nghttp2 STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::nghttp2 PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_nghttp2_facade_prefix}/lib/libcpkt_nghttp2${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_nghttp2_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES nghttp2::nghttp2\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::nghttp2_facade_shared)\n"
+  "  add_library(cpkt::nghttp2_facade_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::nghttp2_facade_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_nghttp2_facade_prefix}/lib/libcpkt_nghttp2${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_nghttp2_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::nghttp2_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktNghttp2" "CpktNghttp2" "${CPKT_NGHTTP2_VERSION}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/zlib")
 file(WRITE "${_stage_root}/lib/cmake/zlib/ZLIBConfig.cmake"
@@ -1270,6 +1318,19 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-openssl.pc"
   "Libs: -L\${libdir} -lcpkt_openssl\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-nghttp2.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-nghttp2\n"
+  "Description: C89 nghttp2 facade from c.pkt.systems\n"
+  "Version: ${CPKT_NGHTTP2_VERSION}\n"
+  "Requires.private: libnghttp2\n"
+  "Libs: -L\${libdir} -lcpkt_nghttp2\n"
+  "Cflags: -I\${includedir}\n"
+)
 file(WRITE "${_stage_root}/lib/pkgconfig/zlib.pc"
   "prefix=\${pcfiledir}/../..\n"
   "exec_prefix=\${prefix}\n"
@@ -1586,6 +1647,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "zlib_version=${CPKT_ZLIB_VERSION}\n"
   "curl_version=${CPKT_CURL_VERSION}\n"
   "nghttp2_version=${CPKT_NGHTTP2_VERSION}\n"
+  "nghttp2_abi_version=${CPKT_NGHTTP2_ABI_VERSION}\n"
   "libssh2_version=${CPKT_LIBSSH2_VERSION}\n"
   "libxml2_version=${CPKT_LIBXML2_VERSION}\n"
   "lua_version=${CPKT_LUA_VERSION}\n"
