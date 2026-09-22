@@ -74,6 +74,43 @@ static size_t cpkt_openssl_native_length(size_t public_length,
   return public_length == public_size ? native_size : public_length;
 }
 
+static void cpkt_openssl_copy_bio_messages_to_native(
+    BIO_MSG *native_messages, const cpkt_openssl_bio_message *messages,
+    size_t message_stride, size_t message_count) {
+  size_t index;
+
+  for (index = 0; index < message_count; ++index) {
+    const cpkt_openssl_bio_message *public_message;
+
+    public_message = (const cpkt_openssl_bio_message *) (
+        (const unsigned char *) messages + index * message_stride);
+    native_messages[index].data = public_message->data;
+    native_messages[index].data_len = public_message->data_length;
+    native_messages[index].peer = public_message->peer;
+    native_messages[index].local = public_message->local;
+    native_messages[index].flags = cpkt_openssl_native_u64(
+        public_message->flags);
+  }
+}
+
+static void cpkt_openssl_copy_bio_messages_from_native(
+    cpkt_openssl_bio_message *messages, size_t message_stride,
+    const BIO_MSG *native_messages, size_t message_count) {
+  size_t index;
+
+  for (index = 0; index < message_count; ++index) {
+    cpkt_openssl_bio_message *public_message;
+
+    public_message = (cpkt_openssl_bio_message *) (
+        (unsigned char *) messages + index * message_stride);
+    public_message->data = native_messages[index].data;
+    public_message->data_length = native_messages[index].data_len;
+    public_message->peer = native_messages[index].peer;
+    public_message->local = native_messages[index].local;
+    public_message->flags = cpkt_openssl_public_u64(native_messages[index].flags);
+  }
+}
+
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_make. */
 cpkt_openssl_u64 cpkt_openssl_u64_make(unsigned long high, unsigned long low) {
   uint64_t native;
@@ -951,5 +988,57 @@ int cpkt_openssl_SSL_get_conn_close_info(
     information_out->reason_length = native_information.reason_len;
     information_out->flags = (unsigned long) native_information.flags;
   }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_BIO_recvmmsg. */
+int cpkt_openssl_BIO_recvmmsg(
+    BIO *bio, cpkt_openssl_bio_message *messages, size_t message_stride,
+    size_t message_count, cpkt_openssl_u64 flags, size_t *processed_out) {
+  BIO_MSG *native_messages;
+  int result;
+
+  if (messages == NULL || message_stride < sizeof(*messages) ||
+      (message_count != 0 && message_count > SIZE_MAX / sizeof(*native_messages))) {
+    return 0;
+  }
+  native_messages = (BIO_MSG *) calloc(message_count, sizeof(*native_messages));
+  if (native_messages == NULL && message_count != 0) {
+    return 0;
+  }
+  cpkt_openssl_copy_bio_messages_to_native(
+      native_messages, messages, message_stride, message_count);
+  result = BIO_recvmmsg(bio, native_messages, sizeof(*native_messages),
+                        message_count, cpkt_openssl_native_u64(flags),
+                        processed_out);
+  cpkt_openssl_copy_bio_messages_from_native(
+      messages, message_stride, native_messages, message_count);
+  free(native_messages);
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_BIO_sendmmsg. */
+int cpkt_openssl_BIO_sendmmsg(
+    BIO *bio, cpkt_openssl_bio_message *messages, size_t message_stride,
+    size_t message_count, cpkt_openssl_u64 flags, size_t *processed_out) {
+  BIO_MSG *native_messages;
+  int result;
+
+  if (messages == NULL || message_stride < sizeof(*messages) ||
+      (message_count != 0 && message_count > SIZE_MAX / sizeof(*native_messages))) {
+    return 0;
+  }
+  native_messages = (BIO_MSG *) calloc(message_count, sizeof(*native_messages));
+  if (native_messages == NULL && message_count != 0) {
+    return 0;
+  }
+  cpkt_openssl_copy_bio_messages_to_native(
+      native_messages, messages, message_stride, message_count);
+  result = BIO_sendmmsg(bio, native_messages, sizeof(*native_messages),
+                        message_count, cpkt_openssl_native_u64(flags),
+                        processed_out);
+  cpkt_openssl_copy_bio_messages_from_native(
+      messages, message_stride, native_messages, message_count);
+  free(native_messages);
   return result;
 }

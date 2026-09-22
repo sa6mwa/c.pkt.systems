@@ -209,6 +209,14 @@ typedef struct cpkt_openssl_ssl_conn_close_info {
   size_t reason_length;
   unsigned long flags;
 } cpkt_openssl_ssl_conn_close_info;
+/** C89 form of BIO_MSG for datagram batch operations. */
+typedef struct cpkt_openssl_bio_message {
+  void *data;
+  size_t data_length;
+  BIO_ADDR *peer;
+  BIO_ADDR *local;
+  cpkt_openssl_u64 flags;
+} cpkt_openssl_bio_message;
 
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
@@ -520,5 +528,13 @@ CPKT_OPENSSL_API int cpkt_openssl_SSL_stream_reset(
 CPKT_OPENSSL_API int cpkt_openssl_SSL_get_conn_close_info(
     SSL *ssl, cpkt_openssl_ssl_conn_close_info *information_out,
     size_t information_length);
+/** C89 adapter for BIO_recvmmsg. */
+CPKT_OPENSSL_API int cpkt_openssl_BIO_recvmmsg(
+    BIO *bio, cpkt_openssl_bio_message *messages, size_t message_stride,
+    size_t message_count, cpkt_openssl_u64 flags, size_t *processed_out);
+/** C89 adapter for BIO_sendmmsg. */
+CPKT_OPENSSL_API int cpkt_openssl_BIO_sendmmsg(
+    BIO *bio, cpkt_openssl_bio_message *messages, size_t message_stride,
+    size_t message_count, cpkt_openssl_u64 flags, size_t *processed_out);
 
 #endif
