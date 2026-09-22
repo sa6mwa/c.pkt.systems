@@ -1635,7 +1635,10 @@ function(cpkt_add_whisper)
   set(project_name_shared "cpkt_whisper_shared_project")
   set(project_name_static "cpkt_whisper_static_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper")
-  set(source_dir "${prefix_dir}/src")
+  # Static and shared builds must be independently runnable component targets.
+  # They share the verified archive cache, not a mutable extracted tree.
+  set(source_dir_shared "${prefix_dir}/src-shared")
+  set(source_dir_static "${prefix_dir}/src-static")
   set(shared_build_dir "${prefix_dir}/build-shared")
   set(static_build_dir "${prefix_dir}/build-static")
   set(install_dir "${CPKT_EXTERNAL_ROOT}/whisper/install")
@@ -1713,7 +1716,7 @@ function(cpkt_add_whisper)
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_shared}"
       BINARY_DIR "${shared_build_dir}"
       STAMP_DIR "${stamp_dir}/shared"
       TMP_DIR "${tmp_dir}"
@@ -1741,13 +1744,12 @@ function(cpkt_add_whisper)
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_static}"
       BINARY_DIR "${static_build_dir}"
       STAMP_DIR "${stamp_dir}/static"
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS ${project_name_shared}
       PATCH_COMMAND
         ${CMAKE_COMMAND}
           -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
@@ -1797,7 +1799,10 @@ function(cpkt_add_open62541)
   set(project_name_shared "cpkt_open62541_shared_project")
   set(project_name_static "cpkt_open62541_static_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541")
-  set(source_dir "${prefix_dir}/src")
+  # Static and shared builds must be independently runnable component targets.
+  # They share the verified archive cache, not a mutable extracted tree.
+  set(source_dir_shared "${prefix_dir}/src-shared")
+  set(source_dir_static "${prefix_dir}/src-static")
   set(shared_build_dir "${prefix_dir}/build-shared")
   set(static_build_dir "${prefix_dir}/build-static")
   set(install_dir "${CPKT_EXTERNAL_ROOT}/open62541/install")
@@ -1847,7 +1852,6 @@ function(cpkt_add_open62541)
     -DUA_ENABLE_AMALGAMATION=OFF
     -DUA_ENABLE_ENCRYPTION=OPENSSL
     -DUA_ENABLE_MQTT=ON
-    -DUA_FILE_MQTT=${source_dir}/deps/mqtt-c/src/mqtt.c
     -DUA_ENABLE_JSON_ENCODING=ON
     -DUA_ENABLE_XML_ENCODING=ON
     -DUA_ENABLE_DIAGNOSTICS=ON
@@ -1877,7 +1881,7 @@ function(cpkt_add_open62541)
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_shared}"
       BINARY_DIR "${shared_build_dir}"
       STAMP_DIR "${stamp_dir}/shared"
       TMP_DIR "${tmp_dir}"
@@ -1887,15 +1891,16 @@ function(cpkt_add_open62541)
       PATCH_COMMAND
         ${CMAKE_COMMAND} -E copy_directory
           "${CPKT_MQTTC_SOURCE_DIR}"
-          "${source_dir}/deps/mqtt-c"
+          "${source_dir_shared}/deps/mqtt-c"
         COMMAND ${CMAKE_COMMAND}
-          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir_shared}
           -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series
           -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=ON
         -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libssl${CMAKE_SHARED_LIBRARY_SUFFIX}
         -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libcrypto${CMAKE_SHARED_LIBRARY_SUFFIX}
+        -DUA_FILE_MQTT=${source_dir_shared}/deps/mqtt-c/src/mqtt.c
         ${open62541_common_cmake_args}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
@@ -1910,19 +1915,19 @@ function(cpkt_add_open62541)
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_static}"
       BINARY_DIR "${static_build_dir}"
       STAMP_DIR "${stamp_dir}/static"
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS ${project_name_shared}
+      DEPENDS cpkt_openssl_project cpkt_mqttc_project
       PATCH_COMMAND
         ${CMAKE_COMMAND} -E copy_directory
           "${CPKT_MQTTC_SOURCE_DIR}"
-          "${source_dir}/deps/mqtt-c"
+          "${source_dir_static}/deps/mqtt-c"
         COMMAND ${CMAKE_COMMAND}
-          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir_static}
           -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series
           -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
@@ -1930,6 +1935,7 @@ function(cpkt_add_open62541)
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF
         -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libssl${CMAKE_STATIC_LIBRARY_SUFFIX}
         -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libcrypto${CMAKE_STATIC_LIBRARY_SUFFIX}
+        -DUA_FILE_MQTT=${source_dir_static}/deps/mqtt-c/src/mqtt.c
         ${open62541_common_cmake_args}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}

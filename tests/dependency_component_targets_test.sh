@@ -66,6 +66,32 @@ case "$postgres_plan" in
     ;;
 esac
 
+sus_plan=$(cmake --build "$build_dir" --target cpkt_sus_static -- -n)
+case "$sus_plan" in
+  *"cpkt_whisper_static_project"*) ;;
+  *) printf 'speech facade build plan does not include static whisper.cpp\n' >&2; exit 1 ;;
+esac
+case "$sus_plan" in
+  *"cpkt_deps_all"*|*"cpkt_whisper_shared_project"*|*"cpkt_open62541_static_project"*|*"cpkt_open62541_shared_project"*|*"cpkt_postgresql_project"*|*"cpkt_sqlite_project"*)
+    printf 'speech facade build plan includes an unrelated or shared dependency closure\n' >&2
+    exit 1
+    ;;
+esac
+
+opcua_plan=$(cmake --build "$build_dir" --target cpkt_opcua_static -- -n)
+for required in cpkt_open62541_static_project cpkt_openssl_project cpkt_mqttc_project; do
+  case "$opcua_plan" in
+    *"$required"*) ;;
+    *) printf 'OPC UA facade build plan lacks required dependency: %s\n' "$required" >&2; exit 1 ;;
+  esac
+done
+case "$opcua_plan" in
+  *"cpkt_deps_all"*|*"cpkt_open62541_shared_project"*|*"cpkt_whisper_static_project"*|*"cpkt_whisper_shared_project"*|*"cpkt_postgresql_project"*|*"cpkt_sqlite_project"*)
+    printf 'OPC UA facade build plan includes an unrelated or shared dependency closure\n' >&2
+    exit 1
+    ;;
+esac
+
 krb5_plan=$(cmake --build "$build_dir" --target cpkt_deps_krb5 -- -n)
 case "$krb5_plan" in
   *"cpkt_krb5_static_project"*|*"cpkt_krb5_shared_project"*) ;;

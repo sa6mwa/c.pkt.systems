@@ -109,6 +109,21 @@ function(cpkt_configure_c89_target target_name)
   endif()
 endfunction()
 
+# Lua's configured public header uses long long for its native 64-bit integer
+# ABI.  Keep facade implementation source in strict C89 while admitting that
+# upstream declaration-only extension; LUA_C89_NUMBERS would silently reduce
+# the Lua integer ABI to 32 bits on armhf and is therefore not an option.
+function(cpkt_configure_c89_lua_native_header_target target_name)
+  cpkt_configure_c89_target(${target_name})
+  if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(${target_name} PRIVATE
+      -Wno-long-long
+      -DLLONG_MAX=9223372036854775807LL
+      -DLLONG_MIN=-9223372036854775807LL-1LL
+      -DULLONG_MAX=18446744073709551615ULL)
+  endif()
+endfunction()
+
 function(cpkt_add_lua_runtime_mock_test target_name source_name)
   add_executable(${target_name}
     src/lua_runtime.c
@@ -419,7 +434,7 @@ include(cmake/CpktDependencies.cmake)
 cpkt_configure_dependencies()
 
 add_library(cpkt_lua_runtime_static STATIC src/lua_runtime.c)
-target_compile_features(cpkt_lua_runtime_static PRIVATE c_std_99)
+cpkt_configure_c89_lua_native_header_target(cpkt_lua_runtime_static)
 cpkt_add_repo_warning_errors(cpkt_lua_runtime_static)
 target_include_directories(cpkt_lua_runtime_static
   PUBLIC
@@ -432,7 +447,7 @@ set_target_properties(cpkt_lua_runtime_static PROPERTIES
 )
 
 add_library(cpkt_lua_runtime_shared SHARED src/lua_runtime.c)
-target_compile_features(cpkt_lua_runtime_shared PRIVATE c_std_99)
+cpkt_configure_c89_lua_native_header_target(cpkt_lua_runtime_shared)
 cpkt_add_repo_warning_errors(cpkt_lua_runtime_shared)
 target_include_directories(cpkt_lua_runtime_shared
   PUBLIC
@@ -460,8 +475,11 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   )
 endif()
 add_library(cpkt_audio_static STATIC src/audio.c)
-target_compile_features(cpkt_audio_static PRIVATE c_std_99)
+cpkt_configure_c89_target(cpkt_audio_static)
 cpkt_add_repo_warning_errors(cpkt_audio_static)
+if(UNIX)
+  target_compile_definitions(cpkt_audio_static PRIVATE _POSIX_C_SOURCE=200809L)
+endif()
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   target_compile_options(cpkt_audio_static PRIVATE
     -Wno-unused-function
@@ -492,8 +510,11 @@ set_target_properties(cpkt_audio_static PROPERTIES
 )
 
 add_library(cpkt_audio_shared SHARED src/audio.c)
-target_compile_features(cpkt_audio_shared PRIVATE c_std_99)
+cpkt_configure_c89_target(cpkt_audio_shared)
 cpkt_add_repo_warning_errors(cpkt_audio_shared)
+if(UNIX)
+  target_compile_definitions(cpkt_audio_shared PRIVATE _POSIX_C_SOURCE=200809L)
+endif()
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   target_compile_options(cpkt_audio_shared PRIVATE -Wno-unused-function)
 endif()
@@ -533,8 +554,16 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   )
 endif()
 add_library(cpkt_sus_static STATIC src/sus.c)
-target_compile_features(cpkt_sus_static PRIVATE c_std_99)
+cpkt_configure_c89_target(cpkt_sus_static)
 cpkt_add_repo_warning_errors(cpkt_sus_static)
+if(UNIX)
+  target_compile_definitions(cpkt_sus_static PRIVATE _POSIX_C_SOURCE=200809L)
+endif()
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  # GGML's public C header unconditionally uses the C99 restrict keyword.
+  # The C89 facade does not depend on restrict semantics at this ABI boundary.
+  target_compile_options(cpkt_sus_static PRIVATE -Drestrict=)
+endif()
 target_include_directories(cpkt_sus_static
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
@@ -554,8 +583,14 @@ set_target_properties(cpkt_sus_static PROPERTIES
 )
 
 add_library(cpkt_sus_shared SHARED src/sus.c)
-target_compile_features(cpkt_sus_shared PRIVATE c_std_99)
+cpkt_configure_c89_target(cpkt_sus_shared)
 cpkt_add_repo_warning_errors(cpkt_sus_shared)
+if(UNIX)
+  target_compile_definitions(cpkt_sus_shared PRIVATE _POSIX_C_SOURCE=200809L)
+endif()
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(cpkt_sus_shared PRIVATE -Drestrict=)
+endif()
 target_include_directories(cpkt_sus_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
@@ -630,8 +665,14 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
 endif()
 
 add_library(cpkt_opcua_static STATIC src/opcua.c)
-target_compile_features(cpkt_opcua_static PRIVATE c_std_99)
+cpkt_configure_c89_target(cpkt_opcua_static)
 cpkt_add_repo_warning_errors(cpkt_opcua_static)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  # open62541 exposes internal convenience functions as static inline in its
+  # public headers.  The facade uses only its exported ABI; C89 needs the
+  # declaration bodies without the C99 inline keyword.
+  target_compile_options(cpkt_opcua_static PRIVATE -Dinline=)
+endif()
 target_include_directories(cpkt_opcua_static
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
@@ -644,8 +685,11 @@ set_target_properties(cpkt_opcua_static PROPERTIES
 )
 
 add_library(cpkt_opcua_shared SHARED src/opcua.c)
-target_compile_features(cpkt_opcua_shared PRIVATE c_std_99)
+cpkt_configure_c89_target(cpkt_opcua_shared)
 cpkt_add_repo_warning_errors(cpkt_opcua_shared)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(cpkt_opcua_shared PRIVATE -Dinline=)
+endif()
 target_include_directories(cpkt_opcua_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
@@ -1484,6 +1528,12 @@ if(CPKT_BUILD_TESTS)
         NAME receiver_style_examples
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/receiver_style_examples_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME facade_c89_target_policy
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/facade_c89_target_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
         NAME audio_sus_header_facade
