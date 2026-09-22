@@ -46,16 +46,18 @@ shared library makes linkable. Every project-owned shared library must enforce
 an explicit export policy so its dynamic symbol table contains only its
 intentional ABI.
 
-- Make non-API implementation functions and data internal by default. Use
-  language-level visibility controls together with a linker-native allowlist:
-  an ELF version script or dynamic-list policy on ELF targets and an exported
-  symbols list on Darwin. Do not rely only on `static`, a naming convention,
-  omitted declarations, or default compiler visibility.
-- Keep the allowlist source-controlled and reviewable. It must name the public
-  ABI deliberately, including any documented free-function compatibility
-  wrappers for receiver shells. Export dependency-owned symbols only from a
-  dependency library that explicitly promises them; a facade must not leak
-  its private implementation or its dependencies' internals.
+- Make non-API implementation functions and data internal by default. Enforce
+  the boundary with an explicit export policy appropriate to the platform:
+  compiler visibility controls, linker-native controls, or both are valid when
+  the resulting dynamic table is checked exactly. Do not rely only on `static`,
+  a naming convention, omitted declarations, or default compiler visibility.
+- Keep a source-controlled, target-specific allowlist of defined dynamic
+  exports for every shipped binary. It must name the intended ABI deliberately,
+  including documented free-function compatibility wrappers and deliberate
+  runtime entry points such as a Lua module's `luaopen_*` symbol that are not
+  declared in the primary C header. Export dependency-owned symbols only from a
+  dependency library that explicitly promises them; a facade must not leak its
+  private implementation or its dependencies' internals.
 - Apply the policy to every project-owned shared library, facade, plugin, and
   module shipped in an SDK. Keep static-library implementation symbols local
   where possible, but do not claim a static archive has the shared-library
@@ -71,14 +73,20 @@ Verify the boundary, not just its inputs:
 
 - Inspect the linked shared library's defined dynamic symbols with the
   target-correct tooling (`readelf`/`nm` on ELF and `nm`/`otool` equivalents on
-  Darwin) and compare them against the explicit allowlist. Fail on both a
-  missing intended export and an unexpected export.
+  Darwin) and compare them against that target's explicit allowlist. Fail on
+  both a missing intended export and an unexpected export.
 - Add a negative downstream-link fixture that manually declares one known
   private sentinel and proves it cannot link. This prevents a passing header
   scan from masking a permissive dynamic symbol table.
 - Repeat the exported-symbol assertion on the extracted release SDK, using
   target-correct tools. Build-tree checks alone do not prove the shipped
   library retained its export policy.
+- Export policy is independent from import policy. For every project facade,
+  plugin, or module, inspect target-correct undefined dynamic imports and
+  verify that imports from the project's core library are documented public API
+  declarations. Private-core imports are forbidden even when the resulting
+  binary exposes no accidental exports. Run the import check on build outputs
+  and extracted SDK artifacts when the artifact retains dynamic imports.
 
 ## Implementation Boundaries
 
