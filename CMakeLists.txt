@@ -296,6 +296,7 @@ if(CPKT_CXX_STDLIB_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES 
     set(CPKT_CXX_STDLIB_STATIC_LIBRARY "${_cpkt_cxx_stdlib_output}" CACHE FILEPATH
       "Static C++ standard library archive used by C-facing static SDK metadata." FORCE)
   endif()
+
 endif()
 set(CPKT_CXX_LIBGCC_STATIC_LIBRARY "" CACHE FILEPATH "Static GCC runtime archive used by C-facing static SDK metadata.")
 if(CPKT_CXX_LIBGCC_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES "^(GNU|Clang)$")
@@ -1915,6 +1916,12 @@ if(CPKT_BUILD_TESTS)
           bash
           "${CMAKE_SOURCE_DIR}/tests/facade_c89_target_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME lua_symbol_test_registration
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/lua_symbol_test_registration_test.sh"
+          "${CMAKE_SOURCE_DIR}")
       if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         set(_cpkt_openssl_catalog_symbol_format macho)
         set(_cpkt_openssl_catalog_symbol_tool "${CMAKE_NM}")
@@ -2042,23 +2049,6 @@ if(CPKT_BUILD_TESTS)
           --symbol-tool "${CMAKE_NM}"
           --facade-header "${CPKT_MQTTC_FACADE_HEADER}"
           --output "${CMAKE_CURRENT_BINARY_DIR}/mqttc-api-inventory.json")
-      if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-        set(_cpkt_lua_inventory_symbol_format macho)
-      else()
-        set(_cpkt_lua_inventory_symbol_format elf)
-      endif()
-      add_test(
-        NAME lua_api_inventory
-        COMMAND
-          "${CPKT_PYTHON3_EXECUTABLE}"
-          "${CMAKE_SOURCE_DIR}/tools/generate_lua_api_inventory.py"
-          --include-dir "$<TARGET_PROPERTY:cpkt::lua_static,INTERFACE_INCLUDE_DIRECTORIES>"
-          --native-library "$<TARGET_FILE:cpkt::lua_shared>"
-          --facade-library "$<TARGET_FILE:cpkt_lua_shared>"
-          --facade-header "${CPKT_LUA_FACADE_HEADER}"
-          --symbol-tool "${CMAKE_NM}"
-          --symbol-format "${_cpkt_lua_inventory_symbol_format}"
-          --output "${CMAKE_CURRENT_BINARY_DIR}/lua-api-inventory.json")
       add_test(
         NAME mqttc_export_policy
         COMMAND
@@ -2068,17 +2058,6 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SYSTEM_NAME}"
           "${CMAKE_NM}"
           "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_mqttc.txt"
-          "${CMAKE_C_COMPILER}"
-          "${CMAKE_SYSROOT}")
-      add_test(
-        NAME lua_export_policy
-        COMMAND
-          bash
-          "${CMAKE_SOURCE_DIR}/tests/lua_export_policy_test.sh"
-          "$<TARGET_FILE:cpkt_lua_shared>"
-          "${CMAKE_SYSTEM_NAME}"
-          "${CMAKE_NM}"
-          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_lua.txt"
           "${CMAKE_C_COMPILER}"
           "${CMAKE_SYSROOT}")
       add_test(
@@ -2150,6 +2129,37 @@ if(CPKT_BUILD_TESTS)
       endif()
     endif()
   endif()
+
+  # Symbol inspection uses host tools on target artifacts. It must remain
+  # registered even where the target has no local execution runner.
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(_cpkt_lua_inventory_symbol_format macho)
+  else()
+    set(_cpkt_lua_inventory_symbol_format elf)
+  endif()
+  add_test(
+    NAME lua_api_inventory
+    COMMAND
+      "${CPKT_PYTHON3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tools/generate_lua_api_inventory.py"
+      --include-dir "$<TARGET_PROPERTY:cpkt::lua_static,INTERFACE_INCLUDE_DIRECTORIES>"
+      --native-library "$<TARGET_FILE:cpkt::lua_shared>"
+      --facade-library "$<TARGET_FILE:cpkt_lua_shared>"
+      --facade-header "${CPKT_LUA_FACADE_HEADER}"
+      --symbol-tool "${CMAKE_NM}"
+      --symbol-format "${_cpkt_lua_inventory_symbol_format}"
+      --output "${CMAKE_CURRENT_BINARY_DIR}/lua-api-inventory.json")
+  add_test(
+    NAME lua_export_policy
+    COMMAND
+      bash
+      "${CMAKE_SOURCE_DIR}/tests/lua_export_policy_test.sh"
+      "$<TARGET_FILE:cpkt_lua_shared>"
+      "${CMAKE_SYSTEM_NAME}"
+      "${CMAKE_NM}"
+      "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_lua.txt"
+      "${CMAKE_C_COMPILER}"
+      "${CMAKE_SYSROOT}")
 endif()
 
 if(CPKT_ENABLE_FUZZING)

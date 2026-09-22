@@ -19,7 +19,7 @@ if [[ ! -f "$library" || ! -f "$allowlist" ]]; then
 fi
 
 if [[ "$system_name" == Darwin ]]; then
-  symbols=$("$symbol_tool" -gU "$library" | awk '{ print $NF }')
+  symbols=$("$symbol_tool" -gU "$library" | awk '{ print $NF }' | sed 's/^_//')
 else
   symbols=$("$symbol_tool" -D --defined-only "$library" | awk '{ print $NF }')
 fi
