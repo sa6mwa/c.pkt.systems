@@ -200,12 +200,21 @@ int main(void) {
   if (context == 0) {
     return 18;
   }
-  returned = cpkt_openssl_SSL_CTX_set_options(context, options);
-  if ((cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL) {
+  returned = cpkt_openssl_u64_make(0UL, 1UL);
+  if (cpkt_openssl_SSL_get_value_uint(
+          0, 0x100000000UL, 0UL, &returned) != 0 ||
+      !cpkt_openssl_u64_is_zero(returned) ||
+      cpkt_openssl_SSL_set_value_uint(
+          0, 0UL, 0x100000000UL, options) != 0) {
     SSL_CTX_free(context);
     return 19;
   }
+  returned = cpkt_openssl_SSL_CTX_set_options(context, options);
+  if ((cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL) {
+    SSL_CTX_free(context);
+    return 20;
+  }
   returned = cpkt_openssl_SSL_CTX_clear_options(context, options);
   SSL_CTX_free(context);
-  return (cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL ? 0 : 20;
+  return (cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL ? 0 : 21;
 }

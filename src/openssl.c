@@ -740,3 +740,38 @@ void cpkt_openssl_SHA512_Transform(
     SHA512_Transform(&context->native, block);
   }
 }
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_value_uint. */
+int cpkt_openssl_SSL_get_value_uint(
+    SSL *ssl, unsigned long value_class, unsigned long value_id,
+    cpkt_openssl_u64 *value_out) {
+  uint64_t native_value;
+  int result;
+
+  if (value_out != NULL) {
+    *value_out = cpkt_openssl_u64_make(0UL, 0UL);
+  }
+  if (value_class > UINT32_MAX || value_id > UINT32_MAX) {
+    return 0;
+  }
+  native_value = 0;
+  result = SSL_get_value_uint(ssl, (uint32_t) value_class,
+                               (uint32_t) value_id,
+                               value_out == NULL ? NULL : &native_value);
+  if (result != 0 && value_out != NULL) {
+    *value_out = cpkt_openssl_public_u64(native_value);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_set_value_uint. */
+int cpkt_openssl_SSL_set_value_uint(
+    SSL *ssl, unsigned long value_class, unsigned long value_id,
+    cpkt_openssl_u64 value) {
+  if (value_class > UINT32_MAX || value_id > UINT32_MAX) {
+    return 0;
+  }
+  return SSL_set_value_uint(ssl, (uint32_t) value_class,
+                            (uint32_t) value_id,
+                            cpkt_openssl_native_u64(value));
+}

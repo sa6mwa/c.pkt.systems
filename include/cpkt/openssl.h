@@ -455,5 +455,13 @@ CPKT_OPENSSL_API int cpkt_openssl_SHA512_Final(
 /** C89 adapter for SHA512_Transform. */
 CPKT_OPENSSL_API void cpkt_openssl_SHA512_Transform(
     cpkt_openssl_sha512_context *context, const unsigned char *block);
+/** C89 adapter for SSL_get_value_uint. Selectors must fit 32 bits. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_value_uint(
+    SSL *ssl, unsigned long value_class, unsigned long value_id,
+    cpkt_openssl_u64 *value_out);
+/** C89 adapter for SSL_set_value_uint. Selectors must fit 32 bits. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_set_value_uint(
+    SSL *ssl, unsigned long value_class, unsigned long value_id,
+    cpkt_openssl_u64 value);
 
 #endif

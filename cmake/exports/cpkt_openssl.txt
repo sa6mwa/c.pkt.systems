@@ -84,3 +84,5 @@ cpkt_openssl_SHA512_Init
 cpkt_openssl_SHA512_Update
 cpkt_openssl_SHA512_Final
 cpkt_openssl_SHA512_Transform
+cpkt_openssl_SSL_get_value_uint
+cpkt_openssl_SSL_set_value_uint
