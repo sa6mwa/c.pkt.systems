@@ -363,3 +363,135 @@ X509_ALGOR *cpkt_openssl_PKCS5_pbe2_set_scrypt(
                                cpkt_openssl_native_u64(block_size),
                                cpkt_openssl_native_u64(parallelization));
 }
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_CTX_get_domain_flags. */
+int cpkt_openssl_SSL_CTX_get_domain_flags(
+    const SSL_CTX *context, cpkt_openssl_u64 *flags_out) {
+  uint64_t native_flags;
+  int result;
+
+  native_flags = 0;
+  result = SSL_CTX_get_domain_flags(
+      context, flags_out == NULL ? NULL : &native_flags);
+  if (result != 0 && flags_out != NULL) {
+    *flags_out = cpkt_openssl_public_u64(native_flags);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_CTX_set_domain_flags. */
+int cpkt_openssl_SSL_CTX_set_domain_flags(
+    SSL_CTX *context, cpkt_openssl_u64 flags) {
+  return SSL_CTX_set_domain_flags(context, cpkt_openssl_native_u64(flags));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_domain_flags. */
+int cpkt_openssl_SSL_get_domain_flags(
+    const SSL *ssl, cpkt_openssl_u64 *flags_out) {
+  uint64_t native_flags;
+  int result;
+
+  native_flags = 0;
+  result = SSL_get_domain_flags(ssl, flags_out == NULL ? NULL : &native_flags);
+  if (result != 0 && flags_out != NULL) {
+    *flags_out = cpkt_openssl_public_u64(native_flags);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_accept_connection. */
+SSL *cpkt_openssl_SSL_accept_connection(
+    SSL *ssl, cpkt_openssl_u64 domain_flags) {
+  return SSL_accept_connection(ssl, cpkt_openssl_native_u64(domain_flags));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_accept_stream. */
+SSL *cpkt_openssl_SSL_accept_stream(SSL *ssl, cpkt_openssl_u64 stream_id) {
+  return SSL_accept_stream(ssl, cpkt_openssl_native_u64(stream_id));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_stream_id. */
+cpkt_openssl_u64 cpkt_openssl_SSL_get_stream_id(SSL *ssl) {
+  return cpkt_openssl_public_u64(SSL_get_stream_id(ssl));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_stream_read_error_code. */
+int cpkt_openssl_SSL_get_stream_read_error_code(
+    SSL *ssl, cpkt_openssl_u64 *error_code_out) {
+  uint64_t native_error_code;
+  int result;
+
+  native_error_code = 0;
+  result = SSL_get_stream_read_error_code(
+      ssl, error_code_out == NULL ? NULL : &native_error_code);
+  if (result != 0 && error_code_out != NULL) {
+    *error_code_out = cpkt_openssl_public_u64(native_error_code);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_stream_write_error_code. */
+int cpkt_openssl_SSL_get_stream_write_error_code(
+    SSL *ssl, cpkt_openssl_u64 *error_code_out) {
+  uint64_t native_error_code;
+  int result;
+
+  native_error_code = 0;
+  result = SSL_get_stream_write_error_code(
+      ssl, error_code_out == NULL ? NULL : &native_error_code);
+  if (result != 0 && error_code_out != NULL) {
+    *error_code_out = cpkt_openssl_public_u64(native_error_code);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_new_domain. */
+SSL *cpkt_openssl_SSL_new_domain(
+    SSL_CTX *context, cpkt_openssl_u64 domain_flags) {
+  return SSL_new_domain(context, cpkt_openssl_native_u64(domain_flags));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_new_from_listener. */
+SSL *cpkt_openssl_SSL_new_from_listener(
+    SSL *listener, cpkt_openssl_u64 stream_id) {
+  return SSL_new_from_listener(listener, cpkt_openssl_native_u64(stream_id));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_new_listener. */
+SSL *cpkt_openssl_SSL_new_listener(
+    SSL_CTX *context, cpkt_openssl_u64 domain_flags) {
+  return SSL_new_listener(context, cpkt_openssl_native_u64(domain_flags));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_new_listener_from. */
+SSL *cpkt_openssl_SSL_new_listener_from(
+    SSL *ssl, cpkt_openssl_u64 domain_flags) {
+  return SSL_new_listener_from(ssl, cpkt_openssl_native_u64(domain_flags));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_new_stream. */
+SSL *cpkt_openssl_SSL_new_stream(SSL *ssl, cpkt_openssl_u64 stream_id) {
+  return SSL_new_stream(ssl, cpkt_openssl_native_u64(stream_id));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_set_incoming_stream_policy. */
+int cpkt_openssl_SSL_set_incoming_stream_policy(
+    SSL *ssl, int policy, cpkt_openssl_u64 application_error_code) {
+  return SSL_set_incoming_stream_policy(
+      ssl, policy, cpkt_openssl_native_u64(application_error_code));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_stream_conclude. */
+int cpkt_openssl_SSL_stream_conclude(
+    SSL *ssl, cpkt_openssl_u64 application_error_code) {
+  return SSL_stream_conclude(
+      ssl, cpkt_openssl_native_u64(application_error_code));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_write_ex2. */
+int cpkt_openssl_SSL_write_ex2(
+    SSL *ssl, const void *buffer, size_t buffer_length,
+    cpkt_openssl_u64 flags, size_t *written_out) {
+  return SSL_write_ex2(ssl, buffer, buffer_length,
+                       cpkt_openssl_native_u64(flags), written_out);
+}

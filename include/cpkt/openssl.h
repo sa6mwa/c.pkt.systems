@@ -314,5 +314,53 @@ CPKT_OPENSSL_API X509_ALGOR *cpkt_openssl_PKCS5_pbe2_set_scrypt(
     const EVP_CIPHER *cipher, const unsigned char *salt, int salt_length,
     unsigned char *iv, cpkt_openssl_u64 work_factor,
     cpkt_openssl_u64 block_size, cpkt_openssl_u64 parallelization);
+/** C89 adapter for SSL_CTX_get_domain_flags. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_CTX_get_domain_flags(
+    const SSL_CTX *context, cpkt_openssl_u64 *flags_out);
+/** C89 adapter for SSL_CTX_set_domain_flags. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_CTX_set_domain_flags(
+    SSL_CTX *context, cpkt_openssl_u64 flags);
+/** C89 adapter for SSL_get_domain_flags. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_domain_flags(
+    const SSL *ssl, cpkt_openssl_u64 *flags_out);
+/** C89 adapter for SSL_accept_connection. */
+CPKT_OPENSSL_API SSL *cpkt_openssl_SSL_accept_connection(
+    SSL *ssl, cpkt_openssl_u64 domain_flags);
+/** C89 adapter for SSL_accept_stream. */
+CPKT_OPENSSL_API SSL *cpkt_openssl_SSL_accept_stream(
+    SSL *ssl, cpkt_openssl_u64 stream_id);
+/** C89 adapter for SSL_get_stream_id. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_get_stream_id(SSL *ssl);
+/** C89 adapter for SSL_get_stream_read_error_code. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_stream_read_error_code(
+    SSL *ssl, cpkt_openssl_u64 *error_code_out);
+/** C89 adapter for SSL_get_stream_write_error_code. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_stream_write_error_code(
+    SSL *ssl, cpkt_openssl_u64 *error_code_out);
+/** C89 adapter for SSL_new_domain. */
+CPKT_OPENSSL_API SSL *cpkt_openssl_SSL_new_domain(
+    SSL_CTX *context, cpkt_openssl_u64 domain_flags);
+/** C89 adapter for SSL_new_from_listener. */
+CPKT_OPENSSL_API SSL *cpkt_openssl_SSL_new_from_listener(
+    SSL *listener, cpkt_openssl_u64 stream_id);
+/** C89 adapter for SSL_new_listener. */
+CPKT_OPENSSL_API SSL *cpkt_openssl_SSL_new_listener(
+    SSL_CTX *context, cpkt_openssl_u64 domain_flags);
+/** C89 adapter for SSL_new_listener_from. */
+CPKT_OPENSSL_API SSL *cpkt_openssl_SSL_new_listener_from(
+    SSL *ssl, cpkt_openssl_u64 domain_flags);
+/** C89 adapter for SSL_new_stream. */
+CPKT_OPENSSL_API SSL *cpkt_openssl_SSL_new_stream(
+    SSL *ssl, cpkt_openssl_u64 stream_id);
+/** C89 adapter for SSL_set_incoming_stream_policy. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_set_incoming_stream_policy(
+    SSL *ssl, int policy, cpkt_openssl_u64 application_error_code);
+/** C89 adapter for SSL_stream_conclude. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_stream_conclude(
+    SSL *ssl, cpkt_openssl_u64 application_error_code);
+/** C89 adapter for SSL_write_ex2. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_write_ex2(
+    SSL *ssl, const void *buffer, size_t buffer_length,
+    cpkt_openssl_u64 flags, size_t *written_out);
 
 #endif
