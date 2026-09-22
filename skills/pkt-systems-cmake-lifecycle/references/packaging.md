@@ -209,6 +209,8 @@ Source archive staging must write `RELEASE_MANIFEST` into the staged tree. In a 
 
 Source archive verification must extract the tarball to a generated temporary directory, configure from the extracted tree, build, run the local tests that do not require unavailable external services, and verify the configured version, generated version header, CMake package metadata, pkg-config metadata, and archive `VERSION` agree. When the source archive is produced from a git worktree, verify the archive payload exactly matches the tracked non-ignored release manifest plus deliberate generated release files.
 
+Binary `package-verify` validates already-produced binary artifacts and their checksum manifest; it must never trigger source-archive reconstruction. Keep source-archive extraction, configure, build, and test behind an explicit `package-source-smoke` step that runs only in the final clean `make release` gate after all binary packages are available.
+
 Source archives may carry release scripts and deterministic fixtures needed to rebuild and test the source package. They must not carry generated dependency archives, local `.env` files, package-manager state, service volumes, VCS metadata, or private review notes unless explicitly part of a public source distribution.
 
 Source archives, source rocks, rockspecs, and single-header artifacts must not embed local source URLs, local checkout paths, build paths, package-manager temporary paths, or user home paths. LuaRocks release rockspecs must not use absolute `file://` URLs.

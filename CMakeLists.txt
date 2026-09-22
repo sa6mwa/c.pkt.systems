@@ -356,6 +356,8 @@ endif()
 
 set(_cpkt_default_external_root "${CMAKE_SOURCE_DIR}/.cache/deps/${CPKT_TARGET_ID}")
 set(_cpkt_default_dependency_build_root "${CMAKE_SOURCE_DIR}/.cache/deps-build/${CPKT_TARGET_ID}")
+set(CPKT_DEPENDENCY_CONTRACT_ROOT "${CMAKE_SOURCE_DIR}/.cache/dependency-contracts"
+  CACHE PATH "Target-local dependency build contract metadata.")
 set(_cpkt_external_root_explicit OFF)
 if(DEFINED CPKT_EXTERNAL_ROOT)
   set(_cpkt_external_root_explicit ON)
@@ -401,22 +403,18 @@ if(_cpkt_dependency_build_root_explicit
       OR "${CPKT_DEPENDENCY_BUILD_ROOT}" STREQUAL "${_cpkt_default_dependency_build_root}"))
   set(_cpkt_dependency_build_root_explicit OFF)
 endif()
-set(_cpkt_external_root_lifecycle_owned ON)
+set(CPKT_EXTERNAL_ROOT_LIFECYCLE_OWNED ON)
 if(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
     AND CPKT_CALLER_OWNED_DEPENDENCY_ROOTS
     AND _cpkt_external_root_explicit)
-  set(_cpkt_external_root_lifecycle_owned OFF)
+  set(CPKT_EXTERNAL_ROOT_LIFECYCLE_OWNED OFF)
 endif()
-set(_cpkt_dependency_build_root_lifecycle_owned ON)
+set(CPKT_DEPENDENCY_BUILD_ROOT_LIFECYCLE_OWNED ON)
 if(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
     AND CPKT_CALLER_OWNED_DEPENDENCY_ROOTS
     AND _cpkt_dependency_build_root_explicit)
-  set(_cpkt_dependency_build_root_lifecycle_owned OFF)
+  set(CPKT_DEPENDENCY_BUILD_ROOT_LIFECYCLE_OWNED OFF)
 endif()
-cpkt_refresh_repo_dependency_roots_if_stale(
-  "${_cpkt_external_root_lifecycle_owned}"
-  "${_cpkt_dependency_build_root_lifecycle_owned}")
-
 include(cmake/CpktDependencies.cmake)
 cpkt_configure_dependencies()
 
@@ -461,11 +459,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON
   )
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_lua_runtime_static cpkt_deps)
-  add_dependencies(cpkt_lua_runtime_shared cpkt_deps)
-endif()
-
 add_library(cpkt_audio_static STATIC src/audio.c)
 target_compile_features(cpkt_audio_static PRIVATE c_std_99)
 cpkt_add_repo_warning_errors(cpkt_audio_static)
@@ -539,11 +532,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON
   )
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_audio_static cpkt_deps)
-  add_dependencies(cpkt_audio_shared cpkt_deps)
-endif()
-
 add_library(cpkt_sus_static STATIC src/sus.c)
 target_compile_features(cpkt_sus_static PRIVATE c_std_99)
 cpkt_add_repo_warning_errors(cpkt_sus_static)
@@ -601,11 +589,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON
   )
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_sus_static cpkt_deps)
-  add_dependencies(cpkt_sus_shared cpkt_deps)
-endif()
-
 if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
   add_executable(cpktxscribe tools/cpktxscribe.c)
   cpkt_use_local_runtime(cpktxscribe)
@@ -632,9 +615,6 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
       target_link_options(cpktxscribe PRIVATE -static-libstdc++ -static-libgcc)
     endif()
-  endif()
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpktxscribe cpkt_deps)
   endif()
   if(CPKT_BUILD_TESTS)
     add_test(
@@ -692,11 +672,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON
   )
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_opcua_static cpkt_deps)
-  add_dependencies(cpkt_opcua_shared cpkt_deps)
-endif()
-
 add_library(cpkt_gssapi_static STATIC src/gssapi.c)
 cpkt_configure_c89_target(cpkt_gssapi_static)
 cpkt_add_repo_warning_errors(cpkt_gssapi_static)
@@ -734,11 +709,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_gssapi_static cpkt_deps)
-  add_dependencies(cpkt_gssapi_shared cpkt_deps)
-endif()
-
 add_library(cpkt_sasl_static STATIC src/sasl.c)
 cpkt_configure_c89_target(cpkt_sasl_static)
 cpkt_add_repo_warning_errors(cpkt_sasl_static)
@@ -778,11 +748,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_sasl_static cpkt_deps)
-  add_dependencies(cpkt_sasl_shared cpkt_deps)
-endif()
-
 add_library(cpkt_postgres_static STATIC src/postgres.c)
 cpkt_configure_c89_target(cpkt_postgres_static)
 cpkt_add_repo_warning_errors(cpkt_postgres_static)
@@ -824,11 +789,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_postgres_static cpkt_deps)
-  add_dependencies(cpkt_postgres_shared cpkt_deps)
-endif()
-
 add_library(cpkt_sqlite_static STATIC src/sqlite.c)
 cpkt_configure_c89_target(cpkt_sqlite_static)
 cpkt_add_repo_warning_errors(cpkt_sqlite_static)
@@ -876,11 +836,6 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  add_dependencies(cpkt_sqlite_static cpkt_deps)
-  add_dependencies(cpkt_sqlite_shared cpkt_deps)
-endif()
-
 if(CPKT_BUILD_TESTS)
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"
@@ -908,19 +863,11 @@ if(CPKT_BUILD_TESTS)
   set_source_files_properties(examples/lua-runtime-c89/host_module.c PROPERTIES
     COMPILE_OPTIONS "-std=c99")
   target_link_libraries(cpkt_lua_runtime_c89_example PRIVATE cpkt_lua_runtime_static)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_lua_runtime_c89_example cpkt_deps)
-  endif()
-
   add_executable(cpkt_opcua_c89_example examples/opcua-c89/main.c)
   cpkt_use_local_runtime(cpkt_opcua_c89_example)
   target_compile_options(cpkt_opcua_c89_example PRIVATE -std=c89)
   cpkt_add_repo_warning_errors(cpkt_opcua_c89_example)
   target_link_libraries(cpkt_opcua_c89_example PRIVATE cpkt_opcua_static)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_opcua_c89_example cpkt_deps)
-  endif()
-
   add_executable(cpkt_audio_sus_c89_example examples/audio-sus-c89/main.c)
   cpkt_use_local_runtime(cpkt_audio_sus_c89_example)
   target_compile_options(cpkt_audio_sus_c89_example PRIVATE -std=c89)
@@ -928,10 +875,6 @@ if(CPKT_BUILD_TESTS)
   target_link_libraries(cpkt_audio_sus_c89_example PRIVATE
     cpkt_audio_static
     cpkt_sus_shared)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_audio_sus_c89_example cpkt_deps)
-  endif()
-
   add_executable(cpkt_audio_vox_intro_c89_example
     examples/audio-vox-intro-c89/main.c)
   cpkt_use_local_runtime(cpkt_audio_vox_intro_c89_example)
@@ -939,10 +882,6 @@ if(CPKT_BUILD_TESTS)
   cpkt_add_repo_warning_errors(cpkt_audio_vox_intro_c89_example)
   target_link_libraries(cpkt_audio_vox_intro_c89_example PRIVATE
     cpkt_audio_static)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_audio_vox_intro_c89_example cpkt_deps)
-  endif()
-
   add_executable(cpkt_audio_live_vox_c89_example
     examples/audio-live-vox-c89/main.c)
   cpkt_use_local_runtime(cpkt_audio_live_vox_c89_example)
@@ -950,10 +889,6 @@ if(CPKT_BUILD_TESTS)
   cpkt_add_repo_warning_errors(cpkt_audio_live_vox_c89_example)
   target_link_libraries(cpkt_audio_live_vox_c89_example PRIVATE
     cpkt_audio_shared)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_audio_live_vox_c89_example cpkt_deps)
-  endif()
-
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_TARGET_LIBC STREQUAL "musl")
     add_executable(cpkt_audio_live_vox_static_c89_example
       examples/audio-live-vox-c89/main.c)
@@ -965,9 +900,6 @@ if(CPKT_BUILD_TESTS)
       cpkt_audio_static)
     target_link_options(cpkt_audio_live_vox_static_c89_example PRIVATE
       -static -Wl,--gc-sections)
-    if(CPKT_BUILD_DEPENDENCIES)
-      add_dependencies(cpkt_audio_live_vox_static_c89_example cpkt_deps)
-    endif()
   else()
     file(REMOVE
       "${CMAKE_CURRENT_BINARY_DIR}/cpkt_audio_live_vox_static_c89_example${CMAKE_EXECUTABLE_SUFFIX}")
@@ -981,10 +913,6 @@ if(CPKT_BUILD_TESTS)
   target_link_libraries(cpkt_sus_vox_intro_c89_example PRIVATE
     cpkt_audio_static
     cpkt_sus_shared)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_sus_vox_intro_c89_example cpkt_deps)
-  endif()
-
   add_executable(cpkt_sus_live_vox_c89_example
     examples/sus-live-vox-c89/main.c)
   cpkt_use_local_runtime(cpkt_sus_live_vox_c89_example)
@@ -993,10 +921,6 @@ if(CPKT_BUILD_TESTS)
   target_link_libraries(cpkt_sus_live_vox_c89_example PRIVATE
     cpkt_audio_shared
     cpkt_sus_shared)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_sus_live_vox_c89_example cpkt_deps)
-  endif()
-
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CPKT_TARGET_LIBC STREQUAL "musl")
     add_executable(cpkt_sus_live_vox_static_c89_example
       examples/sus-live-vox-c89/main.c)
@@ -1011,9 +935,6 @@ if(CPKT_BUILD_TESTS)
       cpkt_sus_static)
     target_link_options(cpkt_sus_live_vox_static_c89_example PRIVATE
       -static -Wl,--gc-sections)
-    if(CPKT_BUILD_DEPENDENCIES)
-      add_dependencies(cpkt_sus_live_vox_static_c89_example cpkt_deps)
-    endif()
   else()
     file(REMOVE
       "${CMAKE_CURRENT_BINARY_DIR}/cpkt_sus_live_vox_static_c89_example${CMAKE_EXECUTABLE_SUFFIX}")
@@ -1084,18 +1005,6 @@ if(CPKT_BUILD_TESTS)
     cpkt_sqlite_static)
   set_target_properties(cpkt_static_archive_pic_smoke_facades PROPERTIES
     LINKER_LANGUAGE CXX)
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt_abi_smoke_shared cpkt_deps)
-    add_dependencies(cpkt_abi_smoke_static cpkt_deps)
-    add_dependencies(cpkt_mqttc_smoke_shared cpkt_deps)
-    add_dependencies(cpkt_mqttc_smoke_static cpkt_deps)
-    add_dependencies(cpkt_whisper_smoke_shared cpkt_deps)
-    add_dependencies(cpkt_static_archive_pic_smoke_core cpkt_deps)
-    add_dependencies(cpkt_static_archive_pic_smoke_mqttc cpkt_deps)
-    add_dependencies(cpkt_static_archive_pic_smoke_whisper cpkt_deps)
-    add_dependencies(cpkt_static_archive_pic_smoke_facades cpkt_deps)
-  endif()
-
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set_target_properties(cpkt_abi_smoke_shared PROPERTIES
       BUILD_RPATH "@executable_path/../lib"
@@ -1152,11 +1061,6 @@ if(CPKT_BUILD_TESTS)
       cpkt::open62541_static
       cpkt::cmocka
     )
-    if(CPKT_BUILD_DEPENDENCIES)
-      add_dependencies(cpkt_abi_test_shared cpkt_deps)
-      add_dependencies(cpkt_abi_test_static cpkt_deps)
-    endif()
-
     add_executable(cpkt_audio_facade_test tests/audio_facade_test.c)
     cpkt_use_local_runtime(cpkt_audio_facade_test)
     target_compile_options(cpkt_audio_facade_test PRIVATE -std=c99)
@@ -1221,18 +1125,6 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
     target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
-    if(CPKT_BUILD_DEPENDENCIES)
-      add_dependencies(cpkt_audio_facade_test cpkt_deps)
-      add_dependencies(cpkt_audio_process_capture_probe cpkt_deps)
-      add_dependencies(cpkt_audio_process_playback_probe cpkt_deps)
-      add_dependencies(cpkt_sus_facade_test cpkt_deps)
-      add_dependencies(cpkt_sus_audio_integration_test cpkt_deps)
-      add_dependencies(cpkt_postgres_receiver_test cpkt_deps)
-      add_dependencies(cpkt_postgres_integration_test cpkt_deps)
-      add_dependencies(cpkt_gssapi_facade_test cpkt_deps)
-      add_dependencies(cpkt_sqlite_facade_test cpkt_deps)
-    endif()
-
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
     cpkt_use_local_runtime(cpkt_lua_runtime_test)
     target_compile_options(cpkt_lua_runtime_test PRIVATE -std=c99)
@@ -1259,10 +1151,6 @@ if(CPKT_BUILD_TESTS)
     )
 
     cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_mock_test tests/lua_runtime_mock_test.c)
-    if(CPKT_BUILD_DEPENDENCIES)
-      add_dependencies(cpkt_lua_runtime_test cpkt_deps)
-      add_dependencies(cpkt_opcua_facade_test cpkt_deps)
-    endif()
   endif()
 
   if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
@@ -1511,6 +1399,11 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging"
         TIMEOUT 30)
       add_test(
+        NAME dependency_component_targets
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/dependency_component_targets_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
         NAME package_assertions_elf_runpath
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/package_assertions_elf_runpath_test.sh")
@@ -1726,7 +1619,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/package_bundle.cmake
     DEPENDS
-      cpkt_deps
+      cpkt_deps_all
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
       cpkt_audio_static

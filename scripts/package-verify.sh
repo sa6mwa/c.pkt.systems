@@ -10,9 +10,7 @@ if [ -z "$bundle_version" ]; then
   exit 1
 fi
 
-explicit_targets=0
 if [ "$#" -gt 0 ]; then
-  explicit_targets=1
   targets="$*"
 else
   targets="x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl arm64-apple-darwin"
@@ -110,11 +108,3 @@ for target_id in $targets; do
       ;;
   esac
 done
-
-source_archive="$repo_root/dist/c.pkt.systems-$bundle_version.tar.gz"
-if [ -f "$source_archive" ]; then
-  bash "$repo_root/scripts/source-archive-verify.sh" "$source_archive" "$bundle_version"
-elif [ "$explicit_targets" -eq 0 ]; then
-  printf 'missing source archive: %s\n' "$source_archive" >&2
-  exit 1
-fi

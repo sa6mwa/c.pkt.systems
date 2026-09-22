@@ -10,6 +10,11 @@ source_dir=$1
 package_verify="$source_dir/scripts/package-verify.sh"
 assertions="$source_dir/cmake/package_assertions.cmake"
 
+if grep -Fq 'source-archive-verify.sh' "$package_verify"; then
+  printf 'binary package verification must not reconstruct the source archive\n' >&2
+  exit 1
+fi
+
 if ! grep -Fq 'cpkt-toolchains.sh" discover "$target_id"' "$package_verify"; then
   printf 'package verification does not resolve the pinned Bootlin collection\n' >&2
   exit 1

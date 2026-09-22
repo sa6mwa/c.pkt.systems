@@ -48,11 +48,11 @@ require_ordered_make_recipe() {
 }
 
 for target in \
-  help deps-debug deps-release deps-cross build build-debug build-release \
+  help deps deps-all deps-debug deps-release deps-cross build build-debug build-release \
   build-host cross-build test test-debug test-host test-cross cross-test test-all \
   test-install-tree valgrind fuzz-smoke fuzz fuzz-long package package-source \
   package-source-smoke package-checksums package-verify verify-release-archives \
-  verify-release-privacy release-matrix finalize-slice prerelease prerelease-live \
+  verify-release-privacy release-matrix release-final-matrix finalize-slice prerelease prerelease-live \
   prerelease-hardening lifecycle-version-contract release print-release-version \
   format clean clean-dist; do
   require_help_target "$target"
@@ -118,6 +118,11 @@ release-matrix'
 require_ordered_make_recipe \
   release-matrix \
   'package
+package-checksums
+package-verify'
+require_ordered_make_recipe \
+  release-final-matrix \
+  'package
 package-source
 package-source-smoke
 package-checksums
@@ -129,7 +134,12 @@ grep -Eq 'if\(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu"\)' "$repo_root/CMakeLis
 require_ordered_make_recipe prerelease 'release-pipeline'
 require_ordered_make_recipe release 'lifecycle-version-contract
 clean
-release-pipeline'
+format
+debug
+clangd-surface
+valgrind
+fuzz-smoke
+release-final-matrix'
 require_ordered_make_recipe prerelease-hardening 'prerelease
 fuzz'
 require_file_contains \

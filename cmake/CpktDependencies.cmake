@@ -2938,6 +2938,173 @@ function(cpkt_add_cmocka)
 endfunction()
 
 function(cpkt_configure_dependencies)
+  cpkt_prepare_dependency_component(
+    NAME openssl
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/openssl/install"
+    VARIABLES CPKT_OPENSSL_VERSION CPKT_OPENSSL_BUILD_CONFIG_REVISION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_openssl_buildinfo.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake"
+    RECIPE_FUNCTIONS cpkt_get_openssl_config_args cpkt_add_openssl)
+  cpkt_prepare_dependency_component(
+    NAME zlib
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/zlib/install"
+    VARIABLES CPKT_ZLIB_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_zlib_single_pass.cmake"
+    RECIPE_FUNCTIONS cpkt_add_zlib)
+  cpkt_prepare_dependency_component(
+    NAME nghttp2
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/nghttp2/install"
+    VARIABLES CPKT_NGHTTP2_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_nghttp2)
+  cpkt_prepare_dependency_component(
+    NAME libssh2
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libssh2"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libssh2/install"
+    VARIABLES CPKT_LIBSSH2_VERSION
+    DEPENDS openssl zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_single_pass.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libssh2)
+  cpkt_prepare_dependency_component(
+    NAME curl
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/curl"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/curl/install"
+    VARIABLES CPKT_CURL_VERSION
+    DEPENDS zlib openssl nghttp2 libssh2
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_get_curl_platform_cmake_args cpkt_get_curl_static_platform_libs cpkt_add_curl)
+  cpkt_prepare_dependency_component(
+    NAME libxml2
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libxml2/install"
+    VARIABLES CPKT_LIBXML2_VERSION
+    DEPENDS zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libxml2)
+  cpkt_prepare_dependency_component(
+    NAME lua
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/lua"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/lua/install"
+    VARIABLES CPKT_LUA_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/install_lua.cmake"
+    RECIPE_FUNCTIONS cpkt_add_lua)
+  cpkt_prepare_dependency_component(
+    NAME miniaudio
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/miniaudio/install"
+    VARIABLES CPKT_MINIAUDIO_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_miniaudio)
+  cpkt_prepare_dependency_component(
+    NAME whisper
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/whisper/install"
+    VARIABLES CPKT_WHISPER_VERSION CPKT_SUS_CPU_ONLY
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake"
+    RECIPE_FUNCTIONS cpkt_add_whisper)
+  cpkt_prepare_dependency_component(
+    NAME mqttc
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/mqtt-c/install"
+    VARIABLES CPKT_MQTTC_COMMIT
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_mqttc)
+  cpkt_prepare_dependency_component(
+    NAME open62541
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/open62541/install"
+    VARIABLES CPKT_OPEN62541_VERSION CPKT_OPEN62541_PATCHSET
+    DEPENDS openssl mqttc
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch"
+    RECIPE_FUNCTIONS cpkt_add_open62541)
+  cpkt_prepare_dependency_component(
+    NAME krb5
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/krb5/install"
+    VARIABLES CPKT_KRB5_VERSION CPKT_DARWIN_HOST_MIG_REVISION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_krb5_macos_cross.cmake"
+    RECIPE_FUNCTIONS cpkt_add_krb5)
+  cpkt_prepare_dependency_component(
+    NAME cyrus-sasl
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/cyrus-sasl/install"
+    VARIABLES CPKT_CYRUS_SASL_VERSION
+    DEPENDS krb5 openssl
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
+    RECIPE_FUNCTIONS cpkt_add_cyrus_sasl)
+  cpkt_prepare_dependency_component(
+    NAME openldap
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/openldap"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/openldap/install"
+    VARIABLES CPKT_OPENLDAP_VERSION
+    DEPENDS cyrus-sasl openssl krb5
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/build_openldap_libraries.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_openldap_lutil_link.cmake"
+    RECIPE_FUNCTIONS cpkt_add_openldap)
+  cpkt_prepare_dependency_component(
+    NAME postgresql
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/postgresql"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/postgresql/install"
+    VARIABLES CPKT_POSTGRESQL_VERSION
+    DEPENDS openldap cyrus-sasl krb5 curl zlib openssl
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake"
+    RECIPE_FUNCTIONS cpkt_add_postgresql)
+  cpkt_prepare_dependency_component(
+    NAME sqlite
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/sqlite"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/sqlite/install"
+    VARIABLES CPKT_SQLITE_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_sqlite)
+
   cpkt_add_openssl()
   cpkt_add_zlib()
   cpkt_add_libssh2()
@@ -2956,13 +3123,42 @@ function(cpkt_configure_dependencies)
   cpkt_add_sqlite()
 
   if(CPKT_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    cpkt_prepare_dependency_component(
+      NAME cmocka
+      BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/cmocka"
+      INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/cmocka/install"
+      VARIABLES CPKT_CMOCKA_VERSION
+      INPUT_FILES
+        "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+        "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      RECIPE_FUNCTIONS cpkt_add_cmocka)
     cpkt_add_cmocka()
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
     get_property(dep_targets GLOBAL PROPERTY CPKT_DEPENDENCY_TARGETS)
     if(dep_targets)
-      add_custom_target(cpkt_deps DEPENDS ${dep_targets})
+      add_custom_target(cpkt_deps_all DEPENDS ${dep_targets})
+      add_custom_target(cpkt_deps DEPENDS cpkt_deps_all)
+      add_custom_target(cpkt_deps_openssl DEPENDS cpkt_openssl_project)
+      add_custom_target(cpkt_deps_zlib DEPENDS cpkt_zlib_project)
+      add_custom_target(cpkt_deps_nghttp2 DEPENDS cpkt_nghttp2_project)
+      add_custom_target(cpkt_deps_libssh2 DEPENDS cpkt_libssh2_project)
+      add_custom_target(cpkt_deps_curl DEPENDS cpkt_curl_project)
+      add_custom_target(cpkt_deps_libxml2 DEPENDS cpkt_libxml2_static_project)
+      add_custom_target(cpkt_deps_lua DEPENDS cpkt_lua_project)
+      add_custom_target(cpkt_deps_miniaudio DEPENDS cpkt_miniaudio_project)
+      add_custom_target(cpkt_deps_whisper DEPENDS cpkt_whisper_static_project)
+      add_custom_target(cpkt_deps_mqttc DEPENDS cpkt_mqttc_project)
+      add_custom_target(cpkt_deps_open62541 DEPENDS cpkt_open62541_static_project)
+      add_custom_target(cpkt_deps_krb5 DEPENDS cpkt_krb5_shared_project)
+      add_custom_target(cpkt_deps_cyrus_sasl DEPENDS cpkt_cyrus_sasl_project)
+      add_custom_target(cpkt_deps_openldap DEPENDS cpkt_openldap_project)
+      add_custom_target(cpkt_deps_postgresql DEPENDS cpkt_postgresql_project)
+      add_custom_target(cpkt_deps_sqlite DEPENDS cpkt_sqlite_project)
+      if(TARGET cpkt_cmocka_project)
+        add_custom_target(cpkt_deps_cmocka DEPENDS cpkt_cmocka_project)
+      endif()
     endif()
   endif()
 endfunction()

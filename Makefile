@@ -10,13 +10,17 @@ E2E_SUS_PRESET ?= release
 E2E_POSTGRES_PRESET ?= release
 
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
+PRESET ?= debug
+DEPENDENCY ?=
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-postgres e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice lifecycle-version-contract release print-release-version format source-archive verify-source-archive clean clean-dist
+.PHONY: help deps deps-all deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-postgres e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix release-final-matrix finalize-slice lifecycle-version-contract release print-release-version format source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
 	@printf 'Core:\n'
 	@printf '  %-30s %s\n' 'help' 'Show this command index.'
+	@printf '  %-30s %s\n' 'deps DEPENDENCY=<name>' 'Build one dependency closure (set PRESET, default debug).'
+	@printf '  %-30s %s\n' 'deps-all' 'Build every dependency closure for PRESET (default debug).'
 	@printf '  %-30s %s\n' 'deps-debug' 'Configure the host debug dependency/build graph.'
 	@printf '  %-30s %s\n' 'deps-release' 'Configure all shipped Linux release dependency/build graphs.'
 	@printf '  %-30s %s\n' 'deps-cross' 'Configure cross release dependency/build graphs.'
@@ -63,10 +67,11 @@ help:
 	@printf '  %-30s %s\n' 'prerelease' 'Run the release proof graph without cleaning generated state first.'
 	@printf '  %-30s %s\n' 'prerelease-live' 'Run external-provider checks; requires CPKT_LIVE_CHECKS=1.'
 	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run the release proof graph plus standard-duration native fuzzing.'
-	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, source-smoke, checksum, and verify all release artifacts.'
+	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, checksum, and verify binary release artifacts.'
+	@printf '  %-30s %s\n' 'release-final-matrix' 'Run the final binary and clean source-archive release gate.'
 	@printf '  %-30s %s\n' 'finalize-slice' 'Format and run the narrow local pre-commit gate.'
 	@printf '  %-30s %s\n' 'lifecycle-version-contract' 'Run pre-clean release version checks using the reserved temp tag.'
-	@printf '  %-30s %s\n' 'release' 'Run version contract first, clean, then run the prerelease proof graph.'
+	@printf '  %-30s %s\n' 'release' 'Run the clean final binary and source-archive release gate.'
 	@printf '  %-30s %s\n' 'print-release-version' 'Print the version used by package and release artifacts.'
 	@printf '  %-30s %s\n' 'format' 'Format project-owned C and header files with clang-format.'
 	@printf '\nCleanup:\n'
@@ -75,6 +80,15 @@ help:
 
 deps-debug:
 	$(CMAKE) --preset debug
+
+deps:
+	@test -n "$(DEPENDENCY)" || { printf 'deps requires DEPENDENCY=<name>; use a cpkt_deps_<name> CMake target\n' >&2; exit 2; }
+	$(CMAKE) --preset $(PRESET)
+	$(CMAKE) --build --preset $(PRESET) --target cpkt_deps_$(DEPENDENCY)
+
+deps-all:
+	$(CMAKE) --preset $(PRESET)
+	$(CMAKE) --build --preset $(PRESET) --target cpkt_deps_all
 
 deps-release:
 	@for preset in $(RELEASE_PRESETS); do \
@@ -239,6 +253,11 @@ prerelease-hardening:
 
 release-matrix:
 	$(MAKE) package
+	$(MAKE) package-checksums
+	$(MAKE) package-verify
+
+release-final-matrix:
+	$(MAKE) package
 	$(MAKE) package-source
 	$(MAKE) package-source-smoke
 	$(MAKE) package-checksums
@@ -259,7 +278,12 @@ format:
 release:
 	$(MAKE) lifecycle-version-contract
 	$(MAKE) clean
-	$(MAKE) release-pipeline
+	$(MAKE) format
+	$(MAKE) debug
+	$(MAKE) clangd-surface
+	$(MAKE) valgrind
+	$(MAKE) fuzz-smoke
+	$(MAKE) release-final-matrix
 
 source-archive: package-source-smoke
 
