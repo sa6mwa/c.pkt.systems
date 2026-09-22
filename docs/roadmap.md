@@ -15,7 +15,7 @@ upstream audit, ABI review, and release-matrix evidence before shipment.
   pkg-config packages, and has exact export and extracted-SDK verification.
 - [x] **Add `cpkt_nghttp2`.** Provide the complete public nghttp2 C89 facade,
   including callback, session, frame, and error interfaces.
-- [ ] **Add `cpkt_libssh2`.** Provide the complete public libssh2 C89 facade,
+- [x] **Add `cpkt_libssh2`.** Provide the complete public libssh2 C89 facade,
   including session, authentication, channel, SFTP, SCP, and public-key APIs.
 - [ ] **Add `cpkt_mqttc`.** Provide the complete public MQTT-C C89 facade,
   including client lifecycle, packet handling, callbacks, and transport
