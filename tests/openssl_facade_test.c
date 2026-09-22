@@ -7,6 +7,10 @@ int main(void) {
   OSSL_LIB_CTX *library_context;
   SSL_CTX *context;
   SCT *sct;
+  X509_ALGOR *algorithm;
+  unsigned char derived_key[16];
+  unsigned char iv[16];
+  unsigned char salt[4];
   cpkt_openssl_i64 signed_value;
   cpkt_openssl_u64 options;
   cpkt_openssl_u64 returned;
@@ -76,19 +80,38 @@ int main(void) {
   CT_POLICY_EVAL_CTX_free(policy_context);
   SCT_free(sct);
   OSSL_LIB_CTX_free(library_context);
-  if (cpkt_openssl_OPENSSL_init_ssl(cpkt_openssl_u64_make(0UL, 0UL), 0) != 1) {
+  salt[0] = 1U;
+  salt[1] = 2U;
+  salt[2] = 3U;
+  salt[3] = 4U;
+  if (cpkt_openssl_EVP_PBE_scrypt(
+          "password", 8U, salt, sizeof(salt), cpkt_openssl_u64_make(0UL, 16UL),
+          cpkt_openssl_u64_make(0UL, 1UL), cpkt_openssl_u64_make(0UL, 1UL),
+          cpkt_openssl_u64_make(0UL, 1048576UL), derived_key,
+          sizeof(derived_key)) != 1) {
     return 8;
+  }
+  algorithm = cpkt_openssl_PKCS5_pbe2_set_scrypt(
+      EVP_aes_128_cbc(), salt, (int) sizeof(salt), iv,
+      cpkt_openssl_u64_make(0UL, 16UL), cpkt_openssl_u64_make(0UL, 1UL),
+      cpkt_openssl_u64_make(0UL, 1UL));
+  if (algorithm == 0) {
+    return 9;
+  }
+  X509_ALGOR_free(algorithm);
+  if (cpkt_openssl_OPENSSL_init_ssl(cpkt_openssl_u64_make(0UL, 0UL), 0) != 1) {
+    return 10;
   }
   context = SSL_CTX_new(TLS_method());
   if (context == 0) {
-    return 9;
+    return 11;
   }
   returned = cpkt_openssl_SSL_CTX_set_options(context, options);
   if ((returned.low & 0x4000UL) == 0UL) {
     SSL_CTX_free(context);
-    return 10;
+    return 12;
   }
   returned = cpkt_openssl_SSL_CTX_clear_options(context, options);
   SSL_CTX_free(context);
-  return (returned.low & 0x4000UL) == 0UL ? 0 : 11;
+  return (returned.low & 0x4000UL) == 0UL ? 0 : 13;
 }

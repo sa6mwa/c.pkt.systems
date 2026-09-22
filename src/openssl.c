@@ -251,3 +251,79 @@ SCT *cpkt_openssl_SCT_new_from_base64(
 void cpkt_openssl_SCT_set_timestamp(SCT *sct, cpkt_openssl_u64 timestamp) {
   SCT_set_timestamp(sct, cpkt_openssl_native_u64(timestamp));
 }
+
+/** Implements the documented public C89 adapter cpkt_openssl_EVP_PBE_scrypt. */
+int cpkt_openssl_EVP_PBE_scrypt(
+    const char *password, size_t password_length, const unsigned char *salt,
+    size_t salt_length, cpkt_openssl_u64 work_factor,
+    cpkt_openssl_u64 block_size, cpkt_openssl_u64 parallelization,
+    cpkt_openssl_u64 maximum_memory, unsigned char *key, size_t key_length) {
+  return EVP_PBE_scrypt(password, password_length, salt, salt_length,
+                        cpkt_openssl_native_u64(work_factor),
+                        cpkt_openssl_native_u64(block_size),
+                        cpkt_openssl_native_u64(parallelization),
+                        cpkt_openssl_native_u64(maximum_memory), key,
+                        key_length);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_EVP_PBE_scrypt_ex. */
+int cpkt_openssl_EVP_PBE_scrypt_ex(
+    const char *password, size_t password_length, const unsigned char *salt,
+    size_t salt_length, cpkt_openssl_u64 work_factor,
+    cpkt_openssl_u64 block_size, cpkt_openssl_u64 parallelization,
+    cpkt_openssl_u64 maximum_memory, unsigned char *key, size_t key_length,
+    OSSL_LIB_CTX *library_context, const char *property_query) {
+  return EVP_PBE_scrypt_ex(password, password_length, salt, salt_length,
+                           cpkt_openssl_native_u64(work_factor),
+                           cpkt_openssl_native_u64(block_size),
+                           cpkt_openssl_native_u64(parallelization),
+                           cpkt_openssl_native_u64(maximum_memory), key,
+                           key_length, library_context, property_query);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_EVP_PKEY_CTX_ctrl_uint64. */
+int cpkt_openssl_EVP_PKEY_CTX_ctrl_uint64(
+    EVP_PKEY_CTX *context, int key_type, int operation, int command,
+    cpkt_openssl_u64 value) {
+  return EVP_PKEY_CTX_ctrl_uint64(context, key_type, operation, command,
+                                  cpkt_openssl_native_u64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_EVP_PKEY_CTX_set_scrypt_N. */
+int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_N(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 work_factor) {
+  return EVP_PKEY_CTX_set_scrypt_N(
+      context, cpkt_openssl_native_u64(work_factor));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_EVP_PKEY_CTX_set_scrypt_maxmem_bytes. */
+int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_maxmem_bytes(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 maximum_memory) {
+  return EVP_PKEY_CTX_set_scrypt_maxmem_bytes(
+      context, cpkt_openssl_native_u64(maximum_memory));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_EVP_PKEY_CTX_set_scrypt_p. */
+int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_p(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 parallelization) {
+  return EVP_PKEY_CTX_set_scrypt_p(
+      context, cpkt_openssl_native_u64(parallelization));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_EVP_PKEY_CTX_set_scrypt_r. */
+int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_r(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 block_size) {
+  return EVP_PKEY_CTX_set_scrypt_r(
+      context, cpkt_openssl_native_u64(block_size));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_PKCS5_pbe2_set_scrypt. */
+X509_ALGOR *cpkt_openssl_PKCS5_pbe2_set_scrypt(
+    const EVP_CIPHER *cipher, const unsigned char *salt, int salt_length,
+    unsigned char *iv, cpkt_openssl_u64 work_factor,
+    cpkt_openssl_u64 block_size, cpkt_openssl_u64 parallelization) {
+  return PKCS5_pbe2_set_scrypt(cipher, salt, salt_length, iv,
+                               cpkt_openssl_native_u64(work_factor),
+                               cpkt_openssl_native_u64(block_size),
+                               cpkt_openssl_native_u64(parallelization));
+}

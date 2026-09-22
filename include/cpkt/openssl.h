@@ -270,5 +270,39 @@ CPKT_OPENSSL_API SCT *cpkt_openssl_SCT_new_from_base64(
 /** C89 adapter for SCT_set_timestamp. */
 CPKT_OPENSSL_API void cpkt_openssl_SCT_set_timestamp(
     SCT *sct, cpkt_openssl_u64 timestamp);
+/** C89 adapter for EVP_PBE_scrypt. */
+CPKT_OPENSSL_API int cpkt_openssl_EVP_PBE_scrypt(
+    const char *password, size_t password_length, const unsigned char *salt,
+    size_t salt_length, cpkt_openssl_u64 work_factor,
+    cpkt_openssl_u64 block_size, cpkt_openssl_u64 parallelization,
+    cpkt_openssl_u64 maximum_memory, unsigned char *key, size_t key_length);
+/** C89 adapter for EVP_PBE_scrypt_ex. */
+CPKT_OPENSSL_API int cpkt_openssl_EVP_PBE_scrypt_ex(
+    const char *password, size_t password_length, const unsigned char *salt,
+    size_t salt_length, cpkt_openssl_u64 work_factor,
+    cpkt_openssl_u64 block_size, cpkt_openssl_u64 parallelization,
+    cpkt_openssl_u64 maximum_memory, unsigned char *key, size_t key_length,
+    OSSL_LIB_CTX *library_context, const char *property_query);
+/** C89 adapter for EVP_PKEY_CTX_ctrl_uint64. */
+CPKT_OPENSSL_API int cpkt_openssl_EVP_PKEY_CTX_ctrl_uint64(
+    EVP_PKEY_CTX *context, int key_type, int operation, int command,
+    cpkt_openssl_u64 value);
+/** C89 adapter for EVP_PKEY_CTX_set_scrypt_N. */
+CPKT_OPENSSL_API int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_N(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 work_factor);
+/** C89 adapter for EVP_PKEY_CTX_set_scrypt_maxmem_bytes. */
+CPKT_OPENSSL_API int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_maxmem_bytes(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 maximum_memory);
+/** C89 adapter for EVP_PKEY_CTX_set_scrypt_p. */
+CPKT_OPENSSL_API int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_p(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 parallelization);
+/** C89 adapter for EVP_PKEY_CTX_set_scrypt_r. */
+CPKT_OPENSSL_API int cpkt_openssl_EVP_PKEY_CTX_set_scrypt_r(
+    EVP_PKEY_CTX *context, cpkt_openssl_u64 block_size);
+/** C89 adapter for PKCS5_pbe2_set_scrypt. */
+CPKT_OPENSSL_API X509_ALGOR *cpkt_openssl_PKCS5_pbe2_set_scrypt(
+    const EVP_CIPHER *cipher, const unsigned char *salt, int salt_length,
+    unsigned char *iv, cpkt_openssl_u64 work_factor,
+    cpkt_openssl_u64 block_size, cpkt_openssl_u64 parallelization);
 
 #endif
