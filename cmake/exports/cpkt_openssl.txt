@@ -1,8 +1,12 @@
 # Defined dynamic exports of libcpkt_openssl. Keep this list exact.
 cpkt_openssl_u64_make
+cpkt_openssl_u64_high_word
+cpkt_openssl_u64_low_word
 cpkt_openssl_u64_equal
 cpkt_openssl_u64_is_zero
 cpkt_openssl_i64_make
+cpkt_openssl_i64_high_word
+cpkt_openssl_i64_low_word
 cpkt_openssl_i64_equal
 cpkt_openssl_OPENSSL_init_crypto
 cpkt_openssl_OPENSSL_init_ssl

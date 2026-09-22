@@ -1,22 +1,31 @@
 #include <cpkt/openssl.h>
 
+#include <limits.h>
 #include <stdint.h>
 #include <string.h>
+
+typedef char cpkt_openssl_u64_is_eight_bytes[
+    sizeof(uint64_t) == 8 ? 1 : -1];
+typedef char cpkt_openssl_i64_is_eight_bytes[
+    sizeof(int64_t) == 8 ? 1 : -1];
+typedef char cpkt_openssl_octet_is_eight_bits[
+    CHAR_BIT == 8 ? 1 : -1];
+typedef char cpkt_openssl_public_u64_is_eight_bytes[
+    sizeof(cpkt_openssl_u64) == 8 ? 1 : -1];
+typedef char cpkt_openssl_public_i64_is_eight_bytes[
+    sizeof(cpkt_openssl_i64) == 8 ? 1 : -1];
 
 static uint64_t cpkt_openssl_native_u64(cpkt_openssl_u64 value) {
   uint64_t native;
 
-  native = (uint64_t) (value.high & 0xffffffffUL);
-  native <<= 32;
-  native |= (uint64_t) (value.low & 0xffffffffUL);
+  memcpy(&native, value.bytes, sizeof(native));
   return native;
 }
 
 static cpkt_openssl_u64 cpkt_openssl_public_u64(uint64_t value) {
   cpkt_openssl_u64 public_value;
 
-  public_value.high = (unsigned long) (value >> 32);
-  public_value.low = (unsigned long) (value & 0xffffffffUL);
+  memcpy(public_value.bytes, &value, sizeof(value));
   return public_value;
 }
 
@@ -24,8 +33,7 @@ static int64_t cpkt_openssl_native_i64(cpkt_openssl_i64 value) {
   uint64_t bits;
   int64_t native;
 
-  bits = cpkt_openssl_native_u64(
-      cpkt_openssl_u64_make(value.high, value.low));
+  memcpy(&bits, value.bytes, sizeof(bits));
   memcpy(&native, &bits, sizeof(native));
   return native;
 }
@@ -37,42 +45,70 @@ static cpkt_openssl_i64 cpkt_openssl_public_i64(int64_t value) {
 
   memcpy(&bits, &value, sizeof(bits));
   public_bits = cpkt_openssl_public_u64(bits);
-  public_value.high = public_bits.high;
-  public_value.low = public_bits.low;
+  memcpy(public_value.bytes, public_bits.bytes, sizeof(public_value.bytes));
   return public_value;
 }
 
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_make. */
 cpkt_openssl_u64 cpkt_openssl_u64_make(unsigned long high, unsigned long low) {
-  cpkt_openssl_u64 value;
+  uint64_t native;
 
-  value.high = high & 0xffffffffUL;
-  value.low = low & 0xffffffffUL;
-  return value;
+  native = (uint64_t) (high & 0xffffffffUL);
+  native <<= 32;
+  native |= (uint64_t) (low & 0xffffffffUL);
+  return cpkt_openssl_public_u64(native);
+}
+
+/** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_high_word. */
+unsigned long cpkt_openssl_u64_high_word(cpkt_openssl_u64 value) {
+  return (unsigned long) (cpkt_openssl_native_u64(value) >> 32);
+}
+
+/** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_low_word. */
+unsigned long cpkt_openssl_u64_low_word(cpkt_openssl_u64 value) {
+  return (unsigned long) (cpkt_openssl_native_u64(value) & 0xffffffffUL);
 }
 
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_equal. */
 int cpkt_openssl_u64_equal(cpkt_openssl_u64 left, cpkt_openssl_u64 right) {
-  return left.high == right.high && left.low == right.low;
+  return memcmp(left.bytes, right.bytes, sizeof(left.bytes)) == 0;
 }
 
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_is_zero. */
 int cpkt_openssl_u64_is_zero(cpkt_openssl_u64 value) {
-  return value.high == 0UL && value.low == 0UL;
+  return cpkt_openssl_u64_high_word(value) == 0UL &&
+         cpkt_openssl_u64_low_word(value) == 0UL;
 }
 
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_i64_make. */
 cpkt_openssl_i64 cpkt_openssl_i64_make(unsigned long high, unsigned long low) {
+  cpkt_openssl_u64 unsigned_value;
   cpkt_openssl_i64 value;
 
-  value.high = high & 0xffffffffUL;
-  value.low = low & 0xffffffffUL;
+  unsigned_value = cpkt_openssl_u64_make(high, low);
+  memcpy(value.bytes, unsigned_value.bytes, sizeof(value.bytes));
   return value;
+}
+
+/** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_i64_high_word. */
+unsigned long cpkt_openssl_i64_high_word(cpkt_openssl_i64 value) {
+  cpkt_openssl_u64 unsigned_value;
+
+  memcpy(unsigned_value.bytes, value.bytes, sizeof(unsigned_value.bytes));
+  return cpkt_openssl_u64_high_word(unsigned_value);
+}
+
+/** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_i64_low_word. */
+unsigned long cpkt_openssl_i64_low_word(cpkt_openssl_i64 value) {
+  cpkt_openssl_u64 unsigned_value;
+
+  memcpy(unsigned_value.bytes, value.bytes, sizeof(unsigned_value.bytes));
+  return cpkt_openssl_u64_low_word(unsigned_value);
 }
 
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_i64_equal. */
 int cpkt_openssl_i64_equal(cpkt_openssl_i64 left, cpkt_openssl_i64 right) {
-  return left.high == right.high && left.low == right.low;
+  return memcmp(left.bytes, right.bytes, sizeof(left.bytes)) == 0;
 }
 
 /** Implements the documented public C89 adapter cpkt_openssl_OPENSSL_init_crypto. */

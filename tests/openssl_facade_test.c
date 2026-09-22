@@ -16,7 +16,8 @@ int main(void) {
   cpkt_openssl_u64 returned;
 
   options = cpkt_openssl_u64_make(0UL, 0x4000UL);
-  if (options.high != 0UL || options.low != 0x4000UL ||
+  if (cpkt_openssl_u64_high_word(options) != 0UL ||
+      cpkt_openssl_u64_low_word(options) != 0x4000UL ||
       cpkt_openssl_u64_is_zero(options) ||
       !cpkt_openssl_u64_equal(options, cpkt_openssl_u64_make(0UL, 0x4000UL))) {
     return 1;
@@ -25,7 +26,9 @@ int main(void) {
     return 2;
   }
   signed_value = cpkt_openssl_i64_make(0xffffffffUL, 0xfffffffeUL);
-  if (!cpkt_openssl_i64_equal(
+  if (cpkt_openssl_i64_high_word(signed_value) != 0xffffffffUL ||
+      cpkt_openssl_i64_low_word(signed_value) != 0xfffffffeUL ||
+      !cpkt_openssl_i64_equal(
           signed_value, cpkt_openssl_i64_make(0xffffffffUL, 0xfffffffeUL))) {
     return 3;
   }
@@ -107,11 +110,11 @@ int main(void) {
     return 11;
   }
   returned = cpkt_openssl_SSL_CTX_set_options(context, options);
-  if ((returned.low & 0x4000UL) == 0UL) {
+  if ((cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL) {
     SSL_CTX_free(context);
     return 12;
   }
   returned = cpkt_openssl_SSL_CTX_clear_options(context, options);
   SSL_CTX_free(context);
-  return (returned.low & 0x4000UL) == 0UL ? 0 : 13;
+  return (cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL ? 0 : 13;
 }
