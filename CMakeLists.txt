@@ -273,6 +273,7 @@ set(CPKT_SASL_ABI_VERSION "0" CACHE STRING "Cyrus SASL facade ABI major. Do not 
 set(CPKT_POSTGRES_ABI_VERSION "0" CACHE STRING "PostgreSQL facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SQLITE_ABI_VERSION "0" CACHE STRING "SQLite facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPENSSL_ABI_VERSION "0" CACHE STRING "OpenSSL C89 facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_NGHTTP2_ABI_VERSION "0" CACHE STRING "nghttp2 C89 facade ABI major. Do not bump without maintainer approval.")
 if(NOT CPKT_SUS_CPU_ONLY)
   message(FATAL_ERROR "CPKT_SUS_CPU_ONLY=OFF is reserved for a later GPU-backend packaging phase")
 endif()
@@ -433,6 +434,69 @@ if(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
 endif()
 include(cmake/CpktDependencies.cmake)
 cpkt_configure_dependencies()
+
+find_program(CPKT_PYTHON3_EXECUTABLE NAMES python3 REQUIRED)
+set(CPKT_NGHTTP2_FACADE_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/nghttp2")
+set(CPKT_NGHTTP2_FACADE_INCLUDE_DIR
+  "${CPKT_NGHTTP2_FACADE_GENERATED_DIR}/include")
+set(CPKT_NGHTTP2_FACADE_HEADER
+  "${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}/cpkt/nghttp2.h")
+set(CPKT_NGHTTP2_FACADE_SOURCE
+  "${CPKT_NGHTTP2_FACADE_GENERATED_DIR}/src/nghttp2.c")
+add_custom_command(
+  OUTPUT "${CPKT_NGHTTP2_FACADE_HEADER}" "${CPKT_NGHTTP2_FACADE_SOURCE}"
+  COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tools/generate_nghttp2_c89_facade.py"
+    --include-dir "$<TARGET_PROPERTY:cpkt::nghttp2_static,INTERFACE_INCLUDE_DIRECTORIES>"
+    --header "${CPKT_NGHTTP2_FACADE_HEADER}"
+    --source "${CPKT_NGHTTP2_FACADE_SOURCE}"
+  DEPENDS
+    "${CMAKE_SOURCE_DIR}/tools/generate_nghttp2_c89_facade.py"
+  VERBATIM)
+set_source_files_properties("${CPKT_NGHTTP2_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
+add_custom_target(cpkt_nghttp2_facade_generated
+  DEPENDS "${CPKT_NGHTTP2_FACADE_HEADER}" "${CPKT_NGHTTP2_FACADE_SOURCE}")
+add_dependencies(cpkt_nghttp2_facade_generated cpkt_nghttp2_project)
+
+add_library(cpkt_nghttp2_static STATIC "${CPKT_NGHTTP2_FACADE_SOURCE}")
+add_dependencies(cpkt_nghttp2_static cpkt_nghttp2_facade_generated)
+cpkt_configure_c89_target(cpkt_nghttp2_static)
+cpkt_add_repo_warning_errors(cpkt_nghttp2_static)
+target_compile_definitions(cpkt_nghttp2_static PRIVATE CPKT_NGHTTP2_STATIC)
+target_include_directories(cpkt_nghttp2_static PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_nghttp2_static PUBLIC cpkt::nghttp2_static)
+set_target_properties(cpkt_nghttp2_static PROPERTIES
+  OUTPUT_NAME cpkt_nghttp2
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_nghttp2_shared SHARED "${CPKT_NGHTTP2_FACADE_SOURCE}")
+add_dependencies(cpkt_nghttp2_shared cpkt_nghttp2_facade_generated)
+cpkt_configure_c89_target(cpkt_nghttp2_shared)
+cpkt_add_repo_warning_errors(cpkt_nghttp2_shared)
+target_compile_definitions(cpkt_nghttp2_shared PRIVATE CPKT_NGHTTP2_BUILDING_SHARED)
+target_include_directories(cpkt_nghttp2_shared PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_nghttp2_shared PUBLIC cpkt::nghttp2_shared)
+set_target_properties(cpkt_nghttp2_shared PROPERTIES
+  OUTPUT_NAME cpkt_nghttp2
+  C_VISIBILITY_PRESET hidden
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_NGHTTP2_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_nghttp2_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_nghttp2_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
 
 add_library(cpkt_openssl_static STATIC src/openssl.c)
 cpkt_configure_c89_target(cpkt_openssl_static)
@@ -1213,6 +1277,11 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_openssl_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_openssl_facade_test)
     target_link_libraries(cpkt_openssl_facade_test PRIVATE cpkt_openssl_static)
+    add_executable(cpkt_nghttp2_facade_test tests/nghttp2_facade_test.c)
+    cpkt_use_local_runtime(cpkt_nghttp2_facade_test)
+    target_compile_options(cpkt_nghttp2_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_nghttp2_facade_test)
+    target_link_libraries(cpkt_nghttp2_facade_test PRIVATE cpkt_nghttp2_static)
     add_executable(cpkt_sasl_facade_test tests/sasl_facade_test.c)
     cpkt_use_local_runtime(cpkt_sasl_facade_test)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
@@ -1383,6 +1452,7 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
       add_test(NAME openssl_facade COMMAND cpkt_openssl_facade_test)
+      add_test(NAME nghttp2_facade COMMAND cpkt_nghttp2_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(
         NAME postgres_e2e_harness
@@ -1641,7 +1711,8 @@ if(CPKT_BUILD_TESTS)
             --symbol-tool "${CMAKE_READELF}"
             --clang "${CPKT_OPENSSL_API_INVENTORY_CLANG}"
             --output "${CMAKE_BINARY_DIR}/nghttp2-api-inventory-test/inventory.json"
-            --work-dir "${CMAKE_BINARY_DIR}/nghttp2-api-inventory-test")
+            --work-dir "${CMAKE_BINARY_DIR}/nghttp2-api-inventory-test"
+            --facade-header "${CPKT_NGHTTP2_FACADE_HEADER}")
       endif()
       add_test(
         NAME openssl_header_facade
@@ -1661,6 +1732,26 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SYSTEM_NAME}"
           "${CMAKE_NM}"
           "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_openssl.txt"
+          "${CMAKE_C_COMPILER}"
+          "${CMAKE_SYSROOT}")
+      add_test(
+        NAME nghttp2_header_facade
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/nghttp2_header_facade_test.sh"
+          "${CMAKE_SOURCE_DIR}"
+          "${CMAKE_C_COMPILER}"
+          "${CMAKE_SYSROOT}"
+          "${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}")
+      add_test(
+        NAME nghttp2_export_policy
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/nghttp2_export_policy_test.sh"
+          "$<TARGET_FILE:cpkt_nghttp2_shared>"
+          "${CMAKE_SYSTEM_NAME}"
+          "${CMAKE_NM}"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_nghttp2.txt"
           "${CMAKE_C_COMPILER}"
           "${CMAKE_SYSROOT}")
       add_test(

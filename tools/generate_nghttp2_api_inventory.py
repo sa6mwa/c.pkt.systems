@@ -173,7 +173,8 @@ def main() -> int:
         name for name, declaration in declarations.items()
         if NON_C89_TYPE_PATTERN.search(declaration["type"]))
     required_facade_functions = {
-        "cpkt_nghttp2_" + name for name in declarations
+        "cpkt_nghttp2_" + name[len("nghttp2_"):]
+        for name in declarations
     }
     missing_facade_functions: List[str] = []
     if args.facade_header:
