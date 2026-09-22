@@ -82,82 +82,90 @@ const cpkt_gss_oid *cpkt_gss_name_type_anonymous(void);
 const cpkt_gss_oid *cpkt_gss_name_type_exported_name(void);
 
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_release_buffer(
-    cpkt_gss_status *minor_status_out, cpkt_gss_buffer *buffer);
+cpkt_gss_status cpkt_gss_release_buffer(cpkt_gss_status *minor_status_out,
+                                        cpkt_gss_buffer *buffer);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_release_oid(
-    cpkt_gss_status *minor_status_out, cpkt_gss_oid **oid_in_out);
+cpkt_gss_status cpkt_gss_release_oid(cpkt_gss_status *minor_status_out,
+                                     cpkt_gss_oid **oid_in_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_release_oid_set(
-    cpkt_gss_status *minor_status_out, cpkt_gss_oid_set **set_in_out);
+cpkt_gss_status cpkt_gss_release_oid_set(cpkt_gss_status *minor_status_out,
+                                         cpkt_gss_oid_set **set_in_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_release_name(
-    cpkt_gss_status *minor_status_out, cpkt_gss_name **name_in_out);
+cpkt_gss_status cpkt_gss_release_name(cpkt_gss_status *minor_status_out,
+                                      cpkt_gss_name **name_in_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_release_credential(
-    cpkt_gss_status *minor_status_out, cpkt_gss_credential **credential_in_out);
+cpkt_gss_status
+cpkt_gss_release_credential(cpkt_gss_status *minor_status_out,
+                            cpkt_gss_credential **credential_in_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_delete_context(
-    cpkt_gss_status *minor_status_out, cpkt_gss_context **context_in_out,
-    cpkt_gss_buffer *output_token);
+cpkt_gss_status cpkt_gss_delete_context(cpkt_gss_status *minor_status_out,
+                                        cpkt_gss_context **context_in_out,
+                                        cpkt_gss_buffer *output_token);
 
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_indicate_mechanisms(
-    cpkt_gss_status *minor_status_out, cpkt_gss_oid_set **set_out);
+cpkt_gss_status cpkt_gss_indicate_mechanisms(cpkt_gss_status *minor_status_out,
+                                             cpkt_gss_oid_set **set_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 size_t cpkt_gss_oid_set_count(const cpkt_gss_oid_set *set);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-const cpkt_gss_oid *cpkt_gss_oid_set_at(const cpkt_gss_oid_set *set, size_t index);
+const cpkt_gss_oid *cpkt_gss_oid_set_at(const cpkt_gss_oid_set *set,
+                                        size_t index);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_create_oid_set(
-    cpkt_gss_status *minor_status_out, cpkt_gss_oid_set **set_out);
+cpkt_gss_status cpkt_gss_create_oid_set(cpkt_gss_status *minor_status_out,
+                                        cpkt_gss_oid_set **set_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_add_oid_to_set(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_oid *oid,
-    cpkt_gss_oid_set **set_in_out);
+cpkt_gss_status cpkt_gss_add_oid_to_set(cpkt_gss_status *minor_status_out,
+                                        const cpkt_gss_oid *oid,
+                                        cpkt_gss_oid_set **set_in_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_oid_set_contains(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_oid *oid,
-    const cpkt_gss_oid_set *set, int *present_out);
+cpkt_gss_status cpkt_gss_oid_set_contains(cpkt_gss_status *minor_status_out,
+                                          const cpkt_gss_oid *oid,
+                                          const cpkt_gss_oid_set *set,
+                                          int *present_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_oid_from_text(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_buffer *text,
-    cpkt_gss_oid **oid_out);
+cpkt_gss_status cpkt_gss_oid_from_text(cpkt_gss_status *minor_status_out,
+                                       const cpkt_gss_buffer *text,
+                                       cpkt_gss_oid **oid_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_oid_to_text(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_oid *oid,
-    cpkt_gss_buffer *text_out);
+cpkt_gss_status cpkt_gss_oid_to_text(cpkt_gss_status *minor_status_out,
+                                     const cpkt_gss_oid *oid,
+                                     cpkt_gss_buffer *text_out);
 
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_import_name(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_buffer *input,
-    const cpkt_gss_oid *name_type, cpkt_gss_name **name_out);
+cpkt_gss_status cpkt_gss_import_name(cpkt_gss_status *minor_status_out,
+                                     const cpkt_gss_buffer *input,
+                                     const cpkt_gss_oid *name_type,
+                                     cpkt_gss_name **name_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_display_name(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_name *name,
-    cpkt_gss_buffer *text_out, const cpkt_gss_oid **name_type_out);
+cpkt_gss_status cpkt_gss_display_name(cpkt_gss_status *minor_status_out,
+                                      const cpkt_gss_name *name,
+                                      cpkt_gss_buffer *text_out,
+                                      const cpkt_gss_oid **name_type_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_compare_names(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_name *left,
-    const cpkt_gss_name *right, int *equal_out);
+cpkt_gss_status cpkt_gss_compare_names(cpkt_gss_status *minor_status_out,
+                                       const cpkt_gss_name *left,
+                                       const cpkt_gss_name *right,
+                                       int *equal_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_duplicate_name(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_name *source,
-    cpkt_gss_name **copy_out);
+cpkt_gss_status cpkt_gss_duplicate_name(cpkt_gss_status *minor_status_out,
+                                        const cpkt_gss_name *source,
+                                        cpkt_gss_name **copy_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_canonicalize_name(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_name *source,
-    const cpkt_gss_oid *mechanism, cpkt_gss_name **canonical_out);
+cpkt_gss_status cpkt_gss_canonicalize_name(cpkt_gss_status *minor_status_out,
+                                           const cpkt_gss_name *source,
+                                           const cpkt_gss_oid *mechanism,
+                                           cpkt_gss_name **canonical_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_export_name(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_name *name,
-    cpkt_gss_buffer *token_out);
+cpkt_gss_status cpkt_gss_export_name(cpkt_gss_status *minor_status_out,
+                                     const cpkt_gss_name *name,
+                                     cpkt_gss_buffer *token_out);
 
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 cpkt_gss_status cpkt_gss_acquire_credential(
     cpkt_gss_status *minor_status_out, const cpkt_gss_name *desired_name,
-    cpkt_gss_lifetime requested_lifetime, const cpkt_gss_oid_set *desired_mechanisms,
-    int usage, cpkt_gss_credential **credential_out,
+    cpkt_gss_lifetime requested_lifetime,
+    const cpkt_gss_oid_set *desired_mechanisms, int usage,
+    cpkt_gss_credential **credential_out,
     cpkt_gss_oid_set **actual_mechanisms_out, cpkt_gss_lifetime *lifetime_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 cpkt_gss_status cpkt_gss_inquire_credential(
@@ -172,47 +180,54 @@ cpkt_gss_status cpkt_gss_init_context(
     const cpkt_gss_oid *mechanism, cpkt_gss_flags requested_flags,
     cpkt_gss_lifetime requested_lifetime,
     const cpkt_gss_channel_bindings *channel_bindings,
-    const cpkt_gss_buffer *input_token, const cpkt_gss_oid **actual_mechanism_out,
-    cpkt_gss_buffer *output_token, cpkt_gss_flags *returned_flags_out,
-    cpkt_gss_lifetime *lifetime_out);
+    const cpkt_gss_buffer *input_token,
+    const cpkt_gss_oid **actual_mechanism_out, cpkt_gss_buffer *output_token,
+    cpkt_gss_flags *returned_flags_out, cpkt_gss_lifetime *lifetime_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 cpkt_gss_status cpkt_gss_accept_context(
     cpkt_gss_status *minor_status_out, cpkt_gss_context **context_in_out,
     const cpkt_gss_credential *credential, const cpkt_gss_buffer *input_token,
-    const cpkt_gss_channel_bindings *channel_bindings, cpkt_gss_name **source_out,
-    const cpkt_gss_oid **mechanism_out, cpkt_gss_buffer *output_token,
-    cpkt_gss_flags *returned_flags_out, cpkt_gss_lifetime *lifetime_out,
+    const cpkt_gss_channel_bindings *channel_bindings,
+    cpkt_gss_name **source_out, const cpkt_gss_oid **mechanism_out,
+    cpkt_gss_buffer *output_token, cpkt_gss_flags *returned_flags_out,
+    cpkt_gss_lifetime *lifetime_out,
     cpkt_gss_credential **delegated_credential_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_context_lifetime(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_context *context,
-    cpkt_gss_lifetime *lifetime_out);
+cpkt_gss_status cpkt_gss_context_lifetime(cpkt_gss_status *minor_status_out,
+                                          const cpkt_gss_context *context,
+                                          cpkt_gss_lifetime *lifetime_out);
 
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_get_mic(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_context *context,
-    cpkt_gss_qop qop, const cpkt_gss_buffer *message,
-    cpkt_gss_buffer *token_out);
+cpkt_gss_status cpkt_gss_get_mic(cpkt_gss_status *minor_status_out,
+                                 const cpkt_gss_context *context,
+                                 cpkt_gss_qop qop,
+                                 const cpkt_gss_buffer *message,
+                                 cpkt_gss_buffer *token_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_verify_mic(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_context *context,
-    const cpkt_gss_buffer *message, const cpkt_gss_buffer *token,
-    cpkt_gss_qop *qop_out);
+cpkt_gss_status cpkt_gss_verify_mic(cpkt_gss_status *minor_status_out,
+                                    const cpkt_gss_context *context,
+                                    const cpkt_gss_buffer *message,
+                                    const cpkt_gss_buffer *token,
+                                    cpkt_gss_qop *qop_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_wrap(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_context *context,
-    int confidentiality_requested, cpkt_gss_qop qop,
-    const cpkt_gss_buffer *input, int *confidentiality_out,
-    cpkt_gss_buffer *output_out);
+cpkt_gss_status cpkt_gss_wrap(cpkt_gss_status *minor_status_out,
+                              const cpkt_gss_context *context,
+                              int confidentiality_requested, cpkt_gss_qop qop,
+                              const cpkt_gss_buffer *input,
+                              int *confidentiality_out,
+                              cpkt_gss_buffer *output_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_unwrap(
-    cpkt_gss_status *minor_status_out, const cpkt_gss_context *context,
-    const cpkt_gss_buffer *input, cpkt_gss_buffer *output_out,
-    int *confidentiality_out, cpkt_gss_qop *qop_out);
+cpkt_gss_status cpkt_gss_unwrap(cpkt_gss_status *minor_status_out,
+                                const cpkt_gss_context *context,
+                                const cpkt_gss_buffer *input,
+                                cpkt_gss_buffer *output_out,
+                                int *confidentiality_out,
+                                cpkt_gss_qop *qop_out);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
-cpkt_gss_status cpkt_gss_display_status(
-    cpkt_gss_status *minor_status_out, cpkt_gss_status status, int status_type,
-    const cpkt_gss_oid *mechanism, cpkt_gss_status *message_context_in_out,
-    cpkt_gss_buffer *text_out);
+cpkt_gss_status cpkt_gss_display_status(cpkt_gss_status *minor_status_out,
+                                        cpkt_gss_status status, int status_type,
+                                        const cpkt_gss_oid *mechanism,
+                                        cpkt_gss_status *message_context_in_out,
+                                        cpkt_gss_buffer *text_out);
 
 #endif

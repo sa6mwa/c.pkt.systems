@@ -1,7 +1,6 @@
 #include <krb5.h>
 
-int main(void)
-{
+int main(void) {
   krb5_context context;
 
   context = 0;

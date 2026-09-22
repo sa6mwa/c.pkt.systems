@@ -49,51 +49,62 @@ typedef struct cpkt_sasl_interaction {
 } cpkt_sasl_interaction;
 
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
-typedef int (*cpkt_sasl_option_callback)(void *context,
-    const char *plugin_name, const char *option, const char **result,
-    unsigned long *result_byte_count);
+typedef int (*cpkt_sasl_option_callback)(void *context, const char *plugin_name,
+                                         const char *option,
+                                         const char **result,
+                                         unsigned long *result_byte_count);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_log_callback)(void *context, int level,
-    const char *message);
+                                      const char *message);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_path_callback)(void *context, const char **path);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_verify_file_callback)(void *context, const char *path,
-    int type);
+                                              int type);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_configuration_path_callback)(void *context,
-    char **path_out);
+                                                     char **path_out);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_simple_callback)(void *context, int id,
-    const char **result, unsigned long *result_byte_count);
+                                         const char **result,
+                                         unsigned long *result_byte_count);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_secret_callback)(cpkt_sasl *connection, void *context,
-    int id, void **secret_out);
+                                         int id, void **secret_out);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_challenge_callback)(void *context, int id,
-    const char *challenge, const char *prompt, const char *default_result,
-    const char **result, unsigned long *result_byte_count);
+                                            const char *challenge,
+                                            const char *prompt,
+                                            const char *default_result,
+                                            const char **result,
+                                            unsigned long *result_byte_count);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_realm_callback)(void *context, int id,
-    const char *const *available_realms, const char **result);
+                                        const char *const *available_realms,
+                                        const char **result);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
-typedef int (*cpkt_sasl_authorize_callback)(cpkt_sasl *connection,
-    void *context, const char *requested_user, unsigned long requested_length,
-    const char *authentication_identity, unsigned long authentication_length,
-    const char *default_realm, unsigned long realm_length);
+typedef int (*cpkt_sasl_authorize_callback)(
+    cpkt_sasl *connection, void *context, const char *requested_user,
+    unsigned long requested_length, const char *authentication_identity,
+    unsigned long authentication_length, const char *default_realm,
+    unsigned long realm_length);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_check_password_callback)(cpkt_sasl *connection,
-    void *context, const char *user, const char *password,
-    unsigned long password_length);
+                                                 void *context,
+                                                 const char *user,
+                                                 const char *password,
+                                                 unsigned long password_length);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_set_password_callback)(cpkt_sasl *connection,
-    void *context, const char *user, const char *password,
-    unsigned long password_length, unsigned long flags);
+                                               void *context, const char *user,
+                                               const char *password,
+                                               unsigned long password_length,
+                                               unsigned long flags);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
-typedef int (*cpkt_sasl_canonicalize_callback)(cpkt_sasl *connection,
-    void *context, const char *input, unsigned long input_length,
-    unsigned long flags, const char *realm, char *output,
-    unsigned long output_capacity, unsigned long *output_length);
+typedef int (*cpkt_sasl_canonicalize_callback)(
+    cpkt_sasl *connection, void *context, const char *input,
+    unsigned long input_length, unsigned long flags, const char *realm,
+    char *output, unsigned long output_capacity, unsigned long *output_length);
 
 /* A zero-initialized callback record installs no callbacks. */
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
@@ -148,25 +159,29 @@ enum cpkt_sasl_constants {
  * operation or receiver close, exactly as documented by Cyrus SASL. */
 struct cpkt_sasl {
   int (*start)(cpkt_sasl *self, const char *mechanisms,
-      cpkt_sasl_interaction **interactions_out, const char **output_out,
-      unsigned long *output_byte_count, const char **mechanism_out);
-  int (*step)(cpkt_sasl *self, const char *input, unsigned long input_byte_count,
-      cpkt_sasl_interaction **interactions_out, const char **output_out,
-      unsigned long *output_byte_count);
-  int (*server_start)(cpkt_sasl *self, const char *mechanism,
-      const char *input, unsigned long input_byte_count,
-      const char **output_out, unsigned long *output_byte_count);
-  int (*list_mechanisms)(cpkt_sasl *self, const char *user,
-      const char *prefix, const char *separator, const char *suffix,
-      const char **result_out, unsigned long *result_byte_count,
-      int *count_out);
-  int (*encode)(cpkt_sasl *self, const char *input, unsigned long input_byte_count,
-      const char **output_out, unsigned long *output_byte_count);
-  int (*decode)(cpkt_sasl *self, const char *input, unsigned long input_byte_count,
-      const char **output_out, unsigned long *output_byte_count);
+               cpkt_sasl_interaction **interactions_out,
+               const char **output_out, unsigned long *output_byte_count,
+               const char **mechanism_out);
+  int (*step)(cpkt_sasl *self, const char *input,
+              unsigned long input_byte_count,
+              cpkt_sasl_interaction **interactions_out, const char **output_out,
+              unsigned long *output_byte_count);
+  int (*server_start)(cpkt_sasl *self, const char *mechanism, const char *input,
+                      unsigned long input_byte_count, const char **output_out,
+                      unsigned long *output_byte_count);
+  int (*list_mechanisms)(cpkt_sasl *self, const char *user, const char *prefix,
+                         const char *separator, const char *suffix,
+                         const char **result_out,
+                         unsigned long *result_byte_count, int *count_out);
+  int (*encode)(cpkt_sasl *self, const char *input,
+                unsigned long input_byte_count, const char **output_out,
+                unsigned long *output_byte_count);
+  int (*decode)(cpkt_sasl *self, const char *input,
+                unsigned long input_byte_count, const char **output_out,
+                unsigned long *output_byte_count);
   int (*set_external_ssf)(cpkt_sasl *self, unsigned long value);
-  int (*set_security_properties)(cpkt_sasl *self,
-      const cpkt_sasl_security_properties *properties);
+  int (*set_security_properties)(
+      cpkt_sasl *self, const cpkt_sasl_security_properties *properties);
   int (*set_external_authentication)(cpkt_sasl *self, const char *identity);
   const char *(*error_detail)(const cpkt_sasl *self);
   void (*close)(cpkt_sasl *self);
@@ -175,11 +190,11 @@ struct cpkt_sasl {
 
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 void cpkt_sasl_version(const char **implementation_out,
-    const char **version_out, int *major_out, int *minor_out,
-    int *step_out, int *patch_out);
+                       const char **version_out, int *major_out, int *minor_out,
+                       int *step_out, int *patch_out);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 const char *cpkt_sasl_error_string(int status, const char *languages,
-    const char **language_out);
+                                   const char **language_out);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 int cpkt_sasl_set_path(int type, const char *path);
 /* Global initialization accepts process callbacks only. Receiver callbacks
@@ -188,20 +203,24 @@ int cpkt_sasl_set_path(int type, const char *path);
 int cpkt_sasl_client_initialize(const cpkt_sasl_callbacks *callbacks);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 int cpkt_sasl_server_initialize(const cpkt_sasl_callbacks *callbacks,
-    const char *application_name);
+                                const char *application_name);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 int cpkt_sasl_client_finish(void);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 int cpkt_sasl_server_finish(void);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 cpkt_sasl *cpkt_sasl_client_new(const char *service, const char *server_name,
-    const char *local_endpoint, const char *remote_endpoint,
-    const cpkt_sasl_callbacks *callbacks, unsigned long flags, int *status_out);
+                                const char *local_endpoint,
+                                const char *remote_endpoint,
+                                const cpkt_sasl_callbacks *callbacks,
+                                unsigned long flags, int *status_out);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 cpkt_sasl *cpkt_sasl_server_new(const char *service, const char *server_name,
-    const char *user_realm, const char *local_endpoint,
-    const char *remote_endpoint, const cpkt_sasl_callbacks *callbacks,
-    unsigned long flags, int *status_out);
+                                const char *user_realm,
+                                const char *local_endpoint,
+                                const char *remote_endpoint,
+                                const cpkt_sasl_callbacks *callbacks,
+                                unsigned long flags, int *status_out);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 void cpkt_sasl_close(cpkt_sasl *self);
 

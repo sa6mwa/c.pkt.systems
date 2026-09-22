@@ -14,8 +14,8 @@
  * @{
  */
 
-#include <stddef.h>
 #include <stdarg.h>
+#include <stddef.h>
 
 /** Opaque database receiver; close it with cpkt_sqlite_close(). */
 typedef struct cpkt_sqlite cpkt_sqlite;
@@ -52,7 +52,8 @@ typedef struct cpkt_sqlite_fts5_tokenizer cpkt_sqlite_fts5_tokenizer;
 /** Callback-local FTS5 auxiliary context; never retain it. */
 typedef struct cpkt_sqlite_fts5_context cpkt_sqlite_fts5_context;
 /** FTS5 phrase iterator valid only during its enclosing callback. */
-typedef struct cpkt_sqlite_fts5_phrase_iterator cpkt_sqlite_fts5_phrase_iterator;
+typedef struct cpkt_sqlite_fts5_phrase_iterator
+    cpkt_sqlite_fts5_phrase_iterator;
 /** Opaque SQLite mutex receiver; close dynamic mutexes when finished. */
 typedef struct cpkt_sqlite_mutex cpkt_sqlite_mutex;
 /** Application-owned page-cache shell used by global page-cache hooks. */
@@ -117,7 +118,8 @@ typedef struct cpkt_sqlite_column_metadata {
   int auto_increment;
 } cpkt_sqlite_column_metadata;
 
-/** Read-only constraint entry presented to virtual-table best-index callbacks. */
+/** Read-only constraint entry presented to virtual-table best-index callbacks.
+ */
 typedef struct cpkt_sqlite_index_constraint {
   int column;
   unsigned long operation;
@@ -136,7 +138,6 @@ typedef struct cpkt_sqlite_index_constraint_usage {
   int omit;
 } cpkt_sqlite_index_constraint_usage;
 
-
 /**
  * SQLite owns calls into these records after global configuration succeeds.
  * The caller owns cache and page state; do not retain receiver arguments
@@ -147,15 +148,15 @@ typedef struct cpkt_sqlite_page_cache_methods {
   int (*initialize)(void *context);
   void (*shutdown)(void *context);
   cpkt_sqlite_page_cache *(*create)(void *context, int page_byte_count,
-      int extra_byte_count, int purgeable);
+                                    int extra_byte_count, int purgeable);
   void (*cache_size)(cpkt_sqlite_page_cache *cache, int suggested_page_count);
   int (*page_count)(cpkt_sqlite_page_cache *cache);
-  cpkt_sqlite_page *(*fetch)(cpkt_sqlite_page_cache *cache,
-      unsigned long key, int create_flag);
+  cpkt_sqlite_page *(*fetch)(cpkt_sqlite_page_cache *cache, unsigned long key,
+                             int create_flag);
   void (*unpin)(cpkt_sqlite_page_cache *cache, cpkt_sqlite_page *page,
-      int discard);
+                int discard);
   void (*rekey)(cpkt_sqlite_page_cache *cache, cpkt_sqlite_page *page,
-      unsigned long old_key, unsigned long new_key);
+                unsigned long old_key, unsigned long new_key);
   void (*truncate)(cpkt_sqlite_page_cache *cache, unsigned long limit);
   void (*destroy)(cpkt_sqlite_page_cache *cache);
   void (*shrink)(cpkt_sqlite_page_cache *cache);
@@ -197,121 +198,147 @@ struct cpkt_sqlite_rtree_query {
 };
 
 /** Receives one exec row; return nonzero to abort evaluation. */
-typedef int (*cpkt_sqlite_row_callback)(
-    void *context, int column_count, const char *const *values,
-    const char *const *names);
+typedef int (*cpkt_sqlite_row_callback)(void *context, int column_count,
+                                        const char *const *values,
+                                        const char *const *names);
 /** Decides whether SQLite retries a busy operation for retry_count. */
 typedef int (*cpkt_sqlite_busy_callback)(void *context, int retry_count);
 /** Authorizes an SQL action; return the documented SQLite authorizer code. */
 typedef int (*cpkt_sqlite_authorizer_callback)(void *context, int action,
-    const char *detail1, const char *detail2, const char *database,
-    const char *trigger);
+                                               const char *detail1,
+                                               const char *detail2,
+                                               const char *database,
+                                               const char *trigger);
 /** Compares two encoded collation values. */
-typedef int (*cpkt_sqlite_collation_callback)(void *context, int left_byte_count,
-    const void *left, int right_byte_count, const void *right);
+typedef int (*cpkt_sqlite_collation_callback)(void *context,
+                                              int left_byte_count,
+                                              const void *left,
+                                              int right_byte_count,
+                                              const void *right);
 /** Resolves a requested UTF-8 collation name for a database. */
-typedef void (*cpkt_sqlite_collation_needed_callback)(void *context,
-    cpkt_sqlite *database, unsigned long text_representation, const char *name);
+typedef void (*cpkt_sqlite_collation_needed_callback)(
+    void *context, cpkt_sqlite *database, unsigned long text_representation,
+    const char *name);
 /** Resolves a requested UTF-16 collation name for a database. */
-typedef void (*cpkt_sqlite_collation_needed16_callback)(void *context,
-    cpkt_sqlite *database, unsigned long text_representation, const void *name);
+typedef void (*cpkt_sqlite_collation_needed16_callback)(
+    void *context, cpkt_sqlite *database, unsigned long text_representation,
+    const void *name);
 /** Selects the auto-vacuum page limit for a schema. */
-typedef unsigned long (*cpkt_sqlite_autovacuum_callback)(void *context,
-    const char *schema_name, unsigned long database_page_count,
+typedef unsigned long (*cpkt_sqlite_autovacuum_callback)(
+    void *context, const char *schema_name, unsigned long database_page_count,
     unsigned long free_page_count, unsigned long page_byte_count);
 /** Receives trace/profile events; SQL text is SQLite-owned callback data. */
 typedef void (*cpkt_sqlite_trace_callback)(void *context, cpkt_sqlite *database,
-    unsigned long event, const char *sql, cpkt_sqlite_u64 elapsed_nanoseconds);
+                                           unsigned long event, const char *sql,
+                                           cpkt_sqlite_u64 elapsed_nanoseconds);
 /** Legacy statement-start tracing callback. */
 typedef void (*cpkt_sqlite_legacy_trace_callback)(void *context,
-    const char *sql);
+                                                  const char *sql);
 /** Legacy statement-completion profiling callback. */
-typedef void (*cpkt_sqlite_legacy_profile_callback)(void *context,
-    const char *sql, cpkt_sqlite_u64 elapsed_nanoseconds);
+typedef void (*cpkt_sqlite_legacy_profile_callback)(
+    void *context, const char *sql, cpkt_sqlite_u64 elapsed_nanoseconds);
 /**
  * SQLite may coalesce registrations into one notification.  `contexts`
  * contains every registered facade context in that notification, including
  * `context`; it is valid only for the duration of this callback.
  */
 typedef void (*cpkt_sqlite_unlock_notify_callback)(void *context,
-    int context_count, void *const *contexts);
-typedef int (*cpkt_sqlite_module_connect_callback)(void *context,
-    cpkt_sqlite *database, int argument_count, const char *const *arguments,
-    cpkt_sqlite_virtual_table **out, char **error_out);
-typedef int (*cpkt_sqlite_module_best_index_callback)(void *context,
-    cpkt_sqlite_virtual_table *table, cpkt_sqlite_index_info *index_info);
-typedef int (*cpkt_sqlite_module_table_callback)(void *context,
-    cpkt_sqlite_virtual_table *table);
-typedef int (*cpkt_sqlite_module_open_callback)(void *context,
-    cpkt_sqlite_virtual_table *table, cpkt_sqlite_virtual_cursor **out);
-typedef int (*cpkt_sqlite_module_cursor_callback)(void *context,
-    cpkt_sqlite_virtual_cursor *cursor);
-typedef int (*cpkt_sqlite_module_filter_callback)(void *context,
-    cpkt_sqlite_virtual_cursor *cursor, int index_number,
+                                                   int context_count,
+                                                   void *const *contexts);
+typedef int (*cpkt_sqlite_module_connect_callback)(
+    void *context, cpkt_sqlite *database, int argument_count,
+    const char *const *arguments, cpkt_sqlite_virtual_table **out,
+    char **error_out);
+typedef int (*cpkt_sqlite_module_best_index_callback)(
+    void *context, cpkt_sqlite_virtual_table *table,
+    cpkt_sqlite_index_info *index_info);
+typedef int (*cpkt_sqlite_module_table_callback)(
+    void *context, cpkt_sqlite_virtual_table *table);
+typedef int (*cpkt_sqlite_module_open_callback)(
+    void *context, cpkt_sqlite_virtual_table *table,
+    cpkt_sqlite_virtual_cursor **out);
+typedef int (*cpkt_sqlite_module_cursor_callback)(
+    void *context, cpkt_sqlite_virtual_cursor *cursor);
+typedef int (*cpkt_sqlite_module_filter_callback)(
+    void *context, cpkt_sqlite_virtual_cursor *cursor, int index_number,
     const char *index_string, int argument_count,
     cpkt_sqlite_value *const *arguments);
-typedef int (*cpkt_sqlite_module_column_callback)(void *context,
-    cpkt_sqlite_virtual_cursor *cursor, cpkt_sqlite_context *result,
-    int column);
-typedef int (*cpkt_sqlite_module_rowid_callback)(void *context,
-    cpkt_sqlite_virtual_cursor *cursor, cpkt_sqlite_i64 *rowid_out);
-typedef int (*cpkt_sqlite_module_update_callback)(void *context,
-    cpkt_sqlite_virtual_table *table, int argument_count,
+typedef int (*cpkt_sqlite_module_column_callback)(
+    void *context, cpkt_sqlite_virtual_cursor *cursor,
+    cpkt_sqlite_context *result, int column);
+typedef int (*cpkt_sqlite_module_rowid_callback)(
+    void *context, cpkt_sqlite_virtual_cursor *cursor,
+    cpkt_sqlite_i64 *rowid_out);
+typedef int (*cpkt_sqlite_module_update_callback)(
+    void *context, cpkt_sqlite_virtual_table *table, int argument_count,
     cpkt_sqlite_value *const *arguments, cpkt_sqlite_i64 *rowid_out);
-typedef int (*cpkt_sqlite_module_rename_callback)(void *context,
-    cpkt_sqlite_virtual_table *table, const char *name);
-typedef int (*cpkt_sqlite_module_savepoint_callback)(void *context,
-    cpkt_sqlite_virtual_table *table, int savepoint);
-typedef int (*cpkt_sqlite_module_integrity_callback)(void *context,
-    cpkt_sqlite_virtual_table *table, const char *schema, const char *name,
-    int flags, char **error_out);
+typedef int (*cpkt_sqlite_module_rename_callback)(
+    void *context, cpkt_sqlite_virtual_table *table, const char *name);
+typedef int (*cpkt_sqlite_module_savepoint_callback)(
+    void *context, cpkt_sqlite_virtual_table *table, int savepoint);
+typedef int (*cpkt_sqlite_module_integrity_callback)(
+    void *context, cpkt_sqlite_virtual_table *table, const char *schema,
+    const char *name, int flags, char **error_out);
 /** Identifies a module-owned shadow table name for SQLite schema handling. */
 typedef int (*cpkt_sqlite_module_shadow_name_callback)(const char *name);
-typedef int (*cpkt_sqlite_rtree_geometry_callback)(void *context,
-    cpkt_sqlite_rtree_geometry *geometry, int coordinate_count,
+typedef int (*cpkt_sqlite_rtree_geometry_callback)(
+    void *context, cpkt_sqlite_rtree_geometry *geometry, int coordinate_count,
     double *coordinates, int *within_out);
 typedef int (*cpkt_sqlite_rtree_query_callback)(void *context,
-    cpkt_sqlite_rtree_query *query);
+                                                cpkt_sqlite_rtree_query *query);
 typedef int (*cpkt_sqlite_progress_callback)(void *context);
 typedef void (*cpkt_sqlite_destroy_callback)(void *context);
 typedef int (*cpkt_sqlite_commit_callback)(void *context);
 typedef void (*cpkt_sqlite_rollback_callback)(void *context);
 typedef void (*cpkt_sqlite_update_callback)(void *context, int operation,
-    const char *database_name, const char *table_name, cpkt_sqlite_i64 row_id);
+                                            const char *database_name,
+                                            const char *table_name,
+                                            cpkt_sqlite_i64 row_id);
 typedef int (*cpkt_sqlite_wal_callback)(void *context, cpkt_sqlite *database,
-    const char *database_name, int page_count);
-typedef void (*cpkt_sqlite_preupdate_callback)(void *context, cpkt_sqlite *database,
-    int operation, const char *database_name, const char *table_name,
+                                        const char *database_name,
+                                        int page_count);
+typedef void (*cpkt_sqlite_preupdate_callback)(
+    void *context, cpkt_sqlite *database, int operation,
+    const char *database_name, const char *table_name,
     cpkt_sqlite_i64 old_row_id, cpkt_sqlite_i64 new_row_id);
 typedef void (*cpkt_sqlite_scalar_callback)(cpkt_sqlite_context *context,
-    int argument_count, cpkt_sqlite_value *const *arguments, void *user_data);
-typedef int (*cpkt_sqlite_module_find_function_callback)(void *context,
-    cpkt_sqlite_virtual_table *table, int argument_count, const char *name,
-    cpkt_sqlite_scalar_callback *function_out, void **user_data_out);
+                                            int argument_count,
+                                            cpkt_sqlite_value *const *arguments,
+                                            void *user_data);
+typedef int (*cpkt_sqlite_module_find_function_callback)(
+    void *context, cpkt_sqlite_virtual_table *table, int argument_count,
+    const char *name, cpkt_sqlite_scalar_callback *function_out,
+    void **user_data_out);
 typedef int (*cpkt_sqlite_changeset_filter_callback)(void *context,
-    const char *table_name);
-typedef int (*cpkt_sqlite_changeset_iterator_filter_callback)(void *context,
-    cpkt_sqlite_changeset_iterator *iterator);
+                                                     const char *table_name);
+typedef int (*cpkt_sqlite_changeset_iterator_filter_callback)(
+    void *context, cpkt_sqlite_changeset_iterator *iterator);
 typedef int (*cpkt_sqlite_session_filter_callback)(void *context,
-    const char *table_name);
-typedef int (*cpkt_sqlite_changeset_conflict_callback)(void *context,
-    int conflict_kind, cpkt_sqlite_changeset_iterator *iterator);
-typedef int (*cpkt_sqlite_stream_input_callback)(void *context,
-    void *buffer, int *byte_count);
+                                                   const char *table_name);
+typedef int (*cpkt_sqlite_changeset_conflict_callback)(
+    void *context, int conflict_kind, cpkt_sqlite_changeset_iterator *iterator);
+typedef int (*cpkt_sqlite_stream_input_callback)(void *context, void *buffer,
+                                                 int *byte_count);
 typedef int (*cpkt_sqlite_stream_output_callback)(void *context,
-    const void *buffer, int byte_count);
+                                                  const void *buffer,
+                                                  int byte_count);
 typedef void (*cpkt_sqlite_log_callback)(void *context, int error_code,
-    const char *message);
+                                         const char *message);
 /** Receives a legacy global memory-pressure notification. */
-typedef void (*cpkt_sqlite_memory_alarm_callback)(void *context,
-    cpkt_sqlite_i64 requested_bytes, int prior_allocation_failed);
+typedef void (*cpkt_sqlite_memory_alarm_callback)(
+    void *context, cpkt_sqlite_i64 requested_bytes,
+    int prior_allocation_failed);
 /** Initializes one newly opened database through the C89 facade. */
 typedef int (*cpkt_sqlite_auto_extension_callback)(cpkt_sqlite *database,
-    char **error_out, void *context);
+                                                   char **error_out,
+                                                   void *context);
 typedef int (*cpkt_sqlite_fts5_token_callback)(void *context, int flags,
-    const char *token, int token_byte_count, int start_offset, int end_offset);
-typedef int (*cpkt_sqlite_fts5_tokenizer_create_callback)(void *context,
-    const char *const *arguments, int argument_count,
+                                               const char *token,
+                                               int token_byte_count,
+                                               int start_offset,
+                                               int end_offset);
+typedef int (*cpkt_sqlite_fts5_tokenizer_create_callback)(
+    void *context, const char *const *arguments, int argument_count,
     cpkt_sqlite_fts5_tokenizer **out);
 typedef void (*cpkt_sqlite_fts5_tokenizer_destroy_callback)(
     cpkt_sqlite_fts5_tokenizer *tokenizer, void *context);
@@ -326,66 +353,88 @@ typedef void (*cpkt_sqlite_fts5_auxiliary_callback)(
     int argument_count, cpkt_sqlite_value *const *arguments, void *user_data);
 /** Opens a file receiver. Set file->methods before returning success. */
 typedef int (*cpkt_sqlite_vfs_open_callback)(cpkt_sqlite_vfs *vfs,
-    const char *name, cpkt_sqlite_file *file, int flags, int *flags_out);
+                                             const char *name,
+                                             cpkt_sqlite_file *file, int flags,
+                                             int *flags_out);
 typedef int (*cpkt_sqlite_vfs_delete_callback)(cpkt_sqlite_vfs *vfs,
-    const char *name, int sync_directory);
+                                               const char *name,
+                                               int sync_directory);
 typedef int (*cpkt_sqlite_vfs_access_callback)(cpkt_sqlite_vfs *vfs,
-    const char *name, int flags, int *result_out);
+                                               const char *name, int flags,
+                                               int *result_out);
 typedef int (*cpkt_sqlite_vfs_full_path_callback)(cpkt_sqlite_vfs *vfs,
-    const char *name, int output_byte_count, char *output);
+                                                  const char *name,
+                                                  int output_byte_count,
+                                                  char *output);
 typedef void *(*cpkt_sqlite_vfs_dl_open_callback)(cpkt_sqlite_vfs *vfs,
-    const char *filename);
+                                                  const char *filename);
 typedef void (*cpkt_sqlite_vfs_dl_error_callback)(cpkt_sqlite_vfs *vfs,
-    int byte_count, char *message);
+                                                  int byte_count,
+                                                  char *message);
 typedef void (*cpkt_sqlite_vfs_symbol_callback)(void);
 typedef cpkt_sqlite_vfs_symbol_callback (*cpkt_sqlite_vfs_dl_symbol_callback)(
     cpkt_sqlite_vfs *vfs, void *handle, const char *symbol);
 typedef void (*cpkt_sqlite_vfs_dl_close_callback)(cpkt_sqlite_vfs *vfs,
-    void *handle);
+                                                  void *handle);
 typedef int (*cpkt_sqlite_vfs_randomness_callback)(cpkt_sqlite_vfs *vfs,
-    int byte_count, char *output);
+                                                   int byte_count,
+                                                   char *output);
 typedef int (*cpkt_sqlite_vfs_sleep_callback)(cpkt_sqlite_vfs *vfs,
-    int microseconds);
+                                              int microseconds);
 typedef int (*cpkt_sqlite_vfs_current_time_callback)(cpkt_sqlite_vfs *vfs,
-    double *julian_day_out);
+                                                     double *julian_day_out);
 typedef int (*cpkt_sqlite_vfs_last_error_callback)(cpkt_sqlite_vfs *vfs,
-    int byte_count, char *message);
-typedef int (*cpkt_sqlite_vfs_current_time_i64_callback)(cpkt_sqlite_vfs *vfs,
-    cpkt_sqlite_i64 *milliseconds_out);
-typedef int (*cpkt_sqlite_vfs_set_system_call_callback)(cpkt_sqlite_vfs *vfs,
-    const char *name, cpkt_sqlite_vfs_symbol_callback symbol);
-typedef cpkt_sqlite_vfs_symbol_callback (*cpkt_sqlite_vfs_get_system_call_callback)(
-    cpkt_sqlite_vfs *vfs, const char *name);
+                                                   int byte_count,
+                                                   char *message);
+typedef int (*cpkt_sqlite_vfs_current_time_i64_callback)(
+    cpkt_sqlite_vfs *vfs, cpkt_sqlite_i64 *milliseconds_out);
+typedef int (*cpkt_sqlite_vfs_set_system_call_callback)(
+    cpkt_sqlite_vfs *vfs, const char *name,
+    cpkt_sqlite_vfs_symbol_callback symbol);
+typedef cpkt_sqlite_vfs_symbol_callback (
+    *cpkt_sqlite_vfs_get_system_call_callback)(cpkt_sqlite_vfs *vfs,
+                                               const char *name);
 typedef const char *(*cpkt_sqlite_vfs_next_system_call_callback)(
     cpkt_sqlite_vfs *vfs, const char *name);
 typedef int (*cpkt_sqlite_file_close_callback)(cpkt_sqlite_file *file);
 typedef int (*cpkt_sqlite_file_read_callback)(cpkt_sqlite_file *file,
-    void *buffer, int byte_count, cpkt_sqlite_i64 offset);
+                                              void *buffer, int byte_count,
+                                              cpkt_sqlite_i64 offset);
 typedef int (*cpkt_sqlite_file_write_callback)(cpkt_sqlite_file *file,
-    const void *buffer, int byte_count, cpkt_sqlite_i64 offset);
+                                               const void *buffer,
+                                               int byte_count,
+                                               cpkt_sqlite_i64 offset);
 typedef int (*cpkt_sqlite_file_truncate_callback)(cpkt_sqlite_file *file,
-    cpkt_sqlite_i64 size);
-typedef int (*cpkt_sqlite_file_sync_callback)(cpkt_sqlite_file *file, int flags);
+                                                  cpkt_sqlite_i64 size);
+typedef int (*cpkt_sqlite_file_sync_callback)(cpkt_sqlite_file *file,
+                                              int flags);
 typedef int (*cpkt_sqlite_file_size_callback)(cpkt_sqlite_file *file,
-    cpkt_sqlite_i64 *size_out);
-typedef int (*cpkt_sqlite_file_lock_callback)(cpkt_sqlite_file *file, int level);
+                                              cpkt_sqlite_i64 *size_out);
+typedef int (*cpkt_sqlite_file_lock_callback)(cpkt_sqlite_file *file,
+                                              int level);
 typedef int (*cpkt_sqlite_file_reserved_lock_callback)(cpkt_sqlite_file *file,
-    int *result_out);
+                                                       int *result_out);
 typedef int (*cpkt_sqlite_file_control_callback)(cpkt_sqlite_file *file,
-    int operation, void *argument);
+                                                 int operation, void *argument);
 typedef int (*cpkt_sqlite_file_sector_size_callback)(cpkt_sqlite_file *file);
-typedef int (*cpkt_sqlite_file_characteristics_callback)(cpkt_sqlite_file *file);
+typedef int (*cpkt_sqlite_file_characteristics_callback)(
+    cpkt_sqlite_file *file);
 typedef int (*cpkt_sqlite_file_shm_map_callback)(cpkt_sqlite_file *file,
-    int page, int page_byte_count, int extend, void volatile **out);
+                                                 int page, int page_byte_count,
+                                                 int extend,
+                                                 void volatile **out);
 typedef int (*cpkt_sqlite_file_shm_lock_callback)(cpkt_sqlite_file *file,
-    int offset, int count, int flags);
+                                                  int offset, int count,
+                                                  int flags);
 typedef void (*cpkt_sqlite_file_shm_barrier_callback)(cpkt_sqlite_file *file);
 typedef int (*cpkt_sqlite_file_shm_unmap_callback)(cpkt_sqlite_file *file,
-    int delete_flag);
+                                                   int delete_flag);
 typedef int (*cpkt_sqlite_file_fetch_callback)(cpkt_sqlite_file *file,
-    cpkt_sqlite_i64 offset, int byte_count, void **out);
+                                               cpkt_sqlite_i64 offset,
+                                               int byte_count, void **out);
 typedef int (*cpkt_sqlite_file_unfetch_callback)(cpkt_sqlite_file *file,
-    cpkt_sqlite_i64 offset, void *memory);
+                                                 cpkt_sqlite_i64 offset,
+                                                 void *memory);
 
 enum {
   CPKT_SQLITE_OK = 0,
@@ -629,28 +678,30 @@ enum {
   CPKT_SQLITE_VTAB_USES_ALL_SCHEMAS = 4
 };
 
-/* Explicit receiver shell: db->tx(db, sql, callback, context); db->close(db). */
+/* Explicit receiver shell: db->tx(db, sql, callback, context); db->close(db).
+ */
 struct cpkt_sqlite {
   int (*tx)(cpkt_sqlite *self, const char *sql,
-      cpkt_sqlite_row_callback callback, void *context);
+            cpkt_sqlite_row_callback callback, void *context);
   int (*prepare)(cpkt_sqlite *self, const char *sql, int byte_count,
-      unsigned long flags, cpkt_sqlite_statement **statement_out,
-      const char **tail_out);
+                 unsigned long flags, cpkt_sqlite_statement **statement_out,
+                 const char **tail_out);
   int (*prepare16)(cpkt_sqlite *self, const void *sql, int byte_count,
-      unsigned long flags, cpkt_sqlite_statement **statement_out,
-      const void **tail_out);
+                   unsigned long flags, cpkt_sqlite_statement **statement_out,
+                   const void **tail_out);
   int (*busy_timeout)(cpkt_sqlite *self, int milliseconds);
   int (*extended_result_codes)(cpkt_sqlite *self, int enabled);
   int (*wal_auto_checkpoint)(cpkt_sqlite *self, int page_count);
   int (*wal_checkpoint)(cpkt_sqlite *self, const char *schema, int mode,
-      int *log_frames_out, int *checkpointed_frames_out);
+                        int *log_frames_out, int *checkpointed_frames_out);
   int (*load_extension)(cpkt_sqlite *self, const char *path,
-      const char *entry_point, char **error_out);
+                        const char *entry_point, char **error_out);
   int (*enable_extension_loading)(cpkt_sqlite *self, int enabled);
   int (*unlock_notify)(cpkt_sqlite *self,
-      cpkt_sqlite_unlock_notify_callback callback, void *context);
+                       cpkt_sqlite_unlock_notify_callback callback,
+                       void *context);
   int (*overload_function)(cpkt_sqlite *self, const char *name,
-      int argument_count);
+                           int argument_count);
   int (*changes)(const cpkt_sqlite *self);
   cpkt_sqlite_i64 (*last_insert_rowid)(const cpkt_sqlite *self);
   int (*preupdate_blob_write)(const cpkt_sqlite *self);
@@ -668,40 +719,49 @@ struct cpkt_sqlite_statement {
   int (*bind_null)(cpkt_sqlite_statement *self, int parameter_index);
   int (*bind_int)(cpkt_sqlite_statement *self, int parameter_index, int value);
   int (*bind_i64)(cpkt_sqlite_statement *self, int parameter_index,
-      cpkt_sqlite_i64 value);
-  int (*bind_double)(cpkt_sqlite_statement *self, int parameter_index, double value);
+                  cpkt_sqlite_i64 value);
+  int (*bind_double)(cpkt_sqlite_statement *self, int parameter_index,
+                     double value);
   int (*bind_text)(cpkt_sqlite_statement *self, int parameter_index,
-      const char *value, int byte_count);
+                   const char *value, int byte_count);
   int (*bind_text16)(cpkt_sqlite_statement *self, int parameter_index,
-      const void *value, int byte_count);
+                     const void *value, int byte_count);
   int (*bind_text_u64)(cpkt_sqlite_statement *self, int parameter_index,
-      const void *value, cpkt_sqlite_u64 byte_count, unsigned long encoding);
+                       const void *value, cpkt_sqlite_u64 byte_count,
+                       unsigned long encoding);
   int (*bind_text_owned)(cpkt_sqlite_statement *self, int parameter_index,
-      const char *value, int byte_count, cpkt_sqlite_destroy_callback destroy);
+                         const char *value, int byte_count,
+                         cpkt_sqlite_destroy_callback destroy);
   int (*bind_blob)(cpkt_sqlite_statement *self, int parameter_index,
-      const void *value, int byte_count);
+                   const void *value, int byte_count);
   int (*bind_blob_u64)(cpkt_sqlite_statement *self, int parameter_index,
-      const void *value, cpkt_sqlite_u64 byte_count);
+                       const void *value, cpkt_sqlite_u64 byte_count);
   int (*bind_blob_owned)(cpkt_sqlite_statement *self, int parameter_index,
-      const void *value, int byte_count, cpkt_sqlite_destroy_callback destroy);
-  int (*bind_zero_blob)(cpkt_sqlite_statement *self, int parameter_index, int byte_count);
+                         const void *value, int byte_count,
+                         cpkt_sqlite_destroy_callback destroy);
+  int (*bind_zero_blob)(cpkt_sqlite_statement *self, int parameter_index,
+                        int byte_count);
   int (*bind_zero_blob_u64)(cpkt_sqlite_statement *self, int parameter_index,
-      cpkt_sqlite_u64 byte_count);
+                            cpkt_sqlite_u64 byte_count);
   int (*bind_value)(cpkt_sqlite_statement *self, int parameter_index,
-      const cpkt_sqlite_value *value);
+                    const cpkt_sqlite_value *value);
   int (*bind_pointer)(cpkt_sqlite_statement *self, int parameter_index,
-      void *value, const char *type_name, cpkt_sqlite_destroy_callback destroy);
+                      void *value, const char *type_name,
+                      cpkt_sqlite_destroy_callback destroy);
   int (*bind_carray)(cpkt_sqlite_statement *self, int parameter_index,
-      void *data, int element_count, int element_type,
-      cpkt_sqlite_destroy_callback destroy);
-  int (*bind_carray_with_context)(cpkt_sqlite_statement *self, int parameter_index,
-      void *data, int element_count, int element_type,
-      cpkt_sqlite_destroy_callback destroy, void *destroy_context);
+                     void *data, int element_count, int element_type,
+                     cpkt_sqlite_destroy_callback destroy);
+  int (*bind_carray_with_context)(cpkt_sqlite_statement *self,
+                                  int parameter_index, void *data,
+                                  int element_count, int element_type,
+                                  cpkt_sqlite_destroy_callback destroy,
+                                  void *destroy_context);
   int (*step)(cpkt_sqlite_statement *self);
   int (*reset)(cpkt_sqlite_statement *self);
   int (*clear_bindings)(cpkt_sqlite_statement *self);
   int (*parameter_count)(const cpkt_sqlite_statement *self);
-  const char *(*parameter_name)(const cpkt_sqlite_statement *self, int parameter_index);
+  const char *(*parameter_name)(const cpkt_sqlite_statement *self,
+                                int parameter_index);
   int (*parameter_index)(const cpkt_sqlite_statement *self, const char *name);
   int (*column_count)(const cpkt_sqlite_statement *self);
   const char *(*column_name)(const cpkt_sqlite_statement *self, int column);
@@ -710,20 +770,30 @@ struct cpkt_sqlite_statement {
   int (*column_int)(const cpkt_sqlite_statement *self, int column);
   cpkt_sqlite_i64 (*column_i64)(const cpkt_sqlite_statement *self, int column);
   double (*column_double)(const cpkt_sqlite_statement *self, int column);
-  const unsigned char *(*column_text)(const cpkt_sqlite_statement *self, int column);
+  const unsigned char *(*column_text)(const cpkt_sqlite_statement *self,
+                                      int column);
   const void *(*column_text16)(const cpkt_sqlite_statement *self, int column);
   const void *(*column_blob)(const cpkt_sqlite_statement *self, int column);
   int (*column_bytes)(const cpkt_sqlite_statement *self, int column);
   int (*column_bytes16)(const cpkt_sqlite_statement *self, int column);
-  cpkt_sqlite_value *(*column_value)(const cpkt_sqlite_statement *self, int column);
-  const char *(*column_database_name)(const cpkt_sqlite_statement *self, int column);
-  const void *(*column_database_name16)(const cpkt_sqlite_statement *self, int column);
-  const char *(*column_table_name)(const cpkt_sqlite_statement *self, int column);
-  const void *(*column_table_name16)(const cpkt_sqlite_statement *self, int column);
-  const char *(*column_origin_name)(const cpkt_sqlite_statement *self, int column);
-  const void *(*column_origin_name16)(const cpkt_sqlite_statement *self, int column);
-  const char *(*column_declared_type)(const cpkt_sqlite_statement *self, int column);
-  const void *(*column_declared_type16)(const cpkt_sqlite_statement *self, int column);
+  cpkt_sqlite_value *(*column_value)(const cpkt_sqlite_statement *self,
+                                     int column);
+  const char *(*column_database_name)(const cpkt_sqlite_statement *self,
+                                      int column);
+  const void *(*column_database_name16)(const cpkt_sqlite_statement *self,
+                                        int column);
+  const char *(*column_table_name)(const cpkt_sqlite_statement *self,
+                                   int column);
+  const void *(*column_table_name16)(const cpkt_sqlite_statement *self,
+                                     int column);
+  const char *(*column_origin_name)(const cpkt_sqlite_statement *self,
+                                    int column);
+  const void *(*column_origin_name16)(const cpkt_sqlite_statement *self,
+                                      int column);
+  const char *(*column_declared_type)(const cpkt_sqlite_statement *self,
+                                      int column);
+  const void *(*column_declared_type16)(const cpkt_sqlite_statement *self,
+                                        int column);
   const char *(*sql)(const cpkt_sqlite_statement *self);
   char *(*expanded_sql)(const cpkt_sqlite_statement *self);
   const char *(*normalized_sql)(const cpkt_sqlite_statement *self);
@@ -735,13 +805,16 @@ struct cpkt_sqlite_statement {
   int (*data_count)(const cpkt_sqlite_statement *self);
   int (*status)(const cpkt_sqlite_statement *self, int operation, int reset);
   int (*scan_status_i64)(const cpkt_sqlite_statement *self, int index,
-      int operation, unsigned long flags, cpkt_sqlite_i64 *value_out);
+                         int operation, unsigned long flags,
+                         cpkt_sqlite_i64 *value_out);
   int (*scan_status_double)(const cpkt_sqlite_statement *self, int index,
-      int operation, unsigned long flags, double *value_out);
+                            int operation, unsigned long flags,
+                            double *value_out);
   int (*scan_status_int)(const cpkt_sqlite_statement *self, int index,
-      int operation, unsigned long flags, int *value_out);
+                         int operation, unsigned long flags, int *value_out);
   int (*scan_status_text)(const cpkt_sqlite_statement *self, int index,
-      int operation, unsigned long flags, const char **value_out);
+                          int operation, unsigned long flags,
+                          const char **value_out);
   void (*scan_status_reset)(cpkt_sqlite_statement *self);
   int (*finalize)(cpkt_sqlite_statement *self);
   void *statement;
@@ -755,7 +828,8 @@ struct cpkt_sqlite_statement {
  */
 struct cpkt_sqlite_blob {
   int (*read)(cpkt_sqlite_blob *self, void *buffer, int byte_count, int offset);
-  int (*write)(cpkt_sqlite_blob *self, const void *buffer, int byte_count, int offset);
+  int (*write)(cpkt_sqlite_blob *self, const void *buffer, int byte_count,
+               int offset);
   int (*reopen)(cpkt_sqlite_blob *self, cpkt_sqlite_i64 row_id);
   int (*bytes)(const cpkt_sqlite_blob *self);
   int (*close)(cpkt_sqlite_blob *self);
@@ -805,7 +879,6 @@ struct cpkt_sqlite_virtual_table {
   void *state;
   void *internal;
 };
-
 
 struct cpkt_sqlite_virtual_cursor {
   cpkt_sqlite_virtual_table *table;
@@ -939,7 +1012,8 @@ struct cpkt_sqlite_session {
   int (*attach)(cpkt_sqlite_session *self, const char *table_name);
   int (*object_config)(cpkt_sqlite_session *self, int operation, int *value);
   void (*table_filter)(cpkt_sqlite_session *self,
-      cpkt_sqlite_session_filter_callback filter, void *context);
+                       cpkt_sqlite_session_filter_callback filter,
+                       void *context);
   int (*enable)(cpkt_sqlite_session *self, int enabled);
   int (*indirect)(cpkt_sqlite_session *self, int indirect);
   int (*empty)(const cpkt_sqlite_session *self);
@@ -948,11 +1022,13 @@ struct cpkt_sqlite_session {
   cpkt_sqlite_i64 (*changeset_size)(const cpkt_sqlite_session *self);
   cpkt_sqlite_i64 (*memory_used)(const cpkt_sqlite_session *self);
   int (*diff)(cpkt_sqlite_session *self, const char *from_database,
-      const char *table_name, char **error_out);
+              const char *table_name, char **error_out);
   int (*changeset_stream)(cpkt_sqlite_session *self,
-      cpkt_sqlite_stream_output_callback output, void *context);
+                          cpkt_sqlite_stream_output_callback output,
+                          void *context);
   int (*patchset_stream)(cpkt_sqlite_session *self,
-      cpkt_sqlite_stream_output_callback output, void *context);
+                         cpkt_sqlite_stream_output_callback output,
+                         void *context);
   void (*close)(cpkt_sqlite_session *self);
   void *session;
   cpkt_sqlite *database;
@@ -964,24 +1040,26 @@ struct cpkt_sqlite_changeset {
   const void *data;
   int byte_count;
   int (*iterator)(const cpkt_sqlite_changeset *self,
-      cpkt_sqlite_changeset_iterator **out);
+                  cpkt_sqlite_changeset_iterator **out);
   void (*free)(cpkt_sqlite_changeset *self);
   void *owned_data;
 };
 
 struct cpkt_sqlite_changeset_iterator {
   int (*next)(cpkt_sqlite_changeset_iterator *self);
-  int (*operation)(cpkt_sqlite_changeset_iterator *self, const char **table_name,
-      int *column_count, int *operation, int *indirect);
+  int (*operation)(cpkt_sqlite_changeset_iterator *self,
+                   const char **table_name, int *column_count, int *operation,
+                   int *indirect);
   int (*primary_key)(cpkt_sqlite_changeset_iterator *self,
-      const unsigned char **columns, int *column_count);
+                     const unsigned char **columns, int *column_count);
   int (*old_value)(cpkt_sqlite_changeset_iterator *self, int column,
-      cpkt_sqlite_value **out);
+                   cpkt_sqlite_value **out);
   int (*new_value)(cpkt_sqlite_changeset_iterator *self, int column,
-      cpkt_sqlite_value **out);
+                   cpkt_sqlite_value **out);
   int (*conflict_value)(cpkt_sqlite_changeset_iterator *self, int column,
-      cpkt_sqlite_value **out);
-  int (*foreign_key_conflicts)(cpkt_sqlite_changeset_iterator *self, int *count_out);
+                        cpkt_sqlite_value **out);
+  int (*foreign_key_conflicts)(cpkt_sqlite_changeset_iterator *self,
+                               int *count_out);
   int (*close)(cpkt_sqlite_changeset_iterator *self);
   void *iterator;
   cpkt_sqlite_stream_input_callback input;
@@ -991,10 +1069,12 @@ struct cpkt_sqlite_changeset_iterator {
 struct cpkt_sqlite_rebaser {
   int (*configure)(cpkt_sqlite_rebaser *self, const void *data, int byte_count);
   int (*rebase)(cpkt_sqlite_rebaser *self, const void *data, int byte_count,
-      cpkt_sqlite_changeset **out);
+                cpkt_sqlite_changeset **out);
   int (*rebase_stream)(cpkt_sqlite_rebaser *self,
-      cpkt_sqlite_stream_input_callback input, void *input_context,
-      cpkt_sqlite_stream_output_callback output, void *output_context);
+                       cpkt_sqlite_stream_input_callback input,
+                       void *input_context,
+                       cpkt_sqlite_stream_output_callback output,
+                       void *output_context);
   void (*close)(cpkt_sqlite_rebaser *self);
   void *rebaser;
 };
@@ -1002,28 +1082,30 @@ struct cpkt_sqlite_rebaser {
 struct cpkt_sqlite_changegroup {
   int (*config)(cpkt_sqlite_changegroup *self, int operation, int *value);
   int (*schema)(cpkt_sqlite_changegroup *self, cpkt_sqlite *database,
-      const char *schema_name);
-  int (*add)(cpkt_sqlite_changegroup *self, const cpkt_sqlite_changeset *changeset);
+                const char *schema_name);
+  int (*add)(cpkt_sqlite_changegroup *self,
+             const cpkt_sqlite_changeset *changeset);
   int (*add_stream)(cpkt_sqlite_changegroup *self,
-      cpkt_sqlite_stream_input_callback input, void *context);
+                    cpkt_sqlite_stream_input_callback input, void *context);
   int (*add_change)(cpkt_sqlite_changegroup *self,
-      cpkt_sqlite_changeset_iterator *iterator);
+                    cpkt_sqlite_changeset_iterator *iterator);
   int (*output)(cpkt_sqlite_changegroup *self, cpkt_sqlite_changeset **out);
   int (*output_stream)(cpkt_sqlite_changegroup *self,
-      cpkt_sqlite_stream_output_callback output, void *context);
+                       cpkt_sqlite_stream_output_callback output,
+                       void *context);
   int (*change_begin)(cpkt_sqlite_changegroup *self, int operation,
-      const char *table_name, int indirect, char **error_out);
+                      const char *table_name, int indirect, char **error_out);
   int (*change_i64)(cpkt_sqlite_changegroup *self, int is_new, int column,
-      cpkt_sqlite_i64 value);
+                    cpkt_sqlite_i64 value);
   int (*change_null)(cpkt_sqlite_changegroup *self, int is_new, int column);
   int (*change_double)(cpkt_sqlite_changegroup *self, int is_new, int column,
-      double value);
+                       double value);
   int (*change_text)(cpkt_sqlite_changegroup *self, int is_new, int column,
-      const char *value, int byte_count);
+                     const char *value, int byte_count);
   int (*change_blob)(cpkt_sqlite_changegroup *self, int is_new, int column,
-      const void *value, int byte_count);
+                     const void *value, int byte_count);
   int (*change_finish)(cpkt_sqlite_changegroup *self, int discard,
-      char **error_out);
+                       char **error_out);
   void (*close)(cpkt_sqlite_changegroup *self);
   void *changegroup;
 };
@@ -1032,10 +1114,12 @@ struct cpkt_sqlite_filename {
   const char *(*database)(const cpkt_sqlite_filename *self);
   const char *(*journal)(const cpkt_sqlite_filename *self);
   const char *(*wal)(const cpkt_sqlite_filename *self);
-  const char *(*uri_parameter)(const cpkt_sqlite_filename *self, const char *name);
-  int (*uri_boolean)(const cpkt_sqlite_filename *self, const char *name, int default_value);
+  const char *(*uri_parameter)(const cpkt_sqlite_filename *self,
+                               const char *name);
+  int (*uri_boolean)(const cpkt_sqlite_filename *self, const char *name,
+                     int default_value);
   cpkt_sqlite_i64 (*uri_i64)(const cpkt_sqlite_filename *self, const char *name,
-      cpkt_sqlite_i64 default_value);
+                             cpkt_sqlite_i64 default_value);
   const char *(*uri_key)(const cpkt_sqlite_filename *self, int index);
   void (*close)(cpkt_sqlite_filename *self);
   void *filename;
@@ -1045,13 +1129,15 @@ struct cpkt_sqlite_filename {
 struct cpkt_sqlite_fts5_api {
   int (*version)(const cpkt_sqlite_fts5_api *self);
   int (*create_tokenizer)(cpkt_sqlite_fts5_api *self, const char *name,
-      void *context, cpkt_sqlite_fts5_tokenizer_create_callback create,
-      cpkt_sqlite_fts5_tokenizer_destroy_callback destroy,
-      cpkt_sqlite_fts5_tokenizer_tokenize_callback tokenize,
-      cpkt_sqlite_destroy_callback binding_destroy);
+                          void *context,
+                          cpkt_sqlite_fts5_tokenizer_create_callback create,
+                          cpkt_sqlite_fts5_tokenizer_destroy_callback destroy,
+                          cpkt_sqlite_fts5_tokenizer_tokenize_callback tokenize,
+                          cpkt_sqlite_destroy_callback binding_destroy);
   int (*create_auxiliary)(cpkt_sqlite_fts5_api *self, const char *name,
-      void *user_data, cpkt_sqlite_fts5_auxiliary_callback callback,
-      cpkt_sqlite_destroy_callback destroy);
+                          void *user_data,
+                          cpkt_sqlite_fts5_auxiliary_callback callback,
+                          cpkt_sqlite_destroy_callback destroy);
   void (*close)(cpkt_sqlite_fts5_api *self);
   void *api;
   cpkt_sqlite *database;
@@ -1069,41 +1155,48 @@ struct cpkt_sqlite_fts5_context {
   int (*column_count)(const cpkt_sqlite_fts5_context *self);
   int (*row_count)(const cpkt_sqlite_fts5_context *self, cpkt_sqlite_i64 *out);
   int (*column_total_size)(const cpkt_sqlite_fts5_context *self, int column,
-      cpkt_sqlite_i64 *out);
+                           cpkt_sqlite_i64 *out);
   int (*tokenize)(cpkt_sqlite_fts5_context *self, const char *text,
-      int text_byte_count, void *context, cpkt_sqlite_fts5_token_callback token);
+                  int text_byte_count, void *context,
+                  cpkt_sqlite_fts5_token_callback token);
   int (*tokenize_locale)(cpkt_sqlite_fts5_context *self, const char *text,
-      int text_byte_count, const char *locale, int locale_byte_count,
-      void *context, cpkt_sqlite_fts5_token_callback token);
+                         int text_byte_count, const char *locale,
+                         int locale_byte_count, void *context,
+                         cpkt_sqlite_fts5_token_callback token);
   int (*phrase_count)(const cpkt_sqlite_fts5_context *self);
   int (*phrase_size)(const cpkt_sqlite_fts5_context *self, int phrase);
   int (*instance_count)(const cpkt_sqlite_fts5_context *self, int *out);
   int (*instance)(const cpkt_sqlite_fts5_context *self, int index,
-      int *phrase_out, int *column_out, int *offset_out);
+                  int *phrase_out, int *column_out, int *offset_out);
   cpkt_sqlite_i64 (*rowid)(const cpkt_sqlite_fts5_context *self);
   int (*column_text)(const cpkt_sqlite_fts5_context *self, int column,
-      const char **text_out, int *byte_count_out);
+                     const char **text_out, int *byte_count_out);
   int (*column_size)(const cpkt_sqlite_fts5_context *self, int column,
-      int *token_count_out);
+                     int *token_count_out);
   int (*query_phrase)(cpkt_sqlite_fts5_context *self, int phrase,
-      void *user_data, cpkt_sqlite_fts5_query_phrase_callback callback);
+                      void *user_data,
+                      cpkt_sqlite_fts5_query_phrase_callback callback);
   int (*set_auxdata)(cpkt_sqlite_fts5_context *self, void *data,
-      cpkt_sqlite_destroy_callback destroy);
+                     cpkt_sqlite_destroy_callback destroy);
   void *(*get_auxdata)(cpkt_sqlite_fts5_context *self, int clear);
   int (*phrase_first)(cpkt_sqlite_fts5_context *self, int phrase,
-      cpkt_sqlite_fts5_phrase_iterator *iterator, int *column_out, int *offset_out);
+                      cpkt_sqlite_fts5_phrase_iterator *iterator,
+                      int *column_out, int *offset_out);
   void (*phrase_next)(cpkt_sqlite_fts5_context *self,
-      cpkt_sqlite_fts5_phrase_iterator *iterator, int *column_out, int *offset_out);
+                      cpkt_sqlite_fts5_phrase_iterator *iterator,
+                      int *column_out, int *offset_out);
   int (*phrase_first_column)(cpkt_sqlite_fts5_context *self, int phrase,
-      cpkt_sqlite_fts5_phrase_iterator *iterator, int *column_out);
+                             cpkt_sqlite_fts5_phrase_iterator *iterator,
+                             int *column_out);
   void (*phrase_next_column)(cpkt_sqlite_fts5_context *self,
-      cpkt_sqlite_fts5_phrase_iterator *iterator, int *column_out);
+                             cpkt_sqlite_fts5_phrase_iterator *iterator,
+                             int *column_out);
   int (*query_token)(cpkt_sqlite_fts5_context *self, int phrase, int token,
-      const char **text_out, int *byte_count_out);
+                     const char **text_out, int *byte_count_out);
   int (*instance_token)(cpkt_sqlite_fts5_context *self, int instance, int token,
-      const char **text_out, int *byte_count_out);
+                        const char **text_out, int *byte_count_out);
   int (*column_locale)(cpkt_sqlite_fts5_context *self, int column,
-      const char **locale_out, int *byte_count_out);
+                       const char **locale_out, int *byte_count_out);
   void *api;
   void *context;
   cpkt_sqlite *database;
@@ -1131,7 +1224,7 @@ struct cpkt_sqlite_string {
   void (*append_char)(cpkt_sqlite_string *self, int count, char character);
   void (*append_format)(cpkt_sqlite_string *self, const char *format, ...);
   void (*append_format_v)(cpkt_sqlite_string *self, const char *format,
-      va_list arguments);
+                          va_list arguments);
   void (*reset)(cpkt_sqlite_string *self);
   void (*truncate)(cpkt_sqlite_string *self, int byte_count);
   int (*error_code)(const cpkt_sqlite_string *self);
@@ -1164,13 +1257,14 @@ int cpkt_sqlite_global_config_int(int operation, int value);
 int cpkt_sqlite_global_config_two_int(int operation, int first, int second);
 int cpkt_sqlite_global_config_pointer(int operation, void *value);
 int cpkt_sqlite_global_config_pointer_int_int(int operation, void *buffer,
-    int first, int second);
+                                              int first, int second);
 int cpkt_sqlite_global_config_i64(int operation, cpkt_sqlite_i64 value);
 int cpkt_sqlite_global_config_two_i64(int operation, cpkt_sqlite_i64 first,
-    cpkt_sqlite_i64 second);
+                                      cpkt_sqlite_i64 second);
 int cpkt_sqlite_global_config_unsigned_int(int operation, unsigned long value);
 int cpkt_sqlite_global_config_int_out(int operation, int *value_out);
-int cpkt_sqlite_global_config_log(cpkt_sqlite_log_callback callback, void *context);
+int cpkt_sqlite_global_config_log(cpkt_sqlite_log_callback callback,
+                                  void *context);
 void cpkt_sqlite_log(int error_code, const char *format, ...);
 int cpkt_sqlite_global_config_memory_methods_set(
     const cpkt_sqlite_memory_methods *methods);
@@ -1186,9 +1280,10 @@ int cpkt_sqlite_complete(const char *sql);
 int cpkt_sqlite_complete_utf16(const void *sql);
 char *cpkt_sqlite_format(const char *format, ...);
 char *cpkt_sqlite_format_v(const char *format, va_list arguments);
-char *cpkt_sqlite_format_into(int byte_count, char *buffer, const char *format, ...);
-char *cpkt_sqlite_format_into_v(int byte_count, char *buffer, const char *format,
-    va_list arguments);
+char *cpkt_sqlite_format_into(int byte_count, char *buffer, const char *format,
+                              ...);
+char *cpkt_sqlite_format_into_v(int byte_count, char *buffer,
+                                const char *format, va_list arguments);
 void *cpkt_sqlite_allocate(int byte_count);
 void *cpkt_sqlite_allocate_u64(cpkt_sqlite_u64 byte_count);
 void *cpkt_sqlite_reallocate(void *memory, int byte_count);
@@ -1198,7 +1293,7 @@ cpkt_sqlite_u64 cpkt_sqlite_allocation_size(void *memory);
 cpkt_sqlite_i64 cpkt_sqlite_memory_used(void);
 cpkt_sqlite_i64 cpkt_sqlite_memory_highwater(int reset);
 int cpkt_sqlite_memory_alarm(cpkt_sqlite_memory_alarm_callback callback,
-    void *context, cpkt_sqlite_i64 threshold_bytes);
+                             void *context, cpkt_sqlite_i64 threshold_bytes);
 void cpkt_sqlite_randomness(int byte_count, void *buffer);
 int cpkt_sqlite_enable_shared_cache(int enabled);
 int cpkt_sqlite_release_memory(int byte_count);
@@ -1209,22 +1304,25 @@ int cpkt_sqlite_keyword_count(void);
 int cpkt_sqlite_keyword_name(int index, const char **name, int *byte_count);
 int cpkt_sqlite_keyword_check(const char *name, int byte_count);
 int cpkt_sqlite_case_compare(const char *left, const char *right);
-int cpkt_sqlite_case_compare_n(const char *left, const char *right, int byte_count);
+int cpkt_sqlite_case_compare_n(const char *left, const char *right,
+                               int byte_count);
 int cpkt_sqlite_glob(const char *pattern, const char *text);
-int cpkt_sqlite_like(const char *pattern, const char *text, unsigned long escape_character);
+int cpkt_sqlite_like(const char *pattern, const char *text,
+                     unsigned long escape_character);
 int cpkt_sqlite_status(int category, int *current, int *highwater, int reset);
 int cpkt_sqlite_status_i64(int category, cpkt_sqlite_i64 *current,
-    cpkt_sqlite_i64 *highwater, int reset);
+                           cpkt_sqlite_i64 *highwater, int reset);
 cpkt_sqlite_string *cpkt_sqlite_string_new(cpkt_sqlite *database);
 cpkt_sqlite *cpkt_sqlite_new(const char *filename);
 cpkt_sqlite *cpkt_sqlite_open(const char *filename, int flags, const char *vfs);
 cpkt_sqlite *cpkt_sqlite_open16(const void *filename);
-cpkt_sqlite_auto_extension *cpkt_sqlite_auto_extension_new(
-    cpkt_sqlite_auto_extension_callback callback, void *context);
+cpkt_sqlite_auto_extension *
+cpkt_sqlite_auto_extension_new(cpkt_sqlite_auto_extension_callback callback,
+                               void *context);
 void cpkt_sqlite_auto_extension_reset(void);
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_new(const char *name,
-    int maximum_pathname_bytes, void *state,
-    const cpkt_sqlite_vfs_methods *methods);
+                                     int maximum_pathname_bytes, void *state,
+                                     const cpkt_sqlite_vfs_methods *methods);
 /* Finds a registered C89 facade VFS; native-only VFSes have no C89 shell. */
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_find(const char *name);
 /* Valid only for a journal or WAL name passed to a facade VFS open callback. */
@@ -1236,66 +1334,75 @@ void cpkt_sqlite_vfs_close(cpkt_sqlite_vfs *self);
 int cpkt_sqlite_close_strict(cpkt_sqlite *self);
 void cpkt_sqlite_close(cpkt_sqlite *self);
 int cpkt_sqlite_exec(cpkt_sqlite *self, const char *sql,
-    cpkt_sqlite_row_callback callback, void *context);
+                     cpkt_sqlite_row_callback callback, void *context);
 int cpkt_sqlite_get_table(cpkt_sqlite *self, const char *sql,
-    cpkt_sqlite_table **table_out, char **error_out);
+                          cpkt_sqlite_table **table_out, char **error_out);
 int cpkt_sqlite_statement_transfer_bindings(cpkt_sqlite_statement *source,
-    cpkt_sqlite_statement *target);
+                                            cpkt_sqlite_statement *target);
 /* Returns a borrowed enumeration view. Finalize releases only that view. */
 int cpkt_sqlite_next_statement(cpkt_sqlite *database,
-    const cpkt_sqlite_statement *previous, cpkt_sqlite_statement **out);
+                               const cpkt_sqlite_statement *previous,
+                               cpkt_sqlite_statement **out);
 int cpkt_sqlite_prepare(cpkt_sqlite *self, const char *sql, int byte_count,
-    unsigned long flags, cpkt_sqlite_statement **statement_out,
-    const char **tail_out);
+                        unsigned long flags,
+                        cpkt_sqlite_statement **statement_out,
+                        const char **tail_out);
 int cpkt_sqlite_prepare16(cpkt_sqlite *self, const void *sql, int byte_count,
-    unsigned long flags, cpkt_sqlite_statement **statement_out,
-    const void **tail_out);
+                          unsigned long flags,
+                          cpkt_sqlite_statement **statement_out,
+                          const void **tail_out);
 int cpkt_sqlite_busy_timeout(cpkt_sqlite *self, int milliseconds);
 int cpkt_sqlite_extended_result_codes(cpkt_sqlite *self, int enabled);
 int cpkt_sqlite_wal_auto_checkpoint(cpkt_sqlite *self, int page_count);
 int cpkt_sqlite_wal_checkpoint(cpkt_sqlite *self, const char *schema, int mode,
-    int *log_frames_out, int *checkpointed_frames_out);
+                               int *log_frames_out,
+                               int *checkpointed_frames_out);
 int cpkt_sqlite_load_extension(cpkt_sqlite *self, const char *path,
-    const char *entry_point, char **error_out);
+                               const char *entry_point, char **error_out);
 int cpkt_sqlite_enable_extension_loading(cpkt_sqlite *self, int enabled);
 int cpkt_sqlite_unlock_notify(cpkt_sqlite *self,
-    cpkt_sqlite_unlock_notify_callback callback, void *context);
+                              cpkt_sqlite_unlock_notify_callback callback,
+                              void *context);
 int cpkt_sqlite_overload_function(cpkt_sqlite *self, const char *name,
-    int argument_count);
+                                  int argument_count);
 int cpkt_sqlite_drop_modules(cpkt_sqlite *self, int kept_name_count,
-    const char *const *kept_names);
+                             const char *const *kept_names);
 cpkt_sqlite_virtual_table *cpkt_sqlite_virtual_table_new(void *state);
-cpkt_sqlite_virtual_cursor *cpkt_sqlite_virtual_cursor_new(
-    cpkt_sqlite_virtual_table *table, void *state);
-int cpkt_sqlite_declare_virtual_table(cpkt_sqlite *database, const char *schema);
+cpkt_sqlite_virtual_cursor *
+cpkt_sqlite_virtual_cursor_new(cpkt_sqlite_virtual_table *table, void *state);
+int cpkt_sqlite_declare_virtual_table(cpkt_sqlite *database,
+                                      const char *schema);
 int cpkt_sqlite_create_module(cpkt_sqlite *database, const char *name,
-    const cpkt_sqlite_module_methods *methods);
+                              const cpkt_sqlite_module_methods *methods);
 int cpkt_sqlite_virtual_table_config_none(cpkt_sqlite *database, int operation);
 int cpkt_sqlite_virtual_table_config_int(cpkt_sqlite *database, int operation,
-    int value);
+                                         int value);
 int cpkt_sqlite_virtual_table_on_conflict(cpkt_sqlite *database);
 int cpkt_sqlite_context_no_change(const cpkt_sqlite_context *context);
 int cpkt_sqlite_index_info_rhs_value(const cpkt_sqlite_index_info *self,
-    int constraint_index, cpkt_sqlite_value *value_out);
+                                     int constraint_index,
+                                     cpkt_sqlite_value *value_out);
 const char *cpkt_sqlite_index_info_collation(const cpkt_sqlite_index_info *self,
-    int constraint_index);
+                                             int constraint_index);
 int cpkt_sqlite_index_info_distinct(const cpkt_sqlite_index_info *self);
 int cpkt_sqlite_index_info_set_in(cpkt_sqlite_index_info *self,
-    int constraint_index, int enabled);
+                                  int constraint_index, int enabled);
 int cpkt_sqlite_virtual_table_in_first(const cpkt_sqlite_value *input,
-    cpkt_sqlite_value *value_out);
+                                       cpkt_sqlite_value *value_out);
 int cpkt_sqlite_virtual_table_in_next(const cpkt_sqlite_value *input,
-    cpkt_sqlite_value *value_out);
+                                      cpkt_sqlite_value *value_out);
 int cpkt_sqlite_database_config_int(cpkt_sqlite *self, int operation, int value,
-    int *result_out);
+                                    int *result_out);
 int cpkt_sqlite_database_config_lookaside(cpkt_sqlite *self, void *buffer,
-    int slot_byte_count, int slot_count);
+                                          int slot_byte_count, int slot_count);
 int cpkt_sqlite_database_config_main_name(cpkt_sqlite *self, const char *name);
 cpkt_sqlite_filename *cpkt_sqlite_filename_new(const char *database,
-    const char *journal, const char *wal, int parameter_count,
-    const char *const *parameters);
+                                               const char *journal,
+                                               const char *wal,
+                                               int parameter_count,
+                                               const char *const *parameters);
 int cpkt_sqlite_fts5_api_open(cpkt_sqlite *database,
-    cpkt_sqlite_fts5_api **out);
+                              cpkt_sqlite_fts5_api **out);
 cpkt_sqlite_fts5_tokenizer *cpkt_sqlite_fts5_tokenizer_new(void *state);
 void *cpkt_sqlite_fts5_tokenizer_state(const cpkt_sqlite_fts5_tokenizer *self);
 int cpkt_sqlite_changes(const cpkt_sqlite *self);
@@ -1303,28 +1410,31 @@ cpkt_sqlite_i64 cpkt_sqlite_changes64(const cpkt_sqlite *self);
 int cpkt_sqlite_total_changes(const cpkt_sqlite *self);
 cpkt_sqlite_i64 cpkt_sqlite_total_changes64(const cpkt_sqlite *self);
 cpkt_sqlite_i64 cpkt_sqlite_last_insert_rowid(const cpkt_sqlite *self);
-void cpkt_sqlite_set_last_insert_rowid(cpkt_sqlite *self, cpkt_sqlite_i64 value);
+void cpkt_sqlite_set_last_insert_rowid(cpkt_sqlite *self,
+                                       cpkt_sqlite_i64 value);
 void cpkt_sqlite_interrupt(cpkt_sqlite *self);
 int cpkt_sqlite_interrupted(const cpkt_sqlite *self);
 int cpkt_sqlite_limit(cpkt_sqlite *self, int category, int new_value);
 int cpkt_sqlite_autocommit(const cpkt_sqlite *self);
 const char *cpkt_sqlite_database_name(const cpkt_sqlite *self, int index);
-const char *cpkt_sqlite_database_filename(const cpkt_sqlite *self, const char *name);
+const char *cpkt_sqlite_database_filename(const cpkt_sqlite *self,
+                                          const char *name);
 int cpkt_sqlite_database_readonly(const cpkt_sqlite *self, const char *name);
 int cpkt_sqlite_transaction_state(const cpkt_sqlite *self, const char *schema);
-int cpkt_sqlite_table_column_metadata(cpkt_sqlite *self, const char *database_name,
-    const char *table_name, const char *column_name,
-    cpkt_sqlite_column_metadata *metadata_out);
+int cpkt_sqlite_table_column_metadata(
+    cpkt_sqlite *self, const char *database_name, const char *table_name,
+    const char *column_name, cpkt_sqlite_column_metadata *metadata_out);
 int cpkt_sqlite_database_release_memory(cpkt_sqlite *self);
 int cpkt_sqlite_cache_flush(cpkt_sqlite *self);
 int cpkt_sqlite_file_control(cpkt_sqlite *self, const char *database_name,
-    int operation, void *argument);
+                             int operation, void *argument);
 int cpkt_sqlite_set_lock_timeout(cpkt_sqlite *self, int milliseconds,
-    unsigned long flags);
+                                 unsigned long flags);
 int cpkt_sqlite_status_database(const cpkt_sqlite *self, int category,
-    int *current, int *highwater, int reset);
+                                int *current, int *highwater, int reset);
 int cpkt_sqlite_status_database_i64(const cpkt_sqlite *self, int category,
-    cpkt_sqlite_i64 *current, cpkt_sqlite_i64 *highwater, int reset);
+                                    cpkt_sqlite_i64 *current,
+                                    cpkt_sqlite_i64 *highwater, int reset);
 int cpkt_sqlite_system_error(const cpkt_sqlite *self);
 const char *cpkt_sqlite_error(const cpkt_sqlite *self);
 const void *cpkt_sqlite_error16(const cpkt_sqlite *self);
@@ -1332,127 +1442,163 @@ int cpkt_sqlite_error_code(const cpkt_sqlite *self);
 int cpkt_sqlite_set_error(cpkt_sqlite *self, int code, const char *message);
 int cpkt_sqlite_error_offset(const cpkt_sqlite *self);
 int cpkt_sqlite_set_busy_handler(cpkt_sqlite *self,
-    cpkt_sqlite_busy_callback callback, void *context);
+                                 cpkt_sqlite_busy_callback callback,
+                                 void *context);
 int cpkt_sqlite_set_authorizer(cpkt_sqlite *self,
-    cpkt_sqlite_authorizer_callback callback, void *context);
-int cpkt_sqlite_set_collation_needed(cpkt_sqlite *self,
-    cpkt_sqlite_collation_needed_callback callback, void *context);
-int cpkt_sqlite_set_collation_needed16(cpkt_sqlite *self,
-    cpkt_sqlite_collation_needed16_callback callback, void *context);
-int cpkt_sqlite_set_autovacuum_callback(cpkt_sqlite *self,
-    cpkt_sqlite_autovacuum_callback callback, void *context,
+                               cpkt_sqlite_authorizer_callback callback,
+                               void *context);
+int cpkt_sqlite_set_collation_needed(
+    cpkt_sqlite *self, cpkt_sqlite_collation_needed_callback callback,
+    void *context);
+int cpkt_sqlite_set_collation_needed16(
+    cpkt_sqlite *self, cpkt_sqlite_collation_needed16_callback callback,
+    void *context);
+int cpkt_sqlite_set_autovacuum_callback(
+    cpkt_sqlite *self, cpkt_sqlite_autovacuum_callback callback, void *context,
     cpkt_sqlite_destroy_callback destroy);
 void *cpkt_sqlite_client_data(const cpkt_sqlite *self, const char *name);
 int cpkt_sqlite_set_client_data(cpkt_sqlite *self, const char *name, void *data,
-    cpkt_sqlite_destroy_callback destroy);
+                                cpkt_sqlite_destroy_callback destroy);
 int cpkt_sqlite_set_trace(cpkt_sqlite *self, unsigned long mask,
-    cpkt_sqlite_trace_callback callback, void *context);
+                          cpkt_sqlite_trace_callback callback, void *context);
 void *cpkt_sqlite_set_legacy_trace(cpkt_sqlite *self,
-    cpkt_sqlite_legacy_trace_callback callback, void *context);
-void *cpkt_sqlite_set_legacy_profile(cpkt_sqlite *self,
-    cpkt_sqlite_legacy_profile_callback callback, void *context);
-int cpkt_sqlite_register_rtree_geometry(cpkt_sqlite *self, const char *name,
+                                   cpkt_sqlite_legacy_trace_callback callback,
+                                   void *context);
+void *
+cpkt_sqlite_set_legacy_profile(cpkt_sqlite *self,
+                               cpkt_sqlite_legacy_profile_callback callback,
+                               void *context);
+int cpkt_sqlite_register_rtree_geometry(
+    cpkt_sqlite *self, const char *name,
     cpkt_sqlite_rtree_geometry_callback callback, void *context);
 int cpkt_sqlite_register_rtree_query(cpkt_sqlite *self, const char *name,
-    cpkt_sqlite_rtree_query_callback callback, void *context,
-    cpkt_sqlite_destroy_callback destroy);
+                                     cpkt_sqlite_rtree_query_callback callback,
+                                     void *context,
+                                     cpkt_sqlite_destroy_callback destroy);
 void cpkt_sqlite_set_progress_handler(cpkt_sqlite *self, int instruction_count,
-    cpkt_sqlite_progress_callback callback, void *context);
+                                      cpkt_sqlite_progress_callback callback,
+                                      void *context);
 void cpkt_sqlite_set_commit_hook(cpkt_sqlite *self,
-    cpkt_sqlite_commit_callback callback, void *context);
+                                 cpkt_sqlite_commit_callback callback,
+                                 void *context);
 void cpkt_sqlite_set_rollback_hook(cpkt_sqlite *self,
-    cpkt_sqlite_rollback_callback callback, void *context);
+                                   cpkt_sqlite_rollback_callback callback,
+                                   void *context);
 void cpkt_sqlite_set_update_hook(cpkt_sqlite *self,
-    cpkt_sqlite_update_callback callback, void *context);
+                                 cpkt_sqlite_update_callback callback,
+                                 void *context);
 void cpkt_sqlite_set_wal_hook(cpkt_sqlite *self,
-    cpkt_sqlite_wal_callback callback, void *context);
+                              cpkt_sqlite_wal_callback callback, void *context);
 int cpkt_sqlite_set_preupdate_hook(cpkt_sqlite *self,
-    cpkt_sqlite_preupdate_callback callback, void *context);
+                                   cpkt_sqlite_preupdate_callback callback,
+                                   void *context);
 int cpkt_sqlite_preupdate_count(const cpkt_sqlite *self);
 int cpkt_sqlite_preupdate_depth(const cpkt_sqlite *self);
 int cpkt_sqlite_preupdate_blob_write(const cpkt_sqlite *self);
 int cpkt_sqlite_preupdate_old(cpkt_sqlite *self, int column,
-    cpkt_sqlite_value **out);
+                              cpkt_sqlite_value **out);
 int cpkt_sqlite_preupdate_new(cpkt_sqlite *self, int column,
-    cpkt_sqlite_value **out);
+                              cpkt_sqlite_value **out);
 int cpkt_sqlite_open_blob(cpkt_sqlite *self, const char *database_name,
-    const char *table_name, const char *column_name, cpkt_sqlite_i64 row_id,
-    int writable, cpkt_sqlite_blob **out);
-int cpkt_sqlite_backup_start(cpkt_sqlite *destination, const char *destination_name,
-    cpkt_sqlite *source, const char *source_name, cpkt_sqlite_backup **out);
+                          const char *table_name, const char *column_name,
+                          cpkt_sqlite_i64 row_id, int writable,
+                          cpkt_sqlite_blob **out);
+int cpkt_sqlite_backup_start(cpkt_sqlite *destination,
+                             const char *destination_name, cpkt_sqlite *source,
+                             const char *source_name, cpkt_sqlite_backup **out);
 int cpkt_sqlite_snapshot_get(cpkt_sqlite *self, const char *schema,
-    cpkt_sqlite_snapshot **out);
+                             cpkt_sqlite_snapshot **out);
 int cpkt_sqlite_snapshot_open(cpkt_sqlite *self, const char *schema,
-    cpkt_sqlite_snapshot *snapshot);
+                              cpkt_sqlite_snapshot *snapshot);
 int cpkt_sqlite_snapshot_compare(const cpkt_sqlite_snapshot *left,
-    const cpkt_sqlite_snapshot *right);
+                                 const cpkt_sqlite_snapshot *right);
 void cpkt_sqlite_snapshot_free(cpkt_sqlite_snapshot *snapshot);
 int cpkt_sqlite_snapshot_recover(cpkt_sqlite *self, const char *schema);
 unsigned char *cpkt_sqlite_serialize(cpkt_sqlite *self, const char *schema,
-    cpkt_sqlite_i64 *byte_count, unsigned long flags);
+                                     cpkt_sqlite_i64 *byte_count,
+                                     unsigned long flags);
 int cpkt_sqlite_deserialize(cpkt_sqlite *self, const char *schema,
-    unsigned char *data, cpkt_sqlite_i64 database_size,
-    cpkt_sqlite_i64 buffer_size, unsigned long flags);
-int cpkt_sqlite_create_function(cpkt_sqlite *self, const char *name,
-    int argument_count, unsigned long text_representation, void *user_data,
+                            unsigned char *data, cpkt_sqlite_i64 database_size,
+                            cpkt_sqlite_i64 buffer_size, unsigned long flags);
+int cpkt_sqlite_create_function(
+    cpkt_sqlite *self, const char *name, int argument_count,
+    unsigned long text_representation, void *user_data,
     cpkt_sqlite_scalar_callback scalar, cpkt_sqlite_scalar_callback step,
     cpkt_sqlite_scalar_callback final, cpkt_sqlite_destroy_callback destroy);
 int cpkt_sqlite_create_function16(cpkt_sqlite *self, const void *name,
-    int argument_count, unsigned long text_representation, void *user_data,
-    cpkt_sqlite_scalar_callback scalar, cpkt_sqlite_scalar_callback step,
-    cpkt_sqlite_scalar_callback final);
-int cpkt_sqlite_create_window_function(cpkt_sqlite *self, const char *name,
-    int argument_count, unsigned long text_representation, void *user_data,
+                                  int argument_count,
+                                  unsigned long text_representation,
+                                  void *user_data,
+                                  cpkt_sqlite_scalar_callback scalar,
+                                  cpkt_sqlite_scalar_callback step,
+                                  cpkt_sqlite_scalar_callback final);
+int cpkt_sqlite_create_window_function(
+    cpkt_sqlite *self, const char *name, int argument_count,
+    unsigned long text_representation, void *user_data,
     cpkt_sqlite_scalar_callback step, cpkt_sqlite_scalar_callback final,
     cpkt_sqlite_scalar_callback value, cpkt_sqlite_scalar_callback inverse,
     cpkt_sqlite_destroy_callback destroy);
 int cpkt_sqlite_create_collation(cpkt_sqlite *self, const char *name,
-    unsigned long text_representation, void *context,
-    cpkt_sqlite_collation_callback compare, cpkt_sqlite_destroy_callback destroy);
+                                 unsigned long text_representation,
+                                 void *context,
+                                 cpkt_sqlite_collation_callback compare,
+                                 cpkt_sqlite_destroy_callback destroy);
 int cpkt_sqlite_create_collation16(cpkt_sqlite *self, const void *name,
-    unsigned long text_representation, void *context,
-    cpkt_sqlite_collation_callback compare);
+                                   unsigned long text_representation,
+                                   void *context,
+                                   cpkt_sqlite_collation_callback compare);
 void *cpkt_sqlite_context_user_data(cpkt_sqlite_context *context);
-void *cpkt_sqlite_context_aggregate(cpkt_sqlite_context *context, int byte_count);
+void *cpkt_sqlite_context_aggregate(cpkt_sqlite_context *context,
+                                    int byte_count);
 int cpkt_sqlite_context_aggregate_count(cpkt_sqlite_context *context);
 cpkt_sqlite *cpkt_sqlite_context_database(cpkt_sqlite_context *context);
-void *cpkt_sqlite_context_auxdata(cpkt_sqlite_context *context, int argument_index);
-int cpkt_sqlite_context_set_auxdata(cpkt_sqlite_context *context, int argument_index,
-    void *data, cpkt_sqlite_destroy_callback destroy);
+void *cpkt_sqlite_context_auxdata(cpkt_sqlite_context *context,
+                                  int argument_index);
+int cpkt_sqlite_context_set_auxdata(cpkt_sqlite_context *context,
+                                    int argument_index, void *data,
+                                    cpkt_sqlite_destroy_callback destroy);
 void cpkt_sqlite_context_result_null(cpkt_sqlite_context *context);
 void cpkt_sqlite_context_result_int(cpkt_sqlite_context *context, int value);
-void cpkt_sqlite_context_result_i64(cpkt_sqlite_context *context, cpkt_sqlite_i64 value);
-void cpkt_sqlite_context_result_double(cpkt_sqlite_context *context, double value);
+void cpkt_sqlite_context_result_i64(cpkt_sqlite_context *context,
+                                    cpkt_sqlite_i64 value);
+void cpkt_sqlite_context_result_double(cpkt_sqlite_context *context,
+                                       double value);
 void cpkt_sqlite_context_result_text(cpkt_sqlite_context *context,
-    const char *value, int byte_count);
+                                     const char *value, int byte_count);
 void cpkt_sqlite_context_result_text16(cpkt_sqlite_context *context,
-    const void *value, int byte_count);
+                                       const void *value, int byte_count);
 void cpkt_sqlite_context_result_text16le(cpkt_sqlite_context *context,
-    const void *value, int byte_count);
+                                         const void *value, int byte_count);
 void cpkt_sqlite_context_result_text16be(cpkt_sqlite_context *context,
-    const void *value, int byte_count);
+                                         const void *value, int byte_count);
 void cpkt_sqlite_context_result_text_u64(cpkt_sqlite_context *context,
-    const char *value, cpkt_sqlite_u64 byte_count, unsigned long encoding);
+                                         const char *value,
+                                         cpkt_sqlite_u64 byte_count,
+                                         unsigned long encoding);
 void cpkt_sqlite_context_result_blob(cpkt_sqlite_context *context,
-    const void *value, int byte_count);
+                                     const void *value, int byte_count);
 void cpkt_sqlite_context_result_blob_u64(cpkt_sqlite_context *context,
-    const void *value, cpkt_sqlite_u64 byte_count);
-int cpkt_sqlite_context_result_zero_blob(cpkt_sqlite_context *context, int byte_count);
+                                         const void *value,
+                                         cpkt_sqlite_u64 byte_count);
+int cpkt_sqlite_context_result_zero_blob(cpkt_sqlite_context *context,
+                                         int byte_count);
 int cpkt_sqlite_context_result_zero_blob_u64(cpkt_sqlite_context *context,
-    cpkt_sqlite_u64 byte_count);
+                                             cpkt_sqlite_u64 byte_count);
 void cpkt_sqlite_context_result_pointer(cpkt_sqlite_context *context,
-    void *value, const char *type_name, cpkt_sqlite_destroy_callback destroy);
+                                        void *value, const char *type_name,
+                                        cpkt_sqlite_destroy_callback destroy);
 void cpkt_sqlite_context_result_no_memory(cpkt_sqlite_context *context);
 void cpkt_sqlite_context_result_too_big(cpkt_sqlite_context *context);
 void cpkt_sqlite_context_result_error(cpkt_sqlite_context *context,
-    const char *message, int byte_count);
+                                      const char *message, int byte_count);
 void cpkt_sqlite_context_result_error16(cpkt_sqlite_context *context,
-    const void *message, int byte_count);
-void cpkt_sqlite_context_result_error_code(cpkt_sqlite_context *context, int code);
+                                        const void *message, int byte_count);
+void cpkt_sqlite_context_result_error_code(cpkt_sqlite_context *context,
+                                           int code);
 void cpkt_sqlite_context_result_value(cpkt_sqlite_context *context,
-    const cpkt_sqlite_value *value);
+                                      const cpkt_sqlite_value *value);
 void cpkt_sqlite_context_result_subtype(cpkt_sqlite_context *context,
-    unsigned long subtype);
+                                        unsigned long subtype);
 int cpkt_sqlite_value_type(const cpkt_sqlite_value *value);
 int cpkt_sqlite_value_numeric_type(cpkt_sqlite_value *value);
 int cpkt_sqlite_value_int(const cpkt_sqlite_value *value);
@@ -1463,7 +1609,8 @@ const unsigned char *cpkt_sqlite_value_text(const cpkt_sqlite_value *value);
 const void *cpkt_sqlite_value_text16(const cpkt_sqlite_value *value);
 const void *cpkt_sqlite_value_text16le(const cpkt_sqlite_value *value);
 const void *cpkt_sqlite_value_text16be(const cpkt_sqlite_value *value);
-void *cpkt_sqlite_value_pointer(const cpkt_sqlite_value *value, const char *type_name);
+void *cpkt_sqlite_value_pointer(const cpkt_sqlite_value *value,
+                                const char *type_name);
 int cpkt_sqlite_value_bytes(const cpkt_sqlite_value *value);
 int cpkt_sqlite_value_bytes16(const cpkt_sqlite_value *value);
 int cpkt_sqlite_value_nochange(const cpkt_sqlite_value *value);
@@ -1484,53 +1631,56 @@ void cpkt_sqlite_value_free(cpkt_sqlite_value *value);
  * @{
  */
 int cpkt_sqlite_session_new(cpkt_sqlite *database, const char *schema,
-    cpkt_sqlite_session **out);
+                            cpkt_sqlite_session **out);
 int cpkt_sqlite_session_config(int operation, int *value);
 int cpkt_sqlite_changeset_start(const cpkt_sqlite_changeset *changeset,
-    cpkt_sqlite_changeset_iterator **out);
+                                cpkt_sqlite_changeset_iterator **out);
 int cpkt_sqlite_changeset_start_ex(const cpkt_sqlite_changeset *changeset,
-    int flags, cpkt_sqlite_changeset_iterator **out);
+                                   int flags,
+                                   cpkt_sqlite_changeset_iterator **out);
 int cpkt_sqlite_changeset_start_stream(cpkt_sqlite_stream_input_callback input,
-    void *context, int flags, cpkt_sqlite_changeset_iterator **out);
+                                       void *context, int flags,
+                                       cpkt_sqlite_changeset_iterator **out);
 int cpkt_sqlite_changeset_invert(const cpkt_sqlite_changeset *input,
-    cpkt_sqlite_changeset **out);
+                                 cpkt_sqlite_changeset **out);
 int cpkt_sqlite_changeset_concat(const cpkt_sqlite_changeset *left,
-    const cpkt_sqlite_changeset *right, cpkt_sqlite_changeset **out);
-int cpkt_sqlite_changeset_invert_stream(cpkt_sqlite_stream_input_callback input,
-    void *input_context, cpkt_sqlite_stream_output_callback output,
-    void *output_context);
-int cpkt_sqlite_changeset_concat_stream(cpkt_sqlite_stream_input_callback left_input,
-    void *left_context, cpkt_sqlite_stream_input_callback right_input,
-    void *right_context, cpkt_sqlite_stream_output_callback output,
-    void *output_context);
-int cpkt_sqlite_changeset_apply(cpkt_sqlite *database,
-    const cpkt_sqlite_changeset *changeset,
+                                 const cpkt_sqlite_changeset *right,
+                                 cpkt_sqlite_changeset **out);
+int cpkt_sqlite_changeset_invert_stream(
+    cpkt_sqlite_stream_input_callback input, void *input_context,
+    cpkt_sqlite_stream_output_callback output, void *output_context);
+int cpkt_sqlite_changeset_concat_stream(
+    cpkt_sqlite_stream_input_callback left_input, void *left_context,
+    cpkt_sqlite_stream_input_callback right_input, void *right_context,
+    cpkt_sqlite_stream_output_callback output, void *output_context);
+int cpkt_sqlite_changeset_apply(
+    cpkt_sqlite *database, const cpkt_sqlite_changeset *changeset,
     cpkt_sqlite_changeset_filter_callback filter,
     cpkt_sqlite_changeset_conflict_callback conflict, void *context);
-int cpkt_sqlite_changeset_apply_stream(cpkt_sqlite *database,
-    cpkt_sqlite_stream_input_callback input, void *input_context,
-    cpkt_sqlite_changeset_filter_callback filter,
+int cpkt_sqlite_changeset_apply_stream(
+    cpkt_sqlite *database, cpkt_sqlite_stream_input_callback input,
+    void *input_context, cpkt_sqlite_changeset_filter_callback filter,
     cpkt_sqlite_changeset_conflict_callback conflict, void *context);
-int cpkt_sqlite_changeset_apply_ex(cpkt_sqlite *database,
-    const cpkt_sqlite_changeset *changeset,
+int cpkt_sqlite_changeset_apply_ex(
+    cpkt_sqlite *database, const cpkt_sqlite_changeset *changeset,
     cpkt_sqlite_changeset_filter_callback filter,
-    cpkt_sqlite_changeset_conflict_callback conflict, void *context,
-    int flags, cpkt_sqlite_changeset **rebase_out);
-int cpkt_sqlite_changeset_apply_stream_ex(cpkt_sqlite *database,
-    cpkt_sqlite_stream_input_callback input, void *input_context,
-    cpkt_sqlite_changeset_filter_callback filter,
-    cpkt_sqlite_changeset_conflict_callback conflict, void *context,
-    int flags, cpkt_sqlite_changeset **rebase_out);
-int cpkt_sqlite_changeset_apply_v3(cpkt_sqlite *database,
-    const cpkt_sqlite_changeset *changeset,
+    cpkt_sqlite_changeset_conflict_callback conflict, void *context, int flags,
+    cpkt_sqlite_changeset **rebase_out);
+int cpkt_sqlite_changeset_apply_stream_ex(
+    cpkt_sqlite *database, cpkt_sqlite_stream_input_callback input,
+    void *input_context, cpkt_sqlite_changeset_filter_callback filter,
+    cpkt_sqlite_changeset_conflict_callback conflict, void *context, int flags,
+    cpkt_sqlite_changeset **rebase_out);
+int cpkt_sqlite_changeset_apply_v3(
+    cpkt_sqlite *database, const cpkt_sqlite_changeset *changeset,
     cpkt_sqlite_changeset_iterator_filter_callback filter,
-    cpkt_sqlite_changeset_conflict_callback conflict, void *context,
-    int flags, cpkt_sqlite_changeset **rebase_out);
-int cpkt_sqlite_changeset_apply_v3_stream(cpkt_sqlite *database,
-    cpkt_sqlite_stream_input_callback input, void *input_context,
-    cpkt_sqlite_changeset_iterator_filter_callback filter,
-    cpkt_sqlite_changeset_conflict_callback conflict, void *context,
-    int flags, cpkt_sqlite_changeset **rebase_out);
+    cpkt_sqlite_changeset_conflict_callback conflict, void *context, int flags,
+    cpkt_sqlite_changeset **rebase_out);
+int cpkt_sqlite_changeset_apply_v3_stream(
+    cpkt_sqlite *database, cpkt_sqlite_stream_input_callback input,
+    void *input_context, cpkt_sqlite_changeset_iterator_filter_callback filter,
+    cpkt_sqlite_changeset_conflict_callback conflict, void *context, int flags,
+    cpkt_sqlite_changeset **rebase_out);
 int cpkt_sqlite_rebaser_new(cpkt_sqlite_rebaser **out);
 int cpkt_sqlite_changegroup_new(cpkt_sqlite_changegroup **out);
 int cpkt_sqlite_statement_finalize(cpkt_sqlite_statement *self);

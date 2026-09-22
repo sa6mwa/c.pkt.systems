@@ -3,11 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 
-static int require_value(const cpkt_postgres_result *result, const char *expected) {
+static int require_value(const cpkt_postgres_result *result,
+                         const char *expected) {
   char *value;
 
   if (result == 0 ||
-      cpkt_postgres_result_status_get(result) != CPKT_POSTGRES_RESULT_TUPLES_OK ||
+      cpkt_postgres_result_status_get(result) !=
+          CPKT_POSTGRES_RESULT_TUPLES_OK ||
       cpkt_postgres_result_row_count(result) != 1 ||
       cpkt_postgres_result_field_count(result) != 1) {
     return 0;
@@ -17,11 +19,12 @@ static int require_value(const cpkt_postgres_result *result, const char *expecte
 }
 
 static int require_command(const cpkt_postgres_result *result) {
-  return result != 0 &&
-      cpkt_postgres_result_status_get(result) == CPKT_POSTGRES_RESULT_COMMAND_OK;
+  return result != 0 && cpkt_postgres_result_status_get(result) ==
+                            CPKT_POSTGRES_RESULT_COMMAND_OK;
 }
 
-static int run_integration(const char *server_name, const char *connection_info) {
+static int run_integration(const char *server_name,
+                           const char *connection_info) {
   const char *parameters[2];
   cpkt_postgres *pg;
   cpkt_postgres_result *result;
@@ -30,7 +33,7 @@ static int run_integration(const char *server_name, const char *connection_info)
   pg = cpkt_postgres_new(connection_info);
   if (pg == 0 || pg->status(pg) != CPKT_POSTGRES_CONNECTION_OK) {
     fprintf(stderr, "%s: connection failed: %s\n", server_name,
-        pg == 0 ? "allocation failed" : pg->error(pg));
+            pg == 0 ? "allocation failed" : pg->error(pg));
     if (pg != 0) {
       pg->close(pg);
     }
@@ -46,8 +49,8 @@ static int run_integration(const char *server_name, const char *connection_info)
 
   parameters[0] = "cpkt";
   parameters[1] = "-facade";
-  result = pg->tx_params(pg, "SELECT $1::TEXT || $2::TEXT", 2, 0,
-      parameters, 0, 0, 0);
+  result = pg->tx_params(pg, "SELECT $1::TEXT || $2::TEXT", 2, 0, parameters, 0,
+                         0, 0);
   if (!require_value(result, "cpkt-facade")) {
     ok = 0;
   }
@@ -64,14 +67,14 @@ static int run_integration(const char *server_name, const char *connection_info)
   }
 
   result = cpkt_postgres_prepare(pg->connection, "cpkt_receiver_statement",
-      "SELECT $1::INT4 + 1", 1, 0);
+                                 "SELECT $1::INT4 + 1", 1, 0);
   if (!require_command(result)) {
     ok = 0;
   }
   cpkt_postgres_result_free(result);
   parameters[0] = "41";
-  result = cpkt_postgres_execute_prepared(pg->connection,
-      "cpkt_receiver_statement", 1, parameters, 0, 0, 0);
+  result = cpkt_postgres_execute_prepared(
+      pg->connection, "cpkt_receiver_statement", 1, parameters, 0, 0, 0);
   if (!require_value(result, "42")) {
     ok = 0;
   }
@@ -94,7 +97,8 @@ static int run_integration(const char *server_name, const char *connection_info)
 
   pg->close(pg);
   if (!ok) {
-    fprintf(stderr, "%s: PostgreSQL-wire integration assertion failed\n", server_name);
+    fprintf(stderr, "%s: PostgreSQL-wire integration assertion failed\n",
+            server_name);
   }
   return ok;
 }

@@ -1,39 +1,37 @@
 #include <cpkt/postgres.h>
 
-static void notice_receiver(
-    void *context, cpkt_postgres_connection *connection,
-    const cpkt_postgres_result *result) {
-  (void) context;
-  (void) connection;
-  (void) result;
+static void notice_receiver(void *context, cpkt_postgres_connection *connection,
+                            const cpkt_postgres_result *result) {
+  (void)context;
+  (void)connection;
+  (void)result;
 }
 
-static void notice_processor(
-    void *context, cpkt_postgres_connection *connection, const char *message) {
-  (void) context;
-  (void) connection;
-  (void) message;
+static void notice_processor(void *context,
+                             cpkt_postgres_connection *connection,
+                             const char *message) {
+  (void)context;
+  (void)connection;
+  (void)message;
 }
 
-static void thread_lock(int acquire) {
-  (void) acquire;
-}
+static void thread_lock(int acquire) { (void)acquire; }
 
-static int ssl_key_password(
-    char *buffer, int buffer_size, cpkt_postgres_connection *connection) {
-  (void) buffer;
-  (void) buffer_size;
-  (void) connection;
+static int ssl_key_password(char *buffer, int buffer_size,
+                            cpkt_postgres_connection *connection) {
+  (void)buffer;
+  (void)buffer_size;
+  (void)connection;
   return 0;
 }
 
-static int auth_data(
-    cpkt_postgres_auth_data_kind kind, cpkt_postgres_connection *connection,
-    void *data, void *context) {
-  (void) kind;
-  (void) connection;
-  (void) data;
-  (void) context;
+static int auth_data(cpkt_postgres_auth_data_kind kind,
+                     cpkt_postgres_connection *connection, void *data,
+                     void *context) {
+  (void)kind;
+  (void)connection;
+  (void)data;
+  (void)context;
   return 0;
 }
 
@@ -53,15 +51,15 @@ int main(void) {
     pg->close(pg);
     return 2;
   }
-  old_context = (void *) 1;
+  old_context = (void *)1;
   cpkt_postgres_set_notice_receiver(pg->connection, notice_receiver, pg,
-      &old_receiver, &old_context);
+                                    &old_receiver, &old_context);
   if (old_receiver != 0 || old_context != 0) {
     pg->close(pg);
     return 3;
   }
   cpkt_postgres_set_notice_processor(pg->connection, notice_processor, pg,
-      &old_processor, &old_context);
+                                     &old_processor, &old_context);
   if (old_processor != 0 || old_context != 0) {
     pg->close(pg);
     return 4;

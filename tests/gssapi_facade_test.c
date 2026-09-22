@@ -16,7 +16,7 @@ int main(void) {
     return 1;
   }
   oid_text.length = 9;
-  oid_text.value = (void *) "{ 1 2 3 }";
+  oid_text.value = (void *)"{ 1 2 3 }";
   oid = 0;
   status = cpkt_gss_oid_from_text(&minor, &oid_text, &oid);
   if (cpkt_gss_status_is_error(status) || oid == 0) {
@@ -26,7 +26,8 @@ int main(void) {
   encoded.length = 0;
   encoded.value = 0;
   status = cpkt_gss_oid_to_text(&minor, oid, &encoded);
-  if (cpkt_gss_status_is_error(status) || encoded.value == 0 || encoded.length == 0) {
+  if (cpkt_gss_status_is_error(status) || encoded.value == 0 ||
+      encoded.length == 0) {
     cpkt_gss_release_oid(&minor, &oid);
     cpkt_gss_release_oid_set(&minor, &mechanisms);
     return 3;
