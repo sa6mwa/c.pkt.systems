@@ -3,12 +3,12 @@ set -euo pipefail
 
 repo_root=${1:?repo root is required}
 build_dir="$repo_root/build/dependency-component-targets-test"
-external_root="$repo_root/.cache/deps/dependency-component-targets-test"
-dependency_build_root="$repo_root/.cache/deps-build/dependency-component-targets-test"
-contract_root="$repo_root/build/dependency-component-targets-contracts"
+external_root="$build_dir/deps"
+dependency_build_root="$build_dir/deps-build"
+contract_root="$build_dir/contracts"
 
 cleanup() {
-  rm -rf "$build_dir" "$external_root" "$dependency_build_root" "$contract_root"
+  cmake -E remove_directory "$build_dir"
 }
 trap cleanup EXIT INT TERM
 cleanup
@@ -48,8 +48,20 @@ case "$sqlite_plan" in
   *) printf 'sqlite facade build plan does not include the SQLite dependency\n' >&2; exit 1 ;;
 esac
 case "$sqlite_plan" in
-  *"cpkt_deps_all"*|*"cpkt_openssl_project"*|*"cpkt_curl_project"*)
+  *"cpkt_deps_all"*|*"cpkt_openssl_project"*|*"cpkt_curl_project"*|*"cpkt_postgresql_project"*|*"cpkt_krb5_static_project"*)
     printf 'sqlite facade build plan includes an unrelated dependency closure\n' >&2
+    exit 1
+    ;;
+esac
+
+postgres_plan=$(cmake --build "$build_dir" --target cpkt_postgres_static -- -n)
+case "$postgres_plan" in
+  *"cpkt_postgresql_project"*) ;;
+  *) printf 'PostgreSQL facade build plan does not include libpq\n' >&2; exit 1 ;;
+esac
+case "$postgres_plan" in
+  *"cpkt_deps_all"*|*"cpkt_sqlite_project"*|*"cpkt_lua_project"*|*"cpkt_miniaudio_project"*|*"cpkt_whisper_static_project"*|*"cpkt_open62541_static_project"*)
+    printf 'PostgreSQL facade build plan includes an unrelated dependency closure\n' >&2
     exit 1
     ;;
 esac

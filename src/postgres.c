@@ -964,9 +964,13 @@ cpkt_postgres_ssl_key_password_hook cpkt_postgres_set_ssl_key_password_hook(
 /** Implements the documented public C89 PostgreSQL facade operation cpkt_postgres_get_ssl_key_password_hook. */
 cpkt_postgres_ssl_key_password_hook cpkt_postgres_get_ssl_key_password_hook(void) {
   cpkt_postgres_ssl_key_password_hook callback;
+  PQsslKeyPassHook_OpenSSL_type native_callback;
 
+  native_callback = PQgetSSLKeyPassHook_OpenSSL();
   cpkt_postgres_hook_lock_acquire();
-  callback = cpkt_postgres_ssl_key_password_callback;
+  callback = native_callback == cpkt_postgres_native_ssl_key_password_hook
+      ? cpkt_postgres_ssl_key_password_callback
+      : NULL;
   cpkt_postgres_hook_lock_release();
   return callback;
 }
@@ -991,11 +995,15 @@ void cpkt_postgres_set_auth_data_hook(
 /** Implements the documented public C89 PostgreSQL facade operation cpkt_postgres_get_auth_data_hook. */
 cpkt_postgres_auth_data_hook cpkt_postgres_get_auth_data_hook(void **context_out) {
   cpkt_postgres_auth_data_hook callback;
+  PQauthDataHook_type native_callback;
 
+  native_callback = PQgetAuthDataHook();
   cpkt_postgres_hook_lock_acquire();
-  callback = cpkt_postgres_auth_data_callback;
+  callback = native_callback == cpkt_postgres_native_auth_data_hook
+      ? cpkt_postgres_auth_data_callback
+      : NULL;
   if (context_out != NULL) {
-    *context_out = cpkt_postgres_auth_data_context;
+    *context_out = callback == NULL ? NULL : cpkt_postgres_auth_data_context;
   }
   cpkt_postgres_hook_lock_release();
   return callback;

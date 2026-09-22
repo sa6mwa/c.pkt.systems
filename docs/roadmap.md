@@ -6,7 +6,7 @@ upstream audit, ABI review, and release-matrix evidence before shipment.
 
 ## Current implementation queue
 
-- [ ] **Repair the Kerberos SDK header closure.** Stage and ship the generated
+- [x] **Repair the Kerberos SDK header closure.** Stage and ship the generated
   `com_err.h` required by the shipped `krb5.h`; add extracted-SDK coverage that
   compiles a strict-C89 Kerberos consumer. Build only the `krb5` component and
   its required closure to prove the component build boundary.

@@ -1496,6 +1496,13 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/postgres_header_facade_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME postgres_api_coverage
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/postgres_api_coverage_test.sh"
+          "${CMAKE_SOURCE_DIR}/src/postgres.c"
+          "$<TARGET_PROPERTY:cpkt::postgresql_static,INTERFACE_INCLUDE_DIRECTORIES>")
+      add_test(
         NAME gssapi_header_facade
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/gssapi_header_facade_test.sh"

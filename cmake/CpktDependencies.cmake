@@ -2566,6 +2566,11 @@ function(cpkt_add_postgresql)
       " -Wl,-rpath-link,${CPKT_OPENSSL_shared_PREFIX}/lib"
       " -Wl,-rpath-link,${CPKT_LIBSSH2_PREFIX}/lib"
       " -Wl,-rpath-link,${CPKT_NGHTTP2_shared_PREFIX}/lib"
+      # libgssapi_krb5 records libkrb5 and its sibling libraries as direct
+      # DT_NEEDED dependencies.  PostgreSQL probes GSSAPI at configure time,
+      # so GNU ld needs the bundled Kerberos directory in its link-time DSO
+      # search closure even though no runtime path is embedded here.
+      " -Wl,-rpath-link,${CPKT_KRB5_PREFIX}/lib"
       " -Wl,-rpath-link,${CPKT_CYRUS_SASL_PREFIX}/lib")
     string(APPEND postgresql_curl_libs
       " -Wl,-rpath-link,${CPKT_OPENSSL_shared_PREFIX}/lib"
