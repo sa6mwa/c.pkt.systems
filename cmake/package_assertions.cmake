@@ -269,30 +269,32 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
     message(FATAL_ERROR "missing ${description}: ${file_path}")
   endif()
 
-  execute_process(
-    COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
-    RESULT_VARIABLE _id_result
-    OUTPUT_VARIABLE _id_output
-    ERROR_VARIABLE _id_error
-  )
-  if(NOT _id_result EQUAL 0)
-    message(FATAL_ERROR "failed to inspect Darwin install name for ${description}: ${file_path}\n${_id_error}")
-  endif()
-  string(REPLACE "\r\n" "\n" _id_output "${_id_output}")
-  string(REPLACE "\n" ";" _id_lines "${_id_output}")
-  set(_id_found OFF)
-  foreach(_id_line IN LISTS _id_lines)
-    string(STRIP "${_id_line}" _id_line)
-    if(_id_line MATCHES "^@rpath/[^/]+\\.dylib$")
-      set(_id_found ON)
-    elseif(_id_line MATCHES "^(|.*:)$")
-      continue()
-    elseif(NOT _id_line STREQUAL "")
-      message(FATAL_ERROR "${description} has non-rpath Darwin install name: ${_id_line}")
+  if(file_path MATCHES "[.]dylib$")
+    execute_process(
+      COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
+      RESULT_VARIABLE _id_result
+      OUTPUT_VARIABLE _id_output
+      ERROR_VARIABLE _id_error
+    )
+    if(NOT _id_result EQUAL 0)
+      message(FATAL_ERROR "failed to inspect Darwin install name for ${description}: ${file_path}\n${_id_error}")
     endif()
-  endforeach()
-  if(NOT _id_found)
-    message(FATAL_ERROR "${description} must have an @rpath Darwin install name")
+    string(REPLACE "\r\n" "\n" _id_output "${_id_output}")
+    string(REPLACE "\n" ";" _id_lines "${_id_output}")
+    set(_id_found OFF)
+    foreach(_id_line IN LISTS _id_lines)
+      string(STRIP "${_id_line}" _id_line)
+      if(_id_line MATCHES "^@rpath/[^/]+\\.dylib$")
+        set(_id_found ON)
+      elseif(_id_line MATCHES "^(|.*:)$")
+        continue()
+      elseif(NOT _id_line STREQUAL "")
+        message(FATAL_ERROR "${description} has non-rpath Darwin install name: ${_id_line}")
+      endif()
+    endforeach()
+    if(NOT _id_found)
+      message(FATAL_ERROR "${description} must have an @rpath Darwin install name")
+    endif()
   endif()
 
   execute_process(
@@ -334,6 +336,7 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
   endif()
   string(REPLACE "\r\n" "\n" _commands_output "${_commands_output}")
   string(REPLACE "\n" ";" _command_lines "${_commands_output}")
+  set(_sasl_module_parent_rpath_found OFF)
   foreach(_command_line IN LISTS _command_lines)
     string(STRIP "${_command_line}" _command_line)
     if(_command_line MATCHES "^path[ \t]+([^ \t]+)")
@@ -342,8 +345,15 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
       if(NOT _rpath MATCHES "^@(loader_path|executable_path)(/.*)?$")
         message(FATAL_ERROR "${description} has non-relocatable Darwin rpath: ${_rpath}")
       endif()
+      if(_rpath STREQUAL "@loader_path/..")
+        set(_sasl_module_parent_rpath_found ON)
+      endif()
     endif()
   endforeach()
+  if(file_path MATCHES "/lib/sasl2/[^/]+[.]so$" AND
+      NOT _sasl_module_parent_rpath_found)
+    message(FATAL_ERROR "${description} cannot resolve bundled sibling libraries from lib/sasl2")
+  endif()
 
   set(_private_path_pattern "(/home/|/Users/|/tmp/|/var/tmp/|/usr/local/|\\.cache|deps-build|package-stage|CMakeFiles)")
   foreach(_metadata_line IN LISTS _id_lines _metadata_lines)
@@ -878,6 +888,12 @@ function(cpkt_assert_dynamic_exports_equal file_path allowlist_path description)
       message(FATAL_ERROR
         "unable to parse defined dynamic export from ${description}: ${_nm_line}")
     endif()
+    if(CPKT_TARGET_ID MATCHES "darwin")
+      if(NOT _symbol_name MATCHES "^_")
+        message(FATAL_ERROR "unexpected Mach-O export name in ${description}: ${_symbol_name}")
+      endif()
+      string(SUBSTRING "${_symbol_name}" 1 -1 _symbol_name)
+    endif()
     if(_symbol_name STREQUAL "_init" OR _symbol_name STREQUAL "_fini")
       continue()
     endif()
@@ -1337,7 +1353,7 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     3
     "libssh2 C89 facade Darwin shared library entries")
   cpkt_assert_archive_exact_matches(
-    "^${_archive_stem_re}/lib/libcpkt_lua([^/]*)?\\.dylib$"
+    "^${_archive_stem_re}/lib/libcpkt_lua(\\.[^/]*)?\\.dylib$"
     3
     "Lua C89 facade Darwin shared library entries")
   cpkt_assert_archive_exact_matches(
@@ -1414,6 +1430,8 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpkt_sasl.dylib"
       "lib/libcpkt_sasl.${CPKT_SASL_ABI_VERSION}.dylib"
       "lib/libcpkt_sasl.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/sasl2/libgssapiv2.so"
+      "lib/sasl2/libgs2.so"
       "lib/libcpkt_postgres.dylib"
       "lib/libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib"
       "lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
@@ -1449,8 +1467,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.1.1.2.dylib"
     "@rpath/libmqttc.1.dylib"
     "libmqttc Darwin install name")
-  file(GLOB _packaged_darwin_dylibs
-    "${_assert_extract_root}/${_archive_stem}/lib/*.dylib")
+  file(GLOB_RECURSE _packaged_darwin_dylibs
+    "${_assert_extract_root}/${_archive_stem}/lib/*.dylib"
+    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so")
   foreach(_packaged_darwin_dylib IN LISTS _packaged_darwin_dylibs)
     if(IS_SYMLINK "${_packaged_darwin_dylib}")
       continue()
@@ -1591,6 +1610,8 @@ else()
       "lib/libcpkt_sasl.so"
       "lib/libcpkt_sasl.so.${CPKT_SASL_ABI_VERSION}"
       "lib/libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}"
+      "lib/sasl2/libgssapiv2.so"
+      "lib/sasl2/libgs2.so"
       "lib/libcpkt_postgres.so"
       "lib/libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"
       "lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
@@ -1646,6 +1667,23 @@ else()
       "${_assert_extract_root}/${_archive_stem}/${_runpath_library}"
       "\\$ORIGIN"
       "${_runpath_library}")
+  endforeach()
+  foreach(_kerberos_library
+      "libgssapi_krb5.so.2"
+      "libkrb5.so.3"
+      "libk5crypto.so.3"
+      "libcom_err.so.3"
+      "libkrb5support.so.0")
+    cpkt_assert_elf_runpath(
+      "${_assert_extract_root}/${_archive_stem}/lib/${_kerberos_library}"
+      "\\$ORIGIN"
+      "${_kerberos_library} bundled sibling lookup")
+  endforeach()
+  foreach(_sasl_plugin IN ITEMS libgssapiv2.so libgs2.so)
+    cpkt_assert_elf_runpath(
+      "${_assert_extract_root}/${_archive_stem}/lib/sasl2/${_sasl_plugin}"
+      "\\$ORIGIN/.."
+      "${_sasl_plugin} bundled Kerberos lookup")
   endforeach()
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"

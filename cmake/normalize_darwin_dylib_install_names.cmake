@@ -17,7 +17,11 @@ foreach(_required_path
   endif()
 endforeach()
 
-file(GLOB _dylib_candidates "${CPKT_DARWIN_LIBRARY_DIR}/*.dylib")
+# Loadable bundles may live below lib/ (for example Cyrus SASL's .so files in
+# lib/sasl2). They need dependency rewrites but have no dylib install ID.
+file(GLOB_RECURSE _dylib_candidates
+  "${CPKT_DARWIN_LIBRARY_DIR}/*.dylib"
+  "${CPKT_DARWIN_LIBRARY_DIR}/*.so")
 set(_dylibs "")
 set(_dylib_names "")
 foreach(_candidate IN LISTS _dylib_candidates)
@@ -72,11 +76,13 @@ foreach(_dylib IN LISTS _dylibs)
     endif()
   endforeach()
 
-  execute_process(
-    COMMAND "${CPKT_DARWIN_INSTALL_NAME_TOOL}" -id "@rpath/${_dylib_name}" "${_dylib}"
-    RESULT_VARIABLE _id_result
-    ERROR_VARIABLE _id_error)
-  if(NOT _id_result EQUAL 0)
-    message(FATAL_ERROR "failed to set Darwin install name for ${_dylib}: ${_id_error}")
+  if(_dylib_name MATCHES "[.]dylib$")
+    execute_process(
+      COMMAND "${CPKT_DARWIN_INSTALL_NAME_TOOL}" -id "@rpath/${_dylib_name}" "${_dylib}"
+      RESULT_VARIABLE _id_result
+      ERROR_VARIABLE _id_error)
+    if(NOT _id_result EQUAL 0)
+      message(FATAL_ERROR "failed to set Darwin install name for ${_dylib}: ${_id_error}")
+    endif()
   endif()
 endforeach()

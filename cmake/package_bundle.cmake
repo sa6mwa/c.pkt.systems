@@ -1204,7 +1204,6 @@ file(WRITE "${_stage_root}/lib/cmake/CyrusSASL/CyrusSASLConfig.cmake"
   "  set_target_properties(cpkt::cyrus_sasl_shared PROPERTIES\n"
   "    IMPORTED_LOCATION \"\${_cpkt_sasl_prefix}/lib/libsasl2${_cpkt_shared_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sasl_prefix}/include\"\n"
-  "    INTERFACE_LINK_LIBRARIES \"cpkt::gssapi_krb5_shared;cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared\"\n"
   "  )\n"
   "endif()\n"
 )

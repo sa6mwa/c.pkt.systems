@@ -83,6 +83,7 @@ cpkt_resolve_linux_toolchain() {
   toolchain_sysroot=$(cpkt_resolver_value "$resolver_description" sysroot)
   cc=$(cpkt_resolver_value "$resolver_description" cc)
   cxx=$(cpkt_resolver_value "$resolver_description" cxx)
+  readelf=$(cpkt_resolver_value "$resolver_description" readelf)
 }
 
 case "$target_id" in
@@ -252,6 +253,7 @@ cpkt_run_checked() {
 cpkt_run_shell_checked() {
   description=$1
   command_text=$2
+  allowed_warning_regex=${3:-}
   log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
 
   if [ "${#target_command_env[@]}" -gt 0 ]; then
@@ -265,7 +267,9 @@ cpkt_run_shell_checked() {
     cat "$log_file" >&2
     exit 1
   fi
-  if grep -E '(^|[[:space:]:])warning:' "$log_file" >/dev/null 2>&1; then
+  warnings=$(grep -E '(^|[[:space:]:])warning:' "$log_file" || true)
+  if [ -n "$warnings" ] &&
+      { [ -z "$allowed_warning_regex" ] || printf '%s\n' "$warnings" | grep -Ev "$allowed_warning_regex" >/dev/null; }; then
     printf '%s emitted warnings\n' "$description" >&2
     cat "$log_file" >&2
     exit 1
@@ -1115,9 +1119,13 @@ int main(void) {
 EOF
 cat > "$cmake_source_dir/cpkt_sasl_facade_strict.c" <<'EOF'
 #include <cpkt/sasl.h>
+#include <string.h>
 
 int main(void) {
   cpkt_sasl *connection;
+  const char *mechanisms;
+  unsigned long mechanisms_length;
+  int mechanisms_count;
   int status;
 
   if (cpkt_sasl_error_string(CPKT_SASL_BADPARAM, 0, 0) == 0) {
@@ -1133,6 +1141,18 @@ int main(void) {
       connection->set_security_properties == 0) {
     cpkt_sasl_client_finish();
     return 3;
+  }
+  mechanisms = 0;
+  mechanisms_length = 0;
+  mechanisms_count = 0;
+  if (connection->list_mechanisms(connection, 0, 0, " ", 0,
+                                  &mechanisms, &mechanisms_length,
+                                  &mechanisms_count) != CPKT_SASL_OK ||
+      mechanisms == 0 || strstr(mechanisms, "GSSAPI") == 0 ||
+      mechanisms_length == 0 || mechanisms_count < 1) {
+    connection->close(connection);
+    cpkt_sasl_client_finish();
+    return 5;
   }
   connection->close(connection);
   return cpkt_sasl_client_finish() == CPKT_SASL_OK ? 0 : 4;
@@ -1513,6 +1533,7 @@ cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::o
 cpkt_add_static_smoke(cpkt_cmake_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
 cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
 cpkt_add_static_smoke(cpkt_cmake_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
+cpkt_add_shared_smoke(cpkt_cmake_sasl_facade_shared cpkt_sasl_facade_strict.c cpkt::sasl_shared)
 cpkt_add_static_smoke(cpkt_cmake_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_zlib cpkt_zlib.c ZLIB::ZLIB)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
@@ -2256,6 +2277,31 @@ cpkt_pkg_config_static_smoke cpkt-sasl cpkt_sasl_facade_strict.c
 cpkt_pkg_config_static_smoke cpkt-sqlite cpkt_sqlite_facade_strict.c
 case "$target_id" in
   *-linux-*)
+    sasl_single_binary="$work_root/bin/cpkt_sasl_single_binary"
+    sasl_static_words=$(cpkt_pkg_config --static --cflags --libs cpkt-sasl)
+    sasl_static_allowed_warning=
+    case "$target_id" in
+      *-linux-gnu)
+        # glibc diagnoses references to its dynamic NSS/dlopen facilities in
+        # static binaries; reject every other linker warning, and check the
+        # ELF's loader/dependency table independently below.
+        sasl_static_allowed_warning="warning: Using '[^']+' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking$"
+        ;;
+    esac
+    cpkt_run_shell_checked "fully static cpkt-sasl build" \
+      "\"$cc\" -static $common_c89_flags \
+      \"$cmake_source_dir/cpkt_sasl_facade_strict.c\" \
+      -o \"$sasl_single_binary\" $sasl_static_words $static_extra_libs" \
+      "$sasl_static_allowed_warning"
+    if "$readelf" -l "$sasl_single_binary" | grep -q 'INTERP' ||
+        "$readelf" -d "$sasl_single_binary" | grep -q 'NEEDED'; then
+      printf 'cpkt-sasl single-binary consumer has a dynamic loader dependency\n' >&2
+      exit 1
+    fi
+    ;;
+esac
+case "$target_id" in
+  *-linux-*)
     cpkt_pkg_config_static_smoke cpkt-audio cpkt_audio_facade_strict.c
     cpkt_pkg_config_static_smoke cpkt-sus cpkt_sus_facade_strict.c
     cpkt_pkg_config_static_multi_smoke cpkt_pkg_audio_sus_facade cpkt_audio_sus_facade_strict.c cpkt-audio cpkt-sus
@@ -2417,6 +2463,8 @@ if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_opcua_facade"
   "$cmake_build_dir/cpkt_cmake_gssapi_facade"
   "$cmake_build_dir/cpkt_cmake_postgres_facade"
+  env SASL_PATH=/cpkt-no-external-sasl-plugins "$cmake_build_dir/cpkt_cmake_sasl_facade"
+  env -u SASL_PATH "$cmake_build_dir/cpkt_cmake_sasl_facade_shared"
   "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   "$cmake_build_dir/cpkt_cmake_all"
   "$work_root/bin/cpkt_pkg_zlib"
@@ -2433,6 +2481,8 @@ if [ -z "$run_prefix" ]; then
   "$work_root/bin/cpkt_pkg_cpkt-opcua"
   "$work_root/bin/cpkt_pkg_cpkt-gssapi"
   "$work_root/bin/cpkt_pkg_cpkt-postgres"
+  env SASL_PATH=/cpkt-no-external-sasl-plugins "$work_root/bin/cpkt_pkg_cpkt-sasl"
+  env SASL_PATH=/cpkt-no-external-sasl-plugins "$sasl_single_binary"
   case "$target_id" in
     *-linux-*) "$work_root/bin/cpkt_pkg_sus_mixed_cxx" ;;
   esac
@@ -2482,6 +2532,10 @@ else
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_postgres_facade"
   # shellcheck disable=SC2086
+  env SASL_PATH=/cpkt-no-external-sasl-plugins $run_prefix "$cmake_build_dir/cpkt_cmake_sasl_facade"
+  # shellcheck disable=SC2086
+  env -u SASL_PATH $run_prefix "$cmake_build_dir/cpkt_cmake_sasl_facade_shared"
+  # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_all"
@@ -2513,6 +2567,10 @@ else
   $run_prefix "$work_root/bin/cpkt_pkg_cpkt-gssapi"
   # shellcheck disable=SC2086
   $run_prefix "$work_root/bin/cpkt_pkg_cpkt-postgres"
+  # shellcheck disable=SC2086
+  env SASL_PATH=/cpkt-no-external-sasl-plugins $run_prefix "$work_root/bin/cpkt_pkg_cpkt-sasl"
+  # shellcheck disable=SC2086
+  env SASL_PATH=/cpkt-no-external-sasl-plugins $run_prefix "$sasl_single_binary"
   case "$target_id" in
     *-linux-*)
       # shellcheck disable=SC2086

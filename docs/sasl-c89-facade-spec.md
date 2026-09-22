@@ -3,6 +3,11 @@
 `cpkt-sasl` is the C89 receiver-shell boundary for the bundled Cyrus SASL
 2.1.28 client and server library. It is distributed separately from raw
 `libsasl2` as static and shared libraries, `CpktSasl`, and `cpkt-sasl.pc`.
+The static `libsasl2.a` includes the GSSAPI/GS2 mechanism implementation;
+static consumers need no loadable SASL modules. The shared SDK ships the
+GSSAPI/GS2 modules in `lib/sasl2`, and shared `libsasl2` finds that directory
+relative to its own installed location. Downstream distributions must retain
+that directory alongside the bundled shared libraries.
 
 `cpkt_sasl_client_new()` and `cpkt_sasl_server_new()` return a receiver whose
 methods operate only on that connection. Call `receiver->close(receiver)` once

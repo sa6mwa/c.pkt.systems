@@ -31,7 +31,15 @@
 #define MA_NO_RUNTIME_LINKING
 #endif
 #define MINIAUDIO_IMPLEMENTATION
+#if defined(__APPLE__) && defined(__clang__)
+/* miniaudio's macOS backend still names the deprecated CoreAudio alias. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include <miniaudio.h>
+#if defined(__APPLE__) && defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #define CPKT_AUDIO_EXPORT __attribute__((visibility("default")))

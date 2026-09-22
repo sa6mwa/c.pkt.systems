@@ -992,6 +992,12 @@ static void cpkt_sus_whisper_progress_callback(struct whisper_context *context,
   }
 }
 
+/* ggml requires a _Bool callback; keep the C89 facade public API independent
+ * of that upstream type while matching its internal callback ABI exactly. */
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wc99-extensions"
+#endif
 static bool cpkt_sus_whisper_abort_callback(void *user_data) {
   struct cpkt_sus_transcriber_impl *impl;
 
@@ -1008,6 +1014,9 @@ static bool cpkt_sus_whisper_abort_callback(void *user_data) {
   }
   return false;
 }
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 static cpkt_sus_result cpkt_sus_transcriber_run(cpkt_sus_transcriber *self,
                                                 const float *samples,

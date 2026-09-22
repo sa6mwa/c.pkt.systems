@@ -2025,8 +2025,7 @@ function(cpkt_add_krb5)
   list(APPEND env_args
     # Kerberos static archives are part of the public GSSAPI closure.
     "CFLAGS=${external_cflags} -fPIC"
-    # Kerberos is explicitly configured with --disable-rpath. Do not pass the
-    # generic Autotools $ORIGIN flag into its configure probes.
+    # The static build has no runtime loader path.
     "LDFLAGS="
     # Keep Kerberos defaults independent of the disposable build/install root.
     # Applications may override all three with the standard environment knobs.
@@ -2049,6 +2048,11 @@ function(cpkt_add_krb5)
   endif()
   # Static GSSAPI consumers are permitted to link into shared libraries.
   set(static_env_args ${env_args})
+  # --disable-rpath suppresses Kerberos' absolute install paths. Its shared
+  # libraries still need a library-relative lookup for their bundled siblings.
+  cpkt_get_autotools_link_flags(krb5_shared_link_flags)
+  list(REMOVE_ITEM env_args "LDFLAGS=")
+  list(APPEND env_args "LDFLAGS=${krb5_shared_link_flags}")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   set(krb5_darwin_install_name_normalize_command ${CMAKE_COMMAND} -E true)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -2254,6 +2258,16 @@ function(cpkt_add_cyrus_sasl)
   cpkt_get_target_triple(target_triple)
   cpkt_get_external_c_flags(external_cflags)
   cpkt_get_autotools_link_flags(external_ldflags)
+  set(cyrus_sasl_cppflags "-DPROTOTYPES=1 -DHAVE_TIME_H=1")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    string(APPEND cyrus_sasl_cppflags " -D_GNU_SOURCE")
+    # The GSSAPI configure link needs Kerberos' transitive shared siblings.
+    # Plugins live one level below libsasl2 in the installed SDK.
+    string(APPEND external_ldflags
+      " -Wl,-rpath,\\\\$$ORIGIN/.. -Wl,-rpath-link,${CPKT_KRB5_PREFIX}/lib")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    string(APPEND external_ldflags " -Wl,-rpath,@loader_path/..")
+  endif()
   set(env_args "")
   cpkt_append_pinned_external_toolchain_env_args(env_args)
   list(APPEND env_args
@@ -2261,7 +2275,7 @@ function(cpkt_add_cyrus_sasl)
     "CFLAGS=${external_cflags} -fPIC"
     # Cyrus SASL 2.1.28 defaults its bundled MD5 code to K&R declarations
     # unless the build tells it that the compiler has ANSI prototypes.
-    "CPPFLAGS=-DPROTOTYPES=1 -DHAVE_TIME_H=1 -I${CPKT_KRB5_PREFIX}/include -I${CPKT_OPENSSL_shared_PREFIX}/include"
+    "CPPFLAGS=${cyrus_sasl_cppflags} -I${CPKT_KRB5_PREFIX}/include -I${CPKT_OPENSSL_shared_PREFIX}/include"
     "LDFLAGS=-L${CPKT_KRB5_PREFIX}/lib -L${CPKT_OPENSSL_shared_PREFIX}/lib ${external_ldflags}"
     # Cyrus's CMU_HAVE_OPENSSL macro normally adds an absolute rpath for its
     # OpenSSL prefix.  This cache value keeps the link search path while
@@ -2322,6 +2336,8 @@ function(cpkt_add_cyrus_sasl)
       BINARY_DIR "${build_dir}"
       STAMP_DIR "${stamp_dir}"
       TMP_DIR "${tmp_dir}"
+      PATCH_COMMAND ${CMAKE_COMMAND} -E chdir "${source_dir}"
+        patch -p1 -i "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_relocatable_plugins.patch"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS cpkt_krb5_shared_project cpkt_openssl_project
@@ -2347,8 +2363,15 @@ function(cpkt_add_cyrus_sasl)
         --disable-anon
         --without-saslauthd
         --enable-gssapi=${CPKT_KRB5_PREFIX}
+        --with-gss_impl=mit
         --with-openssl=${CPKT_OPENSSL_shared_PREFIX}
         ${cyrus_sasl_platform_configure_args}
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_CYRUS_SASL_BUILD_DIR=${build_dir}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_gssapi.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_CYRUS_SASL_BUILD_DIR=${build_dir}
+          -P ${CMAKE_SOURCE_DIR}/cmake/enable_cyrus_sasl_static_gs2.cmake
       BUILD_COMMAND ${cyrus_sasl_rpath_rewrite_command}
         # Cyrus SASL 2.1.28's out-of-tree Makefile suppresses the makemd5
         # host tool when both build and target executable suffixes are empty,
@@ -2366,14 +2389,24 @@ function(cpkt_add_cyrus_sasl)
         ${CMAKE_COMMAND} -E env ${env_args} make -C common -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C sasldb -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins -j${CPKT_DEPENDENCY_BUILD_JOBS}
       INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C include install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_CYRUS_SASL_INSTALL_DIR=${install_dir}
+          -DCPKT_CYRUS_SASL_MODULE_SUFFIX=${CMAKE_SHARED_MODULE_SUFFIX}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_plugins.cmake
         COMMAND ${cyrus_sasl_darwin_install_name_normalize_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS "${static_library}" "${shared_library}"
@@ -2387,8 +2420,7 @@ function(cpkt_add_cyrus_sasl)
   add_library(cpkt::cyrus_sasl_shared SHARED IMPORTED GLOBAL)
   set_target_properties(cpkt::cyrus_sasl_shared PROPERTIES
     IMPORTED_LOCATION "${shared_library}"
-    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
-    INTERFACE_LINK_LIBRARIES "cpkt::gssapi_krb5_shared;cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared")
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpkt::cyrus_sasl_static ${project_name})
     add_dependencies(cpkt::cyrus_sasl_shared ${project_name})
@@ -3098,6 +3130,10 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_relocatable_plugins.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_gssapi.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/enable_cyrus_sasl_static_gs2.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_plugins.cmake"
     RECIPE_FUNCTIONS cpkt_add_cyrus_sasl)
   cpkt_prepare_dependency_component(
     NAME openldap

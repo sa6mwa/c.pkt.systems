@@ -1,0 +1,28 @@
+if(NOT DEFINED CPKT_CYRUS_SASL_BUILD_DIR)
+  message(FATAL_ERROR "CPKT_CYRUS_SASL_BUILD_DIR is required")
+endif()
+
+set(_config "${CPKT_CYRUS_SASL_BUILD_DIR}/config.h")
+set(_lib_makefile "${CPKT_CYRUS_SASL_BUILD_DIR}/lib/Makefile")
+set(_plugins_makefile "${CPKT_CYRUS_SASL_BUILD_DIR}/plugins/Makefile")
+foreach(_required IN ITEMS "${_config}" "${_lib_makefile}" "${_plugins_makefile}")
+  if(NOT EXISTS "${_required}")
+    message(FATAL_ERROR "Cyrus SASL configure did not produce ${_required}")
+  endif()
+endforeach()
+
+file(STRINGS "${_config}" _gssapi_enabled
+  REGEX "^#define (HAVE_GSSAPI|STATIC_GSSAPIV2) ")
+list(LENGTH _gssapi_enabled _gssapi_define_count)
+if(NOT _gssapi_define_count EQUAL 2)
+  message(FATAL_ERROR "Cyrus SASL configured without built-in GSSAPI")
+endif()
+
+file(STRINGS "${_lib_makefile}" _static_objects REGEX "^SASL_STATIC_OBJS =")
+if(NOT _static_objects MATCHES "(^| )gssapi[.]o( |$)")
+  message(FATAL_ERROR "Cyrus SASL static library omits gssapi.o")
+endif()
+file(STRINGS "${_plugins_makefile}" _modules REGEX "^SASL_MECHS =")
+if(NOT _modules MATCHES "(^| )libgssapiv2[.]la( |$)")
+  message(FATAL_ERROR "Cyrus SASL shared plugins omit GSSAPI")
+endif()
