@@ -1535,6 +1535,25 @@ if(CPKT_BUILD_TESTS)
           bash
           "${CMAKE_SOURCE_DIR}/tests/facade_c89_target_policy_test.sh"
           "${CMAKE_SOURCE_DIR}")
+      if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(_cpkt_openssl_catalog_symbol_format macho)
+        set(_cpkt_openssl_catalog_symbol_tool "${CMAKE_NM}")
+      else()
+        set(_cpkt_openssl_catalog_symbol_format elf)
+        set(_cpkt_openssl_catalog_symbol_tool "${CMAKE_READELF}")
+      endif()
+      add_test(
+        NAME openssl_api_catalog
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/openssl_api_catalog_test.sh"
+          "${CMAKE_SOURCE_DIR}"
+          "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl/src/util/libcrypto.num"
+          "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl/src/util/libssl.num"
+          "$<TARGET_PROPERTY:cpkt::openssl_crypto_shared,IMPORTED_LOCATION>"
+          "$<TARGET_PROPERTY:cpkt::openssl_ssl_shared,IMPORTED_LOCATION>"
+          "${_cpkt_openssl_catalog_symbol_format}"
+          "${_cpkt_openssl_catalog_symbol_tool}")
       add_test(
         NAME audio_sus_header_facade
         COMMAND
