@@ -179,6 +179,13 @@ typedef struct cpkt_openssl_u64 {
   unsigned long low;
 } cpkt_openssl_u64;
 
+/* Exact signed 64-bit two's-complement bits without a C99 scalar. */
+/** C89 OpenSSL facade declaration. */
+typedef struct cpkt_openssl_i64 {
+  unsigned long high;
+  unsigned long low;
+} cpkt_openssl_i64;
+
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
     unsigned long high, unsigned long low);
@@ -187,6 +194,12 @@ CPKT_OPENSSL_API int cpkt_openssl_u64_equal(
     cpkt_openssl_u64 left, cpkt_openssl_u64 right);
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API int cpkt_openssl_u64_is_zero(cpkt_openssl_u64 value);
+/** Creates exact signed 64-bit two's-complement bits from two 32-bit words. */
+CPKT_OPENSSL_API cpkt_openssl_i64 cpkt_openssl_i64_make(
+    unsigned long high, unsigned long low);
+/** Compares exact signed 64-bit two's-complement bits. */
+CPKT_OPENSSL_API int cpkt_openssl_i64_equal(
+    cpkt_openssl_i64 left, cpkt_openssl_i64 right);
 
 /** C89 adapter for OPENSSL_init_crypto. */
 CPKT_OPENSSL_API int cpkt_openssl_OPENSSL_init_crypto(
@@ -214,5 +227,24 @@ CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_clear_options(
 /** C89 adapter for SSL_get_handshake_rtt. */
 CPKT_OPENSSL_API int cpkt_openssl_SSL_get_handshake_rtt(
     const SSL *ssl, cpkt_openssl_u64 *rtt_out);
+
+/** C89 adapter for ASN1_ENUMERATED_get_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_ASN1_ENUMERATED_get_int64(
+    cpkt_openssl_i64 *value_out, const ASN1_ENUMERATED *enumerated);
+/** C89 adapter for ASN1_ENUMERATED_set_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_ASN1_ENUMERATED_set_int64(
+    ASN1_ENUMERATED *enumerated, cpkt_openssl_i64 value);
+/** C89 adapter for ASN1_INTEGER_get_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_ASN1_INTEGER_get_int64(
+    cpkt_openssl_i64 *value_out, const ASN1_INTEGER *integer);
+/** C89 adapter for ASN1_INTEGER_get_uint64. */
+CPKT_OPENSSL_API int cpkt_openssl_ASN1_INTEGER_get_uint64(
+    cpkt_openssl_u64 *value_out, const ASN1_INTEGER *integer);
+/** C89 adapter for ASN1_INTEGER_set_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_ASN1_INTEGER_set_int64(
+    ASN1_INTEGER *integer, cpkt_openssl_i64 value);
+/** C89 adapter for ASN1_INTEGER_set_uint64. */
+CPKT_OPENSSL_API int cpkt_openssl_ASN1_INTEGER_set_uint64(
+    ASN1_INTEGER *integer, cpkt_openssl_u64 value);
 
 #endif

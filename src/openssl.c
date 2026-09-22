@@ -1,6 +1,7 @@
 #include <cpkt/openssl.h>
 
 #include <stdint.h>
+#include <string.h>
 
 static uint64_t cpkt_openssl_native_u64(cpkt_openssl_u64 value) {
   uint64_t native;
@@ -16,6 +17,28 @@ static cpkt_openssl_u64 cpkt_openssl_public_u64(uint64_t value) {
 
   public_value.high = (unsigned long) (value >> 32);
   public_value.low = (unsigned long) (value & 0xffffffffUL);
+  return public_value;
+}
+
+static int64_t cpkt_openssl_native_i64(cpkt_openssl_i64 value) {
+  uint64_t bits;
+  int64_t native;
+
+  bits = cpkt_openssl_native_u64(
+      cpkt_openssl_u64_make(value.high, value.low));
+  memcpy(&native, &bits, sizeof(native));
+  return native;
+}
+
+static cpkt_openssl_i64 cpkt_openssl_public_i64(int64_t value) {
+  uint64_t bits;
+  cpkt_openssl_u64 public_bits;
+  cpkt_openssl_i64 public_value;
+
+  memcpy(&bits, &value, sizeof(bits));
+  public_bits = cpkt_openssl_public_u64(bits);
+  public_value.high = public_bits.high;
+  public_value.low = public_bits.low;
   return public_value;
 }
 
@@ -36,6 +59,20 @@ int cpkt_openssl_u64_equal(cpkt_openssl_u64 left, cpkt_openssl_u64 right) {
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_is_zero. */
 int cpkt_openssl_u64_is_zero(cpkt_openssl_u64 value) {
   return value.high == 0UL && value.low == 0UL;
+}
+
+/** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_i64_make. */
+cpkt_openssl_i64 cpkt_openssl_i64_make(unsigned long high, unsigned long low) {
+  cpkt_openssl_i64 value;
+
+  value.high = high & 0xffffffffUL;
+  value.low = low & 0xffffffffUL;
+  return value;
+}
+
+/** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_i64_equal. */
+int cpkt_openssl_i64_equal(cpkt_openssl_i64 left, cpkt_openssl_i64 right) {
+  return left.high == right.high && left.low == right.low;
 }
 
 /** Implements the documented public C89 adapter cpkt_openssl_OPENSSL_init_crypto. */
@@ -100,4 +137,68 @@ int cpkt_openssl_SSL_get_handshake_rtt(
     *rtt_out = cpkt_openssl_public_u64(native_rtt);
   }
   return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_ASN1_ENUMERATED_get_int64. */
+int cpkt_openssl_ASN1_ENUMERATED_get_int64(
+    cpkt_openssl_i64 *value_out, const ASN1_ENUMERATED *enumerated) {
+  int64_t native_value;
+  int result;
+
+  native_value = 0;
+  result = ASN1_ENUMERATED_get_int64(
+      value_out == NULL ? NULL : &native_value, enumerated);
+  if (result != 0 && value_out != NULL) {
+    *value_out = cpkt_openssl_public_i64(native_value);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_ASN1_ENUMERATED_set_int64. */
+int cpkt_openssl_ASN1_ENUMERATED_set_int64(
+    ASN1_ENUMERATED *enumerated, cpkt_openssl_i64 value) {
+  return ASN1_ENUMERATED_set_int64(
+      enumerated, cpkt_openssl_native_i64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_ASN1_INTEGER_get_int64. */
+int cpkt_openssl_ASN1_INTEGER_get_int64(
+    cpkt_openssl_i64 *value_out, const ASN1_INTEGER *integer) {
+  int64_t native_value;
+  int result;
+
+  native_value = 0;
+  result = ASN1_INTEGER_get_int64(value_out == NULL ? NULL : &native_value,
+                                  integer);
+  if (result != 0 && value_out != NULL) {
+    *value_out = cpkt_openssl_public_i64(native_value);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_ASN1_INTEGER_get_uint64. */
+int cpkt_openssl_ASN1_INTEGER_get_uint64(
+    cpkt_openssl_u64 *value_out, const ASN1_INTEGER *integer) {
+  uint64_t native_value;
+  int result;
+
+  native_value = 0;
+  result = ASN1_INTEGER_get_uint64(value_out == NULL ? NULL : &native_value,
+                                   integer);
+  if (result != 0 && value_out != NULL) {
+    *value_out = cpkt_openssl_public_u64(native_value);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_ASN1_INTEGER_set_int64. */
+int cpkt_openssl_ASN1_INTEGER_set_int64(
+    ASN1_INTEGER *integer, cpkt_openssl_i64 value) {
+  return ASN1_INTEGER_set_int64(integer, cpkt_openssl_native_i64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_ASN1_INTEGER_set_uint64. */
+int cpkt_openssl_ASN1_INTEGER_set_uint64(
+    ASN1_INTEGER *integer, cpkt_openssl_u64 value) {
+  return ASN1_INTEGER_set_uint64(integer, cpkt_openssl_native_u64(value));
 }
