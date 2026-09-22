@@ -7,7 +7,10 @@
 static cpkt_sqlite_page_cache test_cache;
 static cpkt_sqlite_page test_page;
 static unsigned char test_buffer[1024];
-static unsigned char test_extra[256];
+static union {
+  void *alignment;
+  unsigned char bytes[256];
+} test_extra;
 static void *tracked_allocation;
 static int tracking;
 static int tracked_free_count;
@@ -105,7 +108,7 @@ int main(void) {
   public_methods.truncate = test_truncate;
   public_methods.destroy = test_destroy;
   test_page.buffer = test_buffer;
-  test_page.extra = test_extra;
+  test_page.extra = test_extra.bytes;
   test_page.state = NULL;
   if (cpkt_sqlite_global_config_page_cache_methods_set(&public_methods) !=
           CPKT_SQLITE_OK ||
@@ -118,40 +121,40 @@ int main(void) {
     tracking = 1;
     native_page =
         native_methods.xFetch(native_cache, (unsigned int)index + 1U, 2);
-    if (native_page == NULL || tracked_allocation != native_page ||
+    if (native_page == NULL || tracked_allocation != NULL ||
         unexpected_allocation_count != 0)
       return 3;
-    native_methods.xUnpin(native_cache, native_page, 1);
-    if (tracked_allocation != NULL || tracked_free_count != index + 1 ||
-        discard_count != index + 1)
+    if (native_page->pBuf != test_buffer ||
+        native_page->pExtra == test_extra.bytes)
       return 4;
+    native_methods.xUnpin(native_cache, native_page, 1);
+    if (tracked_allocation != NULL || tracked_free_count != 0 ||
+        discard_count != index + 1)
+      return 5;
     tracking = 0;
   }
   tracking = 1;
   native_page = native_methods.xFetch(native_cache, 65U, 2);
-  if (native_page == NULL || tracked_allocation != native_page)
-    return 5;
-  native_methods.xTruncate(native_cache, 65U);
-  if (tracked_allocation != NULL || tracked_free_count != 65 ||
-      truncate_count != 1)
+  if (native_page == NULL || tracked_allocation != NULL)
     return 6;
-  /* The native cache may retain or evict after a non-discard unpin. The
-   * facade wrapper must be released in either case, then recreated on fetch. */
+  native_methods.xTruncate(native_cache, 65U);
+  if (tracked_allocation != NULL || tracked_free_count != 0 ||
+      truncate_count != 1)
+    return 7;
+  /* A retained page must keep the same native wrapper and pExtra address. */
   tracking = 1;
   native_page = native_methods.xFetch(native_cache, 66U, 2);
-  if (native_page == NULL || tracked_allocation != native_page)
-    return 7;
-  native_methods.xUnpin(native_cache, native_page, 0);
-  if (tracked_allocation != NULL || tracked_free_count != 66 ||
-      discard_count != 64)
+  if (native_page == NULL || tracked_allocation != NULL)
     return 8;
-  native_page = native_methods.xFetch(native_cache, 66U, 2);
-  if (native_page == NULL || tracked_allocation != native_page ||
-      unexpected_allocation_count != 0)
-    return 9;
   native_methods.xUnpin(native_cache, native_page, 0);
-  if (tracked_allocation != NULL || tracked_free_count != 67)
+  if (tracked_allocation != NULL || tracked_free_count != 0 ||
+      discard_count != 64)
+    return 9;
+  if (native_methods.xFetch(native_cache, 66U, 0) != native_page)
     return 10;
+  native_methods.xUnpin(native_cache, native_page, 0);
+  if (tracked_allocation != NULL || tracked_free_count != 0)
+    return 11;
   tracking = 0;
   native_methods.xDestroy(native_cache);
   return 0;

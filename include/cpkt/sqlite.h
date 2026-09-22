@@ -140,8 +140,12 @@ typedef struct cpkt_sqlite_index_constraint_usage {
 
 /**
  * SQLite owns calls into these records after global configuration succeeds.
- * The caller owns cache and page state; do not retain receiver arguments
- * after the corresponding destroy or unpin callback returns.
+ * The caller owns cache and page state. A page may remain in the cache after
+ * unpin(discard=0) and be fetched again; it may also be evicted then without
+ * another callback. Allocate the requested extra_byte_count for every page,
+ * aligned for pointer-sized values. Its leading bytes are reserved for the
+ * facade's native-page adapter and are not application metadata. Do not use
+ * cache or page pointers after the backend has destroyed those objects.
  */
 typedef struct cpkt_sqlite_page_cache_methods {
   void *context;

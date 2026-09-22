@@ -237,15 +237,11 @@ typedef struct cpkt_sqlite_page_binding cpkt_sqlite_page_binding;
 struct cpkt_sqlite_page_binding {
   sqlite3_pcache_page native_page;
   cpkt_sqlite_page *page;
-  unsigned long key;
-  int unpinned;
-  cpkt_sqlite_page_binding *next;
 };
 
 struct cpkt_sqlite_page_cache_binding {
   cpkt_sqlite_page_cache *cache;
   cpkt_sqlite_page_cache_methods *methods;
-  cpkt_sqlite_page_binding *pages;
 };
 
 static cpkt_sqlite_page_cache_methods cpkt_sqlite_page_cache_methods_current;
@@ -3755,9 +3751,13 @@ static sqlite3_pcache *cpkt_sqlite_page_cache_create(int page_byte_count,
   if (!cpkt_sqlite_page_cache_methods_are_set ||
       cpkt_sqlite_page_cache_methods_current.create == NULL)
     return NULL;
+  if (extra_byte_count < 0 ||
+      (size_t)extra_byte_count >
+          (size_t)INT_MAX - sizeof(cpkt_sqlite_page_binding))
+    return NULL;
   cache = cpkt_sqlite_page_cache_methods_current.create(
       cpkt_sqlite_page_cache_methods_current.context, page_byte_count,
-      extra_byte_count, purgeable);
+      extra_byte_count + (int)sizeof(cpkt_sqlite_page_binding), purgeable);
   if (cache == NULL)
     return NULL;
   binding = (cpkt_sqlite_page_cache_binding *)calloc(1, sizeof(*binding));
@@ -3775,21 +3775,6 @@ static sqlite3_pcache *cpkt_sqlite_page_cache_create(int page_byte_count,
 static cpkt_sqlite_page_cache_binding *
 cpkt_sqlite_page_cache_native_binding(sqlite3_pcache *cache) {
   return (cpkt_sqlite_page_cache_binding *)cache;
-}
-
-static cpkt_sqlite_page_binding *
-cpkt_sqlite_page_cache_find_page(cpkt_sqlite_page_cache_binding *cache,
-                                 cpkt_sqlite_page *page) {
-  cpkt_sqlite_page_binding *current;
-  if (cache == NULL)
-    return NULL;
-  current = cache->pages;
-  while (current != NULL) {
-    if (current->page == page)
-      return current;
-    current = current->next;
-  }
-  return NULL;
 }
 
 static void cpkt_sqlite_page_cache_cache_size(sqlite3_pcache *cache,
@@ -3822,26 +3807,14 @@ static sqlite3_pcache_page *cpkt_sqlite_page_cache_fetch(sqlite3_pcache *cache,
       binding->methods->fetch(binding->cache, (unsigned long)key, create_flag);
   if (page == NULL)
     return NULL;
-  page_binding = cpkt_sqlite_page_cache_find_page(binding, page);
-  if (page_binding != NULL) {
-    page_binding->native_page.pBuf = page->buffer;
-    page_binding->native_page.pExtra = page->extra;
-    page_binding->key = (unsigned long)key;
-    page_binding->unpinned = 0;
-    return &page_binding->native_page;
-  }
-  page_binding = (cpkt_sqlite_page_binding *)calloc(1, sizeof(*page_binding));
-  if (page_binding == NULL) {
-    if (binding->methods->unpin != NULL)
-      binding->methods->unpin(binding->cache, page, 1);
-    return NULL;
-  }
+  /* The native wrapper must have the same lifetime as the backend page.
+   * A backend may silently evict an unpinned page, so a separate allocation
+   * cannot be released reliably. The prefix is private to this adapter. */
+  page_binding = (cpkt_sqlite_page_binding *)page->extra;
   page_binding->native_page.pBuf = page->buffer;
-  page_binding->native_page.pExtra = page->extra;
+  page_binding->native_page.pExtra =
+      (char *)page->extra + sizeof(*page_binding);
   page_binding->page = page;
-  page_binding->key = (unsigned long)key;
-  page_binding->next = binding->pages;
-  binding->pages = page_binding;
   return &page_binding->native_page;
 }
 
@@ -3850,26 +3823,11 @@ static void cpkt_sqlite_page_cache_unpin(sqlite3_pcache *cache,
                                          int discard) {
   cpkt_sqlite_page_cache_binding *binding;
   cpkt_sqlite_page_binding *page_binding;
-  cpkt_sqlite_page_binding **link;
   binding = cpkt_sqlite_page_cache_native_binding(cache);
   page_binding = (cpkt_sqlite_page_binding *)native_page;
   if (binding == NULL || page_binding == NULL)
     return;
-  if (page_binding->unpinned)
-    return;
-  link = &binding->pages;
-  while (*link != NULL && *link != page_binding)
-    link = &(*link)->next;
-  if (*link != page_binding)
-    return;
-  page_binding->unpinned = 1;
-  *link = page_binding->next;
-  if (binding->methods->unpin != NULL) {
-    binding->methods->unpin(binding->cache, page_binding->page, discard);
-  }
-  /* SQLite relinquishes the wrapper on every unpin. A custom cache may
-   * retain or evict the underlying page without telling us which it chose. */
-  free(page_binding);
+  binding->methods->unpin(binding->cache, page_binding->page, discard);
 }
 
 static void cpkt_sqlite_page_cache_rekey(sqlite3_pcache *cache,
@@ -3886,47 +3844,26 @@ static void cpkt_sqlite_page_cache_rekey(sqlite3_pcache *cache,
     binding->methods->rekey(binding->cache, page_binding->page,
                             (unsigned long)old_key, (unsigned long)new_key);
   }
-  page_binding->key = (unsigned long)new_key;
 }
 
 static void cpkt_sqlite_page_cache_truncate(sqlite3_pcache *cache,
                                             unsigned int limit) {
   cpkt_sqlite_page_cache_binding *binding;
-  cpkt_sqlite_page_binding *page_binding;
-  cpkt_sqlite_page_binding **link;
   binding = cpkt_sqlite_page_cache_native_binding(cache);
   if (binding == NULL)
     return;
   if (binding->methods->truncate != NULL) {
     binding->methods->truncate(binding->cache, (unsigned long)limit);
   }
-  link = &binding->pages;
-  while (*link != NULL) {
-    page_binding = *link;
-    if (page_binding->key >= (unsigned long)limit) {
-      *link = page_binding->next;
-      free(page_binding);
-    } else {
-      link = &page_binding->next;
-    }
-  }
 }
 
 static void cpkt_sqlite_page_cache_destroy(sqlite3_pcache *cache) {
   cpkt_sqlite_page_cache_binding *binding;
-  cpkt_sqlite_page_binding *current;
-  cpkt_sqlite_page_binding *next;
   binding = cpkt_sqlite_page_cache_native_binding(cache);
   if (binding == NULL)
     return;
   if (binding->methods->destroy != NULL)
     binding->methods->destroy(binding->cache);
-  current = binding->pages;
-  while (current != NULL) {
-    next = current->next;
-    free(current);
-    current = next;
-  }
   free(binding);
 }
 
