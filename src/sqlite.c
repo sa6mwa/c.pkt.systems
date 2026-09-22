@@ -3398,18 +3398,22 @@ cpkt_sqlite_auto_extension_new(cpkt_sqlite_auto_extension_callback callback,
   return public_extension;
 }
 
-void cpkt_sqlite_auto_extension_reset(void) {
+static void cpkt_sqlite_auto_extension_registration_clear(void) {
   cpkt_sqlite_auto_extension_binding *binding;
-  sqlite3_mutex *mutex;
-  sqlite3_reset_auto_extension();
-  mutex = cpkt_sqlite_global_mutex();
-  cpkt_sqlite_global_lock(mutex);
   cpkt_sqlite_auto_extension_trampoline_registered = 0;
   binding = cpkt_sqlite_auto_extension_head;
   while (binding != NULL) {
     binding->registered = 0;
     binding = binding->next;
   }
+}
+
+void cpkt_sqlite_auto_extension_reset(void) {
+  sqlite3_mutex *mutex;
+  sqlite3_reset_auto_extension();
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
+  cpkt_sqlite_auto_extension_registration_clear();
   cpkt_sqlite_global_unlock(mutex);
 }
 
@@ -3617,7 +3621,17 @@ const char *cpkt_sqlite_compile_option(int index) {
 }
 int cpkt_sqlite_threadsafe(void) { return sqlite3_threadsafe(); }
 int cpkt_sqlite_initialize(void) { return sqlite3_initialize(); }
-int cpkt_sqlite_shutdown(void) { return sqlite3_shutdown(); }
+int cpkt_sqlite_shutdown(void) {
+  int status;
+  status = sqlite3_shutdown();
+  if (status == SQLITE_OK) {
+    /* SQLite has cleared its native registry and torn down its mutexes.
+     * Shutdown itself requires exclusive access, so no lock is available or
+     * needed while synchronizing the facade's registration state. */
+    cpkt_sqlite_auto_extension_registration_clear();
+  }
+  return status;
+}
 int cpkt_sqlite_os_initialize(void) { return sqlite3_os_init(); }
 int cpkt_sqlite_os_shutdown(void) { return sqlite3_os_end(); }
 int cpkt_sqlite_global_recover(void) { return sqlite3_global_recover(); }
@@ -3843,20 +3857,19 @@ static void cpkt_sqlite_page_cache_unpin(sqlite3_pcache *cache,
     return;
   if (page_binding->unpinned)
     return;
+  link = &binding->pages;
+  while (*link != NULL && *link != page_binding)
+    link = &(*link)->next;
+  if (*link != page_binding)
+    return;
   page_binding->unpinned = 1;
+  *link = page_binding->next;
   if (binding->methods->unpin != NULL) {
     binding->methods->unpin(binding->cache, page_binding->page, discard);
   }
-  if (discard) {
-    /* SQLite cannot use the native page again after discarding it. */
-    link = &binding->pages;
-    while (*link != NULL && *link != page_binding)
-      link = &(*link)->next;
-    if (*link == page_binding) {
-      *link = page_binding->next;
-      free(page_binding);
-    }
-  }
+  /* SQLite relinquishes the wrapper on every unpin. A custom cache may
+   * retain or evict the underlying page without telling us which it chose. */
+  free(page_binding);
 }
 
 static void cpkt_sqlite_page_cache_rekey(sqlite3_pcache *cache,

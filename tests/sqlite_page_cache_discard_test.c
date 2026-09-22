@@ -135,6 +135,23 @@ int main(void) {
   if (tracked_allocation != NULL || tracked_free_count != 65 ||
       truncate_count != 1)
     return 6;
+  /* The native cache may retain or evict after a non-discard unpin. The
+   * facade wrapper must be released in either case, then recreated on fetch. */
+  tracking = 1;
+  native_page = native_methods.xFetch(native_cache, 66U, 2);
+  if (native_page == NULL || tracked_allocation != native_page)
+    return 7;
+  native_methods.xUnpin(native_cache, native_page, 0);
+  if (tracked_allocation != NULL || tracked_free_count != 66 ||
+      discard_count != 64)
+    return 8;
+  native_page = native_methods.xFetch(native_cache, 66U, 2);
+  if (native_page == NULL || tracked_allocation != native_page ||
+      unexpected_allocation_count != 0)
+    return 9;
+  native_methods.xUnpin(native_cache, native_page, 0);
+  if (tracked_allocation != NULL || tracked_free_count != 67)
+    return 10;
   tracking = 0;
   native_methods.xDestroy(native_cache);
   return 0;
