@@ -18,6 +18,9 @@ typedef struct cpkt_sasl_state {
   sasl_conn_t *native;
   sasl_callback_t native_callbacks[15];
   cpkt_sasl_callback_owner callback_owner;
+  sasl_interact_t *pending_native_interactions;
+  cpkt_sasl_interaction *pending_public_interactions;
+  unsigned long pending_interaction_count;
   int is_server;
 } cpkt_sasl_state;
 
@@ -50,6 +53,90 @@ static cpkt_sasl_global_callbacks cpkt_sasl_server_callbacks;
 
 static cpkt_sasl_state *cpkt_sasl_state_for(const cpkt_sasl *self) {
   return self == NULL ? NULL : (cpkt_sasl_state *)self->internal;
+}
+
+static void cpkt_sasl_clear_pending_interactions(cpkt_sasl_state *state) {
+  if (state == NULL)
+    return;
+  free(state->pending_public_interactions);
+  state->pending_native_interactions = NULL;
+  state->pending_public_interactions = NULL;
+  state->pending_interaction_count = 0;
+}
+
+static int
+cpkt_sasl_store_pending_interactions(cpkt_sasl_state *state,
+                                     sasl_interact_t *native_interactions,
+                                     cpkt_sasl_interaction **interactions) {
+  cpkt_sasl_interaction *public_interactions;
+  unsigned long count;
+  unsigned long index;
+  if (interactions != NULL)
+    *interactions = NULL;
+  cpkt_sasl_clear_pending_interactions(state);
+  if (native_interactions == NULL)
+    return SASL_INTERACT;
+  count = 0;
+  while (native_interactions[count].id != SASL_CB_LIST_END) {
+    if (count == (unsigned long)-1 ||
+        (size_t)count > ((size_t)-1) / sizeof(*public_interactions) - 1U) {
+      return SASL_NOMEM;
+    }
+    ++count;
+  }
+  public_interactions = (cpkt_sasl_interaction *)calloc(
+      (size_t)(count + 1U), sizeof(*public_interactions));
+  if (public_interactions == NULL)
+    return SASL_NOMEM;
+  for (index = 0; index < count; ++index) {
+    public_interactions[index].id = native_interactions[index].id;
+    public_interactions[index].challenge = native_interactions[index].challenge;
+    public_interactions[index].prompt = native_interactions[index].prompt;
+    public_interactions[index].default_result =
+        native_interactions[index].defresult;
+    public_interactions[index].result = native_interactions[index].result;
+    public_interactions[index].result_byte_count =
+        (unsigned long)native_interactions[index].len;
+  }
+  public_interactions[count].id = SASL_CB_LIST_END;
+  state->pending_native_interactions = native_interactions;
+  state->pending_public_interactions = public_interactions;
+  state->pending_interaction_count = count;
+  if (interactions != NULL)
+    *interactions = public_interactions;
+  return SASL_INTERACT;
+}
+
+static int
+cpkt_sasl_prepare_pending_interactions(cpkt_sasl_state *state,
+                                       cpkt_sasl_interaction **interactions,
+                                       sasl_interact_t **native_interactions) {
+  unsigned long index;
+  if (native_interactions != NULL)
+    *native_interactions = NULL;
+  if (state == NULL)
+    return SASL_BADPARAM;
+  if (state->pending_native_interactions == NULL) {
+    return interactions != NULL && *interactions != NULL ? SASL_BADPARAM
+                                                         : SASL_OK;
+  }
+  if (interactions == NULL ||
+      *interactions != state->pending_public_interactions) {
+    return SASL_BADPARAM;
+  }
+  for (index = 0; index < state->pending_interaction_count; ++index) {
+    if (state->pending_public_interactions[index].result_byte_count >
+        UINT_MAX) {
+      return SASL_BADPARAM;
+    }
+    state->pending_native_interactions[index].result =
+        state->pending_public_interactions[index].result;
+    state->pending_native_interactions[index].len =
+        (unsigned)state->pending_public_interactions[index].result_byte_count;
+  }
+  if (native_interactions != NULL)
+    *native_interactions = state->pending_native_interactions;
+  return SASL_OK;
 }
 
 static int cpkt_sasl_option_native(void *context, const char *plugin,
@@ -263,6 +350,7 @@ static void cpkt_sasl_callbacks_build(sasl_callback_t *native,
   CPKT_SASL_ADD_CALLBACK(SASL_CB_GETCONFPATH, configuration_path,
                          configuration_path)
   CPKT_SASL_ADD_CALLBACK(SASL_CB_USER, simple, simple)
+  CPKT_SASL_ADD_CALLBACK(SASL_CB_AUTHNAME, simple, simple)
   CPKT_SASL_ADD_CALLBACK(SASL_CB_PASS, secret, secret)
   CPKT_SASL_ADD_CALLBACK(SASL_CB_ECHOPROMPT, challenge, challenge)
   CPKT_SASL_ADD_CALLBACK(SASL_CB_GETREALM, realm, realm)
@@ -285,8 +373,6 @@ static int cpkt_sasl_start(cpkt_sasl *self, const char *mechanisms,
   cpkt_sasl_state *state;
   unsigned native_length;
   state = cpkt_sasl_state_for(self);
-  if (interactions != NULL)
-    *interactions = NULL;
   if (output != NULL)
     *output = NULL;
   if (output_length != NULL)
@@ -302,11 +388,20 @@ static int cpkt_sasl_start(cpkt_sasl *self, const char *mechanisms,
   {
     sasl_interact_t *native_interactions;
     int status;
-    native_interactions = NULL;
+    status = cpkt_sasl_prepare_pending_interactions(state, interactions,
+                                                    &native_interactions);
+    if (status != SASL_OK)
+      return status;
     status = sasl_client_start(state->native, mechanisms, &native_interactions,
                                output, &native_length, mechanism);
-    if (interactions != NULL)
-      *interactions = (cpkt_sasl_interaction *)native_interactions;
+    if (status == SASL_INTERACT) {
+      status = cpkt_sasl_store_pending_interactions(state, native_interactions,
+                                                    interactions);
+    } else {
+      cpkt_sasl_clear_pending_interactions(state);
+      if (interactions != NULL)
+        *interactions = NULL;
+    }
     if (output_length != NULL)
       *output_length = (unsigned long)native_length;
     return status;
@@ -320,8 +415,6 @@ static int cpkt_sasl_step(cpkt_sasl *self, const char *input,
   cpkt_sasl_state *state;
   unsigned native_length;
   state = cpkt_sasl_state_for(self);
-  if (interactions != NULL)
-    *interactions = NULL;
   if (output != NULL)
     *output = NULL;
   if (output_length != NULL)
@@ -340,11 +433,20 @@ static int cpkt_sasl_step(cpkt_sasl *self, const char *input,
   {
     sasl_interact_t *native_interactions;
     int status;
-    native_interactions = NULL;
+    status = cpkt_sasl_prepare_pending_interactions(state, interactions,
+                                                    &native_interactions);
+    if (status != SASL_OK)
+      return status;
     status = sasl_client_step(state->native, input, (unsigned)input_length,
                               &native_interactions, output, &native_length);
-    if (interactions != NULL)
-      *interactions = (cpkt_sasl_interaction *)native_interactions;
+    if (status == SASL_INTERACT) {
+      status = cpkt_sasl_store_pending_interactions(state, native_interactions,
+                                                    interactions);
+    } else {
+      cpkt_sasl_clear_pending_interactions(state);
+      if (interactions != NULL)
+        *interactions = NULL;
+    }
     if (output_length != NULL)
       *output_length = (unsigned long)native_length;
     return status;
@@ -493,8 +595,11 @@ void cpkt_sasl_close(cpkt_sasl *self) {
   if (self == NULL)
     return;
   state = cpkt_sasl_state_for(self);
-  if (state != NULL && state->native != NULL)
-    sasl_dispose(&state->native);
+  if (state != NULL) {
+    cpkt_sasl_clear_pending_interactions(state);
+    if (state->native != NULL)
+      sasl_dispose(&state->native);
+  }
   free(state);
   self->internal = NULL;
   free(self);

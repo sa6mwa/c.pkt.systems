@@ -23,3 +23,8 @@ receiver identity and lifetime.
 they do not materialize or concatenate an input stream. Input byte counts use
 `unsigned long` and are rejected when they cannot be represented by the
 upstream library's bounded unsigned length.
+
+When `start` or `step` returns `CPKT_SASL_INTERACT`, the caller fills the
+borrowed interaction records and calls that same operation again with the
+same interaction pointer. The facade forwards the completed records to Cyrus
+SASL; they remain invalid after the next operation or receiver close.

@@ -155,8 +155,10 @@ enum cpkt_sasl_constants {
   CPKT_SASL_PROPERTY_EXTERNAL_AUTHENTICATION = 102
 };
 
-/* Receiver shell.  Returned text is provider-owned until the next matching
- * operation or receiver close, exactly as documented by Cyrus SASL. */
+/* Receiver shell. Returned text is provider-owned until the next matching
+ * operation or receiver close, exactly as documented by Cyrus SASL. When
+ * start or step returns CPKT_SASL_INTERACT, fill the returned interaction
+ * records and pass that same pointer back to the same operation. */
 struct cpkt_sasl {
   int (*start)(cpkt_sasl *self, const char *mechanisms,
                cpkt_sasl_interaction **interactions_out,

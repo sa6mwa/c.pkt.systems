@@ -1538,11 +1538,30 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sasl_facade_test)
     target_link_libraries(cpkt_sasl_facade_test PRIVATE cpkt_sasl_static)
+    add_executable(cpkt_sasl_callback_retry_test
+      tests/sasl_callback_retry_test.c
+      src/sasl.c)
+    add_dependencies(cpkt_sasl_callback_retry_test cpkt_cyrus_sasl_project)
+    cpkt_use_local_runtime(cpkt_sasl_callback_retry_test)
+    get_target_property(cpkt_sasl_native_include_dir cpkt::cyrus_sasl_static
+      INTERFACE_INCLUDE_DIRECTORIES)
+    target_include_directories(cpkt_sasl_callback_retry_test PRIVATE
+      "${CMAKE_SOURCE_DIR}/include"
+      "${cpkt_sasl_native_include_dir}")
+    target_compile_options(cpkt_sasl_callback_retry_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_callback_retry_test)
     add_executable(cpkt_sqlite_facade_test tests/sqlite_facade_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_facade_test)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
     target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_collation_failure_test
+      tests/sqlite_collation_failure_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_collation_failure_test)
+    target_compile_options(cpkt_sqlite_collation_failure_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_collation_failure_test)
+    target_link_libraries(cpkt_sqlite_collation_failure_test PRIVATE
+      cpkt_sqlite_static)
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
     cpkt_use_local_runtime(cpkt_lua_runtime_test)
     target_compile_options(cpkt_lua_runtime_test PRIVATE -std=c99)
@@ -1710,11 +1729,14 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
+      add_test(NAME sqlite_collation_failure
+        COMMAND cpkt_sqlite_collation_failure_test)
       add_test(
         NAME postgres_e2e_harness
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_e2e_harness_test.sh")
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
       add_test(NAME sasl_facade COMMAND cpkt_sasl_facade_test)
+      add_test(NAME sasl_callback_retry COMMAND cpkt_sasl_callback_retry_test)
       set_tests_properties(
         opcua_facade_integration
         opcua_boundary_server_c99_client_c89

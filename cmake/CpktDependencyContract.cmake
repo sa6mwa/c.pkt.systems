@@ -193,7 +193,10 @@ function(cpkt_prepare_dependency_component)
       endif()
     elseif(NOT _existing_contract STREQUAL "${_contract}")
       if(NOT CPKT_BUILD_DEPENDENCIES)
-        if(EXISTS "${component_BUILD_ROOT}" OR EXISTS "${component_INSTALL_ROOT}")
+        if((CPKT_DEPENDENCY_BUILD_ROOT_LIFECYCLE_OWNED
+              AND EXISTS "${component_BUILD_ROOT}")
+            OR (CPKT_EXTERNAL_ROOT_LIFECYCLE_OWNED
+              AND EXISTS "${component_INSTALL_ROOT}"))
           message(FATAL_ERROR
             "dependency component ${component_NAME} for ${CPKT_TARGET_ID} is stale.\n"
             "Dependency rebuilding is disabled; reconfigure with CPKT_BUILD_DEPENDENCIES=ON to refresh only this component.")

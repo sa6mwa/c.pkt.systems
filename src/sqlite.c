@@ -5793,8 +5793,12 @@ int cpkt_sqlite_create_collation(cpkt_sqlite *self, const char *name,
       cpkt_sqlite_native(self), name, (int)text_representation, binding,
       compare == NULL ? NULL : cpkt_sqlite_collation_trampoline,
       cpkt_sqlite_collation_destroy);
-  if (status != SQLITE_OK)
+  if (status != SQLITE_OK) {
+    /* SQLite deliberately does not call xDestroy on this failure path. The
+     * binding is facade-owned, while context remains caller-owned. */
+    free(binding);
     return status;
+  }
   return CPKT_SQLITE_OK;
 }
 
