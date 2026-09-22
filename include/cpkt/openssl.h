@@ -188,6 +188,8 @@ typedef struct cpkt_openssl_i64 {
 typedef struct cpkt_openssl_param_i64 cpkt_openssl_param_i64;
 /** Owned, aligned native storage for one unsigned OpenSSL parameter. */
 typedef struct cpkt_openssl_param_u64 cpkt_openssl_param_u64;
+/** Opaque C89 shell for OpenSSL's SHA-384/SHA-512 native state. */
+typedef struct cpkt_openssl_sha512_context cpkt_openssl_sha512_context;
 
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
@@ -427,5 +429,31 @@ CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_set_int64(
 /** C89 adapter for OSSL_PARAM_set_uint64. */
 CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_set_uint64(
     OSSL_PARAM *parameter, cpkt_openssl_u64 value);
+/** Allocates a C89 shell for SHA-384 and SHA-512 operations. */
+CPKT_OPENSSL_API cpkt_openssl_sha512_context *cpkt_openssl_SHA512_CTX_new(void);
+/** Releases a C89 SHA-384/SHA-512 context shell. */
+CPKT_OPENSSL_API void cpkt_openssl_SHA512_CTX_free(
+    cpkt_openssl_sha512_context *context);
+/** C89 adapter for SHA384_Init. */
+CPKT_OPENSSL_API int cpkt_openssl_SHA384_Init(
+    cpkt_openssl_sha512_context *context);
+/** C89 adapter for SHA384_Update. */
+CPKT_OPENSSL_API int cpkt_openssl_SHA384_Update(
+    cpkt_openssl_sha512_context *context, const void *data, size_t length);
+/** C89 adapter for SHA384_Final. */
+CPKT_OPENSSL_API int cpkt_openssl_SHA384_Final(
+    unsigned char *digest, cpkt_openssl_sha512_context *context);
+/** C89 adapter for SHA512_Init. */
+CPKT_OPENSSL_API int cpkt_openssl_SHA512_Init(
+    cpkt_openssl_sha512_context *context);
+/** C89 adapter for SHA512_Update. */
+CPKT_OPENSSL_API int cpkt_openssl_SHA512_Update(
+    cpkt_openssl_sha512_context *context, const void *data, size_t length);
+/** C89 adapter for SHA512_Final. */
+CPKT_OPENSSL_API int cpkt_openssl_SHA512_Final(
+    unsigned char *digest, cpkt_openssl_sha512_context *context);
+/** C89 adapter for SHA512_Transform. */
+CPKT_OPENSSL_API void cpkt_openssl_SHA512_Transform(
+    cpkt_openssl_sha512_context *context, const unsigned char *block);
 
 #endif

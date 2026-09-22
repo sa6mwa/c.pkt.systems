@@ -438,6 +438,10 @@ add_library(cpkt_openssl_static STATIC src/openssl.c)
 cpkt_configure_c89_target(cpkt_openssl_static)
 cpkt_add_repo_warning_errors(cpkt_openssl_static)
 target_compile_definitions(cpkt_openssl_static PRIVATE CPKT_OPENSSL_STATIC)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  # The facade deliberately preserves OpenSSL's configured public legacy API.
+  target_compile_options(cpkt_openssl_static PRIVATE -Wno-deprecated-declarations)
+endif()
 target_include_directories(cpkt_openssl_static PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
 target_link_libraries(cpkt_openssl_static PUBLIC
@@ -451,6 +455,9 @@ add_library(cpkt_openssl_shared SHARED src/openssl.c)
 cpkt_configure_c89_target(cpkt_openssl_shared)
 cpkt_add_repo_warning_errors(cpkt_openssl_shared)
 target_compile_definitions(cpkt_openssl_shared PRIVATE CPKT_OPENSSL_BUILDING_SHARED)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(cpkt_openssl_shared PRIVATE -Wno-deprecated-declarations)
+endif()
 target_include_directories(cpkt_openssl_shared PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
 target_link_libraries(cpkt_openssl_shared PUBLIC

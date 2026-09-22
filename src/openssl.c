@@ -26,6 +26,10 @@ struct cpkt_openssl_param_u64 {
   uint64_t value;
 };
 
+struct cpkt_openssl_sha512_context {
+  SHA512_CTX native;
+};
+
 static uint64_t cpkt_openssl_native_u64(cpkt_openssl_u64 value) {
   uint64_t native;
 
@@ -682,4 +686,57 @@ int cpkt_openssl_OSSL_PARAM_set_int64(
 int cpkt_openssl_OSSL_PARAM_set_uint64(
     OSSL_PARAM *parameter, cpkt_openssl_u64 value) {
   return OSSL_PARAM_set_uint64(parameter, cpkt_openssl_native_u64(value));
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_SHA512_CTX_new. */
+cpkt_openssl_sha512_context *cpkt_openssl_SHA512_CTX_new(void) {
+  return (cpkt_openssl_sha512_context *) calloc(1, sizeof(
+      cpkt_openssl_sha512_context));
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_SHA512_CTX_free. */
+void cpkt_openssl_SHA512_CTX_free(cpkt_openssl_sha512_context *context) {
+  free(context);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SHA384_Init. */
+int cpkt_openssl_SHA384_Init(cpkt_openssl_sha512_context *context) {
+  return context == NULL ? 0 : SHA384_Init(&context->native);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SHA384_Update. */
+int cpkt_openssl_SHA384_Update(
+    cpkt_openssl_sha512_context *context, const void *data, size_t length) {
+  return context == NULL ? 0 : SHA384_Update(&context->native, data, length);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SHA384_Final. */
+int cpkt_openssl_SHA384_Final(
+    unsigned char *digest, cpkt_openssl_sha512_context *context) {
+  return context == NULL ? 0 : SHA384_Final(digest, &context->native);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SHA512_Init. */
+int cpkt_openssl_SHA512_Init(cpkt_openssl_sha512_context *context) {
+  return context == NULL ? 0 : SHA512_Init(&context->native);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SHA512_Update. */
+int cpkt_openssl_SHA512_Update(
+    cpkt_openssl_sha512_context *context, const void *data, size_t length) {
+  return context == NULL ? 0 : SHA512_Update(&context->native, data, length);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SHA512_Final. */
+int cpkt_openssl_SHA512_Final(
+    unsigned char *digest, cpkt_openssl_sha512_context *context) {
+  return context == NULL ? 0 : SHA512_Final(digest, &context->native);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SHA512_Transform. */
+void cpkt_openssl_SHA512_Transform(
+    cpkt_openssl_sha512_context *context, const unsigned char *block) {
+  if (context != NULL) {
+    SHA512_Transform(&context->native, block);
+  }
 }
