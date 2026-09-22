@@ -4,6 +4,7 @@ int main(void) {
   ASN1_ENUMERATED *enumerated;
   ASN1_INTEGER *integer;
   CT_POLICY_EVAL_CTX *policy_context;
+  BIO *bio;
   OSSL_LIB_CTX *library_context;
   SSL_CTX *context;
   SCT *sct;
@@ -11,6 +12,7 @@ int main(void) {
   unsigned char derived_key[16];
   unsigned char iv[16];
   unsigned char salt[4];
+  char read_buffer[4];
   cpkt_openssl_i64 signed_value;
   cpkt_openssl_u64 options;
   cpkt_openssl_u64 returned;
@@ -25,19 +27,28 @@ int main(void) {
   if (!cpkt_openssl_u64_is_zero(cpkt_openssl_u64_make(0UL, 0UL))) {
     return 2;
   }
+  bio = BIO_new(BIO_s_mem());
+  if (bio == 0 || BIO_write(bio, "abc", 3) != 3 ||
+      cpkt_openssl_u64_low_word(cpkt_openssl_BIO_number_written(bio)) != 3UL ||
+      BIO_read(bio, read_buffer, 3) != 3 ||
+      cpkt_openssl_u64_low_word(cpkt_openssl_BIO_number_read(bio)) != 3UL) {
+    BIO_free(bio);
+    return 3;
+  }
+  BIO_free(bio);
   signed_value = cpkt_openssl_i64_make(0xffffffffUL, 0xfffffffeUL);
   if (cpkt_openssl_i64_high_word(signed_value) != 0xffffffffUL ||
       cpkt_openssl_i64_low_word(signed_value) != 0xfffffffeUL ||
       !cpkt_openssl_i64_equal(
           signed_value, cpkt_openssl_i64_make(0xffffffffUL, 0xfffffffeUL))) {
-    return 3;
+    return 4;
   }
   integer = ASN1_INTEGER_new();
   enumerated = ASN1_ENUMERATED_new();
   if (integer == 0 || enumerated == 0) {
     ASN1_INTEGER_free(integer);
     ASN1_ENUMERATED_free(enumerated);
-    return 4;
+    return 5;
   }
   if (cpkt_openssl_ASN1_INTEGER_set_int64(integer, signed_value) != 1 ||
       cpkt_openssl_ASN1_INTEGER_get_int64(&signed_value, integer) != 1 ||
@@ -52,7 +63,7 @@ int main(void) {
           signed_value, cpkt_openssl_i64_make(0xffffffffUL, 0xfffffffeUL))) {
     ASN1_INTEGER_free(integer);
     ASN1_ENUMERATED_free(enumerated);
-    return 5;
+    return 6;
   }
   ASN1_INTEGER_free(integer);
   ASN1_ENUMERATED_free(enumerated);
@@ -63,7 +74,7 @@ int main(void) {
     CT_POLICY_EVAL_CTX_free(policy_context);
     SCT_free(sct);
     OSSL_LIB_CTX_free(library_context);
-    return 6;
+    return 7;
   }
   cpkt_openssl_CT_POLICY_EVAL_CTX_set_time(policy_context, options);
   cpkt_openssl_SCT_set_timestamp(sct, options);
@@ -77,7 +88,7 @@ int main(void) {
     CT_POLICY_EVAL_CTX_free(policy_context);
     SCT_free(sct);
     OSSL_LIB_CTX_free(library_context);
-    return 7;
+    return 8;
   }
   cpkt_openssl_OSSL_sleep(cpkt_openssl_u64_make(0UL, 0UL));
   CT_POLICY_EVAL_CTX_free(policy_context);
@@ -92,29 +103,29 @@ int main(void) {
           cpkt_openssl_u64_make(0UL, 1UL), cpkt_openssl_u64_make(0UL, 1UL),
           cpkt_openssl_u64_make(0UL, 1048576UL), derived_key,
           sizeof(derived_key)) != 1) {
-    return 8;
+    return 9;
   }
   algorithm = cpkt_openssl_PKCS5_pbe2_set_scrypt(
       EVP_aes_128_cbc(), salt, (int) sizeof(salt), iv,
       cpkt_openssl_u64_make(0UL, 16UL), cpkt_openssl_u64_make(0UL, 1UL),
       cpkt_openssl_u64_make(0UL, 1UL));
   if (algorithm == 0) {
-    return 9;
+    return 10;
   }
   X509_ALGOR_free(algorithm);
   if (cpkt_openssl_OPENSSL_init_ssl(cpkt_openssl_u64_make(0UL, 0UL), 0) != 1) {
-    return 10;
+    return 11;
   }
   context = SSL_CTX_new(TLS_method());
   if (context == 0) {
-    return 11;
+    return 12;
   }
   returned = cpkt_openssl_SSL_CTX_set_options(context, options);
   if ((cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL) {
     SSL_CTX_free(context);
-    return 12;
+    return 13;
   }
   returned = cpkt_openssl_SSL_CTX_clear_options(context, options);
   SSL_CTX_free(context);
-  return (cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL ? 0 : 13;
+  return (cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL ? 0 : 14;
 }

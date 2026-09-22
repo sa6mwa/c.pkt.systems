@@ -495,3 +495,34 @@ int cpkt_openssl_SSL_write_ex2(
   return SSL_write_ex2(ssl, buffer, buffer_length,
                        cpkt_openssl_native_u64(flags), written_out);
 }
+
+/** Implements the documented public C89 adapter cpkt_openssl_BIO_number_read. */
+cpkt_openssl_u64 cpkt_openssl_BIO_number_read(BIO *bio) {
+  return cpkt_openssl_public_u64(BIO_number_read(bio));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_BIO_number_written. */
+cpkt_openssl_u64 cpkt_openssl_BIO_number_written(BIO *bio) {
+  return cpkt_openssl_public_u64(BIO_number_written(bio));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_HPKE_CTX_get_seq. */
+int cpkt_openssl_OSSL_HPKE_CTX_get_seq(
+    OSSL_HPKE_CTX *context, cpkt_openssl_u64 *sequence_out) {
+  uint64_t native_sequence;
+  int result;
+
+  native_sequence = 0;
+  result = OSSL_HPKE_CTX_get_seq(
+      context, sequence_out == NULL ? NULL : &native_sequence);
+  if (result != 0 && sequence_out != NULL) {
+    *sequence_out = cpkt_openssl_public_u64(native_sequence);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_HPKE_CTX_set_seq. */
+int cpkt_openssl_OSSL_HPKE_CTX_set_seq(
+    OSSL_HPKE_CTX *context, cpkt_openssl_u64 sequence) {
+  return OSSL_HPKE_CTX_set_seq(context, cpkt_openssl_native_u64(sequence));
+}

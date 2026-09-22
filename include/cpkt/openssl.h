@@ -362,5 +362,15 @@ CPKT_OPENSSL_API int cpkt_openssl_SSL_stream_conclude(
 CPKT_OPENSSL_API int cpkt_openssl_SSL_write_ex2(
     SSL *ssl, const void *buffer, size_t buffer_length,
     cpkt_openssl_u64 flags, size_t *written_out);
+/** C89 adapter for BIO_number_read. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_BIO_number_read(BIO *bio);
+/** C89 adapter for BIO_number_written. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_BIO_number_written(BIO *bio);
+/** C89 adapter for OSSL_HPKE_CTX_get_seq. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_HPKE_CTX_get_seq(
+    OSSL_HPKE_CTX *context, cpkt_openssl_u64 *sequence_out);
+/** C89 adapter for OSSL_HPKE_CTX_set_seq. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_HPKE_CTX_set_seq(
+    OSSL_HPKE_CTX *context, cpkt_openssl_u64 sequence);
 
 #endif
