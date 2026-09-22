@@ -1555,6 +1555,17 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
     target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_sqlite_page_cache_discard_test
+        tests/sqlite_page_cache_discard_test.c)
+      cpkt_use_local_runtime(cpkt_sqlite_page_cache_discard_test)
+      target_compile_options(cpkt_sqlite_page_cache_discard_test PRIVATE -std=c99)
+      target_link_options(cpkt_sqlite_page_cache_discard_test PRIVATE
+        "-Wl,--wrap=calloc" "-Wl,--wrap=free")
+      cpkt_add_repo_warning_errors(cpkt_sqlite_page_cache_discard_test)
+      target_link_libraries(cpkt_sqlite_page_cache_discard_test PRIVATE
+        cpkt_sqlite_static cpkt::sqlite_static)
+    endif()
     add_executable(cpkt_sqlite_collation_failure_test
       tests/sqlite_collation_failure_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_collation_failure_test)
@@ -1729,6 +1740,10 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME sqlite_page_cache_discard
+          COMMAND cpkt_sqlite_page_cache_discard_test)
+      endif()
       add_test(NAME sqlite_collation_failure
         COMMAND cpkt_sqlite_collation_failure_test)
       add_test(

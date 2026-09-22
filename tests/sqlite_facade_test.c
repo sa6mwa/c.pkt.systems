@@ -1801,10 +1801,42 @@ int main(void) {
       session == 0 ||
       (size_config = 1, session->object_config(session, 1, &size_config)) !=
           CPKT_SQLITE_OK ||
-      session->attach(session, "session_item") != CPKT_SQLITE_OK ||
-      db->tx(db, "insert into session_item values (1, 'session')", 0, 0) !=
-          CPKT_SQLITE_OK)
+      session->attach(session, "session_item") != CPKT_SQLITE_OK)
     return 17;
+  changeset = 0;
+  iterator = 0;
+  inverted = 0;
+  combined = 0;
+  changegroup = 0;
+  rebase = 0;
+  if (session->changeset(session, &changeset) != CPKT_SQLITE_OK ||
+      changeset == 0 || changeset->byte_count != 0 || changeset->data != 0 ||
+      changeset->iterator(changeset, &iterator) != CPKT_SQLITE_OK ||
+      iterator == 0 || iterator->next(iterator) != CPKT_SQLITE_DONE ||
+      iterator->close(iterator) != CPKT_SQLITE_OK ||
+      cpkt_sqlite_changeset_invert(changeset, &inverted) != CPKT_SQLITE_OK ||
+      inverted == 0 || inverted->byte_count != 0 ||
+      cpkt_sqlite_changeset_concat(changeset, inverted, &combined) !=
+          CPKT_SQLITE_OK ||
+      combined == 0 || combined->byte_count != 0 ||
+      cpkt_sqlite_changeset_apply(db, changeset, 0, 0, 0) != CPKT_SQLITE_OK ||
+      cpkt_sqlite_changeset_apply_ex(db, changeset, 0, 0, 0, 0, &rebase) !=
+          CPKT_SQLITE_OK ||
+      rebase != 0 ||
+      cpkt_sqlite_changeset_apply_v3(db, changeset, 0, 0, 0, 0, &rebase) !=
+          CPKT_SQLITE_OK ||
+      rebase != 0 ||
+      cpkt_sqlite_changegroup_new(&changegroup) != CPKT_SQLITE_OK ||
+      changegroup == 0 ||
+      changegroup->add(changegroup, changeset) != CPKT_SQLITE_OK)
+    return 101;
+  changegroup->close(changegroup);
+  combined->free(combined);
+  inverted->free(inverted);
+  changeset->free(changeset);
+  if (db->tx(db, "insert into session_item values (1, 'session')", 0, 0) !=
+      CPKT_SQLITE_OK)
+    return 102;
   changeset = 0;
   if (session->changeset(session, &changeset) != CPKT_SQLITE_OK ||
       changeset == 0 || changeset->byte_count <= 0)

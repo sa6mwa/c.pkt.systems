@@ -3836,6 +3836,7 @@ static void cpkt_sqlite_page_cache_unpin(sqlite3_pcache *cache,
                                          int discard) {
   cpkt_sqlite_page_cache_binding *binding;
   cpkt_sqlite_page_binding *page_binding;
+  cpkt_sqlite_page_binding **link;
   binding = cpkt_sqlite_page_cache_native_binding(cache);
   page_binding = (cpkt_sqlite_page_binding *)native_page;
   if (binding == NULL || page_binding == NULL)
@@ -3846,8 +3847,16 @@ static void cpkt_sqlite_page_cache_unpin(sqlite3_pcache *cache,
   if (binding->methods->unpin != NULL) {
     binding->methods->unpin(binding->cache, page_binding->page, discard);
   }
-  if (discard)
-    page_binding->page = NULL;
+  if (discard) {
+    /* SQLite cannot use the native page again after discarding it. */
+    link = &binding->pages;
+    while (*link != NULL && *link != page_binding)
+      link = &(*link)->next;
+    if (*link == page_binding) {
+      *link = page_binding->next;
+      free(page_binding);
+    }
+  }
 }
 
 static void cpkt_sqlite_page_cache_rekey(sqlite3_pcache *cache,
@@ -6380,6 +6389,12 @@ static void cpkt_sqlite_changeset_free(cpkt_sqlite_changeset *self) {
   free(self);
 }
 
+static int
+cpkt_sqlite_changeset_has_valid_data(const cpkt_sqlite_changeset *changeset) {
+  return changeset != NULL && changeset->byte_count >= 0 &&
+         (changeset->byte_count == 0 || changeset->data != NULL);
+}
+
 static int cpkt_sqlite_changeset_new_owned(void *data, int byte_count,
                                            cpkt_sqlite_changeset **out) {
   cpkt_sqlite_changeset *changeset;
@@ -6645,7 +6660,7 @@ int cpkt_sqlite_changeset_start_ex(const cpkt_sqlite_changeset *changeset,
   int status;
   if (out != NULL)
     *out = NULL;
-  if (changeset == NULL || changeset->data == NULL || out == NULL)
+  if (!cpkt_sqlite_changeset_has_valid_data(changeset) || out == NULL)
     return CPKT_SQLITE_MISUSE;
   native_iterator = NULL;
   status = sqlite3changeset_start_v2(&native_iterator, changeset->byte_count,
@@ -6699,7 +6714,7 @@ int cpkt_sqlite_changeset_invert(const cpkt_sqlite_changeset *input,
   int status;
   if (out != NULL)
     *out = NULL;
-  if (input == NULL || input->data == NULL || out == NULL)
+  if (!cpkt_sqlite_changeset_has_valid_data(input) || out == NULL)
     return CPKT_SQLITE_MISUSE;
   data = NULL;
   byte_count = 0;
@@ -6718,8 +6733,8 @@ int cpkt_sqlite_changeset_concat(const cpkt_sqlite_changeset *left,
   int status;
   if (out != NULL)
     *out = NULL;
-  if (left == NULL || left->data == NULL || right == NULL ||
-      right->data == NULL || out == NULL)
+  if (!cpkt_sqlite_changeset_has_valid_data(left) ||
+      !cpkt_sqlite_changeset_has_valid_data(right) || out == NULL)
     return CPKT_SQLITE_MISUSE;
   data = NULL;
   byte_count = 0;
@@ -6775,7 +6790,7 @@ int cpkt_sqlite_changeset_apply(
     cpkt_sqlite_changeset_conflict_callback conflict, void *context) {
   cpkt_sqlite_changeset_apply_context apply_context;
   if (database == NULL || cpkt_sqlite_native(database) == NULL ||
-      changeset == NULL || changeset->data == NULL)
+      !cpkt_sqlite_changeset_has_valid_data(changeset))
     return CPKT_SQLITE_MISUSE;
   apply_context.filter = filter;
   apply_context.iterator_filter = NULL;
@@ -6840,7 +6855,7 @@ int cpkt_sqlite_changeset_apply_ex(
   if (rebase_out != NULL)
     *rebase_out = NULL;
   if (database == NULL || cpkt_sqlite_native(database) == NULL ||
-      changeset == NULL || changeset->data == NULL)
+      !cpkt_sqlite_changeset_has_valid_data(changeset))
     return CPKT_SQLITE_MISUSE;
   apply_context.filter = filter;
   apply_context.iterator_filter = NULL;
@@ -6914,7 +6929,7 @@ int cpkt_sqlite_changeset_apply_v3(
   if (rebase_out != NULL)
     *rebase_out = NULL;
   if (database == NULL || cpkt_sqlite_native(database) == NULL ||
-      changeset == NULL || changeset->data == NULL)
+      !cpkt_sqlite_changeset_has_valid_data(changeset))
     return CPKT_SQLITE_MISUSE;
   apply_context.filter = NULL;
   apply_context.iterator_filter = filter;
@@ -7080,8 +7095,8 @@ static int cpkt_sqlite_changegroup_schema(cpkt_sqlite_changegroup *self,
 
 static int cpkt_sqlite_changegroup_add(cpkt_sqlite_changegroup *self,
                                        const cpkt_sqlite_changeset *changeset) {
-  if (cpkt_sqlite_native_changegroup(self) == NULL || changeset == NULL ||
-      changeset->data == NULL)
+  if (cpkt_sqlite_native_changegroup(self) == NULL ||
+      !cpkt_sqlite_changeset_has_valid_data(changeset))
     return CPKT_SQLITE_MISUSE;
   return sqlite3changegroup_add(cpkt_sqlite_native_changegroup(self),
                                 changeset->byte_count, (void *)changeset->data);

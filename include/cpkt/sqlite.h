@@ -1037,6 +1037,7 @@ struct cpkt_sqlite_session {
 };
 
 struct cpkt_sqlite_changeset {
+  /* An empty changeset has byte_count == 0 and may have data == NULL. */
   const void *data;
   int byte_count;
   int (*iterator)(const cpkt_sqlite_changeset *self,
