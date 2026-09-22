@@ -42,6 +42,79 @@ case "$target_help" in
   *) printf 'all-dependencies target is missing\n' >&2; exit 1 ;;
 esac
 
+require_plan_target() {
+  local plan=$1
+  local target=$2
+  local label=$3
+
+  case "$plan" in
+    *"$target"*) ;;
+    *) printf '%s lacks required dependency: %s\n' "$label" "$target" >&2; exit 1 ;;
+  esac
+}
+
+forbid_plan_targets() {
+  local plan=$1
+  local label=$2
+  shift 2
+  local target
+
+  for target in "$@"; do
+    case "$plan" in
+      *"$target"*)
+        printf '%s includes an unrelated dependency: %s\n' "$label" "$target" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+openssl_plan=$(cmake --build "$build_dir" --target cpkt_openssl_static -- -n)
+require_plan_target "$openssl_plan" cpkt_openssl_project "OpenSSL facade build plan"
+forbid_plan_targets "$openssl_plan" "OpenSSL facade build plan" \
+  cpkt_deps_all cpkt_zlib_project cpkt_nghttp2_project cpkt_libssh2_project \
+  cpkt_mqttc_project cpkt_lua_project cpkt_postgresql_project cpkt_sqlite_project
+
+nghttp2_plan=$(cmake --build "$build_dir" --target cpkt_nghttp2_static -- -n)
+require_plan_target "$nghttp2_plan" cpkt_nghttp2_project "nghttp2 facade build plan"
+forbid_plan_targets "$nghttp2_plan" "nghttp2 facade build plan" \
+  cpkt_deps_all cpkt_openssl_project cpkt_zlib_project cpkt_libssh2_project \
+  cpkt_mqttc_project cpkt_lua_project cpkt_postgresql_project cpkt_sqlite_project
+
+libssh2_plan=$(cmake --build "$build_dir" --target cpkt_libssh2_static -- -n)
+for required in cpkt_libssh2_project cpkt_openssl_project cpkt_zlib_project; do
+  require_plan_target "$libssh2_plan" "$required" "libssh2 facade build plan"
+done
+forbid_plan_targets "$libssh2_plan" "libssh2 facade build plan" \
+  cpkt_deps_all cpkt_nghttp2_project cpkt_mqttc_project cpkt_lua_project \
+  cpkt_postgresql_project cpkt_sqlite_project
+
+mqttc_plan=$(cmake --build "$build_dir" --target cpkt_mqttc_static -- -n)
+require_plan_target "$mqttc_plan" cpkt_mqttc_project "MQTT-C facade build plan"
+forbid_plan_targets "$mqttc_plan" "MQTT-C facade build plan" \
+  cpkt_deps_all cpkt_openssl_project cpkt_zlib_project cpkt_nghttp2_project \
+  cpkt_libssh2_project cpkt_lua_project cpkt_postgresql_project cpkt_sqlite_project
+
+lua_runtime_plan=$(cmake --build "$build_dir" --target cpkt_lua_runtime_static -- -n)
+require_plan_target "$lua_runtime_plan" cpkt_lua_project "Lua runtime facade build plan"
+forbid_plan_targets "$lua_runtime_plan" "Lua runtime facade build plan" \
+  cpkt_deps_all cpkt_openssl_project cpkt_zlib_project cpkt_nghttp2_project \
+  cpkt_libssh2_project cpkt_mqttc_project cpkt_postgresql_project cpkt_sqlite_project
+
+gssapi_plan=$(cmake --build "$build_dir" --target cpkt_gssapi_static -- -n)
+require_plan_target "$gssapi_plan" cpkt_krb5_static_project "GSSAPI facade build plan"
+forbid_plan_targets "$gssapi_plan" "GSSAPI facade build plan" \
+  cpkt_deps_all cpkt_cyrus_sasl_project cpkt_openldap_project \
+  cpkt_postgresql_project cpkt_sqlite_project
+
+sasl_plan=$(cmake --build "$build_dir" --target cpkt_sasl_static -- -n)
+for required in cpkt_cyrus_sasl_project cpkt_krb5_static_project cpkt_krb5_shared_project cpkt_openssl_project; do
+  require_plan_target "$sasl_plan" "$required" "SASL facade build plan"
+done
+forbid_plan_targets "$sasl_plan" "SASL facade build plan" \
+  cpkt_deps_all cpkt_openldap_project cpkt_postgresql_project cpkt_sqlite_project \
+  cpkt_lua_project cpkt_open62541_static_project
+
 sqlite_plan=$(cmake --build "$build_dir" --target cpkt_sqlite_static -- -n)
 case "$sqlite_plan" in
   *"cpkt_sqlite_project"*) ;;
