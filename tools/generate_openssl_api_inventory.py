@@ -57,6 +57,14 @@ ABI_ONLY_EXPORTS = {
     "err_free_strings_int",
 }
 
+# These spellings require a facade type rather than a directly consumable C89
+# declaration.  Do not include size_t, ptrdiff_t, va_list, or time_t here:
+# those are supplied by C89's standard headers.  Fixed-width 32-bit aliases
+# are still C89 syntax through the upstream typedef; the target-independent
+# representation problem is native 64-bit storage and long long syntax.
+C89_TYPED_ADAPTER_PATTERN = re.compile(
+    r"\b(?:int64_t|uint64_t|BN_ULONG|SHA_LONG64)\b|\blong\s+long\b")
+
 
 def read_num_files(paths: Iterable[pathlib.Path]) -> Set[str]:
     names: Set[str] = set()
@@ -141,6 +149,61 @@ def function_declarations(ast: Dict[str, Any], expected: Set[str]) -> Dict[str, 
     return declarations
 
 
+def requires_c89_typed_adapter(declaration: Dict[str, Any]) -> bool:
+    spellings = [declaration["type"]]
+    spellings.extend(parameter["type"] for parameter in declaration["parameters"])
+    return any(C89_TYPED_ADAPTER_PATTERN.search(spelling) for spelling in spellings)
+
+
+def record_declarations(ast: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    declarations: Dict[str, Dict[str, Any]] = {}
+    for node in walk_ast(ast):
+        if node.get("kind") != "RecordDecl" or not node.get("name"):
+            continue
+        fields = []
+        for child in node.get("inner", []):
+            if child.get("kind") != "FieldDecl":
+                continue
+            field_type = child.get("type", {}).get("qualType")
+            if not field_type:
+                continue
+            fields.append({"name": child.get("name", ""), "type": field_type})
+        if not fields or not any(
+                C89_TYPED_ADAPTER_PATTERN.search(field["type"])
+                for field in fields):
+            continue
+        candidate = {"fields": fields}
+        previous = declarations.get(node["name"])
+        if previous is None or len(candidate["fields"]) > len(previous["fields"]):
+            declarations[node["name"]] = candidate
+    return declarations
+
+
+def record_aliases(ast: Dict[str, Any], records: Dict[str, Dict[str, Any]]) -> Set[str]:
+    aliases: Set[str] = set(records)
+    for node in walk_ast(ast):
+        if node.get("kind") != "TypedefDecl" or not node.get("name"):
+            continue
+        type_info = node.get("type", {})
+        spellings = [type_info.get("qualType", ""),
+                     type_info.get("desugaredQualType", "")]
+        if any(record_name in spelling for record_name in records
+               for spelling in spellings):
+            aliases.add(node["name"])
+    return aliases
+
+
+def record_dependent_functions(declarations: Dict[str, Dict[str, Any]],
+                               aliases: Set[str]) -> List[str]:
+    pattern = re.compile(r"\b(?:" + "|".join(
+        re.escape(alias) for alias in sorted(aliases)) + r")\b")
+    return sorted(
+        name for name, declaration in declarations.items()
+        if any(pattern.search(spelling) for spelling in
+               [declaration["type"]] + [
+                   parameter["type"] for parameter in declaration["parameters"]]))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--include-dir", required=True, type=pathlib.Path)
@@ -181,12 +244,15 @@ def main() -> int:
                             stderr=subprocess.PIPE)
     if result.returncode != 0:
         raise ValueError("OpenSSL declaration AST failed:\n" + result.stderr)
-    declarations = function_declarations(json.loads(result.stdout), exported_public_abi)
+    ast = json.loads(result.stdout)
+    declarations = function_declarations(ast, exported_public_abi)
+    typed_records = record_declarations(ast)
+    typed_record_aliases = record_aliases(ast, typed_records)
     unresolved = set(exported_public_abi - set(declarations))
     unclassified_unresolved = sorted(unresolved - ABI_ONLY_EXPORTS)
 
     inventory = {
-        "schema": 1,
+        "schema": 2,
         "nominal_function_count": len(nominal),
         "dynamic_function_count": len(dynamic),
         "exported_public_abi_function_count": len(exported_public_abi),
@@ -194,6 +260,13 @@ def main() -> int:
         "feature_disabled_functions": sorted(nominal - dynamic),
         "compatibility_exports": sorted(dynamic & COMPATIBILITY_EXPORTS),
         "functions": {name: declarations[name] for name in sorted(declarations)},
+        "c89_typed_adapter_functions": sorted(
+            name for name, declaration in declarations.items()
+            if requires_c89_typed_adapter(declaration)),
+        "c89_typed_adapter_records": typed_records,
+        "c89_typed_adapter_record_aliases": sorted(typed_record_aliases),
+        "c89_record_dependent_functions": record_dependent_functions(
+            declarations, typed_record_aliases),
         "abi_only_exports": sorted(unresolved),
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

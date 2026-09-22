@@ -21,10 +21,20 @@ subset of those functions declared by the configured installed public headers.
 The public C89 facade must cover every such declared function, including any
 deprecated API the configured headers still expose, and every corresponding
 public type, constant, macro, callback, object lifetime operation, and legacy
-state operation required to use it. A target may not silently lose a function
-because its signature uses a 64-bit native scalar or a non-C89 declaration.
-Such values use the facade's explicit two-word representation and adapter
-functions.
+state operation required to use it. A declaration that already uses C89
+language and standard-library types is directly available through
+`<cpkt/openssl.h>`; it does not need a redundant `cpkt_openssl_*` wrapper. A
+declaration that uses native 64-bit storage, `long long`, or a record/callback
+that embeds either must have an explicit typed adapter. A target may not
+silently lose such an API. Typed values use the facade's explicit two-word
+representation and adapter functions.
+
+For the current x86_64 GNU OpenSSL 3.6.4 configuration, 6,468 public header
+functions are present. Only the mechanically classified typed-adapter subset
+(currently 74 direct signatures, plus record-dependent callers) needs new
+`cpkt_openssl_*` entry points. The 6,500-ish OpenSSL dynamic-export count is
+not a count of c.pkt facade exports and is not an instruction to duplicate all
+of OpenSSL's already-C89 declarations.
 
 The OpenSSL export manifests are not themselves an export allowlist for a
 `cpkt_openssl` shared object. The facade needs its own source-controlled,
@@ -39,6 +49,6 @@ obsolete PEM CMS compatibility exports that the installed public headers omit.
 
 `openssl_api_catalog` is a required target-correct gate. It reports the exact
 exported ABI inventory for the selected build, rejects unclassified dynamic
-exports, and must be extended so a generated facade coverage check fails for
-every declared public catalog entry lacking an adapter before `cpkt_openssl`
-ships.
+exports, and records the exact typed-adapter subset. The generated facade
+coverage check must fail for every typed or record-dependent public catalog
+entry lacking an adapter before `cpkt_openssl` ships.

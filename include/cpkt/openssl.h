@@ -14,6 +14,16 @@
 # pragma GCC diagnostic ignored "-Wlong-long"
 #endif
 
+#if defined(_WIN32) && defined(CPKT_OPENSSL_BUILDING_SHARED)
+# define CPKT_OPENSSL_API __declspec(dllexport)
+#elif defined(_WIN32) && !defined(CPKT_OPENSSL_STATIC)
+# define CPKT_OPENSSL_API __declspec(dllimport)
+#elif defined(__GNUC__) || defined(__clang__)
+# define CPKT_OPENSSL_API __attribute__((visibility("default")))
+#else
+# define CPKT_OPENSSL_API
+#endif
+
 #include <openssl/aes.h>
 #include <openssl/asn1.h>
 #include <openssl/asn1err.h>
@@ -160,5 +170,49 @@
 #if defined(__GNUC__) || defined(__clang__)
 # pragma GCC diagnostic pop
 #endif
+
+/* Exact unsigned 64-bit bits represented without a C99 scalar.  `high` and
+ * `low` each carry one 32-bit word, including on LP64 targets. */
+/** C89 OpenSSL facade declaration. */
+typedef struct cpkt_openssl_u64 {
+  unsigned long high;
+  unsigned long low;
+} cpkt_openssl_u64;
+
+/** C89 OpenSSL facade declaration. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
+    unsigned long high, unsigned long low);
+/** C89 OpenSSL facade declaration. */
+CPKT_OPENSSL_API int cpkt_openssl_u64_equal(
+    cpkt_openssl_u64 left, cpkt_openssl_u64 right);
+/** C89 OpenSSL facade declaration. */
+CPKT_OPENSSL_API int cpkt_openssl_u64_is_zero(cpkt_openssl_u64 value);
+
+/** C89 adapter for OPENSSL_init_crypto. */
+CPKT_OPENSSL_API int cpkt_openssl_OPENSSL_init_crypto(
+    cpkt_openssl_u64 options, const OPENSSL_INIT_SETTINGS *settings);
+/** C89 adapter for OPENSSL_init_ssl. */
+CPKT_OPENSSL_API int cpkt_openssl_OPENSSL_init_ssl(
+    cpkt_openssl_u64 options, const OPENSSL_INIT_SETTINGS *settings);
+/** C89 adapter for SSL_CTX_get_options. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_CTX_get_options(
+    const SSL_CTX *context);
+/** C89 adapter for SSL_get_options. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_get_options(const SSL *ssl);
+/** C89 adapter for SSL_CTX_set_options. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_CTX_set_options(
+    SSL_CTX *context, cpkt_openssl_u64 options);
+/** C89 adapter for SSL_set_options. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_set_options(
+    SSL *ssl, cpkt_openssl_u64 options);
+/** C89 adapter for SSL_CTX_clear_options. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_CTX_clear_options(
+    SSL_CTX *context, cpkt_openssl_u64 options);
+/** C89 adapter for SSL_clear_options. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SSL_clear_options(
+    SSL *ssl, cpkt_openssl_u64 options);
+/** C89 adapter for SSL_get_handshake_rtt. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_handshake_rtt(
+    const SSL *ssl, cpkt_openssl_u64 *rtt_out);
 
 #endif

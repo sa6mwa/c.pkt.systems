@@ -272,6 +272,7 @@ set(CPKT_GSSAPI_ABI_VERSION "0" CACHE STRING "GSSAPI facade ABI major. Do not bu
 set(CPKT_SASL_ABI_VERSION "0" CACHE STRING "Cyrus SASL facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_POSTGRES_ABI_VERSION "0" CACHE STRING "PostgreSQL facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SQLITE_ABI_VERSION "0" CACHE STRING "SQLite facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_OPENSSL_ABI_VERSION "0" CACHE STRING "OpenSSL C89 facade ABI major. Do not bump without maintainer approval.")
 if(NOT CPKT_SUS_CPU_ONLY)
   message(FATAL_ERROR "CPKT_SUS_CPU_ONLY=OFF is reserved for a later GPU-backend packaging phase")
 endif()
@@ -432,6 +433,47 @@ if(CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE
 endif()
 include(cmake/CpktDependencies.cmake)
 cpkt_configure_dependencies()
+
+add_library(cpkt_openssl_static STATIC src/openssl.c)
+cpkt_configure_c89_target(cpkt_openssl_static)
+cpkt_add_repo_warning_errors(cpkt_openssl_static)
+target_compile_definitions(cpkt_openssl_static PRIVATE CPKT_OPENSSL_STATIC)
+target_include_directories(cpkt_openssl_static PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_openssl_static PUBLIC
+  cpkt::openssl_ssl_static
+  cpkt::openssl_crypto_static)
+set_target_properties(cpkt_openssl_static PROPERTIES
+  OUTPUT_NAME cpkt_openssl
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_openssl_shared SHARED src/openssl.c)
+cpkt_configure_c89_target(cpkt_openssl_shared)
+cpkt_add_repo_warning_errors(cpkt_openssl_shared)
+target_compile_definitions(cpkt_openssl_shared PRIVATE CPKT_OPENSSL_BUILDING_SHARED)
+target_include_directories(cpkt_openssl_shared PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_openssl_shared PUBLIC
+  cpkt::openssl_ssl_shared
+  cpkt::openssl_crypto_shared)
+set_target_properties(cpkt_openssl_shared PROPERTIES
+  OUTPUT_NAME cpkt_openssl
+  C_VISIBILITY_PRESET hidden
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_OPENSSL_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_openssl_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_openssl_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
 
 add_library(cpkt_lua_runtime_static STATIC src/lua_runtime.c)
 cpkt_configure_c89_lua_native_header_target(cpkt_lua_runtime_static)
@@ -1159,6 +1201,11 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_gssapi_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_gssapi_facade_test)
     target_link_libraries(cpkt_gssapi_facade_test PRIVATE cpkt_gssapi_static)
+    add_executable(cpkt_openssl_facade_test tests/openssl_facade_test.c)
+    cpkt_use_local_runtime(cpkt_openssl_facade_test)
+    target_compile_options(cpkt_openssl_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_openssl_facade_test)
+    target_link_libraries(cpkt_openssl_facade_test PRIVATE cpkt_openssl_static)
     add_executable(cpkt_sasl_facade_test tests/sasl_facade_test.c)
     cpkt_use_local_runtime(cpkt_sasl_facade_test)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
@@ -1328,6 +1375,7 @@ if(CPKT_BUILD_TESTS)
         COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
+      add_test(NAME openssl_facade COMMAND cpkt_openssl_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(
         NAME postgres_e2e_harness
@@ -1584,6 +1632,17 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_C_COMPILER}"
           "${CMAKE_SYSROOT}"
           "$<TARGET_PROPERTY:cpkt::openssl_crypto_shared,INTERFACE_INCLUDE_DIRECTORIES>")
+      add_test(
+        NAME openssl_export_policy
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/openssl_export_policy_test.sh"
+          "$<TARGET_FILE:cpkt_openssl_shared>"
+          "${CMAKE_SYSTEM_NAME}"
+          "${CMAKE_NM}"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_openssl.txt"
+          "${CMAKE_C_COMPILER}"
+          "${CMAKE_SYSROOT}")
       add_test(
         NAME audio_sus_header_facade
         COMMAND
