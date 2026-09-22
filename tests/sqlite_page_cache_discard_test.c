@@ -13,6 +13,7 @@ static int tracking;
 static int tracked_free_count;
 static int unexpected_allocation_count;
 static int discard_count;
+static int truncate_count;
 
 void *__real_calloc(size_t count, size_t size);
 void __real_free(void *pointer);
@@ -82,6 +83,7 @@ static void test_rekey(cpkt_sqlite_page_cache *cache, cpkt_sqlite_page *page,
 static void test_truncate(cpkt_sqlite_page_cache *cache, unsigned long limit) {
   (void)cache;
   (void)limit;
+  ++truncate_count;
 }
 
 static void test_destroy(cpkt_sqlite_page_cache *cache) { (void)cache; }
@@ -125,6 +127,15 @@ int main(void) {
       return 4;
     tracking = 0;
   }
+  tracking = 1;
+  native_page = native_methods.xFetch(native_cache, 65U, 2);
+  if (native_page == NULL || tracked_allocation != native_page)
+    return 5;
+  native_methods.xTruncate(native_cache, 65U);
+  if (tracked_allocation != NULL || tracked_free_count != 65 ||
+      truncate_count != 1)
+    return 6;
+  tracking = 0;
   native_methods.xDestroy(native_cache);
   return 0;
 }

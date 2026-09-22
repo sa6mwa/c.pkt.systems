@@ -3879,9 +3879,23 @@ static void cpkt_sqlite_page_cache_rekey(sqlite3_pcache *cache,
 static void cpkt_sqlite_page_cache_truncate(sqlite3_pcache *cache,
                                             unsigned int limit) {
   cpkt_sqlite_page_cache_binding *binding;
+  cpkt_sqlite_page_binding *page_binding;
+  cpkt_sqlite_page_binding **link;
   binding = cpkt_sqlite_page_cache_native_binding(cache);
-  if (binding != NULL && binding->methods->truncate != NULL) {
+  if (binding == NULL)
+    return;
+  if (binding->methods->truncate != NULL) {
     binding->methods->truncate(binding->cache, (unsigned long)limit);
+  }
+  link = &binding->pages;
+  while (*link != NULL) {
+    page_binding = *link;
+    if (page_binding->key >= (unsigned long)limit) {
+      *link = page_binding->next;
+      free(page_binding);
+    } else {
+      link = &page_binding->next;
+    }
   }
 }
 
