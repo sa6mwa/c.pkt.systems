@@ -498,6 +498,25 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
 
+set(CPKT_LIBSSH2_FACADE_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/libssh2")
+set(CPKT_LIBSSH2_FACADE_INCLUDE_DIR
+  "${CPKT_LIBSSH2_FACADE_GENERATED_DIR}/include")
+set(CPKT_LIBSSH2_FACADE_HEADER
+  "${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}/cpkt/libssh2.h")
+add_custom_command(
+  OUTPUT "${CPKT_LIBSSH2_FACADE_HEADER}"
+  COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tools/generate_libssh2_c89_facade.py"
+    --include-dir "$<TARGET_PROPERTY:cpkt::libssh2_static,INTERFACE_INCLUDE_DIRECTORIES>"
+    --header "${CPKT_LIBSSH2_FACADE_HEADER}"
+  DEPENDS
+    "${CMAKE_SOURCE_DIR}/tools/generate_libssh2_c89_facade.py"
+  VERBATIM)
+add_custom_target(cpkt_libssh2_facade_generated
+  DEPENDS "${CPKT_LIBSSH2_FACADE_HEADER}")
+add_dependencies(cpkt_libssh2_facade_generated cpkt_libssh2_project)
+
 add_library(cpkt_openssl_static STATIC src/openssl.c)
 cpkt_configure_c89_target(cpkt_openssl_static)
 cpkt_add_repo_warning_errors(cpkt_openssl_static)
@@ -1282,6 +1301,15 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_nghttp2_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_nghttp2_facade_test)
     target_link_libraries(cpkt_nghttp2_facade_test PRIVATE cpkt_nghttp2_static)
+    add_executable(cpkt_libssh2_header_facade_test
+      tests/libssh2_header_facade_test.c)
+    add_dependencies(cpkt_libssh2_header_facade_test
+      cpkt_libssh2_facade_generated)
+    cpkt_use_local_runtime(cpkt_libssh2_header_facade_test)
+    target_compile_options(cpkt_libssh2_header_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_libssh2_header_facade_test)
+    target_include_directories(cpkt_libssh2_header_facade_test PRIVATE
+      "${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}")
     add_executable(cpkt_sasl_facade_test tests/sasl_facade_test.c)
     cpkt_use_local_runtime(cpkt_sasl_facade_test)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
@@ -1453,6 +1481,7 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
       add_test(NAME openssl_facade COMMAND cpkt_openssl_facade_test)
       add_test(NAME nghttp2_facade COMMAND cpkt_nghttp2_facade_test)
+      add_test(NAME libssh2_header_facade COMMAND cpkt_libssh2_header_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(
         NAME postgres_e2e_harness
