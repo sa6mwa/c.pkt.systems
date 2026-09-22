@@ -10,9 +10,9 @@ upstream audit, ABI review, and release-matrix evidence before shipment.
   `com_err.h` required by the shipped `krb5.h`; add extracted-SDK coverage that
   compiles a strict-C89 Kerberos consumer. Build only the `krb5` component and
   its required closure to prove the component build boundary.
-- [ ] **Add `cpkt_openssl`.** Provide the complete public OpenSSL C89 facade
-  over the bundled crypto and TLS libraries, with separate CMake and
-  pkg-config packages.
+- [x] **Add `cpkt_openssl`.** The complete public OpenSSL C89 facade now
+  covers every non-C89 public type boundary, ships as separate CMake and
+  pkg-config packages, and has exact export and extracted-SDK verification.
 - [ ] **Add `cpkt_nghttp2`.** Provide the complete public nghttp2 C89 facade,
   including callback, session, frame, and error interfaces.
 - [ ] **Add `cpkt_libssh2`.** Provide the complete public libssh2 C89 facade,
