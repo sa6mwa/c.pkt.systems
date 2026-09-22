@@ -374,7 +374,7 @@ cpkt_gss_status cpkt_gss_acquire_credential(
     cpkt_gss_lifetime requested_lifetime, const cpkt_gss_oid_set *desired,
     int usage, cpkt_gss_credential **credential_out,
     cpkt_gss_oid_set **actual_out, cpkt_gss_lifetime *lifetime_out) {
-  OM_uint32 minor, lifetime;
+  OM_uint32 minor, lifetime = 0;
   gss_cred_id_t credential = GSS_C_NO_CREDENTIAL;
   gss_OID_set actual = GSS_C_NO_OID_SET;
   OM_uint32 status = gss_acquire_cred(
@@ -396,7 +396,7 @@ cpkt_gss_status cpkt_gss_inquire_credential(
     cpkt_gss_status *minor_out, const cpkt_gss_credential *credential,
     cpkt_gss_name **name_out, cpkt_gss_lifetime *lifetime_out, int *usage_out,
     cpkt_gss_oid_set **mechanisms_out) {
-  OM_uint32 minor, lifetime;
+  OM_uint32 minor, lifetime = 0;
   gss_name_t name = GSS_C_NO_NAME;
   gss_OID_set mechanisms = GSS_C_NO_OID_SET;
   int usage = 0;
@@ -424,7 +424,7 @@ cpkt_gss_status cpkt_gss_init_context(
     const cpkt_gss_buffer *input, const cpkt_gss_oid **actual_out,
     cpkt_gss_buffer *output, cpkt_gss_flags *returned_flags_out,
     cpkt_gss_lifetime *lifetime_out) {
-  OM_uint32 minor, returned_flags, returned_lifetime;
+  OM_uint32 minor, returned_flags = 0, returned_lifetime = 0;
   gss_ctx_id_t native_context =
       context == NULL ? GSS_C_NO_CONTEXT : (gss_ctx_id_t)*context;
   struct gss_channel_bindings_struct native_bindings =
@@ -460,7 +460,7 @@ cpkt_gss_status cpkt_gss_accept_context(
     const cpkt_gss_oid **mechanism_out, cpkt_gss_buffer *output,
     cpkt_gss_flags *returned_flags_out, cpkt_gss_lifetime *lifetime_out,
     cpkt_gss_credential **delegated_out) {
-  OM_uint32 minor, returned_flags, returned_lifetime;
+  OM_uint32 minor, returned_flags = 0, returned_lifetime = 0;
   gss_ctx_id_t native_context =
       context == NULL ? GSS_C_NO_CONTEXT : (gss_ctx_id_t)*context;
   struct gss_channel_bindings_struct native_bindings =
@@ -500,7 +500,7 @@ cpkt_gss_status cpkt_gss_accept_context(
 cpkt_gss_status cpkt_gss_context_lifetime(cpkt_gss_status *minor_out,
                                           const cpkt_gss_context *context,
                                           cpkt_gss_lifetime *lifetime_out) {
-  OM_uint32 minor, lifetime;
+  OM_uint32 minor, lifetime = 0;
   OM_uint32 status = gss_context_time(&minor, (gss_ctx_id_t)context, &lifetime);
   if (lifetime_out != NULL)
     *lifetime_out = (cpkt_gss_lifetime)lifetime;
@@ -532,7 +532,7 @@ cpkt_gss_status cpkt_gss_verify_mic(cpkt_gss_status *minor_out,
                                     const cpkt_gss_buffer *token,
                                     cpkt_gss_qop *qop_out) {
   OM_uint32 minor;
-  gss_qop_t qop;
+  gss_qop_t qop = 0;
   gss_buffer_desc native_message = cpkt_gss_native_buffer(message),
                   native_token = cpkt_gss_native_buffer(token);
   OM_uint32 status = gss_verify_mic(&minor, (gss_ctx_id_t)context,
@@ -551,7 +551,7 @@ cpkt_gss_status cpkt_gss_wrap(cpkt_gss_status *minor_out,
                               int *confidentiality_out,
                               cpkt_gss_buffer *output_out) {
   OM_uint32 minor;
-  int confidentiality;
+  int confidentiality = 0;
   gss_buffer_desc native_input = cpkt_gss_native_buffer(input), output;
   OM_uint32 status;
   memset(&output, 0, sizeof(output));
@@ -570,8 +570,8 @@ cpkt_gss_unwrap(cpkt_gss_status *minor_out, const cpkt_gss_context *context,
                 const cpkt_gss_buffer *input, cpkt_gss_buffer *output_out,
                 int *confidentiality_out, cpkt_gss_qop *qop_out) {
   OM_uint32 minor;
-  int confidentiality;
-  gss_qop_t qop;
+  int confidentiality = 0;
+  gss_qop_t qop = 0;
   gss_buffer_desc native_input = cpkt_gss_native_buffer(input), output;
   OM_uint32 status;
   memset(&output, 0, sizeof(output));

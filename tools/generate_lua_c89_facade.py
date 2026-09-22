@@ -614,9 +614,11 @@ CPKT_LUA_API int cpkt_lua_l_error(cpkt_lua_state *state,
 {
   va_list arguments;
 
+  luaL_where((lua_State *)state, 1);
   va_start(arguments, format);
   (void)cpkt_lua_push_format(state, format, arguments);
   va_end(arguments);
+  lua_concat((lua_State *)state, 2);
   return lua_error((lua_State *)state);
 }
 

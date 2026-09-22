@@ -22,6 +22,10 @@ static const char *cpkt_lua_facade_pushvfstring(cpkt_lua_state *state,
   return result;
 }
 
+static int cpkt_lua_facade_error_with_location(cpkt_lua_state *state) {
+  return cpkt_lua_l_error(state, "failure %I", cpkt_lua_integer_make(0U, 7U));
+}
+
 int main(void) {
   cpkt_lua_buffer buffer;
   cpkt_lua_integer value;
@@ -71,6 +75,22 @@ int main(void) {
       cpkt_lua_gettop(state) != 1) {
     cpkt_lua_close(state);
     return 10;
+  }
+  cpkt_lua_pop(state, 1);
+
+  cpkt_lua_pushcfunction(state, cpkt_lua_facade_error_with_location);
+  cpkt_lua_setglobal(state, "fail");
+  if (cpkt_lua_l_loadbuffer(state, "fail()", 6U, "@example.lua") !=
+          CPKT_LUA_OK ||
+      cpkt_lua_pcall(state, 0, 0, 0) != CPKT_LUA_ERRRUN) {
+    cpkt_lua_close(state);
+    return 11;
+  }
+  string = cpkt_lua_tostring(state, -1);
+  if (string == 0 || strcmp(string, "example.lua:1: failure 7") != 0 ||
+      cpkt_lua_gettop(state) != 1) {
+    cpkt_lua_close(state);
+    return 12;
   }
   cpkt_lua_pop(state, 1);
 
