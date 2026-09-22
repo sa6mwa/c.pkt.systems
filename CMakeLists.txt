@@ -1630,6 +1630,18 @@ if(CPKT_BUILD_TESTS)
             --output "${CMAKE_BINARY_DIR}/openssl-api-inventory-test/inventory.json"
             --work-dir "${CMAKE_BINARY_DIR}/openssl-api-inventory-test"
             --facade-header "${CMAKE_SOURCE_DIR}/include/cpkt/openssl.h")
+        add_test(
+          NAME nghttp2_api_inventory
+          COMMAND
+            python3
+            "${CMAKE_SOURCE_DIR}/tools/generate_nghttp2_api_inventory.py"
+            --include-dir "$<TARGET_PROPERTY:cpkt::nghttp2_shared,INTERFACE_INCLUDE_DIRECTORIES>"
+            --library "$<TARGET_PROPERTY:cpkt::nghttp2_shared,IMPORTED_LOCATION>"
+            --symbol-format elf
+            --symbol-tool "${CMAKE_READELF}"
+            --clang "${CPKT_OPENSSL_API_INVENTORY_CLANG}"
+            --output "${CMAKE_BINARY_DIR}/nghttp2-api-inventory-test/inventory.json"
+            --work-dir "${CMAKE_BINARY_DIR}/nghttp2-api-inventory-test")
       endif()
       add_test(
         NAME openssl_header_facade
