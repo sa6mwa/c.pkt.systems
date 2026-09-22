@@ -356,7 +356,7 @@ cpkt_libssh2_sftp_readdir_ex(cpkt_libssh2_sftp_handle *handle, char *buffer,
   result = libssh2_sftp_readdir_ex((LIBSSH2_SFTP_HANDLE *)handle, buffer,
       buffer_maxlen, longentry, longentry_maxlen,
       attrs == NULL ? NULL : &native_attrs);
-  if (result >= 0 && attrs != NULL) {
+  if (result > 0 && attrs != NULL) {
     cpkt_libssh2_sftp_attributes_from_native(attrs, &native_attrs);
   }
   return result;

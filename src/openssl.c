@@ -310,7 +310,8 @@ static int cpkt_openssl_bio_callback_mmsg_args(
   cpkt_openssl_bio_message *public_messages;
 
   *messages_out = NULL;
-  if ((operation & (BIO_CB_SENDMMSG | BIO_CB_RECVMMSG)) == 0) {
+  operation &= ~BIO_CB_RETURN;
+  if (operation != BIO_CB_SENDMMSG && operation != BIO_CB_RECVMMSG) {
     return 0;
   }
   if (argument == NULL || public_args == NULL) {

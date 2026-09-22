@@ -8,6 +8,8 @@ typedef struct openssl_mmsg_test_context {
   int close_result;
   int legacy_callback_calls;
   int extended_callback_calls;
+  int regular_callback_calls;
+  int regular_ex_callback_calls;
 } openssl_mmsg_test_context;
 
 typedef struct openssl_padded_native_message {
@@ -32,6 +34,44 @@ static int openssl_mmsg_test_messages(const cpkt_openssl_bio_message *messages,
 static int openssl_mmsg_test_create(BIO *bio) {
   BIO_set_init(bio, 1);
   return 1;
+}
+
+static int openssl_mmsg_test_write(BIO *bio, const char *data, int size) {
+  (void)bio;
+  (void)data;
+  return size;
+}
+
+static long
+openssl_mmsg_test_regular_callback(void *context, BIO *bio, int operation,
+                                   const void *argument, int argument_integer,
+                                   long argument_long, long result) {
+  openssl_mmsg_test_context *test_context;
+  (void)argument_long;
+  test_context = (openssl_mmsg_test_context *)context;
+  if (test_context == 0 || bio != cpkt_openssl_BIO_native(test_context->bio) ||
+      (operation & ~BIO_CB_RETURN) != BIO_CB_WRITE || argument == 0 ||
+      argument_integer != 3 || memcmp(argument, "abc", 3U) != 0)
+    return 0L;
+  ++test_context->regular_callback_calls;
+  return result;
+}
+
+static long openssl_mmsg_test_regular_ex_callback(
+    void *context, BIO *bio, int operation, const void *argument,
+    size_t argument_length, int argument_integer, long argument_long,
+    int result, size_t *processed_out) {
+  openssl_mmsg_test_context *test_context;
+  (void)argument_integer;
+  (void)argument_long;
+  (void)processed_out;
+  test_context = (openssl_mmsg_test_context *)context;
+  if (test_context == 0 || bio != cpkt_openssl_BIO_native(test_context->bio) ||
+      (operation & ~BIO_CB_RETURN) != BIO_CB_WRITE || argument == 0 ||
+      argument_length != 3U || memcmp(argument, "abc", 3U) != 0)
+    return 0L;
+  ++test_context->regular_ex_callback_calls;
+  return (long)result;
 }
 
 static int openssl_mmsg_test_callback(void *context, BIO *bio,
@@ -272,6 +312,9 @@ int main(void) {
       BIO_meth_set_create(
           (BIO_METHOD *)cpkt_openssl_BIO_meth_native(facade_method),
           openssl_mmsg_test_create) != 1 ||
+      BIO_meth_set_write(
+          (BIO_METHOD *)cpkt_openssl_BIO_meth_native(facade_method),
+          openssl_mmsg_test_write) != 1 ||
       BIO_meth_set_create(
           (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
           openssl_mmsg_test_create) != 1 ||
@@ -351,7 +394,22 @@ int main(void) {
     cpkt_openssl_BIO_meth_close(facade_method);
     return 40;
   }
+  cpkt_openssl_BIO_set_callback(facade_bio, openssl_mmsg_test_regular_callback);
+  if (BIO_write(cpkt_openssl_BIO_native(facade_bio), "abc", 3) != 3 ||
+      mmsg_context.regular_callback_calls != 2) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 41;
+  }
   cpkt_openssl_BIO_set_callback(facade_bio, 0);
+  cpkt_openssl_BIO_set_callback_ex(facade_bio,
+                                   openssl_mmsg_test_regular_ex_callback);
+  if (BIO_write(cpkt_openssl_BIO_native(facade_bio), "abc", 3) != 3 ||
+      mmsg_context.regular_ex_callback_calls != 2) {
+    cpkt_openssl_BIO_close(facade_bio);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 42;
+  }
   cpkt_openssl_BIO_set_callback_ex(facade_bio,
                                    openssl_mmsg_test_extended_callback);
   if (cpkt_openssl_BIO_get_callback(facade_bio) != 0 ||
