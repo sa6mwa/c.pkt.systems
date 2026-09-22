@@ -1445,6 +1445,11 @@ int main(void) {
   virtual_methods.shadow_name = virtual_table_shadow_name;
   if (cpkt_sqlite_create_module(db, "cpkt_test_vtab", &virtual_methods) !=
           CPKT_SQLITE_OK ||
+      db->prepare(db, "select value from cpkt_test_vtab", -1, 0, &statement,
+                  0) != CPKT_SQLITE_OK ||
+      statement == 0 || statement->step(statement) != CPKT_SQLITE_ROW ||
+      statement->column_int(statement, 0) != 42 ||
+      statement->finalize(statement) != CPKT_SQLITE_OK ||
       db->tx(db,
              "create table cpkt_virtual_shadow(value integer);"
              "create virtual table cpkt_virtual using cpkt_test_vtab;",

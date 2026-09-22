@@ -2495,6 +2495,8 @@ static int cpkt_sqlite_module_table_trampoline(sqlite3_vtab *table,
   status = callback == NULL
                ? SQLITE_OK
                : callback(module->methods.context, native_table->public_table);
+  if (destroy && status != SQLITE_OK)
+    return status;
   function = native_table->functions;
   while (function != NULL) {
     next = function->next;
@@ -2551,7 +2553,7 @@ static int cpkt_sqlite_module_find_function_trampoline(
   native_table->functions = binding;
   *function_out = cpkt_sqlite_function_scalar_trampoline;
   *user_data_out = &binding->function;
-  return 1;
+  return found;
 }
 
 static int cpkt_sqlite_module_open_trampoline(sqlite3_vtab *table,
@@ -2894,10 +2896,14 @@ int cpkt_sqlite_create_module(cpkt_sqlite *database, const char *name,
   module->database = database;
   module->methods = *methods;
   module->module.iVersion = 4;
-  module->module.xCreate =
-      methods->create == NULL ? NULL : cpkt_sqlite_module_create_trampoline;
-  module->module.xConnect =
-      methods->connect == NULL ? NULL : cpkt_sqlite_module_connect_trampoline;
+  module->module.xCreate = methods->create == NULL
+                               ? NULL
+                               : cpkt_sqlite_module_create_trampoline;
+  module->module.xConnect = methods->connect == NULL
+                                ? NULL
+                                : (methods->connect == methods->create
+                                       ? cpkt_sqlite_module_create_trampoline
+                                       : cpkt_sqlite_module_connect_trampoline);
   module->module.xBestIndex = cpkt_sqlite_module_best_index_trampoline;
   module->module.xDisconnect = cpkt_sqlite_module_disconnect_trampoline;
   module->module.xDestroy = cpkt_sqlite_module_destroy_trampoline;
