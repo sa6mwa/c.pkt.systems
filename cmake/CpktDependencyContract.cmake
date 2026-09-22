@@ -84,6 +84,17 @@ function(cpkt_append_lifecycle_owned_dependency_component_root
     message(FATAL_ERROR "unknown dependency component root label: ${root_label}")
   endif()
   get_filename_component(_base_abs "${_base}" ABSOLUTE)
+  file(RELATIVE_PATH _base_rel "${CMAKE_SOURCE_DIR}" "${_base_abs}")
+  string(REPLACE "/" ";" _base_components "${_base_rel}")
+  set(_base_component_path "${CMAKE_SOURCE_DIR}")
+  foreach(_base_component IN LISTS _base_components)
+    set(_base_component_path "${_base_component_path}/${_base_component}")
+    if(IS_SYMLINK "${_base_component_path}")
+      message(FATAL_ERROR
+        "lifecycle-owned ${root_label} dependency root ancestor must not be a symlink: ${_base_component_path}\n"
+        "CMake will not recursively delete dependency roots below symlinked ancestors.")
+    endif()
+  endforeach()
   string(FIND "${_root_abs}" "${_base_abs}/" _root_under_base)
   if(_root_abs STREQUAL "${_base_abs}" OR NOT _root_under_base EQUAL 0)
     message(FATAL_ERROR

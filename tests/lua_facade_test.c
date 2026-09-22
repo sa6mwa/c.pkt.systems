@@ -1,5 +1,6 @@
 #include <cpkt/lua.h>
 
+#include <limits.h>
 #include <string.h>
 
 static int cpkt_lua_facade_check_integer(cpkt_lua_integer value,
@@ -59,6 +60,14 @@ int main(void) {
           0U, 1U) || cpkt_lua_ident() == 0) {
     cpkt_lua_close(state);
     return 5;
+  }
+
+  if (cpkt_lua_gc(state, CPKT_LUA_GCGEN) != CPKT_LUA_GCINC ||
+      cpkt_lua_gc(state, CPKT_LUA_GCINC) != CPKT_LUA_GCGEN ||
+      cpkt_lua_gc(state, CPKT_LUA_GCSTEP,
+                  (size_t)INT_MAX + 1U) < 0) {
+    cpkt_lua_close(state);
+    return 6;
   }
 
   cpkt_lua_l_openlibs(state);

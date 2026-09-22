@@ -4,9 +4,12 @@ set -euo pipefail
 repo_root=$1
 fixture_root="$repo_root/build/repo-dependency-component-contract-test"
 caller_root="$repo_root/build/repo-dependency-component-contract-caller-owned"
+symlink_root="$repo_root/build/repo-dependency-component-contract-symlink"
+symlink_target="$repo_root/build/repo-dependency-component-contract-symlink-target"
 
 cleanup() {
-  rm -rf "$fixture_root" "$caller_root"
+  cmake -E remove_directory "$fixture_root" "$caller_root" "$symlink_root" \
+    "$symlink_target"
 }
 trap cleanup EXIT INT TERM
 cleanup
@@ -159,3 +162,29 @@ case "$caller_output" in
 esac
 test -e "$caller_external/sqlite/install/sentinel"
 test -e "$caller_build/sqlite/sentinel"
+
+write_fixture "$symlink_root"
+mkdir -p "$symlink_target/cache/deps/$target_id/openssl/install" \
+  "$symlink_target/cache/deps-build/$target_id/openssl"
+: > "$symlink_target/cache/deps/$target_id/openssl/install/sentinel"
+: > "$symlink_target/cache/deps-build/$target_id/openssl/sentinel"
+cmake -E create_symlink "$symlink_target/cache" "$symlink_root/.cache"
+configure_fixture "$symlink_root" -DCPKT_BUILD_DEPENDENCIES=ON \
+  -DCPKT_OPENSSL_VERSION=one -DCPKT_CURL_VERSION=one \
+  -DCPKT_SQLITE_VERSION=one >/dev/null
+set +e
+symlink_output=$(configure_fixture "$symlink_root" -DCPKT_BUILD_DEPENDENCIES=ON \
+  -DCPKT_OPENSSL_VERSION=two -DCPKT_CURL_VERSION=one \
+  -DCPKT_SQLITE_VERSION=one 2>&1)
+symlink_status=$?
+set -e
+if [ "$symlink_status" -eq 0 ]; then
+  printf 'symlinked lifecycle dependency ancestor accepted recursive deletion\n' >&2
+  exit 1
+fi
+case "$symlink_output" in
+  *"dependency root ancestor must not be a symlink"*) ;;
+  *) printf 'symlinked ancestor failure was not actionable\n%s\n' "$symlink_output" >&2; exit 1 ;;
+esac
+test -e "$symlink_target/cache/deps/$target_id/openssl/install/sentinel"
+test -e "$symlink_target/cache/deps-build/$target_id/openssl/sentinel"

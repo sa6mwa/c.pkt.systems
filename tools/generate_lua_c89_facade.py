@@ -563,26 +563,21 @@ CPKT_LUA_API int cpkt_lua_gc(cpkt_lua_state *state, int option, ...)
   va_list arguments;
   int first;
   int second;
-  int third;
+  size_t step_size;
 
   va_start(arguments, option);
   if (option == LUA_GCSTEP) {
-    first = va_arg(arguments, int);
+    step_size = va_arg(arguments, size_t);
     va_end(arguments);
-    return lua_gc((lua_State *)state, option, first);
+    return lua_gc((lua_State *)state, option, step_size);
   }
   if (option == LUA_GCGEN) {
-    first = va_arg(arguments, int);
-    second = va_arg(arguments, int);
     va_end(arguments);
-    return lua_gc((lua_State *)state, option, first, second);
+    return lua_gc((lua_State *)state, option);
   }
   if (option == LUA_GCINC) {
-    first = va_arg(arguments, int);
-    second = va_arg(arguments, int);
-    third = va_arg(arguments, int);
     va_end(arguments);
-    return lua_gc((lua_State *)state, option, first, second, third);
+    return lua_gc((lua_State *)state, option);
   }
   if (option == LUA_GCPARAM) {
     first = va_arg(arguments, int);

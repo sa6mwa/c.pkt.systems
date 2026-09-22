@@ -2172,6 +2172,11 @@ if(CPKT_BUILD_TESTS)
       --symbol-format "${_cpkt_lua_inventory_symbol_format}"
       --output "${CMAKE_CURRENT_BINARY_DIR}/lua-api-inventory.json")
   add_test(
+    NAME lua_gc_facade_generation
+    COMMAND
+      bash "${CMAKE_SOURCE_DIR}/tests/lua_gc_facade_generation_test.sh"
+      "${CPKT_LUA_FACADE_SOURCE}")
+  add_test(
     NAME lua_export_policy
     COMMAND
       bash
