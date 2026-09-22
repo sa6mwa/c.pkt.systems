@@ -1337,6 +1337,11 @@ function(cpkt_add_lua)
       BUILD_BYPRODUCTS
         "${lua_static_library}"
         "${lua_shared_library_path}"
+        "${install_dir}/include/lua.h"
+        "${install_dir}/include/luaconf.h"
+        "${install_dir}/include/lauxlib.h"
+        "${install_dir}/include/lualib.h"
+        "${install_dir}/include/lua.hpp"
       BUILD_IN_SOURCE 1
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )

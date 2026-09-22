@@ -27,9 +27,11 @@ upstream audit, ABI review, and release-matrix evidence before shipment.
 - [x] **Sweep `cpkt_sqlite` for complete SQLite coverage.** Assert every
   enabled public SQLite API is represented by the C89 facade and verify that
   SQLite-only facade work builds only SQLite and its platform closure.
-- [ ] **Add `cpkt_lua` last.** `cpkt_lua_runtime` is already the priority
-  embedding-policy facade. This later item is a complete C89 facade for the
-  full public Lua C API, not a replacement for `cpkt_lua_runtime`.
+- [x] **Add `cpkt_lua` last.** The complete C89 facade now covers all 156
+  declared Lua 5.5 public functions and every documented convenience macro
+  equivalent, ships separately through CMake and pkg-config, and verifies its
+  exact dynamic exports and native-import boundary. `cpkt_lua_runtime` remains
+  the priority embedding-policy facade; `cpkt_lua` does not replace it.
 
 The direct C89 downstream interfaces for curl, zlib, miniaudio, OpenLDAP,
 Cyrus SASL, and the core MIT Kerberos/GSSAPI APIs remain available without new

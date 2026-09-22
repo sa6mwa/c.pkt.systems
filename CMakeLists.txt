@@ -264,6 +264,7 @@ set(CPKT_OPENLDAP_VERSION "2.6.15" CACHE STRING "Pinned OpenLDAP LTS release.")
 set(CPKT_POSTGRESQL_VERSION "18.6" CACHE STRING "Pinned PostgreSQL/libpq release.")
 set(CPKT_SQLITE_VERSION "3.53.4" CACHE STRING "Pinned SQLite release.")
 set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-2" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
+set(CPKT_LUA_ABI_VERSION "0" CACHE STRING "Lua C89 facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SUS_ABI_VERSION "0" CACHE STRING "Susurro/whisper facade ABI major. Do not bump without maintainer approval.")
@@ -685,6 +686,79 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     BUILD_WITH_INSTALL_RPATH ON)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set_target_properties(cpkt_openssl_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
+
+set(CPKT_LUA_FACADE_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/lua")
+set(CPKT_LUA_FACADE_INCLUDE_DIR
+  "${CPKT_LUA_FACADE_GENERATED_DIR}/include")
+set(CPKT_LUA_FACADE_HEADER
+  "${CPKT_LUA_FACADE_INCLUDE_DIR}/cpkt/lua.h")
+set(CPKT_LUA_FACADE_SOURCE
+  "${CPKT_LUA_FACADE_GENERATED_DIR}/src/lua.c")
+get_target_property(CPKT_LUA_FACADE_NATIVE_INCLUDE_DIR
+  cpkt::lua_static INTERFACE_INCLUDE_DIRECTORIES)
+if(NOT CPKT_LUA_FACADE_NATIVE_INCLUDE_DIR)
+  message(FATAL_ERROR "Lua target does not expose public include directories")
+endif()
+set(CPKT_LUA_FACADE_NATIVE_HEADERS
+  "${CPKT_LUA_FACADE_NATIVE_INCLUDE_DIR}/lua.h"
+  "${CPKT_LUA_FACADE_NATIVE_INCLUDE_DIR}/luaconf.h"
+  "${CPKT_LUA_FACADE_NATIVE_INCLUDE_DIR}/lauxlib.h"
+  "${CPKT_LUA_FACADE_NATIVE_INCLUDE_DIR}/lualib.h")
+add_custom_command(
+  OUTPUT "${CPKT_LUA_FACADE_HEADER}" "${CPKT_LUA_FACADE_SOURCE}"
+  COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tools/generate_lua_c89_facade.py"
+    --include-dir "$<TARGET_PROPERTY:cpkt::lua_static,INTERFACE_INCLUDE_DIRECTORIES>"
+    --header "${CPKT_LUA_FACADE_HEADER}"
+    --source "${CPKT_LUA_FACADE_SOURCE}"
+  DEPENDS
+    "${CMAKE_SOURCE_DIR}/tools/generate_lua_c89_facade.py"
+    ${CPKT_LUA_FACADE_NATIVE_HEADERS}
+  VERBATIM)
+set_source_files_properties("${CPKT_LUA_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
+add_custom_target(cpkt_lua_facade_generated
+  DEPENDS "${CPKT_LUA_FACADE_HEADER}" "${CPKT_LUA_FACADE_SOURCE}")
+add_dependencies(cpkt_lua_facade_generated cpkt_lua_project)
+
+add_library(cpkt_lua_static STATIC "${CPKT_LUA_FACADE_SOURCE}")
+cpkt_configure_c89_lua_native_header_target(cpkt_lua_static)
+add_dependencies(cpkt_lua_static cpkt_lua_facade_generated)
+cpkt_add_repo_warning_errors(cpkt_lua_static)
+target_compile_definitions(cpkt_lua_static PRIVATE CPKT_LUA_STATIC)
+target_include_directories(cpkt_lua_static PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_LUA_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_lua_static PUBLIC cpkt::lua_static)
+set_target_properties(cpkt_lua_static PROPERTIES
+  OUTPUT_NAME cpkt_lua
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_lua_shared SHARED "${CPKT_LUA_FACADE_SOURCE}")
+cpkt_configure_c89_lua_native_header_target(cpkt_lua_shared)
+add_dependencies(cpkt_lua_shared cpkt_lua_facade_generated)
+cpkt_add_repo_warning_errors(cpkt_lua_shared)
+target_compile_definitions(cpkt_lua_shared PRIVATE CPKT_LUA_BUILDING_SHARED)
+target_include_directories(cpkt_lua_shared PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_LUA_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_lua_shared PUBLIC cpkt::lua_shared)
+set_target_properties(cpkt_lua_shared PROPERTIES
+  OUTPUT_NAME cpkt_lua
+  C_VISIBILITY_PRESET hidden
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_LUA_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_lua_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_lua_shared PROPERTIES
     BUILD_RPATH "$ORIGIN"
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
@@ -1453,6 +1527,11 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_mqttc_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_mqttc_facade_test)
     target_link_libraries(cpkt_mqttc_facade_test PRIVATE cpkt_mqttc_static)
+    add_executable(cpkt_lua_facade_test tests/lua_facade_test.c)
+    cpkt_use_local_runtime(cpkt_lua_facade_test)
+    cpkt_configure_c89_target(cpkt_lua_facade_test)
+    cpkt_add_repo_warning_errors(cpkt_lua_facade_test)
+    target_link_libraries(cpkt_lua_facade_test PRIVATE cpkt_lua_static)
     add_executable(cpkt_sasl_facade_test tests/sasl_facade_test.c)
     cpkt_use_local_runtime(cpkt_sasl_facade_test)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
@@ -1492,6 +1571,7 @@ if(CPKT_BUILD_TESTS)
   endif()
 
   if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+    add_test(NAME lua_facade_unit COMMAND cpkt_lua_facade_test)
     add_test(
       NAME lua_runtime_c89_example
       COMMAND cpkt_lua_runtime_c89_example "${_cpkt_lua_runtime_example_file}")
@@ -1962,6 +2042,23 @@ if(CPKT_BUILD_TESTS)
           --symbol-tool "${CMAKE_NM}"
           --facade-header "${CPKT_MQTTC_FACADE_HEADER}"
           --output "${CMAKE_CURRENT_BINARY_DIR}/mqttc-api-inventory.json")
+      if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(_cpkt_lua_inventory_symbol_format macho)
+      else()
+        set(_cpkt_lua_inventory_symbol_format elf)
+      endif()
+      add_test(
+        NAME lua_api_inventory
+        COMMAND
+          "${CPKT_PYTHON3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/generate_lua_api_inventory.py"
+          --include-dir "$<TARGET_PROPERTY:cpkt::lua_static,INTERFACE_INCLUDE_DIRECTORIES>"
+          --native-library "$<TARGET_FILE:cpkt::lua_shared>"
+          --facade-library "$<TARGET_FILE:cpkt_lua_shared>"
+          --facade-header "${CPKT_LUA_FACADE_HEADER}"
+          --symbol-tool "${CMAKE_NM}"
+          --symbol-format "${_cpkt_lua_inventory_symbol_format}"
+          --output "${CMAKE_CURRENT_BINARY_DIR}/lua-api-inventory.json")
       add_test(
         NAME mqttc_export_policy
         COMMAND
@@ -1971,6 +2068,17 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SYSTEM_NAME}"
           "${CMAKE_NM}"
           "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_mqttc.txt"
+          "${CMAKE_C_COMPILER}"
+          "${CMAKE_SYSROOT}")
+      add_test(
+        NAME lua_export_policy
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/lua_export_policy_test.sh"
+          "$<TARGET_FILE:cpkt_lua_shared>"
+          "${CMAKE_SYSTEM_NAME}"
+          "${CMAKE_NM}"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_lua.txt"
           "${CMAKE_C_COMPILER}"
           "${CMAKE_SYSROOT}")
       add_test(
@@ -2085,6 +2193,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_OPENLDAP_VERSION=${CPKT_OPENLDAP_VERSION}
         -DCPKT_POSTGRESQL_VERSION=${CPKT_POSTGRESQL_VERSION}
         -DCPKT_SQLITE_VERSION=${CPKT_SQLITE_VERSION}
+        -DCPKT_LUA_ABI_VERSION=${CPKT_LUA_ABI_VERSION}
         -DCPKT_LUA_RUNTIME_ABI_VERSION=${CPKT_LUA_RUNTIME_ABI_VERSION}
         -DCPKT_OPENSSL_STATIC_LIBRARY=$<TARGET_FILE:cpkt_openssl_static>
         -DCPKT_OPENSSL_SHARED_LIBRARY=$<TARGET_FILE:cpkt_openssl_shared>
@@ -2097,6 +2206,9 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_MQTTC_FACADE_INCLUDE_DIR=${CPKT_MQTTC_FACADE_INCLUDE_DIR}
         -DCPKT_MQTTC_STATIC_LIBRARY=$<TARGET_FILE:cpkt_mqttc_static>
         -DCPKT_MQTTC_SHARED_LIBRARY=$<TARGET_FILE:cpkt_mqttc_shared>
+        -DCPKT_LUA_FACADE_INCLUDE_DIR=${CPKT_LUA_FACADE_INCLUDE_DIR}
+        -DCPKT_LUA_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_static>
+        -DCPKT_LUA_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_shared>
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>
@@ -2139,6 +2251,8 @@ if(CPKT_BUILD_DEPENDENCIES)
       cpkt_libssh2_shared
       cpkt_mqttc_static
       cpkt_mqttc_shared
+      cpkt_lua_static
+      cpkt_lua_shared
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
       cpkt_audio_static

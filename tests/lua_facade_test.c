@@ -1,0 +1,67 @@
+#include <cpkt/lua.h>
+
+#include <string.h>
+
+static int cpkt_lua_facade_check_integer(cpkt_lua_integer value,
+                                         unsigned int high,
+                                         unsigned int low) {
+  return cpkt_lua_integer_high(value) == high &&
+         cpkt_lua_integer_low(value) == low;
+}
+
+int main(void) {
+  cpkt_lua_buffer buffer;
+  cpkt_lua_integer value;
+  cpkt_lua_state *state;
+  const char *string;
+
+  state = cpkt_lua_l_newstate();
+  if (state == 0) {
+    return 1;
+  }
+  cpkt_lua_l_checkversion(state);
+  if (cpkt_lua_l_loadstring(state, "return 2 + 3") != CPKT_LUA_OK ||
+      cpkt_lua_pcall(state, 0, 1, 0) != CPKT_LUA_OK ||
+      !cpkt_lua_facade_check_integer(cpkt_lua_tointeger(state, -1), 0U, 5U)) {
+    cpkt_lua_close(state);
+    return 2;
+  }
+  cpkt_lua_pop(state, 1);
+
+  cpkt_lua_newtable(state);
+  cpkt_lua_pushinteger(state, cpkt_lua_integer_make(0U, 9U));
+  cpkt_lua_rawseti(state, -2, cpkt_lua_integer_make(0U, 1U));
+  if (!cpkt_lua_facade_check_integer(cpkt_lua_rawlen(state, -1), 0U, 1U)) {
+    cpkt_lua_close(state);
+    return 3;
+  }
+  cpkt_lua_pop(state, 1);
+
+  cpkt_lua_l_buffinit(state, &buffer);
+  cpkt_lua_l_addchar(&buffer, 'a');
+  cpkt_lua_l_addstring(&buffer, "bc");
+  cpkt_lua_l_pushresult(&buffer);
+  string = cpkt_lua_tostring(state, -1);
+  if (string == 0 || strcmp(string, "abc") != 0) {
+    cpkt_lua_close(state);
+    return 4;
+  }
+  cpkt_lua_pop(state, 1);
+
+  value = cpkt_lua_l_integer_add(cpkt_lua_integer_make(0U, 1U),
+                                 cpkt_lua_integer_make(0U, 2U));
+  if (!cpkt_lua_facade_check_integer(value, 0U, 3U) ||
+      !cpkt_lua_facade_check_integer(
+          cpkt_lua_l_integer_shift_left(cpkt_lua_integer_make(0U, 1U), 32U),
+          1U, 0U) ||
+      !cpkt_lua_facade_check_integer(
+          cpkt_lua_l_integer_shift_right(cpkt_lua_integer_make(1U, 0U), 32U),
+          0U, 1U) || cpkt_lua_ident() == 0) {
+    cpkt_lua_close(state);
+    return 5;
+  }
+
+  cpkt_lua_l_openlibs(state);
+  cpkt_lua_close(state);
+  return 0;
+}

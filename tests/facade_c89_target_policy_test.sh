@@ -48,6 +48,10 @@ require_configuration cpkt_lua_runtime_static src/lua_runtime.c \
   'cpkt_configure_c89_lua_native_header_target(cpkt_lua_runtime_static)'
 require_configuration cpkt_lua_runtime_shared src/lua_runtime.c \
   'cpkt_configure_c89_lua_native_header_target(cpkt_lua_runtime_shared)'
+require_configuration cpkt_lua_static '"${CPKT_LUA_FACADE_SOURCE}"' \
+  'cpkt_configure_c89_lua_native_header_target(cpkt_lua_static)'
+require_configuration cpkt_lua_shared '"${CPKT_LUA_FACADE_SOURCE}"' \
+  'cpkt_configure_c89_lua_native_header_target(cpkt_lua_shared)'
 
 if rg -n 'target_compile_features\(cpkt_[A-Za-z0-9_]+[[:space:]]+PRIVATE[[:space:]]+c_std_[0-9]+' "$cmake_file"; then
   printf 'production facade targets must not select a post-C89 language standard\n' >&2

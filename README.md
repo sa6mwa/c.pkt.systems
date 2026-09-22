@@ -10,7 +10,8 @@ The project builds release artifacts for:
 - libssh2
 - curl
 - libxml2
-- Lua
+- Lua, with the complete strict-C89 `cpkt_lua` facade and the higher-level
+  strict-C89 `cpkt_lua_runtime` embedding facade
 - miniaudio, behind the strict C89 `cpkt_audio` facade
 - whisper.cpp/ggml, behind the strict C89 `cpkt_sus` facade
 - MQTT-C
@@ -188,6 +189,8 @@ lib/cmake/libxml2/libxml2-config.cmake
 lib/cmake/libxml2/libxml2-config-version.cmake
 lib/cmake/Lua/LuaConfig.cmake
 lib/cmake/Lua/LuaConfigVersion.cmake
+lib/cmake/CpktLua/CpktLuaConfig.cmake
+lib/cmake/CpktLua/CpktLuaConfigVersion.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake
 lib/cmake/CpktAudio/CpktAudioConfig.cmake
@@ -246,6 +249,7 @@ Libssh2::libssh2
 CURL::libcurl
 LibXml2::LibXml2
 Lua::Lua
+cpkt::lua
 cpkt::lua_runtime
 cpkt::audio
 cpkt::sus
@@ -339,19 +343,20 @@ CPKT_SDK_PREFIX=/path/to/c.pkt.systems-<version>-<target> \
 `Lua::Lua` is the upstream Lua 5.5 C API and keeps upstream number handling.
 Source files that include `lua.h` must compile as C99 or newer.
 
-Strict C89 applications should use the SDK facade instead:
+Strict C89 applications that need the complete Lua stack/value API should use:
 
 ```text
-#include <cpkt/lua_runtime.h>
+#include <cpkt/lua.h>
 ```
 
-The facade header does not include Lua headers or expose `lua_State`,
-`lua_Integer`, `lua_Number`, Lua constants, `long long`, or inline functions.
-Its implementation is compiled as C99 inside the SDK and links the bundled Lua
-runtime.
+`cpkt_lua` covers all declared Lua, lauxlib, and lualib APIs and Lua's public
+convenience macros. Its header never includes upstream Lua headers or exposes
+`long long`; its two-word C89 integer value preserves the configured 64-bit
+Lua integer ABI. Link it with `find_package(CpktLua CONFIG REQUIRED)` and
+`cpkt::lua`, or `pkg-config --static --libs cpkt-lua`.
 
-The facade is intentionally an embedding/runtime API, not a second Lua C API.
-Consumers can:
+`cpkt_lua_runtime` is intentionally a narrower embedding/runtime API, not a
+replacement for the full `cpkt_lua` C API. Consumers of the runtime facade can:
 
 - create runtimes, including runtimes with a memory cap,
 - create runtimes with caller-provided allocation callbacks,
@@ -365,9 +370,10 @@ Consumers can:
 - register named Lua preload chunks,
 - pass an opaque embedder context through to C module loaders.
 
-The facade does not expose a general stack/value API. Consumers that need stack
-operations, returned Lua values, metatables, userdata manipulation, or other
-full embedding details should use `Lua::Lua` directly from C99-or-newer source.
+The runtime facade does not expose a general stack/value API. Consumers that
+need stack operations, returned Lua values, metatables, userdata manipulation,
+or other full embedding details should use `cpkt_lua`; upstream `Lua::Lua`
+remains available for C99-or-newer source.
 
 Strict C89 applications that need audio decoding, URL-backed audio streams,
 capture/playback, VOX/PTT segmentation, or local speech-to-text should use the
@@ -467,9 +473,10 @@ tree. It asserts archive layout, checksum coverage, metadata path placement,
 metadata relocatability, absence of old non-upstream CMake package directories,
 privacy/path hygiene, static transitive propagation through CMake and
 pkg-config, direct `Libssh2_DIR` and `CURL_DIR` package use, and representative
-CMake and pkg-config examples. The installed strict Lua facade consumer is
-compiled as C89, links through both CMake and pkg-config metadata, runs the
-example program, and exercises the custom allocator API from the extracted SDK.
+CMake and pkg-config examples. The installed `cpkt_lua` and `cpkt_lua_runtime`
+consumers compile as C89 and link through both CMake and pkg-config metadata;
+the runtime example also exercises the custom allocator API from the extracted
+SDK.
 
 Native debug and hardening checks are available through these Make targets:
 

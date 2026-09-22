@@ -45,11 +45,13 @@ the record are valid only for that callback invocation. For other operations,
 the argument retains the upstream borrowed byte-pointer semantics.
 
 For the current x86_64 GNU OpenSSL 3.6.4 configuration, 6,468 public header
-functions are present. Only the mechanically classified typed-adapter subset
-(currently 74 direct signatures, plus record-dependent callers) needs new
-`cpkt_openssl_*` entry points. The 6,500-ish OpenSSL dynamic-export count is
-not a count of c.pkt facade exports and is not an instruction to duplicate all
-of OpenSSL's already-C89 declarations.
+functions are present. This is the raw OpenSSL API inventory, not the
+`libcpkt_openssl` export count. Only the mechanically classified typed-adapter
+subset (currently 74 direct signatures, plus record-dependent callers) needs
+new `cpkt_openssl_*` entry points; the facade's source-controlled dynamic
+allowlist currently contains 120 entries. The 6,500-ish OpenSSL dynamic-export
+count is not a count of c.pkt facade exports and is not an instruction to
+duplicate all of OpenSSL's already-C89 declarations.
 
 The OpenSSL export manifests are not themselves an export allowlist for a
 `cpkt_openssl` shared object. The facade needs its own source-controlled,

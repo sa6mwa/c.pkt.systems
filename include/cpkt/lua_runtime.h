@@ -13,7 +13,7 @@ extern "C" {
  * This facade owns a Lua state and exposes only embedding policy operations.
  * It deliberately does not expose upstream Lua stack, value, userdata, or
  * metatable APIs. Consumers that need the full Lua C API should link the
- * bundled `Lua::Lua` target instead.
+ * strict-C89 `cpkt::lua` target and include <cpkt/lua.h> instead.
  */
 typedef struct cpkt_lua_runtime cpkt_lua_runtime;
 

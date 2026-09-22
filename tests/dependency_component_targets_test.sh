@@ -54,6 +54,29 @@ case "$sqlite_plan" in
     ;;
 esac
 
+lua_plan=$(cmake --build "$build_dir" --target cpkt_lua_static -- -n)
+case "$lua_plan" in
+  *"cpkt_lua_project"*) ;;
+  *) printf 'Lua facade build plan does not include Lua\n' >&2; exit 1 ;;
+esac
+case "$lua_plan" in
+  *"cpkt_deps_all"*|*"cpkt_openssl_project"*|*"cpkt_curl_project"*|*"cpkt_postgresql_project"*|*"cpkt_sqlite_project"*|*"cpkt_open62541_static_project"*)
+    printf 'Lua facade build plan includes an unrelated dependency closure\n' >&2
+    exit 1
+    ;;
+esac
+
+lua_generator_inputs=$(ninja -C "$build_dir" -t query generated/lua/include/cpkt/lua.h)
+for lua_header in lua.h luaconf.h lauxlib.h lualib.h; do
+  case "$lua_generator_inputs" in
+    *"deps/lua/install/include/$lua_header"*) ;;
+    *)
+      printf 'Lua facade generator does not depend on %s\n' "$lua_header" >&2
+      exit 1
+      ;;
+  esac
+done
+
 postgres_plan=$(cmake --build "$build_dir" --target cpkt_postgres_static -- -n)
 case "$postgres_plan" in
   *"cpkt_postgresql_project"*) ;;

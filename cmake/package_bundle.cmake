@@ -27,6 +27,7 @@ foreach(_required
     CPKT_OPENLDAP_VERSION
     CPKT_POSTGRESQL_VERSION
     CPKT_SQLITE_VERSION
+    CPKT_LUA_ABI_VERSION
     CPKT_LUA_RUNTIME_ABI_VERSION
     CPKT_OPENSSL_STATIC_LIBRARY
     CPKT_OPENSSL_SHARED_LIBRARY
@@ -39,6 +40,9 @@ foreach(_required
     CPKT_MQTTC_FACADE_INCLUDE_DIR
     CPKT_MQTTC_STATIC_LIBRARY
     CPKT_MQTTC_SHARED_LIBRARY
+    CPKT_LUA_FACADE_INCLUDE_DIR
+    CPKT_LUA_STATIC_LIBRARY
+    CPKT_LUA_SHARED_LIBRARY
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
     CPKT_LUA_RUNTIME_SHARED_LIBRARY
@@ -92,6 +96,9 @@ string(REGEX REPLACE "^v" "" _cpkt_whisper_package_version "${_cpkt_whisper_pack
 string(REGEX MATCH "^[0-9]+" _cpkt_postgresql_major_version "${CPKT_POSTGRESQL_VERSION}")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_shared_library_suffix ".dylib")
+  set(_cpkt_lua_facade_shared_library_link_name "libcpkt_lua.dylib")
+  set(_cpkt_lua_facade_shared_library_abi_name "libcpkt_lua.${CPKT_LUA_ABI_VERSION}.dylib")
+  set(_cpkt_lua_facade_shared_library_real_name "libcpkt_lua.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
@@ -136,6 +143,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_open62541_shared_library_name "libopen62541.dylib")
 else()
   set(_cpkt_shared_library_suffix ".so")
+  set(_cpkt_lua_facade_shared_library_link_name "libcpkt_lua.so")
+  set(_cpkt_lua_facade_shared_library_abi_name "libcpkt_lua.so.${CPKT_LUA_ABI_VERSION}")
+  set(_cpkt_lua_facade_shared_library_real_name "libcpkt_lua.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.so")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
@@ -217,6 +227,9 @@ if(_legacy_open62541_shared_libraries)
   file(REMOVE ${_legacy_open62541_shared_libraries})
 endif()
 file(COPY "${CPKT_LUA_RUNTIME_INCLUDE_DIR}/cpkt" DESTINATION "${_stage_root}/include")
+file(COPY_FILE
+  "${CPKT_LUA_FACADE_INCLUDE_DIR}/cpkt/lua.h"
+  "${_stage_root}/include/cpkt/lua.h")
 file(COPY_FILE
   "${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}/cpkt/nghttp2.h"
   "${_stage_root}/include/cpkt/nghttp2.h")
@@ -308,6 +321,14 @@ cpkt_stage_facade_library(
   "${_cpkt_mqttc_facade_shared_library_real_name}"
   "${_cpkt_mqttc_facade_shared_library_abi_name}"
   "${_cpkt_mqttc_facade_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "Lua C89 facade"
+  "${CPKT_LUA_STATIC_LIBRARY}"
+  "libcpkt_lua"
+  "${CPKT_LUA_SHARED_LIBRARY}"
+  "${_cpkt_lua_facade_shared_library_real_name}"
+  "${_cpkt_lua_facade_shared_library_abi_name}"
+  "${_cpkt_lua_facade_shared_library_link_name}")
 cpkt_stage_facade_library(
   "Lua runtime facade"
   "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
@@ -788,6 +809,33 @@ file(WRITE "${_stage_root}/lib/cmake/Lua/LuaConfig.cmake"
   "endif()\n"
 )
 cpkt_write_config_version("Lua" "Lua" "${CPKT_LUA_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktLua")
+file(WRITE "${_stage_root}/lib/cmake/CpktLua/CpktLuaConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_lua_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(Lua_DIR \"\${_cpkt_lua_facade_prefix}/lib/cmake/Lua\")\n"
+  "find_dependency(Lua CONFIG REQUIRED)\n"
+  "set(CpktLua_FOUND TRUE)\n"
+  "set(CpktLua_VERSION \"${CPKT_LUA_VERSION}\")\n"
+  "if(NOT TARGET cpkt::lua)\n"
+  "  add_library(cpkt::lua STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::lua PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_facade_prefix}/lib/libcpkt_lua${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_lua_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES Lua::Lua\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::lua_facade_shared)\n"
+  "  add_library(cpkt::lua_facade_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::lua_facade_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_facade_prefix}/lib/libcpkt_lua${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_lua_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::lua_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktLua" "CpktLua" "${CPKT_LUA_VERSION}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktLuaRuntime")
 file(WRITE "${_stage_root}/lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
@@ -1526,6 +1574,19 @@ foreach(_lua_pc_name lua lua5.5)
     "Cflags: -I\${includedir}\n"
   )
 endforeach()
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-lua.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-lua\n"
+  "Description: C89 Lua 5.5 facade from c.pkt.systems\n"
+  "Version: ${CPKT_LUA_VERSION}\n"
+  "Requires.private: lua\n"
+  "Libs: -L\${libdir} -lcpkt_lua\n"
+  "Cflags: -I\${includedir}\n"
+)
 file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-lua-runtime.pc"
   "prefix=\${pcfiledir}/../..\n"
   "exec_prefix=\${prefix}\n"
@@ -1794,6 +1855,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "postgresql_version=${CPKT_POSTGRESQL_VERSION}\n"
   "sqlite_version=${CPKT_SQLITE_VERSION}\n"
   "openssl_abi_version=${CPKT_OPENSSL_ABI_VERSION}\n"
+  "lua_abi_version=${CPKT_LUA_ABI_VERSION}\n"
   "lua_runtime_abi_version=${CPKT_LUA_RUNTIME_ABI_VERSION}\n"
   "audio_abi_version=${CPKT_AUDIO_ABI_VERSION}\n"
   "sus_abi_version=${CPKT_SUS_ABI_VERSION}\n"

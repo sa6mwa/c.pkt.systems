@@ -363,6 +363,8 @@ assert_package_file "lib/cmake/libxml2/libxml2-config.cmake"
 assert_package_file "lib/cmake/libxml2/libxml2-config-version.cmake"
 assert_package_file "lib/cmake/Lua/LuaConfig.cmake"
 assert_package_file "lib/cmake/Lua/LuaConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktLua/CpktLuaConfig.cmake"
+assert_package_file "lib/cmake/CpktLua/CpktLuaConfigVersion.cmake"
 assert_package_file "lib/cmake/mqtt-c/mqtt-cConfig.cmake"
 assert_package_file "lib/cmake/mqtt-c/mqtt-cConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
@@ -425,9 +427,14 @@ assert_file_contains "$prefix/share/doc/c.pkt.systems/third_party/kblab-whisper-
 assert_package_dir_absent "lib/cmake/ZLIB"
 assert_package_dir_absent "lib/cmake/Libssh2"
 
-if grep -E 'lua\.h|lauxlib\.h|lualib\.h|lua_State|lua_Integer|lua_Number|lua_Unsigned|long long|inline' \
+if grep -E '#include[[:space:]]*<(lua|lauxlib|lualib)\.h>|lua_State|lua_Integer|lua_Number|lua_Unsigned|long long|inline' \
     "$prefix/include/cpkt/lua_runtime.h" >/dev/null 2>&1; then
   printf 'Lua runtime facade header is not C89-clean\n' >&2
+  exit 1
+fi
+if grep -E '#include[[:space:]]*<(lua|lauxlib|lualib)\.h>|stdint\.h|stdbool\.h|long long|inline' \
+    "$prefix/include/cpkt/lua.h" >/dev/null 2>&1; then
+  printf 'Lua C89 facade header is not C89-clean\n' >&2
   exit 1
 fi
 if grep -E 'open62541/|UA_Client|UA_Server|UA_StatusCode|UA_NodeId|UA_Variant|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
@@ -659,6 +666,24 @@ int main(void) {
   luaL_openlibs(state);
   lua_close(state);
   return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_lua_facade_strict.c" <<'EOF'
+#include <cpkt/lua.h>
+
+int main(void) {
+  cpkt_lua_integer value;
+  cpkt_lua_state *state;
+
+  state = cpkt_lua_l_newstate();
+  if (state == 0) {
+    return 1;
+  }
+  cpkt_lua_l_checkversion(state);
+  cpkt_lua_pushinteger(state, cpkt_lua_integer_make(0U, 7U));
+  value = cpkt_lua_tointeger(state, -1);
+  cpkt_lua_close(state);
+  return cpkt_lua_integer_low(value) == 7U ? 0 : 2;
 }
 EOF
 cat > "$cmake_source_dir/cpkt_open62541.c" <<'EOF'
@@ -1426,6 +1451,7 @@ find_package(Libssh2 CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(libxml2 CONFIG REQUIRED)
 find_package(Lua CONFIG REQUIRED)
+find_package(CpktLua CONFIG REQUIRED)
 find_package(miniaudio CONFIG REQUIRED)
 find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
@@ -1478,6 +1504,8 @@ cpkt_add_static_smoke(cpkt_cmake_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_smoke(cpkt_cmake_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
 cpkt_add_static_smoke(cpkt_cmake_lua cpkt_lua.c Lua::Lua)
+cpkt_add_static_smoke(cpkt_cmake_lua_facade cpkt_lua_facade_strict.c cpkt::lua)
+cpkt_add_shared_smoke(cpkt_cmake_lua_facade_shared cpkt_lua_facade_strict.c cpkt::lua_facade_shared)
 cpkt_add_static_smoke(cpkt_cmake_mqttc cpkt_mqttc.c MQTT-C::mqttc)
 cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541)
 cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
@@ -1498,6 +1526,7 @@ cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libssh2 cpkt_libssh2.c Libssh2:
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_lua cpkt_lua.c Lua::Lua)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_lua_facade cpkt_lua_facade_strict.c cpkt::lua)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_mqttc cpkt_mqttc.c MQTT-C::mqttc)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_open62541 cpkt_open62541.c open62541::open62541)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
@@ -1507,6 +1536,8 @@ cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_postgres_facade cpkt_postgres_f
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
 set_source_files_properties(cpkt_audio_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_lua_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_openssl_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
@@ -1574,6 +1605,7 @@ cmake_args=(
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -DCpktLua_DIR="$prefix/lib/cmake/CpktLua" \
   -Dminiaudio_DIR="$prefix/lib/cmake/miniaudio" \
   -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
@@ -1875,6 +1907,7 @@ libssh2_words=$(pkg_config_words libssh2)
 libcurl_words=$(pkg_config_words libcurl)
 libxml2_words=$(pkg_config_words libxml-2.0)
 lua_words=$(pkg_config_words lua)
+lua_facade_words=$(pkg_config_words cpkt-lua)
 mqttc_words=$(pkg_config_words mqtt-c)
 lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
 audio_words=$(pkg_config_words cpkt-audio)
@@ -1895,6 +1928,7 @@ case "$target_id" in
     assert_words_contain "$libcurl_words" "-ldl" "libcurl.pc --static output"
     assert_words_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
     assert_words_contain "$lua_words" "-ldl" "lua.pc --static output"
+    assert_words_contain "$lua_facade_words" "-ldl" "cpkt-lua.pc --static output"
     assert_words_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
     assert_words_contain "$opcua_words" "-lrt" "cpkt-opcua.pc --static output"
     assert_words_contain "$mqttc_words" "-pthread" "mqtt-c.pc --static output"
@@ -1912,6 +1946,7 @@ case "$target_id" in
     assert_words_not_contain "$libcurl_words" "-ldl" "libcurl.pc --static output"
     assert_words_not_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
     assert_words_not_contain "$lua_words" "-ldl" "lua.pc --static output"
+    assert_words_not_contain "$lua_facade_words" "-ldl" "cpkt-lua.pc --static output"
     assert_words_not_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
     assert_words_not_contain "$opcua_words" "-ldl" "cpkt-opcua.pc --static output"
     assert_words_not_contain "$open62541_words" "-ldl" "open62541.pc --static output"
@@ -1941,6 +1976,9 @@ assert_words_contain "$libcurl_words" "-lz" "libcurl.pc --static output"
 assert_words_contain "$libxml2_words" "-lz" "libxml-2.0.pc --static output"
 assert_words_contain "$libxml2_words" "-lm" "libxml-2.0.pc --static output"
 assert_words_contain "$lua_words" "-lm" "lua.pc --static output"
+assert_words_contain "$lua_facade_words" "-lcpkt_lua" "cpkt-lua.pc --static output"
+assert_words_contain "$lua_facade_words" "-llua" "cpkt-lua.pc --static output"
+assert_words_contain "$lua_facade_words" "-lm" "cpkt-lua.pc --static output"
 assert_words_contain "$lua_runtime_words" "-llua" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$lua_runtime_words" "-lm" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$audio_words" "-lcpktaudio" "cpkt-audio.pc --static output"
@@ -2208,6 +2246,7 @@ cpkt_pkg_config_static_smoke libssh2 cpkt_libssh2.c
 cpkt_pkg_config_static_smoke libcurl cpkt_curl.c
 cpkt_pkg_config_static_smoke libxml-2.0 cpkt_libxml2.c
 cpkt_pkg_config_static_smoke lua cpkt_lua.c
+cpkt_pkg_config_static_smoke cpkt-lua cpkt_lua_facade_strict.c
 cpkt_pkg_config_static_smoke mqtt-c cpkt_mqttc.c
 cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
 cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
@@ -2320,6 +2359,7 @@ cpkt_pkg_config_smoke cpkt-openssl cpkt_openssl_facade_strict.c
 cpkt_pkg_config_smoke cpkt-nghttp2 cpkt_nghttp2_facade_strict.c
 cpkt_pkg_config_smoke cpkt-libssh2 cpkt_libssh2_facade_strict.c
 cpkt_pkg_config_smoke cpkt-mqttc cpkt_mqttc_facade_strict.c
+cpkt_pkg_config_smoke cpkt-lua cpkt_lua_facade_strict.c
 
 # Verify every temporary native consumer before executing it directly.
 if [ "${#local_runtime_options[@]}" -gt 0 ]; then
