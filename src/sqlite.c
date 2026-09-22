@@ -5394,8 +5394,7 @@ int cpkt_sqlite_register_rtree_query(cpkt_sqlite *self, const char *name,
   status = sqlite3_rtree_query_callback(
       cpkt_sqlite_native(self), name, cpkt_sqlite_rtree_query_trampoline,
       binding, cpkt_sqlite_rtree_query_destroy);
-  if (status != SQLITE_OK)
-    free(binding);
+  /* SQLite invokes the supplied destructor even when registration fails. */
   return status;
 }
 
@@ -5490,7 +5489,7 @@ int cpkt_sqlite_set_preupdate_hook(cpkt_sqlite *self,
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return CPKT_SQLITE_NOMEM;
-  if (callback != NULL && state->session_count != 0)
+  if (state->session_count != 0)
     return CPKT_SQLITE_MISUSE;
   state->preupdate_callback = callback;
   state->preupdate_context = context;

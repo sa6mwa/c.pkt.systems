@@ -1575,6 +1575,20 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_auto_extension_shutdown_test)
     target_link_libraries(cpkt_sqlite_auto_extension_shutdown_test PRIVATE
       cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_rtree_registration_failure_test
+      tests/sqlite_rtree_registration_failure_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_rtree_registration_failure_test)
+    target_compile_options(cpkt_sqlite_rtree_registration_failure_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_rtree_registration_failure_test)
+    target_link_libraries(cpkt_sqlite_rtree_registration_failure_test PRIVATE
+      cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_session_hook_guard_test
+      tests/sqlite_session_hook_guard_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_session_hook_guard_test)
+    target_compile_options(cpkt_sqlite_session_hook_guard_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_session_hook_guard_test)
+    target_link_libraries(cpkt_sqlite_session_hook_guard_test PRIVATE
+      cpkt_sqlite_static)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
       add_executable(cpkt_sqlite_page_cache_discard_test
         tests/sqlite_page_cache_discard_test.c)
@@ -1765,6 +1779,10 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(NAME sqlite_auto_extension_shutdown
         COMMAND cpkt_sqlite_auto_extension_shutdown_test)
+      add_test(NAME sqlite_rtree_registration_failure
+        COMMAND cpkt_sqlite_rtree_registration_failure_test)
+      add_test(NAME sqlite_session_hook_guard
+        COMMAND cpkt_sqlite_session_hook_guard_test)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME sqlite_page_cache_discard
           COMMAND cpkt_sqlite_page_cache_discard_test)
