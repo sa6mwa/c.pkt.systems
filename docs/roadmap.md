@@ -13,7 +13,7 @@ upstream audit, ABI review, and release-matrix evidence before shipment.
 - [x] **Add `cpkt_openssl`.** The complete public OpenSSL C89 facade now
   covers every non-C89 public type boundary, ships as separate CMake and
   pkg-config packages, and has exact export and extracted-SDK verification.
-- [ ] **Add `cpkt_nghttp2`.** Provide the complete public nghttp2 C89 facade,
+- [x] **Add `cpkt_nghttp2`.** Provide the complete public nghttp2 C89 facade,
   including callback, session, frame, and error interfaces.
 - [ ] **Add `cpkt_libssh2`.** Provide the complete public libssh2 C89 facade,
   including session, authentication, channel, SFTP, SCP, and public-key APIs.
