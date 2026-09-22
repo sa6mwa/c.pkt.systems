@@ -202,3 +202,52 @@ int cpkt_openssl_ASN1_INTEGER_set_uint64(
     ASN1_INTEGER *integer, cpkt_openssl_u64 value) {
   return ASN1_INTEGER_set_uint64(integer, cpkt_openssl_native_u64(value));
 }
+
+/** Implements the documented public C89 adapter cpkt_openssl_CT_POLICY_EVAL_CTX_get_time. */
+cpkt_openssl_u64 cpkt_openssl_CT_POLICY_EVAL_CTX_get_time(
+    const CT_POLICY_EVAL_CTX *context) {
+  return cpkt_openssl_public_u64(CT_POLICY_EVAL_CTX_get_time(context));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_CT_POLICY_EVAL_CTX_set_time. */
+void cpkt_openssl_CT_POLICY_EVAL_CTX_set_time(
+    CT_POLICY_EVAL_CTX *context, cpkt_openssl_u64 value) {
+  CT_POLICY_EVAL_CTX_set_time(context, cpkt_openssl_native_u64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_get_max_threads. */
+cpkt_openssl_u64 cpkt_openssl_OSSL_get_max_threads(
+    OSSL_LIB_CTX *library_context) {
+  return cpkt_openssl_public_u64(OSSL_get_max_threads(library_context));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_set_max_threads. */
+int cpkt_openssl_OSSL_set_max_threads(
+    OSSL_LIB_CTX *library_context, cpkt_openssl_u64 value) {
+  return OSSL_set_max_threads(
+      library_context, cpkt_openssl_native_u64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_sleep. */
+void cpkt_openssl_OSSL_sleep(cpkt_openssl_u64 milliseconds) {
+  OSSL_sleep(cpkt_openssl_native_u64(milliseconds));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SCT_get_timestamp. */
+cpkt_openssl_u64 cpkt_openssl_SCT_get_timestamp(const SCT *sct) {
+  return cpkt_openssl_public_u64(SCT_get_timestamp(sct));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SCT_new_from_base64. */
+SCT *cpkt_openssl_SCT_new_from_base64(
+    unsigned char version, const char *log_id, ct_log_entry_type_t entry_type,
+    cpkt_openssl_u64 timestamp, const char *extensions, const char *signature) {
+  return SCT_new_from_base64(version, log_id, entry_type,
+                             cpkt_openssl_native_u64(timestamp), extensions,
+                             signature);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SCT_set_timestamp. */
+void cpkt_openssl_SCT_set_timestamp(SCT *sct, cpkt_openssl_u64 timestamp) {
+  SCT_set_timestamp(sct, cpkt_openssl_native_u64(timestamp));
+}

@@ -3,7 +3,10 @@
 int main(void) {
   ASN1_ENUMERATED *enumerated;
   ASN1_INTEGER *integer;
+  CT_POLICY_EVAL_CTX *policy_context;
+  OSSL_LIB_CTX *library_context;
   SSL_CTX *context;
+  SCT *sct;
   cpkt_openssl_i64 signed_value;
   cpkt_openssl_u64 options;
   cpkt_openssl_u64 returned;
@@ -46,19 +49,46 @@ int main(void) {
   }
   ASN1_INTEGER_free(integer);
   ASN1_ENUMERATED_free(enumerated);
-  if (cpkt_openssl_OPENSSL_init_ssl(cpkt_openssl_u64_make(0UL, 0UL), 0) != 1) {
+  policy_context = CT_POLICY_EVAL_CTX_new();
+  sct = SCT_new();
+  library_context = OSSL_LIB_CTX_new();
+  if (policy_context == 0 || sct == 0 || library_context == 0) {
+    CT_POLICY_EVAL_CTX_free(policy_context);
+    SCT_free(sct);
+    OSSL_LIB_CTX_free(library_context);
     return 6;
+  }
+  cpkt_openssl_CT_POLICY_EVAL_CTX_set_time(policy_context, options);
+  cpkt_openssl_SCT_set_timestamp(sct, options);
+  if (!cpkt_openssl_u64_equal(
+          cpkt_openssl_CT_POLICY_EVAL_CTX_get_time(policy_context), options) ||
+      !cpkt_openssl_u64_equal(cpkt_openssl_SCT_get_timestamp(sct), options) ||
+      cpkt_openssl_OSSL_set_max_threads(
+          library_context, cpkt_openssl_u64_make(0UL, 1UL)) != 1 ||
+      cpkt_openssl_u64_is_zero(
+          cpkt_openssl_OSSL_get_max_threads(library_context))) {
+    CT_POLICY_EVAL_CTX_free(policy_context);
+    SCT_free(sct);
+    OSSL_LIB_CTX_free(library_context);
+    return 7;
+  }
+  cpkt_openssl_OSSL_sleep(cpkt_openssl_u64_make(0UL, 0UL));
+  CT_POLICY_EVAL_CTX_free(policy_context);
+  SCT_free(sct);
+  OSSL_LIB_CTX_free(library_context);
+  if (cpkt_openssl_OPENSSL_init_ssl(cpkt_openssl_u64_make(0UL, 0UL), 0) != 1) {
+    return 8;
   }
   context = SSL_CTX_new(TLS_method());
   if (context == 0) {
-    return 7;
+    return 9;
   }
   returned = cpkt_openssl_SSL_CTX_set_options(context, options);
   if ((returned.low & 0x4000UL) == 0UL) {
     SSL_CTX_free(context);
-    return 8;
+    return 10;
   }
   returned = cpkt_openssl_SSL_CTX_clear_options(context, options);
   SSL_CTX_free(context);
-  return (returned.low & 0x4000UL) == 0UL ? 0 : 9;
+  return (returned.low & 0x4000UL) == 0UL ? 0 : 11;
 }

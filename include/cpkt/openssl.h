@@ -246,5 +246,29 @@ CPKT_OPENSSL_API int cpkt_openssl_ASN1_INTEGER_set_int64(
 /** C89 adapter for ASN1_INTEGER_set_uint64. */
 CPKT_OPENSSL_API int cpkt_openssl_ASN1_INTEGER_set_uint64(
     ASN1_INTEGER *integer, cpkt_openssl_u64 value);
+/** C89 adapter for CT_POLICY_EVAL_CTX_get_time. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_CT_POLICY_EVAL_CTX_get_time(
+    const CT_POLICY_EVAL_CTX *context);
+/** C89 adapter for CT_POLICY_EVAL_CTX_set_time. */
+CPKT_OPENSSL_API void cpkt_openssl_CT_POLICY_EVAL_CTX_set_time(
+    CT_POLICY_EVAL_CTX *context, cpkt_openssl_u64 value);
+/** C89 adapter for OSSL_get_max_threads. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_OSSL_get_max_threads(
+    OSSL_LIB_CTX *library_context);
+/** C89 adapter for OSSL_set_max_threads. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_set_max_threads(
+    OSSL_LIB_CTX *library_context, cpkt_openssl_u64 value);
+/** C89 adapter for OSSL_sleep. */
+CPKT_OPENSSL_API void cpkt_openssl_OSSL_sleep(cpkt_openssl_u64 milliseconds);
+/** C89 adapter for SCT_get_timestamp. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_SCT_get_timestamp(
+    const SCT *sct);
+/** C89 adapter for SCT_new_from_base64. */
+CPKT_OPENSSL_API SCT *cpkt_openssl_SCT_new_from_base64(
+    unsigned char version, const char *log_id, ct_log_entry_type_t entry_type,
+    cpkt_openssl_u64 timestamp, const char *extensions, const char *signature);
+/** C89 adapter for SCT_set_timestamp. */
+CPKT_OPENSSL_API void cpkt_openssl_SCT_set_timestamp(
+    SCT *sct, cpkt_openssl_u64 timestamp);
 
 #endif
