@@ -1554,6 +1554,27 @@ if(CPKT_BUILD_TESTS)
           "$<TARGET_PROPERTY:cpkt::openssl_ssl_shared,IMPORTED_LOCATION>"
           "${_cpkt_openssl_catalog_symbol_format}"
           "${_cpkt_openssl_catalog_symbol_tool}")
+      # The inventory generator uses clang only as a declaration parser.  It
+      # is deliberately native-host-only and never participates in a target
+      # build, package, or release compiler path.
+      if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu")
+        find_program(CPKT_OPENSSL_API_INVENTORY_CLANG NAMES clang REQUIRED)
+        add_test(
+          NAME openssl_api_inventory
+          COMMAND
+            python3
+            "${CMAKE_SOURCE_DIR}/tools/generate_openssl_api_inventory.py"
+            --include-dir "$<TARGET_PROPERTY:cpkt::openssl_crypto_shared,INTERFACE_INCLUDE_DIRECTORIES>"
+            --num "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl/src/util/libcrypto.num"
+            --num "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl/src/util/libssl.num"
+            --library "$<TARGET_PROPERTY:cpkt::openssl_crypto_shared,IMPORTED_LOCATION>"
+            --library "$<TARGET_PROPERTY:cpkt::openssl_ssl_shared,IMPORTED_LOCATION>"
+            --symbol-format elf
+            --symbol-tool "${CMAKE_READELF}"
+            --clang "${CPKT_OPENSSL_API_INVENTORY_CLANG}"
+            --output "${CMAKE_BINARY_DIR}/openssl-api-inventory-test/inventory.json"
+            --work-dir "${CMAKE_BINARY_DIR}/openssl-api-inventory-test")
+      endif()
       add_test(
         NAME audio_sus_header_facade
         COMMAND
