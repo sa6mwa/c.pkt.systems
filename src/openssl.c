@@ -53,6 +53,35 @@ struct cpkt_openssl_bio {
   cpkt_openssl_bio_callback_ex callback_ex;
 };
 
+static CRYPTO_ONCE cpkt_openssl_bio_ex_data_once = CRYPTO_ONCE_STATIC_INIT;
+static int cpkt_openssl_bio_ex_data_index = -1;
+
+static void cpkt_openssl_bio_ex_data_free(void *parent, void *pointer,
+                                          CRYPTO_EX_DATA *data, int index,
+                                          long argument, void *context) {
+  cpkt_openssl_bio *bio;
+  cpkt_openssl_bio_method *method;
+  (void)parent;
+  (void)data;
+  (void)index;
+  (void)argument;
+  (void)context;
+  bio = (cpkt_openssl_bio *)pointer;
+  if (bio == NULL)
+    return;
+  method = bio->method;
+  if (CRYPTO_THREAD_write_lock(method->lock)) {
+    --method->active_bios;
+    CRYPTO_THREAD_unlock(method->lock);
+  }
+  free(bio);
+}
+
+static void cpkt_openssl_bio_ex_data_initialize(void) {
+  cpkt_openssl_bio_ex_data_index =
+      BIO_get_ex_new_index(0L, NULL, NULL, NULL, cpkt_openssl_bio_ex_data_free);
+}
+
 static uint64_t cpkt_openssl_native_u64(cpkt_openssl_u64 value) {
   uint64_t native;
 
@@ -483,8 +512,10 @@ cpkt_openssl_bio_new_internal(OSSL_LIB_CTX *library_context,
   cpkt_openssl_bio *facade_bio;
   BIO *native_bio;
 
-  if (method == NULL || method->lock == NULL ||
-      !CRYPTO_THREAD_write_lock(method->lock)) {
+  if (!CRYPTO_THREAD_run_once(&cpkt_openssl_bio_ex_data_once,
+                              cpkt_openssl_bio_ex_data_initialize) ||
+      cpkt_openssl_bio_ex_data_index < 0 || method == NULL ||
+      method->lock == NULL || !CRYPTO_THREAD_write_lock(method->lock)) {
     return NULL;
   }
   if (method->closing || method->native == NULL) {
@@ -498,6 +529,13 @@ cpkt_openssl_bio_new_internal(OSSL_LIB_CTX *library_context,
   }
   native_bio = BIO_new_ex(library_context, method->native);
   if (native_bio == NULL) {
+    free(facade_bio);
+    CRYPTO_THREAD_unlock(method->lock);
+    return NULL;
+  }
+  if (!BIO_set_ex_data(native_bio, cpkt_openssl_bio_ex_data_index,
+                       facade_bio)) {
+    BIO_free(native_bio);
     free(facade_bio);
     CRYPTO_THREAD_unlock(method->lock);
     return NULL;
@@ -1715,14 +1753,7 @@ int cpkt_openssl_BIO_close(cpkt_openssl_bio *bio) {
   BIO_set_callback_ex(native_bio, NULL);
   BIO_set_callback_arg(native_bio, NULL);
   CRYPTO_THREAD_unlock(method->lock);
-  BIO_free(native_bio);
-  if (!CRYPTO_THREAD_write_lock(method->lock)) {
-    return 0;
-  }
-  --method->active_bios;
-  CRYPTO_THREAD_unlock(method->lock);
-  free(bio);
-  return 1;
+  return BIO_free(native_bio);
 }
 
 /** Implements the documented public C89 adapter cpkt_openssl_BIO_native. */

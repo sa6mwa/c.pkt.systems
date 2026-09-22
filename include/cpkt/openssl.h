@@ -627,8 +627,8 @@ cpkt_openssl_BIO_sendmmsg(BIO *bio, cpkt_openssl_bio_message *messages,
 /** Creates a custom method for C89 batch callbacks. Close it after its BIOs. */
 CPKT_OPENSSL_API cpkt_openssl_bio_method *
 cpkt_openssl_BIO_meth_new(int type, const char *name);
-/** Frees a method only after every facade BIO is closed and no callback runs.
- */
+/** Frees a method only after its native BIOs reach their final reference and
+ * no callback runs. An up-ref'd native BIO can outlive its facade BIO. */
 CPKT_OPENSSL_API int
 cpkt_openssl_BIO_meth_close(cpkt_openssl_bio_method *method);
 /** Returns a borrowed native method for C89-native BIO configuration calls. */

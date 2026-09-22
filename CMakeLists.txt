@@ -1568,6 +1568,13 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
     target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_child_lifetime_concurrency_test
+      tests/sqlite_child_lifetime_concurrency_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_child_lifetime_concurrency_test)
+    target_compile_options(cpkt_sqlite_child_lifetime_concurrency_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_child_lifetime_concurrency_test)
+    target_link_libraries(cpkt_sqlite_child_lifetime_concurrency_test PRIVATE
+      cpkt_sqlite_static Threads::Threads)
     add_executable(cpkt_sqlite_page_cache_lifetime_test
       tests/sqlite_page_cache_lifetime_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_page_cache_lifetime_test)
@@ -1784,6 +1791,8 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
+      add_test(NAME sqlite_child_lifetime_concurrency
+        COMMAND cpkt_sqlite_child_lifetime_concurrency_test)
       add_test(NAME sqlite_page_cache_lifetime
         COMMAND cpkt_sqlite_page_cache_lifetime_test)
       add_test(NAME sqlite_auto_extension_shutdown

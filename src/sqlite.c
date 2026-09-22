@@ -51,6 +51,7 @@ typedef struct cpkt_sqlite_state {
   int session_count;
   int child_count;
   int closing;
+  int finish_started;
   int listed_wrapper;
   struct cpkt_sqlite_state *next_wrapper;
   cpkt_sqlite *database;
@@ -944,19 +945,32 @@ static void cpkt_sqlite_auto_extension_close(cpkt_sqlite_auto_extension *self) {
 
 static void cpkt_sqlite_retain_child(cpkt_sqlite *database) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
   state = cpkt_sqlite_state_for(database);
   if (state != NULL)
     ++state->child_count;
+  cpkt_sqlite_global_unlock(mutex);
 }
 
 static void cpkt_sqlite_release_child(cpkt_sqlite *database) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  int finish;
+  finish = 0;
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
   state = cpkt_sqlite_state_for(database);
-  if (state == NULL)
-    return;
-  if (state->child_count > 0)
+  if (state != NULL && state->child_count > 0) {
     --state->child_count;
-  if (state->closing && state->child_count == 0)
+    if (state->closing && state->child_count == 0 && !state->finish_started) {
+      state->finish_started = 1;
+      finish = 1;
+    }
+  }
+  cpkt_sqlite_global_unlock(mutex);
+  if (finish)
     cpkt_sqlite_finish_close(database);
 }
 
@@ -3234,39 +3248,60 @@ static void cpkt_sqlite_destroy(cpkt_sqlite *self) {
 
 void cpkt_sqlite_close(cpkt_sqlite *self) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  int finish;
   if (self == NULL)
     return;
+  finish = 0;
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
   state = cpkt_sqlite_state_for(self);
-  if (state == NULL || state->closing)
-    return;
-  state->closing = 1;
-  if (state->child_count == 0)
+  if (state != NULL && !state->closing) {
+    state->closing = 1;
+    if (state->child_count == 0) {
+      state->finish_started = 1;
+      finish = 1;
+    }
+  }
+  cpkt_sqlite_global_unlock(mutex);
+  if (finish)
     cpkt_sqlite_finish_close(self);
 }
 
 int cpkt_sqlite_close_strict(cpkt_sqlite *self) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return CPKT_SQLITE_MISUSE;
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
   state = cpkt_sqlite_state_for(self);
-  if (state == NULL || state->closing)
+  if (state == NULL || state->closing) {
+    cpkt_sqlite_global_unlock(mutex);
     return CPKT_SQLITE_MISUSE;
-  if (state->child_count != 0)
+  }
+  if (state->child_count != 0) {
+    cpkt_sqlite_global_unlock(mutex);
     return CPKT_SQLITE_BUSY;
+  }
+  state->closing = 1;
+  state->finish_started = 1;
+  cpkt_sqlite_global_unlock(mutex);
   status = sqlite3_close(cpkt_sqlite_native(self));
-  if (status != SQLITE_OK)
+  if (status != SQLITE_OK) {
+    cpkt_sqlite_global_lock(mutex);
+    state->closing = 0;
+    state->finish_started = 0;
+    cpkt_sqlite_global_unlock(mutex);
     return status;
+  }
   cpkt_sqlite_destroy(self);
   return CPKT_SQLITE_OK;
 }
 
 static void cpkt_sqlite_finish_close(cpkt_sqlite *self) {
-  cpkt_sqlite_state *state;
   if (self == NULL)
-    return;
-  state = cpkt_sqlite_state_for(self);
-  if (state == NULL || !state->closing || state->child_count != 0)
     return;
   if (cpkt_sqlite_native(self) != NULL) {
     sqlite3_unlock_notify(cpkt_sqlite_native(self), NULL, NULL);

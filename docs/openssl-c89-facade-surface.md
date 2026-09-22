@@ -34,8 +34,10 @@ do not construct native `uint64_t` or `uintptr_t` records.
 The batch BIO method callbacks use facade-owned BIO method and BIO shells.
 `cpkt_openssl_BIO_new` and `cpkt_openssl_BIO_new_ex` pin their callback context
 in OpenSSL's dedicated callback-argument slot; applications must not overwrite
-that slot on a facade BIO. Close each facade BIO before its method. A close
-attempt from a batch callback, or a method close while a facade BIO or callback
+that slot on a facade BIO. Close each facade BIO before its method. A native
+BIO reference acquired with `BIO_up_ref` may outlive the facade shell; the
+method remains pinned until the last native reference is freed. A close
+attempt from a batch callback, or a method close while a native BIO or callback
 remains active, returns zero and leaves ownership unchanged.
 
 The facade's legacy and extended BIO callback setters use the same pinned

@@ -42,6 +42,14 @@ static int openssl_mmsg_test_write(BIO *bio, const char *data, int size) {
   return size;
 }
 
+static int openssl_mmsg_destroy_calls;
+
+static int openssl_mmsg_test_destroy(BIO *bio) {
+  (void)bio;
+  ++openssl_mmsg_destroy_calls;
+  return 1;
+}
+
 static long
 openssl_mmsg_test_regular_callback(void *context, BIO *bio, int operation,
                                    const void *argument, int argument_integer,
@@ -156,6 +164,7 @@ int main(void) {
   BIO *bio;
   BIO *dgram_left;
   BIO *dgram_right;
+  BIO *retained_bio;
   OSSL_LIB_CTX *library_context;
   OSSL_PARAM *built_parameters;
   OSSL_PARAM *native_parameter;
@@ -318,6 +327,12 @@ int main(void) {
       BIO_meth_set_create(
           (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
           openssl_mmsg_test_create) != 1 ||
+      BIO_meth_set_write(
+          (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
+          openssl_mmsg_test_write) != 1 ||
+      BIO_meth_set_destroy(
+          (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
+          openssl_mmsg_test_destroy) != 1 ||
       cpkt_openssl_BIO_meth_set_sendmmsg(facade_method,
                                          openssl_mmsg_test_callback) != 1 ||
       cpkt_openssl_BIO_meth_set_recvmmsg(facade_method,
@@ -338,13 +353,24 @@ int main(void) {
     cpkt_openssl_BIO_meth_close(facade_method);
     return 31;
   }
+  retained_bio = cpkt_openssl_BIO_native(plain_facade_bio);
+  if (BIO_up_ref(retained_bio) != 1) {
+    cpkt_openssl_BIO_close(plain_facade_bio);
+    cpkt_openssl_BIO_meth_close(plain_facade_method);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 31;
+  }
   if (cpkt_openssl_BIO_close(plain_facade_bio) != 1) {
+    BIO_free(retained_bio);
     cpkt_openssl_BIO_meth_close(plain_facade_method);
     cpkt_openssl_BIO_meth_close(facade_method);
     return 31;
   }
   plain_facade_bio = 0;
-  if (cpkt_openssl_BIO_meth_close(plain_facade_method) != 1) {
+  if (cpkt_openssl_BIO_meth_close(plain_facade_method) != 0 ||
+      BIO_write(retained_bio, "abc", 3) != 3 || BIO_free(retained_bio) != 1 ||
+      openssl_mmsg_destroy_calls != 1 ||
+      cpkt_openssl_BIO_meth_close(plain_facade_method) != 1) {
     cpkt_openssl_BIO_meth_close(facade_method);
     return 31;
   }
