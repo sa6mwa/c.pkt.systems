@@ -20,11 +20,11 @@ upstream audit, ABI review, and release-matrix evidence before shipment.
 - [x] **Add `cpkt_mqttc`.** Provide the complete public MQTT-C C89 facade,
   including client lifecycle, packet handling, callbacks, and transport
   integration.
-- [ ] **Sweep `cpkt_postgres` for complete libpq coverage.** Assert every
+- [x] **Sweep `cpkt_postgres` for complete libpq coverage.** Assert every
   supported libpq public operation is represented by the C89 receiver-shell
   facade and verify that Postgres-only facade work builds only its dependency
   closure.
-- [ ] **Sweep `cpkt_sqlite` for complete SQLite coverage.** Assert every
+- [x] **Sweep `cpkt_sqlite` for complete SQLite coverage.** Assert every
   enabled public SQLite API is represented by the C89 facade and verify that
   SQLite-only facade work builds only SQLite and its platform closure.
 - [ ] **Add `cpkt_lua` last.** `cpkt_lua_runtime` is already the priority
