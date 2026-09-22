@@ -53,6 +53,7 @@ typedef struct preupdate_blob_state {
 
 typedef struct vfs_probe_state {
   int open_count;
+  int close_count;
 } vfs_probe_state;
 
 typedef struct auto_extension_state {
@@ -79,16 +80,28 @@ typedef struct virtual_table_state {
 static int virtual_table_increment = 1;
 static int virtual_table_shadow_name_count;
 
+static int vfs_probe_close(cpkt_sqlite_file *file) {
+  vfs_probe_state *state;
+  state = (vfs_probe_state *)file->state;
+  if (state != 0)
+    state->close_count += 1;
+  return CPKT_SQLITE_OK;
+}
+
 static int vfs_probe_open(cpkt_sqlite_vfs *vfs, const char *name,
                           cpkt_sqlite_file *file, int flags, int *flags_out) {
+  static cpkt_sqlite_io_methods methods;
   vfs_probe_state *state;
   (void)name;
-  (void)file;
   (void)flags;
   (void)flags_out;
   state = (vfs_probe_state *)vfs->state;
   if (state != 0)
     state->open_count += 1;
+  methods.version = 1;
+  methods.close = vfs_probe_close;
+  file->methods = &methods;
+  file->state = state;
   return CPKT_SQLITE_CANTOPEN;
 }
 
@@ -1082,6 +1095,7 @@ int main(void) {
     return 45;
   cpkt_sqlite_free(formatted);
   vfs_probe.open_count = 0;
+  vfs_probe.close_count = 0;
   memset(&vfs_methods, 0, sizeof(vfs_methods));
   vfs_methods.version = 1;
   vfs_methods.open = vfs_probe_open;
@@ -1100,7 +1114,7 @@ int main(void) {
       "cpkt-vfs-probe.db", CPKT_SQLITE_OPEN_READWRITE | CPKT_SQLITE_OPEN_CREATE,
       "cpkt-vfs-probe");
   if (replica == 0 || replica->error_code(replica) != CPKT_SQLITE_CANTOPEN ||
-      vfs_probe.open_count != 1)
+      vfs_probe.open_count != 1 || vfs_probe.close_count != 1)
     return 75;
   replica->close(replica);
   if (vfs->unregister_vfs(vfs) != CPKT_SQLITE_OK)

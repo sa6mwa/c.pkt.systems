@@ -494,10 +494,8 @@ static int cpkt_sqlite_vfs_open_native(sqlite3_vfs *vfs, sqlite3_filename name,
   native_file->public_file.internal = native_file;
   status = public_vfs->methods.open(public_vfs, name, &native_file->public_file,
                                     flags, flags_out);
-  if (status != SQLITE_OK)
-    return status;
   if (native_file->public_file.methods == NULL)
-    return SQLITE_MISUSE;
+    return status == SQLITE_OK ? SQLITE_MISUSE : status;
   native_file->native_methods.iVersion =
       native_file->public_file.methods->version;
   native_file->native_methods.xClose = cpkt_sqlite_vfs_file_close;
@@ -521,7 +519,7 @@ static int cpkt_sqlite_vfs_open_native(sqlite3_vfs *vfs, sqlite3_filename name,
   native_file->native_methods.xFetch = cpkt_sqlite_vfs_file_fetch;
   native_file->native_methods.xUnfetch = cpkt_sqlite_vfs_file_unfetch;
   native_file->native.pMethods = &native_file->native_methods;
-  return SQLITE_OK;
+  return status;
 }
 
 static cpkt_sqlite_vfs *cpkt_sqlite_vfs_public(sqlite3_vfs *vfs) {

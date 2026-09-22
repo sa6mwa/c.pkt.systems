@@ -57,6 +57,23 @@ int main(void) {
   }
   cpkt_lua_pop(state, 1);
 
+  string = cpkt_lua_pushfstring(state, "%U %q", 65UL);
+  if (string == 0 || strcmp(string, "A %q") != 0 ||
+      cpkt_lua_gettop(state) != 1) {
+    cpkt_lua_close(state);
+    return 9;
+  }
+  cpkt_lua_pop(state, 1);
+
+  string = cpkt_lua_facade_pushvfstring(state, "%I %q",
+                                        cpkt_lua_integer_make(0U, 1U));
+  if (string == 0 || strcmp(string, "1 %q") != 0 ||
+      cpkt_lua_gettop(state) != 1) {
+    cpkt_lua_close(state);
+    return 10;
+  }
+  cpkt_lua_pop(state, 1);
+
   cpkt_lua_newtable(state);
   cpkt_lua_pushinteger(state, cpkt_lua_integer_make(0U, 9U));
   cpkt_lua_rawseti(state, -2, cpkt_lua_integer_make(0U, 1U));

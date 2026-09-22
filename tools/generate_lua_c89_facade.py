@@ -581,6 +581,10 @@ cpkt_lua_push_format(cpkt_lua_state *state, const char *format,
     }
     luaL_addlstring(&buffer, cursor, (size_t)(percent - cursor));
     cursor = percent + 1;
+    if (*cursor == '\\0') {
+      luaL_addchar(&buffer, '%');
+      break;
+    }
     switch (*cursor) {
       case '%': luaL_addchar(&buffer, '%'); break;
       case 's': lua_pushfstring(native_state, "%s", va_arg(arguments, char *)); break;
@@ -591,7 +595,11 @@ cpkt_lua_push_format(cpkt_lua_state *state, const char *format,
       case 'I': lua_pushfstring(native_state, "%I", cpkt_lua_native_integer(va_arg(arguments, cpkt_lua_integer))); break;
       case 'U': lua_pushfstring(native_state, "%U",
                                 va_arg(arguments, unsigned long)); break;
-      default: return lua_pushfstring(native_state, "invalid option '%%%c' to 'lua_pushfstring'", *cursor);
+      default:
+        luaL_addchar(&buffer, '%');
+        luaL_addchar(&buffer, *cursor);
+        ++cursor;
+        continue;
     }
     if (*cursor != '%')
       luaL_addvalue(&buffer);
