@@ -14,6 +14,7 @@ foreach(_required
     CPKT_NGHTTP2_VERSION
     CPKT_LIBSSH2_VERSION
     CPKT_LIBSSH2_ABI_VERSION
+    CPKT_MQTTC_ABI_VERSION
     CPKT_CMOCKA_VERSION
     CPKT_LIBXML2_VERSION
     CPKT_LUA_VERSION
@@ -35,6 +36,9 @@ foreach(_required
     CPKT_LIBSSH2_FACADE_INCLUDE_DIR
     CPKT_LIBSSH2_STATIC_LIBRARY
     CPKT_LIBSSH2_SHARED_LIBRARY
+    CPKT_MQTTC_FACADE_INCLUDE_DIR
+    CPKT_MQTTC_STATIC_LIBRARY
+    CPKT_MQTTC_SHARED_LIBRARY
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
     CPKT_LUA_RUNTIME_SHARED_LIBRARY
@@ -100,6 +104,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_libssh2_facade_shared_library_link_name "libcpkt_libssh2.dylib")
   set(_cpkt_libssh2_facade_shared_library_abi_name "libcpkt_libssh2.${CPKT_LIBSSH2_ABI_VERSION}.dylib")
   set(_cpkt_libssh2_facade_shared_library_real_name "libcpkt_libssh2.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_mqttc_facade_shared_library_link_name "libcpkt_mqttc.dylib")
+  set(_cpkt_mqttc_facade_shared_library_abi_name "libcpkt_mqttc.${CPKT_MQTTC_ABI_VERSION}.dylib")
+  set(_cpkt_mqttc_facade_shared_library_real_name "libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.dylib")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib")
@@ -141,6 +148,9 @@ else()
   set(_cpkt_libssh2_facade_shared_library_link_name "libcpkt_libssh2.so")
   set(_cpkt_libssh2_facade_shared_library_abi_name "libcpkt_libssh2.so.${CPKT_LIBSSH2_ABI_VERSION}")
   set(_cpkt_libssh2_facade_shared_library_real_name "libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_mqttc_facade_shared_library_link_name "libcpkt_mqttc.so")
+  set(_cpkt_mqttc_facade_shared_library_abi_name "libcpkt_mqttc.so.${CPKT_MQTTC_ABI_VERSION}")
+  set(_cpkt_mqttc_facade_shared_library_real_name "libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.so")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.so.${CPKT_BUNDLE_VERSION}")
@@ -213,6 +223,9 @@ file(COPY_FILE
 file(COPY_FILE
   "${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}/cpkt/libssh2.h"
   "${_stage_root}/include/cpkt/libssh2.h")
+file(COPY_FILE
+  "${CPKT_MQTTC_FACADE_INCLUDE_DIR}/cpkt/mqttc.h"
+  "${_stage_root}/include/cpkt/mqttc.h")
 function(cpkt_stage_facade_library facade_label static_source static_name shared_source shared_real_name shared_abi_name shared_link_name)
   set(_facade_static_destination
     "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}")
@@ -287,6 +300,14 @@ cpkt_stage_facade_library(
   "${_cpkt_libssh2_facade_shared_library_real_name}"
   "${_cpkt_libssh2_facade_shared_library_abi_name}"
   "${_cpkt_libssh2_facade_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "MQTT-C C89 facade"
+  "${CPKT_MQTTC_STATIC_LIBRARY}"
+  "libcpkt_mqttc"
+  "${CPKT_MQTTC_SHARED_LIBRARY}"
+  "${_cpkt_mqttc_facade_shared_library_real_name}"
+  "${_cpkt_mqttc_facade_shared_library_abi_name}"
+  "${_cpkt_mqttc_facade_shared_library_link_name}")
 cpkt_stage_facade_library(
   "Lua runtime facade"
   "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
@@ -1313,6 +1334,39 @@ file(WRITE "${_stage_root}/lib/cmake/mqtt-c/mqtt-cConfig.cmake"
 )
 cpkt_write_config_version("mqtt-c" "mqtt-c" "${CPKT_MQTTC_VERSION}")
 
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktMqttc")
+file(WRITE "${_stage_root}/lib/cmake/CpktMqttc/CpktMqttcConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_mqttc_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(_cpkt_mqttc_static_suffix \".a\")\n"
+  "if(APPLE)\n"
+  "  set(_cpkt_mqttc_shared_suffix \".dylib\")\n"
+  "else()\n"
+  "  set(_cpkt_mqttc_shared_suffix \".so\")\n"
+  "endif()\n"
+  "set(mqtt-c_DIR \"\${_cpkt_mqttc_facade_prefix}/lib/cmake/mqtt-c\")\n"
+  "find_dependency(mqtt-c CONFIG REQUIRED)\n"
+  "set(CpktMqttc_FOUND TRUE)\n"
+  "set(CpktMqttc_VERSION \"${CPKT_MQTTC_VERSION}\")\n"
+  "if(NOT TARGET cpkt::mqttc)\n"
+  "  add_library(cpkt::mqttc STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::mqttc PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_mqttc_facade_prefix}/lib/libcpkt_mqttc\${_cpkt_mqttc_static_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_mqttc_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"MQTT-C::mqttc\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::mqttc_facade_shared)\n"
+  "  add_library(cpkt::mqttc_facade_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::mqttc_facade_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_mqttc_facade_prefix}/lib/libcpkt_mqttc\${_cpkt_mqttc_shared_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_mqttc_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::mqttc_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktMqttc" "CpktMqttc" "${CPKT_MQTTC_VERSION}")
+
 file(MAKE_DIRECTORY "${_stage_root}/lib/pkgconfig")
 file(WRITE "${_stage_root}/lib/pkgconfig/libcrypto.pc"
   "prefix=\${pcfiledir}/../..\n"
@@ -1699,6 +1753,19 @@ file(WRITE "${_stage_root}/lib/pkgconfig/mqtt-c.pc"
   "Libs.private: -pthread\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-mqttc.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-mqttc\n"
+  "Description: C89 MQTT-C facade from c.pkt.systems\n"
+  "Version: ${CPKT_MQTTC_VERSION}\n"
+  "Requires.private: mqtt-c\n"
+  "Libs: -L\${libdir} -lcpkt_mqttc\n"
+  "Cflags: -I\${includedir}\n"
+)
 
 file(MAKE_DIRECTORY "${_stage_root}/share/c.pkt.systems")
 file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
@@ -1718,6 +1785,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "sus_backend_capabilities=${CPKT_SUS_BACKEND_CAPABILITIES}\n"
   "mqtt_c_version=${CPKT_MQTTC_VERSION}\n"
   "mqtt_c_commit=${CPKT_MQTTC_COMMIT}\n"
+  "mqttc_abi_version=${CPKT_MQTTC_ABI_VERSION}\n"
   "open62541_version=${CPKT_OPEN62541_VERSION}\n"
   "open62541_patchset=${CPKT_OPEN62541_PATCHSET}\n"
   "krb5_version=${CPKT_KRB5_VERSION}\n"

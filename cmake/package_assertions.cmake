@@ -661,6 +661,10 @@ endif()
 if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_commit=([A-Fa-f0-9]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing mqtt_c_commit")
 endif()
+if(NOT _manifest_text MATCHES "(^|\n)mqttc_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing mqttc_abi_version")
+endif()
+set(_manifest_mqttc_abi_version "${CMAKE_MATCH_2}")
 if(DEFINED CPKT_OPENSSL_ABI_VERSION AND NOT "${CPKT_OPENSSL_ABI_VERSION}" STREQUAL "")
   if(NOT "${CPKT_OPENSSL_ABI_VERSION}" STREQUAL "${_manifest_openssl_abi_version}")
     message(FATAL_ERROR
@@ -684,6 +688,14 @@ if(DEFINED CPKT_LIBSSH2_ABI_VERSION AND NOT "${CPKT_LIBSSH2_ABI_VERSION}" STREQU
   endif()
 else()
   set(CPKT_LIBSSH2_ABI_VERSION "${_manifest_libssh2_abi_version}")
+endif()
+if(DEFINED CPKT_MQTTC_ABI_VERSION AND NOT "${CPKT_MQTTC_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_MQTTC_ABI_VERSION}" STREQUAL "${_manifest_mqttc_abi_version}")
+    message(FATAL_ERROR
+      "configured MQTT-C facade ABI ${CPKT_MQTTC_ABI_VERSION} does not match package manifest ABI ${_manifest_mqttc_abi_version}")
+  endif()
+else()
+  set(CPKT_MQTTC_ABI_VERSION "${_manifest_mqttc_abi_version}")
 endif()
 if(DEFINED CPKT_LUA_RUNTIME_ABI_VERSION AND NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "")
   if(NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "${_manifest_lua_runtime_abi_version}")
@@ -883,10 +895,12 @@ foreach(_path
     "include/cpkt/openssl.h"
     "include/cpkt/nghttp2.h"
     "include/cpkt/libssh2.h"
+    "include/cpkt/mqttc.h"
     "include/openssl/ssl.h"
     "lib/libcpkt_openssl.a"
     "lib/libcpkt_nghttp2.a"
     "lib/libcpkt_libssh2.a"
+    "lib/libcpkt_mqttc.a"
     "lib/libssl.a"
     "lib/libcrypto.a"
     "lib/cmake/OpenSSL/OpenSSLConfig.cmake"
@@ -897,12 +911,15 @@ foreach(_path
     "lib/cmake/CpktNghttp2/CpktNghttp2ConfigVersion.cmake"
     "lib/cmake/CpktLibssh2/CpktLibssh2Config.cmake"
     "lib/cmake/CpktLibssh2/CpktLibssh2ConfigVersion.cmake"
+    "lib/cmake/CpktMqttc/CpktMqttcConfig.cmake"
+    "lib/cmake/CpktMqttc/CpktMqttcConfigVersion.cmake"
     "lib/pkgconfig/libssl.pc"
     "lib/pkgconfig/libcrypto.pc"
     "lib/pkgconfig/openssl.pc"
     "lib/pkgconfig/cpkt-openssl.pc"
     "lib/pkgconfig/cpkt-nghttp2.pc"
     "lib/pkgconfig/cpkt-libssh2.pc"
+    "lib/pkgconfig/cpkt-mqttc.pc"
     "include/curl/curl.h"
     "lib/libcurl.a"
     "lib/cmake/CURL/CURLConfig.cmake"
@@ -1355,6 +1372,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpkt_libssh2.dylib"
       "lib/libcpkt_libssh2.${CPKT_LIBSSH2_ABI_VERSION}.dylib"
       "lib/libcpkt_libssh2.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_mqttc.dylib"
+      "lib/libcpkt_mqttc.${CPKT_MQTTC_ABI_VERSION}.dylib"
+      "lib/libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
@@ -1390,6 +1410,10 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "@rpath/libcpkt_libssh2.${CPKT_LIBSSH2_ABI_VERSION}.dylib"
     "libcpkt_libssh2 Darwin install name")
   cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_mqttc.${CPKT_MQTTC_ABI_VERSION}.dylib"
+    "libcpkt_mqttc Darwin install name")
+  cpkt_assert_darwin_install_name(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
     "@rpath/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
     "libcpkt_lua_runtime Darwin install name")
@@ -1420,6 +1444,10 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_libssh2.${CPKT_BUNDLE_VERSION}.dylib"
     "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_libssh2.txt"
     "libcpkt_libssh2 extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_mqttc.txt"
+    "libcpkt_mqttc extracted SDK ABI surface")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
   cpkt_assert_archive_exact_matches(
@@ -1434,6 +1462,10 @@ else()
     "^${_archive_stem_re}/lib/libcpkt_libssh2\\.so([^/]*)?$"
     3
     "libssh2 C89 facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_mqttc\\.so([^/]*)?$"
+    3
+    "MQTT-C C89 facade Linux shared library entries")
   cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime\\.so([^/]*)?$"
     3
@@ -1502,6 +1534,9 @@ else()
       "lib/libcpkt_libssh2.so"
       "lib/libcpkt_libssh2.so.${CPKT_LIBSSH2_ABI_VERSION}"
       "lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_mqttc.so"
+      "lib/libcpkt_mqttc.so.${CPKT_MQTTC_ABI_VERSION}"
+      "lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
       "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
@@ -1559,6 +1594,7 @@ else()
       "lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_nghttp2.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpktaudio.so"
       "lib/libcpktsus.so"
@@ -1583,6 +1619,10 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_libssh2.so.${CPKT_LIBSSH2_ABI_VERSION}"
     "libcpkt_libssh2 SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_mqttc.so.${CPKT_MQTTC_ABI_VERSION}"
+    "libcpkt_mqttc SONAME")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
@@ -1647,6 +1687,10 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
     "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_libssh2.txt"
     "libcpkt_libssh2 extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_mqttc.txt"
+    "libcpkt_mqttc extracted SDK ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

@@ -273,6 +273,7 @@ set(CPKT_SASL_ABI_VERSION "0" CACHE STRING "Cyrus SASL facade ABI major. Do not 
 set(CPKT_POSTGRES_ABI_VERSION "0" CACHE STRING "PostgreSQL facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SQLITE_ABI_VERSION "0" CACHE STRING "SQLite facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPENSSL_ABI_VERSION "0" CACHE STRING "OpenSSL C89 facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_MQTTC_ABI_VERSION "0" CACHE STRING "MQTT-C facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_NGHTTP2_ABI_VERSION "0" CACHE STRING "nghttp2 C89 facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_LIBSSH2_ABI_VERSION "0" CACHE STRING "libssh2 C89 facade ABI major. Do not bump without maintainer approval.")
 if(NOT CPKT_SUS_CPU_ONLY)
@@ -567,6 +568,75 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     BUILD_WITH_INSTALL_RPATH ON)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set_target_properties(cpkt_libssh2_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
+
+set(CPKT_MQTTC_FACADE_GENERATED_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/mqttc")
+set(CPKT_MQTTC_FACADE_INCLUDE_DIR
+  "${CPKT_MQTTC_FACADE_GENERATED_DIR}/include")
+set(CPKT_MQTTC_FACADE_HEADER
+  "${CPKT_MQTTC_FACADE_INCLUDE_DIR}/cpkt/mqttc.h")
+set(CPKT_MQTTC_FACADE_SOURCE
+  "${CPKT_MQTTC_FACADE_GENERATED_DIR}/src/mqttc.c")
+add_custom_command(
+  OUTPUT "${CPKT_MQTTC_FACADE_HEADER}" "${CPKT_MQTTC_FACADE_SOURCE}"
+  COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tools/generate_mqttc_c89_facade.py"
+    --include-dir "$<TARGET_PROPERTY:cpkt::mqttc_static,INTERFACE_INCLUDE_DIRECTORIES>"
+    --header "${CPKT_MQTTC_FACADE_HEADER}"
+    --source "${CPKT_MQTTC_FACADE_SOURCE}"
+  DEPENDS
+    "${CMAKE_SOURCE_DIR}/tools/generate_mqttc_c89_facade.py"
+  VERBATIM)
+set_source_files_properties("${CPKT_MQTTC_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
+add_custom_target(cpkt_mqttc_facade_generated
+  DEPENDS "${CPKT_MQTTC_FACADE_HEADER}" "${CPKT_MQTTC_FACADE_SOURCE}")
+add_dependencies(cpkt_mqttc_facade_generated cpkt_mqttc_project)
+
+add_library(cpkt_mqttc_static STATIC "${CPKT_MQTTC_FACADE_SOURCE}")
+add_dependencies(cpkt_mqttc_static cpkt_mqttc_facade_generated)
+cpkt_configure_c89_target(cpkt_mqttc_static)
+cpkt_add_repo_warning_errors(cpkt_mqttc_static)
+target_compile_definitions(cpkt_mqttc_static PRIVATE CPKT_MQTTC_STATIC)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  # MQTT-C's upstream C99 header is implementation detail, not facade surface.
+  target_compile_options(cpkt_mqttc_static PRIVATE -Wno-comment)
+endif()
+target_include_directories(cpkt_mqttc_static PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_MQTTC_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_mqttc_static PUBLIC cpkt::mqttc_static)
+set_target_properties(cpkt_mqttc_static PROPERTIES
+  OUTPUT_NAME cpkt_mqttc
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_mqttc_shared SHARED "${CPKT_MQTTC_FACADE_SOURCE}")
+add_dependencies(cpkt_mqttc_shared cpkt_mqttc_facade_generated)
+cpkt_configure_c89_target(cpkt_mqttc_shared)
+cpkt_add_repo_warning_errors(cpkt_mqttc_shared)
+target_compile_definitions(cpkt_mqttc_shared PRIVATE CPKT_MQTTC_BUILDING_SHARED)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+  target_compile_options(cpkt_mqttc_shared PRIVATE -Wno-comment)
+endif()
+target_include_directories(cpkt_mqttc_shared PUBLIC
+  "$<BUILD_INTERFACE:${CPKT_MQTTC_FACADE_INCLUDE_DIR}>")
+target_link_libraries(cpkt_mqttc_shared PUBLIC cpkt::mqttc_shared)
+set_target_properties(cpkt_mqttc_shared PROPERTIES
+  OUTPUT_NAME cpkt_mqttc
+  C_VISIBILITY_PRESET hidden
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_MQTTC_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_mqttc_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_mqttc_shared PROPERTIES
     BUILD_RPATH "$ORIGIN"
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
@@ -1370,6 +1440,19 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_libssh2_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_libssh2_facade_test)
     target_link_libraries(cpkt_libssh2_facade_test PRIVATE cpkt_libssh2_static)
+    add_executable(cpkt_mqttc_header_facade_test
+      tests/mqttc_header_facade_test.c)
+    add_dependencies(cpkt_mqttc_header_facade_test cpkt_mqttc_facade_generated)
+    cpkt_use_local_runtime(cpkt_mqttc_header_facade_test)
+    target_compile_options(cpkt_mqttc_header_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_mqttc_header_facade_test)
+    target_include_directories(cpkt_mqttc_header_facade_test PRIVATE
+      "${CPKT_MQTTC_FACADE_INCLUDE_DIR}")
+    add_executable(cpkt_mqttc_facade_test tests/mqttc_facade_test.c)
+    cpkt_use_local_runtime(cpkt_mqttc_facade_test)
+    target_compile_options(cpkt_mqttc_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_mqttc_facade_test)
+    target_link_libraries(cpkt_mqttc_facade_test PRIVATE cpkt_mqttc_static)
     add_executable(cpkt_sasl_facade_test tests/sasl_facade_test.c)
     cpkt_use_local_runtime(cpkt_sasl_facade_test)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
@@ -1543,6 +1626,8 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME nghttp2_facade COMMAND cpkt_nghttp2_facade_test)
       add_test(NAME libssh2_header_facade COMMAND cpkt_libssh2_header_facade_test)
       add_test(NAME libssh2_facade COMMAND cpkt_libssh2_facade_test)
+      add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
+      add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(
         NAME postgres_e2e_harness
@@ -1868,6 +1953,27 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_C_COMPILER}"
           "${CMAKE_SYSROOT}")
       add_test(
+        NAME mqttc_api_inventory
+        COMMAND
+          "${CPKT_PYTHON3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tools/generate_mqttc_api_inventory.py"
+          --include-dir "$<TARGET_PROPERTY:cpkt::mqttc_static,INTERFACE_INCLUDE_DIRECTORIES>"
+          --library "$<TARGET_FILE:cpkt::mqttc_shared>"
+          --symbol-tool "${CMAKE_NM}"
+          --facade-header "${CPKT_MQTTC_FACADE_HEADER}"
+          --output "${CMAKE_CURRENT_BINARY_DIR}/mqttc-api-inventory.json")
+      add_test(
+        NAME mqttc_export_policy
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/mqttc_export_policy_test.sh"
+          "$<TARGET_FILE:cpkt_mqttc_shared>"
+          "${CMAKE_SYSTEM_NAME}"
+          "${CMAKE_NM}"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_mqttc.txt"
+          "${CMAKE_C_COMPILER}"
+          "${CMAKE_SYSROOT}")
+      add_test(
         NAME audio_sus_header_facade
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_header_facade_test.sh"
@@ -1966,6 +2072,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_NGHTTP2_ABI_VERSION=${CPKT_NGHTTP2_ABI_VERSION}
         -DCPKT_LIBSSH2_VERSION=${CPKT_LIBSSH2_VERSION}
         -DCPKT_LIBSSH2_ABI_VERSION=${CPKT_LIBSSH2_ABI_VERSION}
+        -DCPKT_MQTTC_ABI_VERSION=${CPKT_MQTTC_ABI_VERSION}
         -DCPKT_CMOCKA_VERSION=${CPKT_CMOCKA_VERSION}
         -DCPKT_LIBXML2_VERSION=${CPKT_LIBXML2_VERSION}
         -DCPKT_LUA_VERSION=${CPKT_LUA_VERSION}
@@ -1987,6 +2094,9 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_LIBSSH2_FACADE_INCLUDE_DIR=${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}
         -DCPKT_LIBSSH2_STATIC_LIBRARY=$<TARGET_FILE:cpkt_libssh2_static>
         -DCPKT_LIBSSH2_SHARED_LIBRARY=$<TARGET_FILE:cpkt_libssh2_shared>
+        -DCPKT_MQTTC_FACADE_INCLUDE_DIR=${CPKT_MQTTC_FACADE_INCLUDE_DIR}
+        -DCPKT_MQTTC_STATIC_LIBRARY=$<TARGET_FILE:cpkt_mqttc_static>
+        -DCPKT_MQTTC_SHARED_LIBRARY=$<TARGET_FILE:cpkt_mqttc_shared>
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
         -DCPKT_LUA_RUNTIME_SHARED_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_shared>
@@ -2027,6 +2137,8 @@ if(CPKT_BUILD_DEPENDENCIES)
       cpkt_nghttp2_shared
       cpkt_libssh2_static
       cpkt_libssh2_shared
+      cpkt_mqttc_static
+      cpkt_mqttc_shared
       cpkt_lua_runtime_static
       cpkt_lua_runtime_shared
       cpkt_audio_static

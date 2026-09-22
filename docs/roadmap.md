@@ -17,7 +17,7 @@ upstream audit, ABI review, and release-matrix evidence before shipment.
   including callback, session, frame, and error interfaces.
 - [x] **Add `cpkt_libssh2`.** Provide the complete public libssh2 C89 facade,
   including session, authentication, channel, SFTP, SCP, and public-key APIs.
-- [ ] **Add `cpkt_mqttc`.** Provide the complete public MQTT-C C89 facade,
+- [x] **Add `cpkt_mqttc`.** Provide the complete public MQTT-C C89 facade,
   including client lifecycle, packet handling, callbacks, and transport
   integration.
 - [ ] **Sweep `cpkt_postgres` for complete libpq coverage.** Assert every
