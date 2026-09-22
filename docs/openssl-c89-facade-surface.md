@@ -5,6 +5,12 @@ OpenSSL 3.6.4 is not a direct C89 dependency. Its installed headers expose
 portable scalar representation for those values. `cpkt_openssl` must therefore
 adapt the complete configured OpenSSL public API, not a convenient TLS subset.
 
+`<cpkt/openssl.h>` is the exhaustive C89-compatible import surface for every
+staged top-level OpenSSL public header. It contains OpenSSL's unavoidable
+legacy declaration diagnostic locally; it does not relax diagnostics in
+consumer source. The typed adapters for native 64-bit values are a separate,
+required layer of the facade.
+
 The authoritative function inventory is target-specific and is derived from
 OpenSSL's pinned `util/libcrypto.num` and `util/libssl.num` files. An entry
 marked `EXIST::FUNCTION` belongs to the nominal public ABI. The target's

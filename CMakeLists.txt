@@ -1576,6 +1576,15 @@ if(CPKT_BUILD_TESTS)
             --work-dir "${CMAKE_BINARY_DIR}/openssl-api-inventory-test")
       endif()
       add_test(
+        NAME openssl_header_facade
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/openssl_header_facade_test.sh"
+          "${CMAKE_SOURCE_DIR}"
+          "${CMAKE_C_COMPILER}"
+          "${CMAKE_SYSROOT}"
+          "$<TARGET_PROPERTY:cpkt::openssl_crypto_shared,INTERFACE_INCLUDE_DIRECTORIES>")
+      add_test(
         NAME audio_sus_header_facade
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_header_facade_test.sh"
