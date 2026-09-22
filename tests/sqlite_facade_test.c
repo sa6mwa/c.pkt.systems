@@ -965,6 +965,7 @@ int main(void) {
   int primary_key_count;
   int status;
   int carray_values[2];
+  cpkt_sqlite_i64 carray_i64_values[2];
   unsigned short utf16_text[3];
   unsigned short utf16_filename[9];
   unsigned short utf16_sql[9];
@@ -1722,6 +1723,24 @@ int main(void) {
       statement->step(statement) != CPKT_SQLITE_DONE ||
       statement->finalize(statement) != CPKT_SQLITE_OK)
     return 10;
+  carray_i64_values[0] = cpkt_sqlite_i64_make(0, 7);
+  carray_i64_values[1] = cpkt_sqlite_i64_make(0, 8);
+  statement = 0;
+  if (db->prepare(db, "select value from carray(?1)", -1, 0, &statement, 0) !=
+          CPKT_SQLITE_OK ||
+      statement == 0 ||
+      statement->bind_carray_with_context(
+          statement, 1, carray_i64_values, 2, CPKT_SQLITE_CARRAY_I64, 0,
+          0) != CPKT_SQLITE_OK ||
+      statement->step(statement) != CPKT_SQLITE_ROW ||
+      cpkt_sqlite_i64_compare(statement->column_i64(statement, 0),
+                              cpkt_sqlite_i64_make(0, 7)) != 0 ||
+      statement->step(statement) != CPKT_SQLITE_ROW ||
+      cpkt_sqlite_i64_compare(statement->column_i64(statement, 0),
+                              cpkt_sqlite_i64_make(0, 8)) != 0 ||
+      statement->step(statement) != CPKT_SQLITE_DONE ||
+      statement->finalize(statement) != CPKT_SQLITE_OK)
+    return 110;
   utf16_text[0] = (unsigned short)'o';
   utf16_text[1] = (unsigned short)'k';
   utf16_text[2] = 0;

@@ -96,6 +96,12 @@ typedef struct cpkt_sqlite_auto_extension_binding {
   struct cpkt_sqlite_auto_extension_binding *next;
 } cpkt_sqlite_auto_extension_binding;
 
+typedef struct cpkt_sqlite_carray_i64_binding {
+  sqlite3_int64 *values;
+  void *destroy_argument;
+  cpkt_sqlite_destroy_callback destroy;
+} cpkt_sqlite_carray_i64_binding;
+
 typedef struct cpkt_sqlite_memory_alarm_binding {
   cpkt_sqlite_memory_alarm_callback callback;
   void *context;
@@ -889,12 +895,18 @@ static int cpkt_sqlite_auto_extension_cancel(cpkt_sqlite_auto_extension *self) {
   cpkt_sqlite_auto_extension_binding *current;
   sqlite3_mutex *mutex;
   int any_registered;
+  int was_registered;
   int status;
   if (self == NULL || self->internal == NULL)
     return SQLITE_MISUSE;
   binding = (cpkt_sqlite_auto_extension_binding *)self->internal;
   mutex = cpkt_sqlite_global_mutex();
   cpkt_sqlite_global_lock(mutex);
+  was_registered = binding->registered;
+  if (!was_registered) {
+    cpkt_sqlite_global_unlock(mutex);
+    return 0;
+  }
   binding->registered = 0;
   any_registered = 0;
   current = cpkt_sqlite_auto_extension_head;
@@ -910,7 +922,7 @@ static int cpkt_sqlite_auto_extension_cancel(cpkt_sqlite_auto_extension *self) {
     cpkt_sqlite_auto_extension_trampoline_registered = 0;
   }
   cpkt_sqlite_global_unlock(mutex);
-  return status;
+  return status == SQLITE_OK ? 1 : status;
 }
 
 static void cpkt_sqlite_auto_extension_close(cpkt_sqlite_auto_extension *self) {
@@ -959,6 +971,47 @@ static sqlite3_int64 cpkt_sqlite_native_i64(cpkt_sqlite_i64 value) {
   bits = ((sqlite3_uint64)(value.high & CPKT_SQLITE_WORD_MASK) << 32) |
          (sqlite3_uint64)(value.low & CPKT_SQLITE_WORD_MASK);
   return (sqlite3_int64)bits;
+}
+
+static void cpkt_sqlite_carray_i64_destroy(void *argument) {
+  cpkt_sqlite_carray_i64_binding *binding;
+  binding = (cpkt_sqlite_carray_i64_binding *)argument;
+  if (binding == NULL)
+    return;
+  if (binding->destroy != NULL)
+    binding->destroy(binding->destroy_argument);
+  free(binding->values);
+  free(binding);
+}
+
+static cpkt_sqlite_carray_i64_binding *
+cpkt_sqlite_carray_i64_binding_new(void *data, int element_count,
+                                   cpkt_sqlite_destroy_callback destroy,
+                                   void *destroy_argument) {
+  cpkt_sqlite_carray_i64_binding *binding;
+  cpkt_sqlite_i64 *public_values;
+  int index;
+  if (data == NULL || element_count < 1)
+    return NULL;
+  binding = (cpkt_sqlite_carray_i64_binding *)calloc(1, sizeof(*binding));
+  if (binding == NULL)
+    return NULL;
+  if ((size_t)element_count > ((size_t)-1) / sizeof(*binding->values)) {
+    free(binding);
+    return NULL;
+  }
+  binding->values = (sqlite3_int64 *)malloc((size_t)element_count *
+                                             sizeof(*binding->values));
+  if (binding->values == NULL) {
+    free(binding);
+    return NULL;
+  }
+  public_values = (cpkt_sqlite_i64 *)data;
+  for (index = 0; index < element_count; ++index)
+    binding->values[index] = cpkt_sqlite_native_i64(public_values[index]);
+  binding->destroy = destroy;
+  binding->destroy_argument = destroy_argument;
+  return binding;
 }
 
 static cpkt_sqlite_i64 cpkt_sqlite_public_i64(sqlite3_int64 value) {
@@ -1612,18 +1665,50 @@ static int cpkt_sqlite_statement_bind_pointer(
 static int cpkt_sqlite_statement_bind_carray(
     cpkt_sqlite_statement *self, int parameter_index, void *data,
     int element_count, int element_type, cpkt_sqlite_destroy_callback destroy) {
-  return sqlite3_carray_bind(cpkt_sqlite_native_statement(self),
-                             parameter_index, data, element_count, element_type,
-                             destroy);
+  cpkt_sqlite_carray_i64_binding *binding;
+  int status;
+  if (element_type != SQLITE_CARRAY_INT64 || data == NULL ||
+      element_count < 1) {
+    return sqlite3_carray_bind(cpkt_sqlite_native_statement(self),
+                               parameter_index, data, element_count,
+                               element_type, destroy);
+  }
+  binding = cpkt_sqlite_carray_i64_binding_new(data, element_count, destroy,
+                                               data);
+  if (binding == NULL) {
+    if (destroy != NULL)
+      destroy(data);
+    return SQLITE_NOMEM;
+  }
+  status = sqlite3_carray_bind_v2(
+      cpkt_sqlite_native_statement(self), parameter_index, binding->values,
+      element_count, element_type, cpkt_sqlite_carray_i64_destroy, binding);
+  return status;
 }
 
 static int cpkt_sqlite_statement_bind_carray_with_context(
     cpkt_sqlite_statement *self, int parameter_index, void *data,
     int element_count, int element_type, cpkt_sqlite_destroy_callback destroy,
     void *destroy_context) {
-  return sqlite3_carray_bind_v2(cpkt_sqlite_native_statement(self),
-                                parameter_index, data, element_count,
-                                element_type, destroy, destroy_context);
+  cpkt_sqlite_carray_i64_binding *binding;
+  int status;
+  if (element_type != SQLITE_CARRAY_INT64 || data == NULL ||
+      element_count < 1) {
+    return sqlite3_carray_bind_v2(cpkt_sqlite_native_statement(self),
+                                  parameter_index, data, element_count,
+                                  element_type, destroy, destroy_context);
+  }
+  binding = cpkt_sqlite_carray_i64_binding_new(data, element_count, destroy,
+                                               destroy_context);
+  if (binding == NULL) {
+    if (destroy != NULL)
+      destroy(destroy_context);
+    return SQLITE_NOMEM;
+  }
+  status = sqlite3_carray_bind_v2(
+      cpkt_sqlite_native_statement(self), parameter_index, binding->values,
+      element_count, element_type, cpkt_sqlite_carray_i64_destroy, binding);
+  return status;
 }
 
 static int cpkt_sqlite_statement_step(cpkt_sqlite_statement *self) {

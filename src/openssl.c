@@ -1695,8 +1695,11 @@ int cpkt_openssl_BIO_close(cpkt_openssl_bio *bio) {
   }
   method = bio->method;
   if (method == NULL || method->lock == NULL ||
-      !CRYPTO_THREAD_write_lock(method->lock) || method->closing ||
-      method->active_callbacks != 0U) {
+      !CRYPTO_THREAD_write_lock(method->lock)) {
+    return 0;
+  }
+  if (method->closing || method->active_callbacks != 0U) {
+    CRYPTO_THREAD_unlock(method->lock);
     return 0;
   }
   native_bio = bio->native;
