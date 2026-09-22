@@ -127,7 +127,7 @@ def native_argument(native_type: str, name: str) -> str:
 
 
 def definitions(items: Sequence[Tuple[str, str, str]]) -> str:
-    special = {"lua_pushfstring", "lua_gc", "luaL_error"}
+    special = {"lua_pushfstring", "lua_pushvfstring", "lua_gc", "luaL_error"}
     result: List[str] = []
     for native_result_text, native_name, native_parameters_text in items:
         if native_name in special:
@@ -553,6 +553,13 @@ cpkt_lua_pushfstring(cpkt_lua_state *state, const char *format, ...)
   return result;
 }
 
+CPKT_LUA_API const char *
+cpkt_lua_pushvfstring(cpkt_lua_state *state, const char *format,
+                      va_list arguments)
+{
+  return cpkt_lua_push_format(state, format, arguments);
+}
+
 static const char *
 cpkt_lua_push_format(cpkt_lua_state *state, const char *format,
                      va_list arguments)
@@ -582,7 +589,8 @@ cpkt_lua_push_format(cpkt_lua_state *state, const char *format,
       case 'f': lua_pushfstring(native_state, "%f", va_arg(arguments, double)); break;
       case 'p': lua_pushfstring(native_state, "%p", va_arg(arguments, void *)); break;
       case 'I': lua_pushfstring(native_state, "%I", cpkt_lua_native_integer(va_arg(arguments, cpkt_lua_integer))); break;
-      case 'U': lua_pushfstring(native_state, "%U", (lua_Unsigned)cpkt_lua_integer_bits(va_arg(arguments, cpkt_lua_unsigned))); break;
+      case 'U': lua_pushfstring(native_state, "%U",
+                                va_arg(arguments, unsigned long)); break;
       default: return lua_pushfstring(native_state, "invalid option '%%%c' to 'lua_pushfstring'", *cursor);
     }
     if (*cursor != '%')

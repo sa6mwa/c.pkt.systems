@@ -1,6 +1,7 @@
 #include <cpkt/lua.h>
 
 #include <limits.h>
+#include <stdarg.h>
 #include <string.h>
 
 static int cpkt_lua_facade_check_integer(cpkt_lua_integer value,
@@ -8,6 +9,17 @@ static int cpkt_lua_facade_check_integer(cpkt_lua_integer value,
                                          unsigned int low) {
   return cpkt_lua_integer_high(value) == high &&
          cpkt_lua_integer_low(value) == low;
+}
+
+static const char *cpkt_lua_facade_pushvfstring(cpkt_lua_state *state,
+                                                 const char *format, ...) {
+  va_list arguments;
+  const char *result;
+
+  va_start(arguments, format);
+  result = cpkt_lua_pushvfstring(state, format, arguments);
+  va_end(arguments);
+  return result;
 }
 
 int main(void) {
@@ -26,6 +38,14 @@ int main(void) {
       !cpkt_lua_facade_check_integer(cpkt_lua_tointeger(state, -1), 0U, 5U)) {
     cpkt_lua_close(state);
     return 2;
+  }
+  cpkt_lua_pop(state, 1);
+
+  string = cpkt_lua_facade_pushvfstring(
+      state, "%I:%U", cpkt_lua_integer_make(0U, 1U), 65UL);
+  if (string == 0 || strcmp(string, "1:A") != 0) {
+    cpkt_lua_close(state);
+    return 8;
   }
   cpkt_lua_pop(state, 1);
 
