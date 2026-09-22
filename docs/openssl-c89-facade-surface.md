@@ -26,8 +26,10 @@ language and standard-library types is directly available through
 `<cpkt/openssl.h>`; it does not need a redundant `cpkt_openssl_*` wrapper. A
 declaration that uses native 64-bit storage, `long long`, or a record/callback
 that embeds either must have an explicit typed adapter. A target may not
-silently lose such an API. Typed values use the facade's explicit two-word
-representation and adapter functions.
+silently lose such an API. Typed values use the facade's exact eight-byte
+representation and adapter functions. Records that embed such values,
+including OpenSSL's SSL poll items, have C89 records and adapters too; callers
+do not construct native `uint64_t` or `uintptr_t` records.
 
 For the current x86_64 GNU OpenSSL 3.6.4 configuration, 6,468 public header
 functions are present. Only the mechanically classified typed-adapter subset

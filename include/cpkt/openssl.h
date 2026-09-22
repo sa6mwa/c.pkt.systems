@@ -217,6 +217,27 @@ typedef struct cpkt_openssl_bio_message {
   BIO_ADDR *local;
   cpkt_openssl_u64 flags;
 } cpkt_openssl_bio_message;
+/* Values for cpkt_openssl_poll_descriptor.value_kind. */
+#define CPKT_OPENSSL_POLL_VALUE_NONE 0UL
+#define CPKT_OPENSSL_POLL_VALUE_FD 1UL
+#define CPKT_OPENSSL_POLL_VALUE_CUSTOM_POINTER 2UL
+#define CPKT_OPENSSL_POLL_VALUE_CUSTOM_UINTPTR 3UL
+#define CPKT_OPENSSL_POLL_VALUE_SSL 4UL
+/** C89 form of BIO_POLL_DESCRIPTOR. Zero initialization means no descriptor. */
+typedef struct cpkt_openssl_poll_descriptor {
+  unsigned long type;
+  unsigned long value_kind;
+  int file_descriptor;
+  void *custom_pointer;
+  cpkt_openssl_u64 custom_uintptr;
+  SSL *ssl;
+} cpkt_openssl_poll_descriptor;
+/** C89 form of SSL_POLL_ITEM. */
+typedef struct cpkt_openssl_ssl_poll_item {
+  cpkt_openssl_poll_descriptor descriptor;
+  cpkt_openssl_u64 events;
+  cpkt_openssl_u64 returned_events;
+} cpkt_openssl_ssl_poll_item;
 
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
@@ -536,5 +557,25 @@ CPKT_OPENSSL_API int cpkt_openssl_BIO_recvmmsg(
 CPKT_OPENSSL_API int cpkt_openssl_BIO_sendmmsg(
     BIO *bio, cpkt_openssl_bio_message *messages, size_t message_stride,
     size_t message_count, cpkt_openssl_u64 flags, size_t *processed_out);
+/** C89 adapter for BIO_get_rpoll_descriptor. */
+CPKT_OPENSSL_API int cpkt_openssl_BIO_get_rpoll_descriptor(
+    BIO *bio, cpkt_openssl_poll_descriptor *descriptor_out);
+/** C89 adapter for BIO_get_wpoll_descriptor. */
+CPKT_OPENSSL_API int cpkt_openssl_BIO_get_wpoll_descriptor(
+    BIO *bio, cpkt_openssl_poll_descriptor *descriptor_out);
+/** C89 adapter for SSL_get_rpoll_descriptor. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_rpoll_descriptor(
+    SSL *ssl, cpkt_openssl_poll_descriptor *descriptor_out);
+/** C89 adapter for SSL_get_wpoll_descriptor. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_wpoll_descriptor(
+    SSL *ssl, cpkt_openssl_poll_descriptor *descriptor_out);
+/** C89 replacement for the SSL_as_poll_descriptor inline helper. */
+CPKT_OPENSSL_API void cpkt_openssl_SSL_as_poll_descriptor(
+    SSL *ssl, cpkt_openssl_poll_descriptor *descriptor_out);
+/** C89 adapter for SSL_poll. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_poll(
+    cpkt_openssl_ssl_poll_item *items, size_t item_count, size_t item_stride,
+    const struct timeval *timeout, cpkt_openssl_u64 flags,
+    size_t *result_count_out);
 
 #endif

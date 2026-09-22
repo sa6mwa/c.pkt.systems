@@ -15,6 +15,8 @@ typedef char cpkt_openssl_public_u64_is_eight_bytes[
     sizeof(cpkt_openssl_u64) == 8 ? 1 : -1];
 typedef char cpkt_openssl_public_i64_is_eight_bytes[
     sizeof(cpkt_openssl_i64) == 8 ? 1 : -1];
+typedef char cpkt_openssl_uintptr_fits_public_value[
+    sizeof(uintptr_t) <= sizeof(cpkt_openssl_u64) ? 1 : -1];
 
 struct cpkt_openssl_param_i64 {
   OSSL_PARAM native;
@@ -72,6 +74,111 @@ static size_t cpkt_openssl_native_length(size_t public_length,
                                          size_t public_size,
                                          size_t native_size) {
   return public_length == public_size ? native_size : public_length;
+}
+
+static int cpkt_openssl_native_uintptr(cpkt_openssl_u64 value,
+                                       uintptr_t *native_out) {
+  uint64_t native_value;
+
+  if (native_out == NULL ||
+      (sizeof(uintptr_t) < sizeof(native_value) &&
+       cpkt_openssl_u64_high_word(value) != 0UL)) {
+    return 0;
+  }
+  native_value = cpkt_openssl_native_u64(value);
+  *native_out = (uintptr_t) native_value;
+  return 1;
+}
+
+static int cpkt_openssl_copy_poll_descriptor_to_native(
+    BIO_POLL_DESCRIPTOR *native_descriptor,
+    const cpkt_openssl_poll_descriptor *public_descriptor) {
+  uintptr_t custom_uintptr;
+
+  if (native_descriptor == NULL || public_descriptor == NULL ||
+      (public_descriptor->type & ~0xffffffffUL) != 0UL) {
+    return 0;
+  }
+  memset(native_descriptor, 0, sizeof(*native_descriptor));
+  native_descriptor->type = (uint32_t) public_descriptor->type;
+  switch (public_descriptor->value_kind) {
+    case CPKT_OPENSSL_POLL_VALUE_NONE:
+      return 1;
+    case CPKT_OPENSSL_POLL_VALUE_FD:
+      native_descriptor->value.fd = public_descriptor->file_descriptor;
+      return 1;
+    case CPKT_OPENSSL_POLL_VALUE_CUSTOM_POINTER:
+      native_descriptor->value.custom = public_descriptor->custom_pointer;
+      return 1;
+    case CPKT_OPENSSL_POLL_VALUE_CUSTOM_UINTPTR:
+      if (!cpkt_openssl_native_uintptr(public_descriptor->custom_uintptr,
+                                       &custom_uintptr)) {
+        return 0;
+      }
+      native_descriptor->value.custom_ui = custom_uintptr;
+      return 1;
+    case CPKT_OPENSSL_POLL_VALUE_SSL:
+      native_descriptor->value.ssl = public_descriptor->ssl;
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+static void cpkt_openssl_copy_poll_descriptor_from_native(
+    cpkt_openssl_poll_descriptor *public_descriptor,
+    const BIO_POLL_DESCRIPTOR *native_descriptor) {
+  memset(public_descriptor, 0, sizeof(*public_descriptor));
+  public_descriptor->type = (unsigned long) native_descriptor->type;
+  if (native_descriptor->type == BIO_POLL_DESCRIPTOR_TYPE_SOCK_FD) {
+    public_descriptor->value_kind = CPKT_OPENSSL_POLL_VALUE_FD;
+    public_descriptor->file_descriptor = native_descriptor->value.fd;
+  } else if (native_descriptor->type == BIO_POLL_DESCRIPTOR_TYPE_SSL) {
+    public_descriptor->value_kind = CPKT_OPENSSL_POLL_VALUE_SSL;
+    public_descriptor->ssl = native_descriptor->value.ssl;
+  } else if (native_descriptor->type != BIO_POLL_DESCRIPTOR_TYPE_NONE) {
+    public_descriptor->value_kind = CPKT_OPENSSL_POLL_VALUE_CUSTOM_POINTER;
+    public_descriptor->custom_pointer = native_descriptor->value.custom;
+  }
+}
+
+static int cpkt_openssl_copy_poll_items_to_native(
+    SSL_POLL_ITEM *native_items, const cpkt_openssl_ssl_poll_item *items,
+    size_t item_stride, size_t item_count) {
+  size_t index;
+
+  for (index = 0; index < item_count; ++index) {
+    const cpkt_openssl_ssl_poll_item *public_item;
+
+    public_item = (const cpkt_openssl_ssl_poll_item *) (
+        (const unsigned char *) items + index * item_stride);
+    if (!cpkt_openssl_copy_poll_descriptor_to_native(
+            &native_items[index].desc, &public_item->descriptor)) {
+      return 0;
+    }
+    native_items[index].events = cpkt_openssl_native_u64(public_item->events);
+    native_items[index].revents = cpkt_openssl_native_u64(
+        public_item->returned_events);
+  }
+  return 1;
+}
+
+static void cpkt_openssl_copy_poll_items_from_native(
+    cpkt_openssl_ssl_poll_item *items, size_t item_stride,
+    const SSL_POLL_ITEM *native_items, size_t item_count) {
+  size_t index;
+
+  for (index = 0; index < item_count; ++index) {
+    cpkt_openssl_ssl_poll_item *public_item;
+
+    public_item = (cpkt_openssl_ssl_poll_item *) (
+        (unsigned char *) items + index * item_stride);
+    cpkt_openssl_copy_poll_descriptor_from_native(&public_item->descriptor,
+                                                  &native_items[index].desc);
+    public_item->events = cpkt_openssl_public_u64(native_items[index].events);
+    public_item->returned_events = cpkt_openssl_public_u64(
+        native_items[index].revents);
+  }
 }
 
 static void cpkt_openssl_copy_bio_messages_to_native(
@@ -1040,5 +1147,114 @@ int cpkt_openssl_BIO_sendmmsg(
   cpkt_openssl_copy_bio_messages_from_native(
       messages, message_stride, native_messages, message_count);
   free(native_messages);
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_BIO_get_rpoll_descriptor. */
+int cpkt_openssl_BIO_get_rpoll_descriptor(
+    BIO *bio, cpkt_openssl_poll_descriptor *descriptor_out) {
+  BIO_POLL_DESCRIPTOR native_descriptor;
+  int result;
+
+  if (descriptor_out == NULL) {
+    return 0;
+  }
+  result = BIO_get_rpoll_descriptor(bio, &native_descriptor);
+  if (result != 0) {
+    cpkt_openssl_copy_poll_descriptor_from_native(descriptor_out,
+                                                  &native_descriptor);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_BIO_get_wpoll_descriptor. */
+int cpkt_openssl_BIO_get_wpoll_descriptor(
+    BIO *bio, cpkt_openssl_poll_descriptor *descriptor_out) {
+  BIO_POLL_DESCRIPTOR native_descriptor;
+  int result;
+
+  if (descriptor_out == NULL) {
+    return 0;
+  }
+  result = BIO_get_wpoll_descriptor(bio, &native_descriptor);
+  if (result != 0) {
+    cpkt_openssl_copy_poll_descriptor_from_native(descriptor_out,
+                                                  &native_descriptor);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_rpoll_descriptor. */
+int cpkt_openssl_SSL_get_rpoll_descriptor(
+    SSL *ssl, cpkt_openssl_poll_descriptor *descriptor_out) {
+  BIO_POLL_DESCRIPTOR native_descriptor;
+  int result;
+
+  if (descriptor_out == NULL) {
+    return 0;
+  }
+  result = SSL_get_rpoll_descriptor(ssl, &native_descriptor);
+  if (result != 0) {
+    cpkt_openssl_copy_poll_descriptor_from_native(descriptor_out,
+                                                  &native_descriptor);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_wpoll_descriptor. */
+int cpkt_openssl_SSL_get_wpoll_descriptor(
+    SSL *ssl, cpkt_openssl_poll_descriptor *descriptor_out) {
+  BIO_POLL_DESCRIPTOR native_descriptor;
+  int result;
+
+  if (descriptor_out == NULL) {
+    return 0;
+  }
+  result = SSL_get_wpoll_descriptor(ssl, &native_descriptor);
+  if (result != 0) {
+    cpkt_openssl_copy_poll_descriptor_from_native(descriptor_out,
+                                                  &native_descriptor);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 helper cpkt_openssl_SSL_as_poll_descriptor. */
+void cpkt_openssl_SSL_as_poll_descriptor(
+    SSL *ssl, cpkt_openssl_poll_descriptor *descriptor_out) {
+  if (descriptor_out == NULL) {
+    return;
+  }
+  memset(descriptor_out, 0, sizeof(*descriptor_out));
+  descriptor_out->type = BIO_POLL_DESCRIPTOR_TYPE_SSL;
+  descriptor_out->value_kind = CPKT_OPENSSL_POLL_VALUE_SSL;
+  descriptor_out->ssl = ssl;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_poll. */
+int cpkt_openssl_SSL_poll(
+    cpkt_openssl_ssl_poll_item *items, size_t item_count, size_t item_stride,
+    const struct timeval *timeout, cpkt_openssl_u64 flags,
+    size_t *result_count_out) {
+  SSL_POLL_ITEM *native_items;
+  int result;
+
+  if (items == NULL || item_stride < sizeof(*items) ||
+      (item_count != 0 && item_count > SIZE_MAX / sizeof(*native_items))) {
+    return 0;
+  }
+  native_items = (SSL_POLL_ITEM *) calloc(item_count, sizeof(*native_items));
+  if (native_items == NULL && item_count != 0) {
+    return 0;
+  }
+  if (!cpkt_openssl_copy_poll_items_to_native(native_items, items,
+                                              item_stride, item_count)) {
+    free(native_items);
+    return 0;
+  }
+  result = SSL_poll(native_items, item_count, sizeof(*native_items), timeout,
+                    cpkt_openssl_native_u64(flags), result_count_out);
+  cpkt_openssl_copy_poll_items_from_native(items, item_stride, native_items,
+                                           item_count);
+  free(native_items);
   return result;
 }

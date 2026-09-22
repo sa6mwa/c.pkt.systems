@@ -1,10 +1,14 @@
 #include <cpkt/openssl.h>
 
+#include <string.h>
+
 int main(void) {
   ASN1_ENUMERATED *enumerated;
   ASN1_INTEGER *integer;
   CT_POLICY_EVAL_CTX *policy_context;
   BIO *bio;
+  BIO *dgram_left;
+  BIO *dgram_right;
   OSSL_LIB_CTX *library_context;
   OSSL_PARAM *built_parameters;
   OSSL_PARAM *native_parameter;
@@ -21,10 +25,15 @@ int main(void) {
   unsigned char salt[4];
   char read_buffer[4];
   cpkt_openssl_i64 signed_value;
+  cpkt_openssl_bio_message receive_message;
+  cpkt_openssl_bio_message send_message;
   cpkt_openssl_param_i64 *signed_parameter;
+  cpkt_openssl_poll_descriptor poll_descriptor;
   cpkt_openssl_param_u64 *unsigned_parameter;
+  cpkt_openssl_ssl_poll_item poll_item;
   cpkt_openssl_u64 options;
   cpkt_openssl_u64 returned;
+  size_t processed;
 
   options = cpkt_openssl_u64_make(0UL, 0x4000UL);
   if (cpkt_openssl_u64_high_word(options) != 0UL ||
@@ -82,6 +91,67 @@ int main(void) {
     return 5;
   }
   BIO_free(bio);
+  dgram_left = 0;
+  dgram_right = 0;
+  memset(&send_message, 0, sizeof(send_message));
+  memset(&receive_message, 0, sizeof(receive_message));
+  send_message.data = "abc";
+  send_message.data_length = 3U;
+  receive_message.data = read_buffer;
+  receive_message.data_length = sizeof(read_buffer) - 1U;
+  processed = 0U;
+  if (BIO_new_bio_dgram_pair(&dgram_left, 0U, &dgram_right, 0U) != 1) {
+    return 23;
+  }
+  if (cpkt_openssl_BIO_sendmmsg(
+          dgram_left, &send_message, sizeof(send_message), 1U,
+          cpkt_openssl_u64_make(0UL, 0UL), &processed) != 1) {
+    BIO_free(dgram_left);
+    BIO_free(dgram_right);
+    return 24;
+  }
+  if (processed != 1U) {
+    BIO_free(dgram_left);
+    BIO_free(dgram_right);
+    return 25;
+  }
+  if (cpkt_openssl_BIO_recvmmsg(
+          dgram_right, &receive_message, sizeof(receive_message), 1U,
+          cpkt_openssl_u64_make(0UL, 0UL), &processed) != 1) {
+    BIO_free(dgram_left);
+    BIO_free(dgram_right);
+    return 26;
+  }
+  if (processed != 1U || receive_message.data_length != 3U ||
+      memcmp(read_buffer, "abc", 3U) != 0) {
+    BIO_free(dgram_left);
+    BIO_free(dgram_right);
+    return 27;
+  }
+  if (cpkt_openssl_BIO_get_rpoll_descriptor(dgram_left, &poll_descriptor) != 0) {
+    BIO_free(dgram_left);
+    BIO_free(dgram_right);
+    return 28;
+  }
+  cpkt_openssl_SSL_as_poll_descriptor(0, &poll_descriptor);
+  if (poll_descriptor.type != BIO_POLL_DESCRIPTOR_TYPE_SSL ||
+      poll_descriptor.value_kind != CPKT_OPENSSL_POLL_VALUE_SSL ||
+      poll_descriptor.ssl != 0) {
+    BIO_free(dgram_left);
+    BIO_free(dgram_right);
+    return 24;
+  }
+  memset(&poll_item, 0, sizeof(poll_item));
+  poll_item.descriptor.value_kind = 999UL;
+  if (cpkt_openssl_SSL_poll(
+          &poll_item, 1U, sizeof(poll_item), 0,
+          cpkt_openssl_u64_make(0UL, 0UL), &processed) != 0) {
+    BIO_free(dgram_left);
+    BIO_free(dgram_right);
+    return 25;
+  }
+  BIO_free(dgram_left);
+  BIO_free(dgram_right);
   signed_value = cpkt_openssl_i64_make(0xffffffffUL, 0xfffffffeUL);
   if (cpkt_openssl_i64_high_word(signed_value) != 0xffffffffUL ||
       cpkt_openssl_i64_low_word(signed_value) != 0xfffffffeUL ||
