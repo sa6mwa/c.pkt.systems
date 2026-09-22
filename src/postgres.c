@@ -1023,12 +1023,8 @@ void cpkt_postgres_set_notice_receiver(
   binding->receiver = callback;
   binding->receiver_context = context;
   cpkt_postgres_hook_lock_release();
-  if (callback == NULL) {
-    PQsetNoticeReceiver(native_connection, NULL, NULL);
-  } else {
-    PQsetNoticeReceiver(native_connection, cpkt_postgres_native_notice_receiver,
-                        native_connection);
-  }
+  PQsetNoticeReceiver(native_connection, cpkt_postgres_native_notice_receiver,
+                      native_connection);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -1064,13 +1060,8 @@ void cpkt_postgres_set_notice_processor(
   binding->processor = callback;
   binding->processor_context = context;
   cpkt_postgres_hook_lock_release();
-  if (callback == NULL) {
-    PQsetNoticeProcessor(native_connection, NULL, NULL);
-  } else {
-    PQsetNoticeProcessor(native_connection,
-                         cpkt_postgres_native_notice_processor,
-                         native_connection);
-  }
+  PQsetNoticeProcessor(native_connection, cpkt_postgres_native_notice_processor,
+                       native_connection);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation

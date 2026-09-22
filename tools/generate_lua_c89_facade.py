@@ -535,6 +535,12 @@ CPKT_LUA_API const char *cpkt_lua_ident(void)
   return lua_ident;
 }
 
+static uint64_t cpkt_lua_integer_bits(cpkt_lua_integer value);
+static lua_Integer cpkt_lua_native_integer(cpkt_lua_integer value);
+static const char *cpkt_lua_push_format(cpkt_lua_state *state,
+                                         const char *format,
+                                         va_list arguments);
+
 CPKT_LUA_API const char *
 cpkt_lua_pushfstring(cpkt_lua_state *state, const char *format, ...)
 {
@@ -542,9 +548,49 @@ cpkt_lua_pushfstring(cpkt_lua_state *state, const char *format, ...)
   const char *result;
 
   va_start(arguments, format);
-  result = lua_pushvfstring((lua_State *)state, format, arguments);
+  result = cpkt_lua_push_format(state, format, arguments);
   va_end(arguments);
   return result;
+}
+
+static const char *
+cpkt_lua_push_format(cpkt_lua_state *state, const char *format,
+                     va_list arguments)
+{
+  lua_State *native_state;
+  luaL_Buffer buffer;
+  const char *cursor;
+
+  native_state = (lua_State *)state;
+  if (strstr(format, "%I") == NULL && strstr(format, "%U") == NULL)
+    return lua_pushvfstring(native_state, format, arguments);
+  luaL_buffinit(native_state, &buffer);
+  cursor = format;
+  while (*cursor != '\\0') {
+    const char *percent = strchr(cursor, '%');
+    if (percent == NULL) {
+      luaL_addlstring(&buffer, cursor, strlen(cursor));
+      break;
+    }
+    luaL_addlstring(&buffer, cursor, (size_t)(percent - cursor));
+    cursor = percent + 1;
+    switch (*cursor) {
+      case '%': luaL_addchar(&buffer, '%'); break;
+      case 's': lua_pushfstring(native_state, "%s", va_arg(arguments, char *)); break;
+      case 'c': lua_pushfstring(native_state, "%c", va_arg(arguments, int)); break;
+      case 'd': lua_pushfstring(native_state, "%d", va_arg(arguments, int)); break;
+      case 'f': lua_pushfstring(native_state, "%f", va_arg(arguments, double)); break;
+      case 'p': lua_pushfstring(native_state, "%p", va_arg(arguments, void *)); break;
+      case 'I': lua_pushfstring(native_state, "%I", cpkt_lua_native_integer(va_arg(arguments, cpkt_lua_integer))); break;
+      case 'U': lua_pushfstring(native_state, "%U", (lua_Unsigned)cpkt_lua_integer_bits(va_arg(arguments, cpkt_lua_unsigned))); break;
+      default: return lua_pushfstring(native_state, "invalid option '%%%c' to 'lua_pushfstring'", *cursor);
+    }
+    if (*cursor != '%')
+      luaL_addvalue(&buffer);
+    ++cursor;
+  }
+  luaL_pushresult(&buffer);
+  return lua_tolstring(native_state, -1, NULL);
 }
 
 CPKT_LUA_API int cpkt_lua_l_error(cpkt_lua_state *state,
@@ -553,7 +599,7 @@ CPKT_LUA_API int cpkt_lua_l_error(cpkt_lua_state *state,
   va_list arguments;
 
   va_start(arguments, format);
-  (void)lua_pushvfstring((lua_State *)state, format, arguments);
+  (void)cpkt_lua_push_format(state, format, arguments);
   va_end(arguments);
   return lua_error((lua_State *)state);
 }
@@ -671,6 +717,7 @@ def source(items: Sequence[Tuple[str, str, str]]) -> str:
 #include <stdint.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <string.h>
 
 #include <lua.h>
 #include <lauxlib.h>

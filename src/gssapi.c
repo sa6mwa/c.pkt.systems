@@ -37,6 +37,16 @@ static void cpkt_gss_public_buffer(cpkt_gss_buffer *target,
   }
 }
 
+static void cpkt_gss_publish_buffer(cpkt_gss_buffer *target,
+                                    gss_buffer_desc *source) {
+  OM_uint32 ignored_minor;
+  if (target != NULL) {
+    cpkt_gss_public_buffer(target, source);
+  } else if (source != NULL && source->value != NULL) {
+    (void)gss_release_buffer(&ignored_minor, source);
+  }
+}
+
 static struct gss_channel_bindings_struct
 cpkt_gss_native_bindings(const cpkt_gss_channel_bindings *bindings) {
   struct gss_channel_bindings_struct native;
@@ -166,7 +176,7 @@ cpkt_gss_status cpkt_gss_delete_context(cpkt_gss_status *minor_out,
       gss_delete_sec_context(&minor, &native_context, &native_token);
   if (context != NULL)
     *context = (cpkt_gss_context *)native_context;
-  cpkt_gss_public_buffer(token, &native_token);
+  cpkt_gss_publish_buffer(token, &native_token);
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -262,7 +272,7 @@ cpkt_gss_status cpkt_gss_oid_to_text(cpkt_gss_status *minor_out,
   OM_uint32 status;
   memset(&text, 0, sizeof(text));
   status = gss_oid_to_str(&minor, (gss_OID)oid, &text);
-  cpkt_gss_public_buffer(text_out, &text);
+  cpkt_gss_publish_buffer(text_out, &text);
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -294,7 +304,7 @@ cpkt_gss_status cpkt_gss_display_name(cpkt_gss_status *minor_out,
   OM_uint32 status;
   memset(&text, 0, sizeof(text));
   status = gss_display_name(&minor, (gss_name_t)name, &text, &type);
-  cpkt_gss_public_buffer(text_out, &text);
+  cpkt_gss_publish_buffer(text_out, &text);
   if (type_out != NULL)
     *type_out = (const cpkt_gss_oid *)type;
   return cpkt_gss_finish(status, minor, minor_out);
@@ -353,7 +363,7 @@ cpkt_gss_status cpkt_gss_export_name(cpkt_gss_status *minor_out,
   OM_uint32 status;
   memset(&token, 0, sizeof(token));
   status = gss_export_name(&minor, (gss_name_t)name, &token);
-  cpkt_gss_public_buffer(token_out, &token);
+  cpkt_gss_publish_buffer(token_out, &token);
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -369,7 +379,8 @@ cpkt_gss_status cpkt_gss_acquire_credential(
   gss_OID_set actual = GSS_C_NO_OID_SET;
   OM_uint32 status = gss_acquire_cred(
       &minor, (gss_name_t)name, (OM_uint32)requested_lifetime,
-      (gss_OID_set)desired, usage, &credential, &actual, &lifetime);
+      (gss_OID_set)desired, usage, &credential,
+      actual_out == NULL ? NULL : &actual, &lifetime);
   if (credential_out != NULL)
     *credential_out = (cpkt_gss_credential *)credential;
   if (actual_out != NULL)
@@ -389,8 +400,9 @@ cpkt_gss_status cpkt_gss_inquire_credential(
   gss_name_t name = GSS_C_NO_NAME;
   gss_OID_set mechanisms = GSS_C_NO_OID_SET;
   int usage = 0;
-  OM_uint32 status = gss_inquire_cred(&minor, (gss_cred_id_t)credential, &name,
-                                      &lifetime, &usage, &mechanisms);
+  OM_uint32 status = gss_inquire_cred(
+      &minor, (gss_cred_id_t)credential, name_out == NULL ? NULL : &name,
+      &lifetime, &usage, mechanisms_out == NULL ? NULL : &mechanisms);
   if (name_out != NULL)
     *name_out = (cpkt_gss_name *)name;
   if (lifetime_out != NULL)
@@ -431,7 +443,7 @@ cpkt_gss_status cpkt_gss_init_context(
     *context = (cpkt_gss_context *)native_context;
   if (actual_out != NULL)
     *actual_out = (const cpkt_gss_oid *)actual;
-  cpkt_gss_public_buffer(output, &native_output);
+  cpkt_gss_publish_buffer(output, &native_output);
   if (returned_flags_out != NULL)
     *returned_flags_out = (cpkt_gss_flags)returned_flags;
   if (lifetime_out != NULL)
@@ -462,16 +474,18 @@ cpkt_gss_status cpkt_gss_accept_context(
   status = gss_accept_sec_context(
       &minor, &native_context, (gss_cred_id_t)credential,
       input == NULL ? GSS_C_NO_BUFFER : &native_input,
-      bindings == NULL ? GSS_C_NO_CHANNEL_BINDINGS : &native_bindings, &source,
-      &mechanism, &native_output, &returned_flags, &returned_lifetime,
-      &delegated);
+      bindings == NULL ? GSS_C_NO_CHANNEL_BINDINGS : &native_bindings,
+      source_out == NULL ? NULL : &source,
+      mechanism_out == NULL ? NULL : &mechanism, &native_output,
+      &returned_flags, &returned_lifetime,
+      delegated_out == NULL ? NULL : &delegated);
   if (context != NULL)
     *context = (cpkt_gss_context *)native_context;
   if (source_out != NULL)
     *source_out = (cpkt_gss_name *)source;
   if (mechanism_out != NULL)
     *mechanism_out = (const cpkt_gss_oid *)mechanism;
-  cpkt_gss_public_buffer(output, &native_output);
+  cpkt_gss_publish_buffer(output, &native_output);
   if (returned_flags_out != NULL)
     *returned_flags_out = (cpkt_gss_flags)returned_flags;
   if (lifetime_out != NULL)
@@ -506,7 +520,7 @@ cpkt_gss_status cpkt_gss_get_mic(cpkt_gss_status *minor_out,
   memset(&token, 0, sizeof(token));
   status = gss_get_mic(&minor, (gss_ctx_id_t)context, (gss_qop_t)qop,
                        &native_message, &token);
-  cpkt_gss_public_buffer(token_out, &token);
+  cpkt_gss_publish_buffer(token_out, &token);
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -545,7 +559,7 @@ cpkt_gss_status cpkt_gss_wrap(cpkt_gss_status *minor_out,
                     (gss_qop_t)qop, &native_input, &confidentiality, &output);
   if (confidentiality_out != NULL)
     *confidentiality_out = confidentiality;
-  cpkt_gss_public_buffer(output_out, &output);
+  cpkt_gss_publish_buffer(output_out, &output);
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -567,7 +581,7 @@ cpkt_gss_unwrap(cpkt_gss_status *minor_out, const cpkt_gss_context *context,
     *confidentiality_out = confidentiality;
   if (qop_out != NULL)
     *qop_out = (cpkt_gss_qop)qop;
-  cpkt_gss_public_buffer(output_out, &output);
+  cpkt_gss_publish_buffer(output_out, &output);
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -588,6 +602,6 @@ cpkt_gss_status cpkt_gss_display_status(cpkt_gss_status *minor_out,
                               (gss_OID)mechanism, &native_context, &text);
   if (message_context != NULL)
     *message_context = (cpkt_gss_status)native_context;
-  cpkt_gss_public_buffer(text_out, &text);
+  cpkt_gss_publish_buffer(text_out, &text);
   return cpkt_gss_finish(status, minor, minor_out);
 }
