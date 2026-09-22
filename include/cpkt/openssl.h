@@ -192,6 +192,23 @@ typedef struct cpkt_openssl_param_u64 cpkt_openssl_param_u64;
 typedef struct cpkt_openssl_sha512_context cpkt_openssl_sha512_context;
 /** Opaque aligned native storage for OpenSSL atomic 64-bit operations. */
 typedef struct cpkt_openssl_atomic_u64 cpkt_openssl_atomic_u64;
+/** C89 form of SSL_SHUTDOWN_EX_ARGS. */
+typedef struct cpkt_openssl_ssl_shutdown_args {
+  cpkt_openssl_u64 quic_error_code;
+  const char *quic_reason;
+} cpkt_openssl_ssl_shutdown_args;
+/** C89 form of SSL_STREAM_RESET_ARGS. */
+typedef struct cpkt_openssl_ssl_stream_reset_args {
+  cpkt_openssl_u64 quic_error_code;
+} cpkt_openssl_ssl_stream_reset_args;
+/** C89 form of SSL_CONN_CLOSE_INFO. */
+typedef struct cpkt_openssl_ssl_conn_close_info {
+  cpkt_openssl_u64 error_code;
+  cpkt_openssl_u64 frame_type;
+  const char *reason;
+  size_t reason_length;
+  unsigned long flags;
+} cpkt_openssl_ssl_conn_close_info;
 
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
@@ -491,5 +508,17 @@ CPKT_OPENSSL_API int cpkt_openssl_CRYPTO_atomic_or(
 CPKT_OPENSSL_API int cpkt_openssl_CRYPTO_atomic_store(
     cpkt_openssl_atomic_u64 *value, cpkt_openssl_u64 replacement,
     CRYPTO_RWLOCK *lock);
+/** C89 adapter for SSL_shutdown_ex. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_shutdown_ex(
+    SSL *ssl, cpkt_openssl_u64 flags,
+    const cpkt_openssl_ssl_shutdown_args *arguments, size_t arguments_length);
+/** C89 adapter for SSL_stream_reset. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_stream_reset(
+    SSL *ssl, const cpkt_openssl_ssl_stream_reset_args *arguments,
+    size_t arguments_length);
+/** C89 adapter for SSL_get_conn_close_info. */
+CPKT_OPENSSL_API int cpkt_openssl_SSL_get_conn_close_info(
+    SSL *ssl, cpkt_openssl_ssl_conn_close_info *information_out,
+    size_t information_length);
 
 #endif

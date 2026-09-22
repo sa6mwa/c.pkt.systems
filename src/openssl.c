@@ -68,6 +68,12 @@ static cpkt_openssl_i64 cpkt_openssl_public_i64(int64_t value) {
   return public_value;
 }
 
+static size_t cpkt_openssl_native_length(size_t public_length,
+                                         size_t public_size,
+                                         size_t native_size) {
+  return public_length == public_size ? native_size : public_length;
+}
+
 /** Implements the documented public C89 OpenSSL facade operation cpkt_openssl_u64_make. */
 cpkt_openssl_u64 cpkt_openssl_u64_make(unsigned long high, unsigned long low) {
   uint64_t native;
@@ -882,4 +888,68 @@ int cpkt_openssl_CRYPTO_atomic_store(
   }
   return CRYPTO_atomic_store(&value->native,
                              cpkt_openssl_native_u64(replacement), lock);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_shutdown_ex. */
+int cpkt_openssl_SSL_shutdown_ex(
+    SSL *ssl, cpkt_openssl_u64 flags,
+    const cpkt_openssl_ssl_shutdown_args *arguments, size_t arguments_length) {
+  SSL_SHUTDOWN_EX_ARGS native_arguments;
+
+  if (arguments == NULL) {
+    return SSL_shutdown_ex(ssl, cpkt_openssl_native_u64(flags), NULL,
+                           arguments_length);
+  }
+  native_arguments.quic_error_code = cpkt_openssl_native_u64(
+      arguments->quic_error_code);
+  native_arguments.quic_reason = arguments->quic_reason;
+  return SSL_shutdown_ex(ssl, cpkt_openssl_native_u64(flags),
+                         &native_arguments,
+                         cpkt_openssl_native_length(
+                             arguments_length, sizeof(*arguments),
+                             sizeof(native_arguments)));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_stream_reset. */
+int cpkt_openssl_SSL_stream_reset(
+    SSL *ssl, const cpkt_openssl_ssl_stream_reset_args *arguments,
+    size_t arguments_length) {
+  SSL_STREAM_RESET_ARGS native_arguments;
+
+  if (arguments == NULL) {
+    return SSL_stream_reset(ssl, NULL, arguments_length);
+  }
+  native_arguments.quic_error_code = cpkt_openssl_native_u64(
+      arguments->quic_error_code);
+  return SSL_stream_reset(ssl, &native_arguments,
+                          cpkt_openssl_native_length(
+                              arguments_length, sizeof(*arguments),
+                              sizeof(native_arguments)));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_SSL_get_conn_close_info. */
+int cpkt_openssl_SSL_get_conn_close_info(
+    SSL *ssl, cpkt_openssl_ssl_conn_close_info *information_out,
+    size_t information_length) {
+  SSL_CONN_CLOSE_INFO native_information;
+  int result;
+
+  if (information_out == NULL) {
+    return SSL_get_conn_close_info(ssl, NULL, information_length);
+  }
+  memset(&native_information, 0, sizeof(native_information));
+  result = SSL_get_conn_close_info(ssl, &native_information,
+                                   cpkt_openssl_native_length(
+                                       information_length, sizeof(*information_out),
+                                       sizeof(native_information)));
+  if (result != 0) {
+    information_out->error_code = cpkt_openssl_public_u64(
+        native_information.error_code);
+    information_out->frame_type = cpkt_openssl_public_u64(
+        native_information.frame_type);
+    information_out->reason = native_information.reason;
+    information_out->reason_length = native_information.reason_len;
+    information_out->flags = (unsigned long) native_information.flags;
+  }
+  return result;
 }

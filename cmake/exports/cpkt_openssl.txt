@@ -93,3 +93,6 @@ cpkt_openssl_CRYPTO_atomic_and
 cpkt_openssl_CRYPTO_atomic_load
 cpkt_openssl_CRYPTO_atomic_or
 cpkt_openssl_CRYPTO_atomic_store
+cpkt_openssl_SSL_shutdown_ex
+cpkt_openssl_SSL_stream_reset
+cpkt_openssl_SSL_get_conn_close_info
