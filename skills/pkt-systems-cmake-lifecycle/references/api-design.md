@@ -39,6 +39,47 @@ Naming:
 - Name buffered, spooled, source-backed, and streaming APIs precisely. Do not call an API streaming unless bytes or records flow from producer to consumer without full-message materialization.
 - Name configuration helpers by the side effect they perform, such as `config_use_provider`, `load_dotenv_key`, or `auth_default_path`. Do not hide environment, filesystem, or credential reads inside generic constructors.
 
+## Shared-Library Export Policy
+
+An installed public header defines source API; it does not constrain what a
+shared library makes linkable. Every project-owned shared library must enforce
+an explicit export policy so its dynamic symbol table contains only its
+intentional ABI.
+
+- Make non-API implementation functions and data internal by default. Use
+  language-level visibility controls together with a linker-native allowlist:
+  an ELF version script or dynamic-list policy on ELF targets and an exported
+  symbols list on Darwin. Do not rely only on `static`, a naming convention,
+  omitted declarations, or default compiler visibility.
+- Keep the allowlist source-controlled and reviewable. It must name the public
+  ABI deliberately, including any documented free-function compatibility
+  wrappers for receiver shells. Export dependency-owned symbols only from a
+  dependency library that explicitly promises them; a facade must not leak
+  its private implementation or its dependencies' internals.
+- Apply the policy to every project-owned shared library, facade, plugin, and
+  module shipped in an SDK. Keep static-library implementation symbols local
+  where possible, but do not claim a static archive has the shared-library
+  dynamic-link boundary.
+- When platform toolchains differ, preserve one canonical public-symbol set
+  and generate or validate the platform-specific linker controls from it. Do
+  not allow Linux and Darwin exports to drift accidentally.
+- Treat an added, removed, or changed exported ABI symbol as an ABI change.
+  It needs the same compatibility analysis and versioning decision as a
+  public-header change.
+
+Verify the boundary, not just its inputs:
+
+- Inspect the linked shared library's defined dynamic symbols with the
+  target-correct tooling (`readelf`/`nm` on ELF and `nm`/`otool` equivalents on
+  Darwin) and compare them against the explicit allowlist. Fail on both a
+  missing intended export and an unexpected export.
+- Add a negative downstream-link fixture that manually declares one known
+  private sentinel and proves it cannot link. This prevents a passing header
+  scan from masking a permissive dynamic symbol table.
+- Repeat the exported-symbol assertion on the extracted release SDK, using
+  target-correct tools. Build-tree checks alone do not prove the shipped
+  library retained its export policy.
+
 ## Implementation Boundaries
 
 Structure implementation so product behavior, dependencies, transport, parsing, and packaging remain independently testable.

@@ -157,6 +157,7 @@ function(cpkt_refresh_repo_dependency_roots_if_stale
       CPKT_CYRUS_SASL_VERSION
       CPKT_OPENLDAP_VERSION
       CPKT_POSTGRESQL_VERSION
+      CPKT_SQLITE_VERSION
       CPKT_ZLIB_VERSION
       CPKT_CURL_VERSION
       CPKT_NGHTTP2_VERSION
@@ -183,6 +184,7 @@ function(cpkt_refresh_repo_dependency_roots_if_stale
     "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/copy_autotools_library_artifacts.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/disable_autotools_absolute_rpath.cmake"
+    "${CMAKE_SOURCE_DIR}/cmake/build_openldap_libraries.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/install_lua.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake"
     "${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_single_pass.cmake"

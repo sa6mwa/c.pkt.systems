@@ -43,7 +43,8 @@ find_gnu_tar() {
 
 gnu_tar=$(find_gnu_tar)
 
-stage_parent=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-source-stage.XXXXXXXXXX")
+mkdir -p "$repo_root/build"
+stage_parent=$(mktemp -d "$repo_root/build/cpkt-source-stage.XXXXXXXXXX")
 cleanup() {
   rm -rf "$stage_parent"
 }

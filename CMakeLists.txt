@@ -247,13 +247,16 @@ set(CPKT_KRB5_VERSION "1.22.2" CACHE STRING "Pinned MIT Kerberos release.")
 set(CPKT_CYRUS_SASL_VERSION "2.1.28" CACHE STRING "Pinned Cyrus SASL release.")
 set(CPKT_OPENLDAP_VERSION "2.6.15" CACHE STRING "Pinned OpenLDAP LTS release.")
 set(CPKT_POSTGRESQL_VERSION "18.6" CACHE STRING "Pinned PostgreSQL/libpq release.")
+set(CPKT_SQLITE_VERSION "3.53.4" CACHE STRING "Pinned SQLite release.")
 set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-2" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SUS_ABI_VERSION "0" CACHE STRING "Susurro/whisper facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPCUA_ABI_VERSION "0" CACHE STRING "OPC UA facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_GSSAPI_ABI_VERSION "0" CACHE STRING "GSSAPI facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_SASL_ABI_VERSION "0" CACHE STRING "Cyrus SASL facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_POSTGRES_ABI_VERSION "0" CACHE STRING "PostgreSQL facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_SQLITE_ABI_VERSION "0" CACHE STRING "SQLite facade ABI major. Do not bump without maintainer approval.")
 if(NOT CPKT_SUS_CPU_ONLY)
   message(FATAL_ERROR "CPKT_SUS_CPU_ONLY=OFF is reserved for a later GPU-backend packaging phase")
 endif()
@@ -736,6 +739,50 @@ if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_gssapi_shared cpkt_deps)
 endif()
 
+add_library(cpkt_sasl_static STATIC src/sasl.c)
+cpkt_configure_c89_target(cpkt_sasl_static)
+cpkt_add_repo_warning_errors(cpkt_sasl_static)
+target_include_directories(cpkt_sasl_static
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_sasl_static PUBLIC cpkt::cyrus_sasl_static)
+target_compile_definitions(cpkt_sasl_static PRIVATE
+  CPKT_SASL_FACADE_VERSION="${CPKT_SASL_ABI_VERSION}")
+set_target_properties(cpkt_sasl_static PROPERTIES
+  OUTPUT_NAME cpkt_sasl
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_sasl_shared SHARED src/sasl.c)
+cpkt_configure_c89_target(cpkt_sasl_shared)
+cpkt_add_repo_warning_errors(cpkt_sasl_shared)
+target_include_directories(cpkt_sasl_shared
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_sasl_shared PUBLIC cpkt::cyrus_sasl_shared)
+target_compile_definitions(cpkt_sasl_shared PRIVATE
+  CPKT_SASL_FACADE_VERSION="${CPKT_SASL_ABI_VERSION}")
+set_target_properties(cpkt_sasl_shared PROPERTIES
+  OUTPUT_NAME cpkt_sasl
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_SASL_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_sasl_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_sasl_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
+if(CPKT_BUILD_DEPENDENCIES)
+  add_dependencies(cpkt_sasl_static cpkt_deps)
+  add_dependencies(cpkt_sasl_shared cpkt_deps)
+endif()
+
 add_library(cpkt_postgres_static STATIC src/postgres.c)
 cpkt_configure_c89_target(cpkt_postgres_static)
 cpkt_add_repo_warning_errors(cpkt_postgres_static)
@@ -780,6 +827,58 @@ endif()
 if(CPKT_BUILD_DEPENDENCIES)
   add_dependencies(cpkt_postgres_static cpkt_deps)
   add_dependencies(cpkt_postgres_shared cpkt_deps)
+endif()
+
+add_library(cpkt_sqlite_static STATIC src/sqlite.c)
+cpkt_configure_c89_target(cpkt_sqlite_static)
+cpkt_add_repo_warning_errors(cpkt_sqlite_static)
+target_include_directories(cpkt_sqlite_static
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_sqlite_static PUBLIC cpkt::sqlite_static)
+target_compile_definitions(cpkt_sqlite_static PRIVATE
+  CPKT_SQLITE_FACADE_VERSION="${CPKT_SQLITE_ABI_VERSION}"
+  SQLITE_ENABLE_CARRAY=1
+  SQLITE_ENABLE_NORMALIZE=1
+  SQLITE_ENABLE_PREUPDATE_HOOK=1
+  SQLITE_ENABLE_SESSION=1)
+set_target_properties(cpkt_sqlite_static PROPERTIES
+  OUTPUT_NAME cpkt_sqlite
+  POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_sqlite_shared SHARED src/sqlite.c)
+cpkt_configure_c89_target(cpkt_sqlite_shared)
+cpkt_add_repo_warning_errors(cpkt_sqlite_shared)
+target_include_directories(cpkt_sqlite_shared
+  PUBLIC
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_sqlite_shared PUBLIC cpkt::sqlite_shared)
+target_compile_definitions(cpkt_sqlite_shared PRIVATE
+  CPKT_SQLITE_FACADE_VERSION="${CPKT_SQLITE_ABI_VERSION}"
+  SQLITE_ENABLE_CARRAY=1
+  SQLITE_ENABLE_NORMALIZE=1
+  SQLITE_ENABLE_PREUPDATE_HOOK=1
+  SQLITE_ENABLE_SESSION=1)
+set_target_properties(cpkt_sqlite_shared PROPERTIES
+  OUTPUT_NAME cpkt_sqlite
+  POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_SQLITE_ABI_VERSION}"
+  VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_sqlite_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath"
+    BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path"
+    BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_sqlite_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN"
+    INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
+if(CPKT_BUILD_DEPENDENCIES)
+  add_dependencies(cpkt_sqlite_static cpkt_deps)
+  add_dependencies(cpkt_sqlite_shared cpkt_deps)
 endif()
 
 if(CPKT_BUILD_TESTS)
@@ -981,7 +1080,8 @@ if(CPKT_BUILD_TESTS)
     cpkt_audio_static
     cpkt_sus_static
     cpkt_opcua_static
-    cpkt_gssapi_static)
+    cpkt_gssapi_static
+    cpkt_sqlite_static)
   set_target_properties(cpkt_static_archive_pic_smoke_facades PROPERTIES
     LINKER_LANGUAGE CXX)
   if(CPKT_BUILD_DEPENDENCIES)
@@ -1111,6 +1211,16 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_gssapi_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_gssapi_facade_test)
     target_link_libraries(cpkt_gssapi_facade_test PRIVATE cpkt_gssapi_static)
+    add_executable(cpkt_sasl_facade_test tests/sasl_facade_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_facade_test)
+    target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_facade_test)
+    target_link_libraries(cpkt_sasl_facade_test PRIVATE cpkt_sasl_static)
+    add_executable(cpkt_sqlite_facade_test tests/sqlite_facade_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_facade_test)
+    target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
+    target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
     if(CPKT_BUILD_DEPENDENCIES)
       add_dependencies(cpkt_audio_facade_test cpkt_deps)
       add_dependencies(cpkt_audio_process_capture_probe cpkt_deps)
@@ -1120,6 +1230,7 @@ if(CPKT_BUILD_TESTS)
       add_dependencies(cpkt_postgres_receiver_test cpkt_deps)
       add_dependencies(cpkt_postgres_integration_test cpkt_deps)
       add_dependencies(cpkt_gssapi_facade_test cpkt_deps)
+      add_dependencies(cpkt_sqlite_facade_test cpkt_deps)
     endif()
 
     add_executable(cpkt_lua_runtime_test tests/lua_runtime_test.c)
@@ -1285,10 +1396,12 @@ if(CPKT_BUILD_TESTS)
         COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
+      add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(
         NAME postgres_e2e_harness
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_e2e_harness_test.sh")
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
+      add_test(NAME sasl_facade COMMAND cpkt_sasl_facade_test)
       set_tests_properties(
         opcua_facade_integration
         opcua_boundary_server_c99_client_c89
@@ -1495,6 +1608,26 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/gssapi_header_facade_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME sasl_header_facade
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/sasl_header_facade_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME sqlite_header_facade
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/sqlite_header_facade_test.sh"
+          "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME sqlite_api_coverage
+        COMMAND
+          bash
+          "${CMAKE_SOURCE_DIR}/tests/sqlite_api_coverage_test.sh"
+          "${CMAKE_SOURCE_DIR}/src/sqlite.c"
+          "$<TARGET_PROPERTY:cpkt::sqlite_static,INTERFACE_INCLUDE_DIRECTORIES>/sqlite3.h"
+          "$<TARGET_PROPERTY:cpkt::sqlite_static,INTERFACE_INCLUDE_DIRECTORIES>/sqlite3session.h"
+          "$<TARGET_PROPERTY:cpkt::sqlite_static,INTERFACE_INCLUDE_DIRECTORIES>/sqlite3rtree.h"
+          "$<TARGET_PROPERTY:cpkt::sqlite_static,INTERFACE_INCLUDE_DIRECTORIES>/fts5.h")
+      add_test(
         NAME audio_sus_spec_consistency
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/audio_sus_spec_consistency_test.sh"
@@ -1559,6 +1692,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_CYRUS_SASL_VERSION=${CPKT_CYRUS_SASL_VERSION}
         -DCPKT_OPENLDAP_VERSION=${CPKT_OPENLDAP_VERSION}
         -DCPKT_POSTGRESQL_VERSION=${CPKT_POSTGRESQL_VERSION}
+        -DCPKT_SQLITE_VERSION=${CPKT_SQLITE_VERSION}
         -DCPKT_LUA_RUNTIME_ABI_VERSION=${CPKT_LUA_RUNTIME_ABI_VERSION}
         -DCPKT_LUA_RUNTIME_INCLUDE_DIR=${CMAKE_SOURCE_DIR}/include
         -DCPKT_LUA_RUNTIME_STATIC_LIBRARY=$<TARGET_FILE:cpkt_lua_runtime_static>
@@ -1573,9 +1707,15 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_GSSAPI_ABI_VERSION=${CPKT_GSSAPI_ABI_VERSION}
         -DCPKT_GSSAPI_STATIC_LIBRARY=$<TARGET_FILE:cpkt_gssapi_static>
         -DCPKT_GSSAPI_SHARED_LIBRARY=$<TARGET_FILE:cpkt_gssapi_shared>
+        -DCPKT_SASL_ABI_VERSION=${CPKT_SASL_ABI_VERSION}
+        -DCPKT_SASL_STATIC_LIBRARY=$<TARGET_FILE:cpkt_sasl_static>
+        -DCPKT_SASL_SHARED_LIBRARY=$<TARGET_FILE:cpkt_sasl_shared>
         -DCPKT_POSTGRES_ABI_VERSION=${CPKT_POSTGRES_ABI_VERSION}
         -DCPKT_POSTGRES_STATIC_LIBRARY=$<TARGET_FILE:cpkt_postgres_static>
         -DCPKT_POSTGRES_SHARED_LIBRARY=$<TARGET_FILE:cpkt_postgres_shared>
+        -DCPKT_SQLITE_ABI_VERSION=${CPKT_SQLITE_ABI_VERSION}
+        -DCPKT_SQLITE_STATIC_LIBRARY=$<TARGET_FILE:cpkt_sqlite_static>
+        -DCPKT_SQLITE_SHARED_LIBRARY=$<TARGET_FILE:cpkt_sqlite_shared>
         -DCPKT_WHISPER_VERSION=${CPKT_WHISPER_VERSION}
         -DCPKT_SUS_ABI_VERSION=${CPKT_SUS_ABI_VERSION}
         -DCPKT_SUS_BACKEND_CAPABILITIES=${CPKT_SUS_BACKEND_CAPABILITIES}
@@ -1595,8 +1735,12 @@ if(CPKT_BUILD_DEPENDENCIES)
       cpkt_opcua_shared
       cpkt_gssapi_static
       cpkt_gssapi_shared
+      cpkt_sasl_static
+      cpkt_sasl_shared
       cpkt_postgres_static
       cpkt_postgres_shared
+      cpkt_sqlite_static
+      cpkt_sqlite_shared
       cpkt_sus_static
       cpkt_sus_shared
     VERBATIM

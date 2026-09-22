@@ -30,7 +30,8 @@ find_gnu_tar() {
 }
 
 gnu_tar=$(find_gnu_tar)
-work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-source-verify-failure.XXXXXXXXXX")
+mkdir -p "$repo_root/build"
+work_root=$(mktemp -d "$repo_root/build/cpkt-source-verify-failure.XXXXXXXXXX")
 cleanup() {
   rm -rf "$work_root"
 }
@@ -42,20 +43,33 @@ Makefile
 README.md
 docs/opcua-c89-facade-spec.md
 docs/gssapi-c89-facade-spec.md
+docs/sasl-c89-facade-spec.md
 docs/postgres-c89-facade-spec.md
+docs/sqlite-c89-facade-spec.md
+docs/sqlite-c89-facade-surface.md
+docs/third_party/sqlite/LICENSE
 include/cpkt/opcua.h
 include/cpkt/gssapi.h
+include/cpkt/sasl.h
 include/cpkt/postgres.h
+include/cpkt/sqlite.h
 src/opcua.c
 src/gssapi.c
+src/sasl.c
 src/postgres.c
+src/sqlite.c
 tests/opcua_facade_test.c
 tests/opcua_c89_boundary_peer.c
 tests/opcua_header_facade_test.sh
 tests/gssapi_header_facade_test.sh
+tests/sasl_facade_test.c
+tests/sasl_header_facade_test.sh
 tests/postgres_e2e_harness_test.sh
 tests/postgres_integration_test.c
 tests/postgres_header_facade_test.sh
+tests/sqlite_facade_test.c
+tests/sqlite_api_coverage_test.sh
+tests/sqlite_header_facade_test.sh
 examples/opcua-c89/main.c
 scripts/package-source.sh
 scripts/e2e-postgres.sh
@@ -63,6 +77,9 @@ scripts/package-verify.sh
 scripts/release-version.sh
 scripts/source-archive-verify.sh
 cmake/CpktDependencies.cmake
+cmake/build_openldap_libraries.cmake
+cmake/cyrus_sasl_md5global.h.in
+cmake/patch_openldap_lutil_link.cmake
 cmake/patch_postgresql_buildinfo.cmake
 vendor/open62541/patches/series
 vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch

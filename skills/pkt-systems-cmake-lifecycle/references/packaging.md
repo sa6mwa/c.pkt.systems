@@ -117,6 +117,11 @@ Package verification must:
 - Verify pkg-config consumers when pkg-config metadata is shipped.
 - Verify example builds from installed examples when examples are shipped.
 - Verify shared-library runpaths use relocatable paths and do not contain build roots.
+- Verify each extracted project-owned shared library, facade, plugin, and
+  module has exactly its source-controlled public dynamic-export set, using
+  target-correct symbol inspection. Also run the negative downstream fixture
+  that manually declares a known private sentinel and must fail to link.
+  Installed headers being free of private declarations is not sufficient.
 - Verify every shipped ELF executable and shared object that has runtime library lookup metadata uses `$ORIGIN`-relative RPATH/RUNPATH only.
 - Verify no shipped Mach-O dynamic library or executable contains local build paths in install names or dependency paths; project-owned Darwin install names should be `@rpath`-relative.
 - Verify no shipped Mach-O dynamic library, module, or executable contains non-system absolute dependency paths such as `/lib`, `/usr/local`, build roots, dependency cache roots, source roots, temporary directories, or home directories. `/usr/lib` and `/System/Library` are the normal allowed absolute system locations.

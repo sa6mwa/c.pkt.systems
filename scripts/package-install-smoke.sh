@@ -215,7 +215,8 @@ if [ "${CPKT_PACKAGE_INSTALL_SMOKE_PRINT_PKG_CONFIG_WORDS:-0}" = 1 ]; then
   exit 0
 fi
 
-work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-install-smoke.XXXXXX")
+mkdir -p "$repo_root/build"
+work_root=$(mktemp -d "$repo_root/build/cpkt-install-smoke.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
 diagnostic_dir="$work_root/diagnostics"
 mkdir -p "$diagnostic_dir"
@@ -364,6 +365,10 @@ assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
 assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
 assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktSasl/CpktSaslConfig.cmake"
+assert_package_file "lib/cmake/CpktSasl/CpktSaslConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktSqlite/CpktSqliteConfig.cmake"
+assert_package_file "lib/cmake/CpktSqlite/CpktSqliteConfigVersion.cmake"
 assert_package_file "lib/cmake/open62541/open62541Config.cmake"
 assert_package_file "lib/cmake/open62541/open62541ConfigVersion.cmake"
 assert_package_file "share/c.pkt.systems/manifest.txt"
@@ -372,6 +377,8 @@ assert_package_file "share/doc/c.pkt.systems/LICENSE"
 assert_package_file "share/doc/c.pkt.systems/README.md"
 assert_package_file "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+assert_package_file "share/doc/c.pkt.systems/docs/sasl-c89-facade-spec.md"
+assert_package_file "share/doc/c.pkt.systems/docs/sqlite-c89-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
 assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
 assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
@@ -422,6 +429,16 @@ fi
 if grep -E 'open62541/|UA_Client|UA_Server|UA_StatusCode|UA_NodeId|UA_Variant|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
     "$prefix/include/cpkt/opcua.h" >/dev/null 2>&1; then
   printf 'OPC UA facade header is not C89-clean\n' >&2
+  exit 1
+fi
+if grep -E 'sasl/|sasl_conn_t|sasl_callback_t|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
+    "$prefix/include/cpkt/sasl.h" >/dev/null 2>&1; then
+  printf 'SASL facade header is not C89-clean\n' >&2
+  exit 1
+fi
+if grep -E 'sqlite3\.h|sqlite3_|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
+    "$prefix/include/cpkt/sqlite.h" >/dev/null 2>&1; then
+  printf 'SQLite facade header is not C89-clean\n' >&2
   exit 1
 fi
 installed_examples_dir="$prefix/share/doc/c.pkt.systems/examples"
@@ -933,6 +950,69 @@ int main(void) {
   return 0;
 }
 EOF
+cat > "$cmake_source_dir/cpkt_sasl_facade_strict.c" <<'EOF'
+#include <cpkt/sasl.h>
+
+int main(void) {
+  cpkt_sasl *connection;
+  int status;
+
+  if (cpkt_sasl_error_string(CPKT_SASL_BADPARAM, 0, 0) == 0) {
+    return 1;
+  }
+  if (cpkt_sasl_client_initialize(0) != CPKT_SASL_OK) {
+    return 2;
+  }
+  status = CPKT_SASL_FAIL;
+  connection = cpkt_sasl_client_new("cpkt-package", "localhost", 0, 0,
+      0, 0, &status);
+  if (connection == 0 || status != CPKT_SASL_OK || connection->close == 0 ||
+      connection->set_security_properties == 0) {
+    cpkt_sasl_client_finish();
+    return 3;
+  }
+  connection->close(connection);
+  return cpkt_sasl_client_finish() == CPKT_SASL_OK ? 0 : 4;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_sqlite_facade_strict.c" <<'EOF'
+#include <cpkt/sqlite.h>
+
+int main(void) {
+  cpkt_sqlite *database;
+  cpkt_sqlite_statement *statement;
+  int result;
+
+  if (cpkt_sqlite_library_version_number() <= 0 ||
+      cpkt_sqlite_library_version() == 0) {
+    return 1;
+  }
+  database = cpkt_sqlite_new(":memory:");
+  if (database == 0 || database->tx == 0 || database->prepare == 0 ||
+      database->close == 0) {
+    return 2;
+  }
+  result = database->tx(database, "create table pkg_smoke(value integer)", 0, 0);
+  if (result != CPKT_SQLITE_OK) {
+    database->close(database);
+    return 3;
+  }
+  result = database->prepare(database, "select 42", -1, 0, &statement, 0);
+  if (result != CPKT_SQLITE_OK || statement == 0 || statement->step == 0 ||
+      statement->finalize == 0) {
+    database->close(database);
+    return 4;
+  }
+  result = statement->step(statement);
+  if (result != CPKT_SQLITE_ROW || statement->column_int(statement, 0) != 42 ||
+      statement->finalize(statement) != CPKT_SQLITE_OK) {
+    database->close(database);
+    return 5;
+  }
+  database->close(database);
+  return 0;
+}
+EOF
 cat > "$cmake_source_dir/cpkt_lua_runtime_strict.c" <<'EOF'
 #include <cpkt/lua_runtime.h>
 
@@ -1215,6 +1295,8 @@ find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
 find_package(CpktGssapi CONFIG REQUIRED)
 find_package(CpktPostgres CONFIG REQUIRED)
+find_package(CpktSasl CONFIG REQUIRED)
+find_package(CpktSqlite CONFIG REQUIRED)
 find_package(open62541 CONFIG REQUIRED)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   find_package(CpktSus CONFIG REQUIRED)
@@ -1246,6 +1328,8 @@ cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::a
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
 cpkt_add_static_smoke(cpkt_cmake_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
 cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
+cpkt_add_static_smoke(cpkt_cmake_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
+cpkt_add_static_smoke(cpkt_cmake_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_zlib cpkt_zlib.c ZLIB::ZLIB)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_crypto cpkt_crypto.c OpenSSL::Crypto)
@@ -1260,6 +1344,8 @@ cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_audio_facade cpkt_audio_facade_
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
 set_source_files_properties(cpkt_audio_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
@@ -1267,6 +1353,10 @@ set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
 set_source_files_properties(cpkt_gssapi_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_postgres_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_sasl_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_sqlite_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   cpkt_add_static_smoke(cpkt_cmake_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
@@ -1329,6 +1419,8 @@ cmake_args=(
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -DCpktGssapi_DIR="$prefix/lib/cmake/CpktGssapi" \
   -DCpktPostgres_DIR="$prefix/lib/cmake/CpktPostgres" \
+  -DCpktSasl_DIR="$prefix/lib/cmake/CpktSasl" \
+  -DCpktSqlite_DIR="$prefix/lib/cmake/CpktSqlite" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
@@ -1620,6 +1712,8 @@ open62541_words=$(pkg_config_words open62541)
 opcua_words=$(pkg_config_words cpkt-opcua)
 gssapi_words=$(pkg_config_words cpkt-gssapi)
 postgres_words=$(pkg_config_words cpkt-postgres)
+sasl_words=$(pkg_config_words cpkt-sasl)
+sqlite_words=$(pkg_config_words cpkt-sqlite)
 sus_words=$(pkg_config_words cpkt-sus)
 openssl_default_words=$(pkg_config_default_words openssl)
 
@@ -1705,6 +1799,10 @@ assert_words_contain "$postgres_words" "-lpq" "cpkt-postgres.pc --static output"
 assert_words_contain "$postgres_words" "-lldap" "cpkt-postgres.pc --static output"
 assert_words_contain "$postgres_words" "-llutil" "cpkt-postgres.pc --static output"
 assert_words_contain "$postgres_words" "-lsasl2" "cpkt-postgres.pc --static output"
+assert_words_contain "$sasl_words" "-lcpkt_sasl" "cpkt-sasl.pc --static output"
+assert_words_contain "$sasl_words" "-lsasl2" "cpkt-sasl.pc --static output"
+assert_words_contain "$sqlite_words" "-lcpkt_sqlite" "cpkt-sqlite.pc --static output"
+assert_words_contain "$sqlite_words" "-lsqlite3" "cpkt-sqlite.pc --static output"
 assert_words_contain "$sus_words" "-lcpktsus" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lwhisper" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lggml" "cpkt-sus.pc --static output"
@@ -1728,7 +1826,7 @@ cpkt_pkg_config_static_smoke() {
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
   source_flags=$common_flags
   case "$source_name" in
-    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sus_facade_strict.c)
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sasl_facade_strict.c|cpkt_sqlite_facade_strict.c|cpkt_sus_facade_strict.c)
       source_flags=$common_c89_flags
       ;;
   esac
@@ -1763,6 +1861,8 @@ cpkt_pkg_config_static_smoke() {
           bundled["-lprofile"] = 1
           bundled["-lverto"] = 1
           bundled["-lcpkt_postgres"] = 1
+          bundled["-lcpkt_sasl"] = 1
+          bundled["-lcpkt_sqlite"] = 1
           bundled["-lpq"] = 1
           bundled["-lpq-oauth"] = 1
           bundled["-lpgcommon_shlib"] = 1
@@ -1770,6 +1870,7 @@ cpkt_pkg_config_static_smoke() {
           bundled["-lldap"] = 1
           bundled["-llber"] = 1
           bundled["-lsasl2"] = 1
+          bundled["-lsqlite3"] = 1
         }
         {
           for (i = 1; i <= NF; ++i) {
@@ -1935,6 +2036,8 @@ cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
 cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
 cpkt_pkg_config_static_smoke cpkt-gssapi cpkt_gssapi_facade_strict.c
 cpkt_pkg_config_static_smoke cpkt-postgres cpkt_postgres_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-sasl cpkt_sasl_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-sqlite cpkt_sqlite_facade_strict.c
 case "$target_id" in
   *-linux-*)
     cpkt_pkg_config_static_smoke cpkt-audio cpkt_audio_facade_strict.c

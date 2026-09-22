@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -eu
+set -o pipefail
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 
 if [ "$#" -lt 2 ]; then
   printf 'usage: run-no-warnings.sh <description> <command> [args...]\n' >&2
@@ -9,11 +13,12 @@ fi
 description=$1
 shift
 
-work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-no-warnings.XXXXXX")
+mkdir -p "$repo_root/build"
+work_root=$(mktemp -d "$repo_root/build/cpkt-no-warnings.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
 log_file="$work_root/command.log"
 
-if ! "$@" >"$log_file" 2>&1; then
+if ! "$@" 2>&1 | tee "$log_file"; then
   printf '%s failed\n' "$description" >&2
   cat "$log_file" >&2
   exit 1
@@ -24,5 +29,3 @@ if grep -Ei '(^|[[:space:]:])warning:|^CMake (Deprecation )?Warning([[:space:]:]
   cat "$log_file" >&2
   exit 1
 fi
-
-cat "$log_file"

@@ -639,6 +639,10 @@ if(NOT _manifest_text MATCHES "(^|\n)gssapi_abi_version=([A-Za-z0-9_.+-]+)(\n|$)
   message(FATAL_ERROR "package manifest is missing gssapi_abi_version")
 endif()
 set(_manifest_gssapi_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)sasl_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing sasl_abi_version")
+endif()
+set(_manifest_sasl_abi_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing mqtt_c_version")
 endif()
@@ -684,6 +688,14 @@ if(DEFINED CPKT_GSSAPI_ABI_VERSION AND NOT "${CPKT_GSSAPI_ABI_VERSION}" STREQUAL
   endif()
 else()
   set(CPKT_GSSAPI_ABI_VERSION "${_manifest_gssapi_abi_version}")
+endif()
+if(DEFINED CPKT_SASL_ABI_VERSION AND NOT "${CPKT_SASL_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_SASL_ABI_VERSION}" STREQUAL "${_manifest_sasl_abi_version}")
+    message(FATAL_ERROR
+      "configured Cyrus SASL ABI ${CPKT_SASL_ABI_VERSION} does not match package manifest ABI ${_manifest_sasl_abi_version}")
+  endif()
+else()
+  set(CPKT_SASL_ABI_VERSION "${_manifest_sasl_abi_version}")
 endif()
 file(REMOVE_RECURSE "${_manifest_extract_root}")
 
@@ -1216,6 +1228,9 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpkt_gssapi.dylib"
       "lib/libcpkt_gssapi.${CPKT_GSSAPI_ABI_VERSION}.dylib"
       "lib/libcpkt_gssapi.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_sasl.dylib"
+      "lib/libcpkt_sasl.${CPKT_SASL_ABI_VERSION}.dylib"
+      "lib/libcpkt_sasl.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libcpkt_postgres.dylib"
       "lib/libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib"
       "lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
@@ -1315,6 +1330,9 @@ else()
       "lib/libcpkt_gssapi.so"
       "lib/libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}"
       "lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_sasl.so"
+      "lib/libcpkt_sasl.so.${CPKT_SASL_ABI_VERSION}"
+      "lib/libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_postgres.so"
       "lib/libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"
       "lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
@@ -1382,6 +1400,10 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}"
     "libcpkt_gssapi SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_sasl.so.${CPKT_SASL_ABI_VERSION}"
+    "libcpkt_sasl SONAME")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"

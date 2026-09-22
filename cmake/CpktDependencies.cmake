@@ -2274,6 +2274,21 @@ function(cpkt_add_cyrus_sasl)
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
   endif()
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  set(cyrus_sasl_md5_header_dir "${prefix_dir}/generated")
+  file(MAKE_DIRECTORY "${cyrus_sasl_md5_header_dir}")
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(CPKT_CYRUS_SASL_MD5_INT8_TYPE "long long")
+    set(CPKT_CYRUS_SASL_MD5_UINT8_TYPE "unsigned long long")
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(CPKT_CYRUS_SASL_MD5_INT8_TYPE "long")
+    set(CPKT_CYRUS_SASL_MD5_UINT8_TYPE "unsigned long")
+  else()
+    message(FATAL_ERROR "Cyrus SASL has no md5global.h recipe for ${CMAKE_SIZEOF_VOID_P}-byte pointers")
+  endif()
+  configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
+    "${cyrus_sasl_md5_header_dir}/md5global.h"
+    @ONLY)
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/cyrusimap/cyrus-sasl/releases/download/cyrus-sasl-${CPKT_CYRUS_SASL_VERSION}/cyrus-sasl-${CPKT_CYRUS_SASL_VERSION}.tar.gz"
@@ -2313,6 +2328,16 @@ function(cpkt_add_cyrus_sasl)
         --with-openssl=${CPKT_OPENSSL_shared_PREFIX}
         ${cyrus_sasl_platform_configure_args}
       BUILD_COMMAND ${cyrus_sasl_rpath_rewrite_command}
+        # Cyrus SASL 2.1.28's out-of-tree Makefile suppresses the makemd5
+        # host tool when both build and target executable suffixes are empty,
+        # but still unconditionally requires its generated header.  It also
+        # considers that missing prerequisite newer than a pre-copied header.
+        # A timestamp-only placeholder followed by the CMake-generated header
+        # keeps the prerequisite older without building or executing a host
+        # helper.
+        COMMAND ${CMAKE_COMMAND} -E touch "${build_dir}/include/makemd5"
+        COMMAND ${CMAKE_COMMAND} -E copy
+        "${cyrus_sasl_md5_header_dir}/md5global.h" "${build_dir}/include/md5global.h"
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C include -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
@@ -2356,9 +2381,16 @@ endfunction()
 
 function(cpkt_add_openldap)
   set(project_name "cpkt_openldap_project")
+  # OpenLDAP is an Autotools project.  Its generated Makefiles must always be
+  # driven by GNU make, never CMake's generator program (which is Ninja for
+  # the shipped presets).
+  find_program(openldap_make_program NAMES gmake make REQUIRED)
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/openldap")
   set(source_dir "${prefix_dir}/src")
-  set(build_dir "${prefix_dir}/build")
+  # OpenLDAP's static-library rules require their object files in the
+  # configured source tree.  It does not support this partial library build
+  # correctly from a separate VPATH tree.
+  set(build_dir "${source_dir}")
   set(install_dir "${CPKT_EXTERNAL_ROOT}/openldap/install")
   set(stage_dir "${install_dir}/stage")
   set(stamp_dir "${prefix_dir}/stamp")
@@ -2402,7 +2434,6 @@ function(cpkt_add_openldap)
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
       SOURCE_DIR "${source_dir}"
-      BINARY_DIR "${build_dir}"
       STAMP_DIR "${stamp_dir}"
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
@@ -2430,17 +2461,12 @@ function(cpkt_add_openldap)
         --with-yielding_select=no
       BUILD_COMMAND ${openldap_rpath_rewrite_command}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C include -j${CPKT_DEPENDENCY_BUILD_JOBS}
-        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        # OpenLDAP's default all target also links upstream diagnostic
-        # executables. They are not bundled, and its Darwin static-link recipe
-        # is not valid under osxcross. Build production libraries explicitly;
-        # staged artifact checks below prove the shipped set.
-        ${CMAKE_COMMAND} -E env ${env_args} make -C libraries/liblutil liblutil.a -j${CPKT_DEPENDENCY_BUILD_JOBS}
-        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C libraries/liblber liblber.la -j${CPKT_DEPENDENCY_BUILD_JOBS}
-        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C libraries/libldap libldap.la -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        ${CMAKE_COMMAND} -E env ${env_args}
+        ${CMAKE_COMMAND}
+          -DCPKT_OPENLDAP_BUILD_DIR=${build_dir}
+          -DCPKT_OPENLDAP_MAKE_PROGRAM=${openldap_make_program}
+          -DCPKT_OPENLDAP_BUILD_JOBS=${CPKT_DEPENDENCY_BUILD_JOBS}
+          -P ${CMAKE_SOURCE_DIR}/cmake/build_openldap_libraries.cmake
       INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
@@ -2474,6 +2500,7 @@ function(cpkt_add_openldap)
         COMMAND ${openldap_darwin_install_name_normalize_command}
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS "${ldap_static_library}" "${lber_static_library}" "${lutil_static_library}" "${ldap_shared_library}"
+      BUILD_IN_SOURCE 1
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   endif()
   add_library(cpkt::openldap_static STATIC IMPORTED GLOBAL)
@@ -2569,6 +2596,11 @@ function(cpkt_add_postgresql)
     COMMAND ${CMAKE_COMMAND}
       -DCPKT_POSTGRESQL_SOURCE_DIR=${source_dir}
       -P ${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake)
+  # PostgreSQL relies on make's built-in C object rules.  The top-level
+  # c.pkt.systems Makefile exports --no-builtin-rules, so do not propagate
+  # that project policy into PostgreSQL's independent upstream makefiles.
+  # Each invocation supplies an explicit -j setting below.
+  set(postgresql_make_env_args ${env_args} "MAKEFLAGS=")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
   if(CPKT_BUILD_DEPENDENCIES)
@@ -2603,19 +2635,23 @@ function(cpkt_add_postgresql)
         --with-libcurl
         ${postgresql_post_configure_command}
       BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C src/common -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        # Generate the server-owned headers consumed by the frontend common
+        # library without building PostgreSQL server or client executables.
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/backend generated-headers -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C src/port -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/common -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C src/interfaces/libpq -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/port -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C src/interfaces/libpq-oauth -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq-oauth -j${CPKT_DEPENDENCY_BUILD_JOBS}
       INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C src/interfaces/libpq install DESTDIR=${stage_dir}
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
-        ${CMAKE_COMMAND} -E env ${env_args} make -C src/interfaces/libpq-oauth install DESTDIR=${stage_dir}
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq-oauth install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
         COMMAND ${CMAKE_COMMAND} -E rm -f "${oauth_shared_library}"
@@ -2657,6 +2693,191 @@ function(cpkt_add_postgresql)
     cpkt_require_dependency_file("${install_dir}/include/libpq-fe.h" "PostgreSQL libpq header")
   endif()
   set(CPKT_POSTGRESQL_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_sqlite)
+  set(project_name "cpkt_sqlite_project")
+  set(headers_project_name "cpkt_sqlite_headers_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/sqlite")
+  set(source_dir "${prefix_dir}/src")
+  set(headers_source_dir "${prefix_dir}/headers-src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/sqlite/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  set(static_library "${install_dir}/lib/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_library "${install_dir}/lib/libsqlite3${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(source_amalgamation "${source_dir}/sqlite3.c")
+  set(source_header "${source_dir}/sqlite3.h")
+  cpkt_get_external_c_flags(external_cflags)
+  separate_arguments(sqlite_cflags NATIVE_COMMAND "${external_cflags}")
+  set(sqlite_link_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND sqlite_link_flags "-Wl,--enable-new-dtags,-rpath,$ORIGIN")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND sqlite_link_flags "-Wl,-rpath,@loader_path")
+  endif()
+  if(NOT "${CMAKE_SHARED_LINKER_FLAGS}" STREQUAL "")
+    separate_arguments(sqlite_user_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
+    list(APPEND sqlite_link_flags ${sqlite_user_link_flags})
+  endif()
+  set(sqlite_dl_link_flags "")
+  foreach(sqlite_dl_library IN LISTS CMAKE_DL_LIBS)
+    if(IS_ABSOLUTE "${sqlite_dl_library}" OR sqlite_dl_library MATCHES "^-")
+      list(APPEND sqlite_dl_link_flags "${sqlite_dl_library}")
+    else()
+      list(APPEND sqlite_dl_link_flags "-l${sqlite_dl_library}")
+    endif()
+  endforeach()
+  set(sqlite_compile_definitions
+    -DSQLITE_THREADSAFE=1
+    -DSQLITE_ENABLE_COLUMN_METADATA
+    -DSQLITE_ENABLE_CARRAY
+    -DSQLITE_ENABLE_DBSTAT_VTAB
+    -DSQLITE_ENABLE_DESERIALIZE
+    -DSQLITE_ENABLE_FTS3
+    -DSQLITE_ENABLE_FTS3_PARENTHESIS
+    -DSQLITE_ENABLE_FTS4
+    -DSQLITE_ENABLE_FTS5
+    -DSQLITE_ENABLE_GEOPOLY
+    -DSQLITE_ENABLE_MATH_FUNCTIONS
+    -DSQLITE_ENABLE_NORMALIZE
+    -DSQLITE_ENABLE_PREUPDATE_HOOK
+    -DSQLITE_ENABLE_RTREE
+    -DSQLITE_ENABLE_SESSION
+    -DSQLITE_ENABLE_SETLK_TIMEOUT
+    -DSQLITE_ENABLE_SNAPSHOT
+    -DSQLITE_ENABLE_STMT_SCANSTATUS
+    -DSQLITE_ENABLE_STMTVTAB
+    -DSQLITE_ENABLE_UNLOCK_NOTIFY)
+  set(sqlite_thread_flags "")
+  set(sqlite_shared_link_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND sqlite_thread_flags -pthread)
+    set(sqlite_shared_real_library "libsqlite3.so.0.8.6")
+    set(sqlite_shared_abi_library "libsqlite3.so.0")
+    list(APPEND sqlite_shared_link_flags
+      -shared
+      "-Wl,-soname,${sqlite_shared_abi_library}")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(sqlite_shared_real_library "libsqlite3.0.dylib")
+    set(sqlite_shared_abi_library "libsqlite3.0.dylib")
+    list(APPEND sqlite_shared_link_flags
+      -dynamiclib
+      "-Wl,-install_name,@rpath/${sqlite_shared_abi_library}"
+      -Wl,-compatibility_version,0.0.0
+      -Wl,-current_version,${CPKT_SQLITE_VERSION})
+  else()
+    message(FATAL_ERROR "SQLite has no shared-library recipe for ${CMAKE_SYSTEM_NAME}")
+  endif()
+  set(sqlite_shared_install_commands
+    COMMAND ${CMAKE_COMMAND} -E copy "${build_dir}/${sqlite_shared_real_library}"
+      "${install_dir}/lib/${sqlite_shared_real_library}")
+  if(NOT sqlite_shared_real_library STREQUAL sqlite_shared_abi_library)
+    list(APPEND sqlite_shared_install_commands
+      COMMAND ${CMAKE_COMMAND} -E create_symlink "${sqlite_shared_real_library}"
+        "${install_dir}/lib/${sqlite_shared_abi_library}")
+  endif()
+  list(APPEND sqlite_shared_install_commands
+    COMMAND ${CMAKE_COMMAND} -E create_symlink "${sqlite_shared_abi_library}"
+      "${shared_library}")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    # The official amalgamation is the supported no-generator build input, but
+    # it deliberately omits the public session and RTree extension headers.
+    # Fetch the canonical source tree solely for those installed headers.
+    cpkt_cached_external_project_add(${headers_project_name}
+      URL "https://www.sqlite.org/2026/sqlite-src-3530400.zip"
+      URL_HASH "SHA256=d18fa15aec74d8c17e1463f861095adc01b5ad190256acb4f91d22f0368d232b"
+      DOWNLOAD_NAME "sqlite-src-3530400.zip"
+      PREFIX "${prefix_dir}/headers"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${headers_source_dir}"
+      BINARY_DIR "${prefix_dir}/headers-build"
+      STAMP_DIR "${prefix_dir}/headers-stamp"
+      TMP_DIR "${prefix_dir}/headers-tmp"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E true
+      BUILD_COMMAND ${CMAKE_COMMAND} -E true
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E true
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip"
+      URL_HASH "SHA256=1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d"
+      DOWNLOAD_NAME "sqlite-amalgamation-3530400.zip"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      DEPENDS ${headers_project_name}
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E true
+      BUILD_COMMAND ${CMAKE_COMMAND} -E make_directory "${build_dir}"
+        COMMAND ${CMAKE_C_COMPILER}
+          ${sqlite_cflags}
+          ${sqlite_compile_definitions}
+          ${sqlite_thread_flags}
+          -fPIC
+          -c "${source_amalgamation}"
+          -o "${build_dir}/sqlite3.o"
+        COMMAND ${CMAKE_AR} rcs "${build_dir}/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${build_dir}/sqlite3.o"
+        COMMAND ${CMAKE_RANLIB} "${build_dir}/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        COMMAND ${CMAKE_C_COMPILER}
+          ${sqlite_link_flags}
+          ${sqlite_shared_link_flags}
+          ${sqlite_thread_flags}
+          -o "${build_dir}/${sqlite_shared_real_library}"
+          "${build_dir}/sqlite3.o"
+          -lm
+          ${sqlite_dl_link_flags}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${install_dir}/include" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy "${source_header}" "${install_dir}/include/sqlite3.h"
+        COMMAND ${CMAKE_COMMAND} -E copy
+          "${headers_source_dir}/ext/session/sqlite3session.h"
+          "${install_dir}/include/sqlite3session.h"
+        COMMAND ${CMAKE_COMMAND} -E copy
+          "${headers_source_dir}/ext/rtree/sqlite3rtree.h"
+          "${install_dir}/include/sqlite3rtree.h"
+        COMMAND ${CMAKE_COMMAND} -E copy
+          "${headers_source_dir}/ext/fts5/fts5.h"
+          "${install_dir}/include/fts5.h"
+        COMMAND ${CMAKE_COMMAND} -E copy "${build_dir}/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${static_library}"
+        ${sqlite_shared_install_commands}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${static_library}" "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::sqlite_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::sqlite_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "m;${CMAKE_DL_LIBS};Threads::Threads")
+  add_library(cpkt::sqlite_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::sqlite_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "m;${CMAKE_DL_LIBS};Threads::Threads")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::sqlite_static ${project_name})
+    add_dependencies(cpkt::sqlite_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${static_library}" "SQLite static library")
+    cpkt_require_dependency_file("${shared_library}" "SQLite shared library")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3.h" "SQLite header")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3session.h" "SQLite session header")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3rtree.h" "SQLite RTree header")
+    cpkt_require_dependency_file("${install_dir}/include/fts5.h" "SQLite FTS5 header")
+  endif()
+  set(CPKT_SQLITE_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
 function(cpkt_add_cmocka)
@@ -2732,6 +2953,7 @@ function(cpkt_configure_dependencies)
   cpkt_add_cyrus_sasl()
   cpkt_add_openldap()
   cpkt_add_postgresql()
+  cpkt_add_sqlite()
 
   if(CPKT_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     cpkt_add_cmocka()
