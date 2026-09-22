@@ -1,6 +1,7 @@
 #include <cpkt/openssl.h>
 
 #include <limits.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -14,6 +15,16 @@ typedef char cpkt_openssl_public_u64_is_eight_bytes[
     sizeof(cpkt_openssl_u64) == 8 ? 1 : -1];
 typedef char cpkt_openssl_public_i64_is_eight_bytes[
     sizeof(cpkt_openssl_i64) == 8 ? 1 : -1];
+
+struct cpkt_openssl_param_i64 {
+  OSSL_PARAM native;
+  int64_t value;
+};
+
+struct cpkt_openssl_param_u64 {
+  OSSL_PARAM native;
+  uint64_t value;
+};
 
 static uint64_t cpkt_openssl_native_u64(cpkt_openssl_u64 value) {
   uint64_t native;
@@ -525,4 +536,150 @@ int cpkt_openssl_OSSL_HPKE_CTX_get_seq(
 int cpkt_openssl_OSSL_HPKE_CTX_set_seq(
     OSSL_HPKE_CTX *context, cpkt_openssl_u64 sequence) {
   return OSSL_HPKE_CTX_set_seq(context, cpkt_openssl_native_u64(sequence));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_BLD_push_int64. */
+int cpkt_openssl_OSSL_PARAM_BLD_push_int64(
+    OSSL_PARAM_BLD *builder, const char *key, cpkt_openssl_i64 value) {
+  return OSSL_PARAM_BLD_push_int64(
+      builder, key, cpkt_openssl_native_i64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_BLD_push_uint64. */
+int cpkt_openssl_OSSL_PARAM_BLD_push_uint64(
+    OSSL_PARAM_BLD *builder, const char *key, cpkt_openssl_u64 value) {
+  return OSSL_PARAM_BLD_push_uint64(
+      builder, key, cpkt_openssl_native_u64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_construct_int64. */
+int cpkt_openssl_OSSL_PARAM_construct_int64(
+    cpkt_openssl_param_i64 **parameter_out, const char *key,
+    cpkt_openssl_i64 value) {
+  cpkt_openssl_param_i64 *parameter;
+
+  if (parameter_out == NULL) {
+    return 0;
+  }
+  *parameter_out = NULL;
+  parameter = (cpkt_openssl_param_i64 *) malloc(sizeof(*parameter));
+  if (parameter == NULL) {
+    return 0;
+  }
+  parameter->value = cpkt_openssl_native_i64(value);
+  parameter->native = OSSL_PARAM_construct_int64(key, &parameter->value);
+  *parameter_out = parameter;
+  return 1;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_construct_uint64. */
+int cpkt_openssl_OSSL_PARAM_construct_uint64(
+    cpkt_openssl_param_u64 **parameter_out, const char *key,
+    cpkt_openssl_u64 value) {
+  cpkt_openssl_param_u64 *parameter;
+
+  if (parameter_out == NULL) {
+    return 0;
+  }
+  *parameter_out = NULL;
+  parameter = (cpkt_openssl_param_u64 *) malloc(sizeof(*parameter));
+  if (parameter == NULL) {
+    return 0;
+  }
+  parameter->value = cpkt_openssl_native_u64(value);
+  parameter->native = OSSL_PARAM_construct_uint64(key, &parameter->value);
+  *parameter_out = parameter;
+  return 1;
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_i64_native. */
+OSSL_PARAM *cpkt_openssl_param_i64_native(cpkt_openssl_param_i64 *parameter) {
+  return parameter == NULL ? NULL : &parameter->native;
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_i64_value. */
+cpkt_openssl_i64 cpkt_openssl_param_i64_value(
+    const cpkt_openssl_param_i64 *parameter) {
+  return parameter == NULL ? cpkt_openssl_i64_make(0UL, 0UL) :
+         cpkt_openssl_public_i64(parameter->value);
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_i64_set_value. */
+void cpkt_openssl_param_i64_set_value(
+    cpkt_openssl_param_i64 *parameter, cpkt_openssl_i64 value) {
+  if (parameter != NULL) {
+    parameter->value = cpkt_openssl_native_i64(value);
+  }
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_i64_free. */
+void cpkt_openssl_param_i64_free(cpkt_openssl_param_i64 *parameter) {
+  free(parameter);
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_u64_native. */
+OSSL_PARAM *cpkt_openssl_param_u64_native(cpkt_openssl_param_u64 *parameter) {
+  return parameter == NULL ? NULL : &parameter->native;
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_u64_value. */
+cpkt_openssl_u64 cpkt_openssl_param_u64_value(
+    const cpkt_openssl_param_u64 *parameter) {
+  return parameter == NULL ? cpkt_openssl_u64_make(0UL, 0UL) :
+         cpkt_openssl_public_u64(parameter->value);
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_u64_set_value. */
+void cpkt_openssl_param_u64_set_value(
+    cpkt_openssl_param_u64 *parameter, cpkt_openssl_u64 value) {
+  if (parameter != NULL) {
+    parameter->value = cpkt_openssl_native_u64(value);
+  }
+}
+
+/** Implements the documented public C89 facade operation cpkt_openssl_param_u64_free. */
+void cpkt_openssl_param_u64_free(cpkt_openssl_param_u64 *parameter) {
+  free(parameter);
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_get_int64. */
+int cpkt_openssl_OSSL_PARAM_get_int64(
+    const OSSL_PARAM *parameter, cpkt_openssl_i64 *value_out) {
+  int64_t native_value;
+  int result;
+
+  native_value = 0;
+  result = OSSL_PARAM_get_int64(
+      parameter, value_out == NULL ? NULL : &native_value);
+  if (result != 0 && value_out != NULL) {
+    *value_out = cpkt_openssl_public_i64(native_value);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_get_uint64. */
+int cpkt_openssl_OSSL_PARAM_get_uint64(
+    const OSSL_PARAM *parameter, cpkt_openssl_u64 *value_out) {
+  uint64_t native_value;
+  int result;
+
+  native_value = 0;
+  result = OSSL_PARAM_get_uint64(
+      parameter, value_out == NULL ? NULL : &native_value);
+  if (result != 0 && value_out != NULL) {
+    *value_out = cpkt_openssl_public_u64(native_value);
+  }
+  return result;
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_set_int64. */
+int cpkt_openssl_OSSL_PARAM_set_int64(
+    OSSL_PARAM *parameter, cpkt_openssl_i64 value) {
+  return OSSL_PARAM_set_int64(parameter, cpkt_openssl_native_i64(value));
+}
+
+/** Implements the documented public C89 adapter cpkt_openssl_OSSL_PARAM_set_uint64. */
+int cpkt_openssl_OSSL_PARAM_set_uint64(
+    OSSL_PARAM *parameter, cpkt_openssl_u64 value) {
+  return OSSL_PARAM_set_uint64(parameter, cpkt_openssl_native_u64(value));
 }

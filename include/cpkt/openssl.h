@@ -184,6 +184,11 @@ typedef struct cpkt_openssl_i64 {
   unsigned char bytes[8];
 } cpkt_openssl_i64;
 
+/** Owned, aligned native storage for one signed OpenSSL parameter. */
+typedef struct cpkt_openssl_param_i64 cpkt_openssl_param_i64;
+/** Owned, aligned native storage for one unsigned OpenSSL parameter. */
+typedef struct cpkt_openssl_param_u64 cpkt_openssl_param_u64;
+
 /** C89 OpenSSL facade declaration. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(
     unsigned long high, unsigned long low);
@@ -372,5 +377,55 @@ CPKT_OPENSSL_API int cpkt_openssl_OSSL_HPKE_CTX_get_seq(
 /** C89 adapter for OSSL_HPKE_CTX_set_seq. */
 CPKT_OPENSSL_API int cpkt_openssl_OSSL_HPKE_CTX_set_seq(
     OSSL_HPKE_CTX *context, cpkt_openssl_u64 sequence);
+/** C89 adapter for OSSL_PARAM_BLD_push_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_BLD_push_int64(
+    OSSL_PARAM_BLD *builder, const char *key, cpkt_openssl_i64 value);
+/** C89 adapter for OSSL_PARAM_BLD_push_uint64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_BLD_push_uint64(
+    OSSL_PARAM_BLD *builder, const char *key, cpkt_openssl_u64 value);
+/** Creates aligned storage for the C89 form of OSSL_PARAM_construct_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_construct_int64(
+    cpkt_openssl_param_i64 **parameter_out, const char *key,
+    cpkt_openssl_i64 value);
+/** Creates aligned storage for the C89 form of OSSL_PARAM_construct_uint64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_construct_uint64(
+    cpkt_openssl_param_u64 **parameter_out, const char *key,
+    cpkt_openssl_u64 value);
+/** Returns the native parameter view valid until its shell is freed. */
+CPKT_OPENSSL_API OSSL_PARAM *cpkt_openssl_param_i64_native(
+    cpkt_openssl_param_i64 *parameter);
+/** Returns the current signed value held by an aligned parameter shell. */
+CPKT_OPENSSL_API cpkt_openssl_i64 cpkt_openssl_param_i64_value(
+    const cpkt_openssl_param_i64 *parameter);
+/** Replaces the current signed value held by an aligned parameter shell. */
+CPKT_OPENSSL_API void cpkt_openssl_param_i64_set_value(
+    cpkt_openssl_param_i64 *parameter, cpkt_openssl_i64 value);
+/** Releases an aligned signed parameter shell. */
+CPKT_OPENSSL_API void cpkt_openssl_param_i64_free(
+    cpkt_openssl_param_i64 *parameter);
+/** Returns the native parameter view valid until its shell is freed. */
+CPKT_OPENSSL_API OSSL_PARAM *cpkt_openssl_param_u64_native(
+    cpkt_openssl_param_u64 *parameter);
+/** Returns the current unsigned value held by an aligned parameter shell. */
+CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_param_u64_value(
+    const cpkt_openssl_param_u64 *parameter);
+/** Replaces the current unsigned value held by an aligned parameter shell. */
+CPKT_OPENSSL_API void cpkt_openssl_param_u64_set_value(
+    cpkt_openssl_param_u64 *parameter, cpkt_openssl_u64 value);
+/** Releases an aligned unsigned parameter shell. */
+CPKT_OPENSSL_API void cpkt_openssl_param_u64_free(
+    cpkt_openssl_param_u64 *parameter);
+/** C89 adapter for OSSL_PARAM_get_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_get_int64(
+    const OSSL_PARAM *parameter, cpkt_openssl_i64 *value_out);
+/** C89 adapter for OSSL_PARAM_get_uint64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_get_uint64(
+    const OSSL_PARAM *parameter, cpkt_openssl_u64 *value_out);
+/** C89 adapter for OSSL_PARAM_set_int64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_set_int64(
+    OSSL_PARAM *parameter, cpkt_openssl_i64 value);
+/** C89 adapter for OSSL_PARAM_set_uint64. */
+CPKT_OPENSSL_API int cpkt_openssl_OSSL_PARAM_set_uint64(
+    OSSL_PARAM *parameter, cpkt_openssl_u64 value);
 
 #endif
