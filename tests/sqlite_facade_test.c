@@ -698,7 +698,8 @@ static void bound_argument(cpkt_sqlite_context *context, int argument_count,
                            void *user_data) {
   int *was_bound;
   if (context == 0 || argument_count != 1 || arguments == 0 ||
-      arguments[0] == 0 || user_data == 0) {
+      arguments[0] == 0 || user_data == 0 ||
+      cpkt_sqlite_context_user_data(context) != user_data) {
     cpkt_sqlite_context_result_error_code(context, CPKT_SQLITE_MISUSE);
     return;
   }
@@ -914,6 +915,7 @@ static void fts5_auxiliary(cpkt_sqlite_fts5_context *fts_context,
   if (state == 0 || fts_context == 0 || sql_context == 0 ||
       argument_count != 0 || arguments != 0 ||
       fts_context->user_data(fts_context) != state ||
+      cpkt_sqlite_context_user_data(sql_context) != state ||
       fts_context->row_count(fts_context, &row_count) != CPKT_SQLITE_OK ||
       row_count.high != 0 || row_count.low != 1 ||
       fts_context->phrase_count(fts_context) != 1 ||

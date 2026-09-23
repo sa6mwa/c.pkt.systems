@@ -221,6 +221,16 @@ typedef struct cpkt_sqlite_fts5_auxiliary_binding {
   cpkt_sqlite_destroy_callback destroy;
 } cpkt_sqlite_fts5_auxiliary_binding;
 
+/* FTS5 owns sqlite3_user_data() for its SQL context. Keep callback-local
+ * facade data separately without changing the public context layout. */
+typedef struct cpkt_sqlite_fts5_sql_context_scope {
+  cpkt_sqlite_context *context;
+  void *user_data;
+  struct cpkt_sqlite_fts5_sql_context_scope *next;
+} cpkt_sqlite_fts5_sql_context_scope;
+
+static cpkt_sqlite_fts5_sql_context_scope *cpkt_sqlite_fts5_sql_context_head;
+
 typedef struct cpkt_sqlite_fts5_public_token_context {
   void *user_context;
   cpkt_sqlite_fts5_token_callback callback;
@@ -4742,10 +4752,13 @@ static void cpkt_sqlite_fts5_auxiliary_trampoline(const Fts5ExtensionApi *api,
                                                   int argument_count,
                                                   sqlite3_value **arguments) {
   cpkt_sqlite_fts5_auxiliary_binding *binding;
+  cpkt_sqlite_fts5_sql_context_scope scope;
+  cpkt_sqlite_fts5_sql_context_scope **link;
   cpkt_sqlite_fts5_context public_fts_context;
   cpkt_sqlite_context public_sql_context;
   cpkt_sqlite_value *public_values;
   cpkt_sqlite_value **public_value_pointers;
+  sqlite3_mutex *mutex;
   int index;
   binding =
       api == NULL || api->xUserData == NULL
@@ -4779,8 +4792,22 @@ static void cpkt_sqlite_fts5_auxiliary_trampoline(const Fts5ExtensionApi *api,
                                       binding->database);
   public_sql_context.context = sql_context;
   public_sql_context.database = binding->database;
+  scope.context = &public_sql_context;
+  scope.user_data = binding->user_data;
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
+  scope.next = cpkt_sqlite_fts5_sql_context_head;
+  cpkt_sqlite_fts5_sql_context_head = &scope;
+  cpkt_sqlite_global_unlock(mutex);
   binding->callback(&public_fts_context, &public_sql_context, argument_count,
                     public_value_pointers, binding->user_data);
+  cpkt_sqlite_global_lock(mutex);
+  link = &cpkt_sqlite_fts5_sql_context_head;
+  while (*link != NULL && *link != &scope)
+    link = &(*link)->next;
+  if (*link == &scope)
+    *link = scope.next;
+  cpkt_sqlite_global_unlock(mutex);
   free(public_value_pointers);
   free(public_values);
 }
@@ -5911,8 +5938,23 @@ int cpkt_sqlite_create_collation16(cpkt_sqlite *self, const void *name,
 
 void *cpkt_sqlite_context_user_data(cpkt_sqlite_context *context) {
   cpkt_sqlite_function_binding *binding;
+  cpkt_sqlite_fts5_sql_context_scope *scope;
+  sqlite3_mutex *mutex;
+  void *user_data;
   if (cpkt_sqlite_native_context(context) == NULL)
     return NULL;
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
+  scope = cpkt_sqlite_fts5_sql_context_head;
+  while (scope != NULL) {
+    if (scope->context == context) {
+      user_data = scope->user_data;
+      cpkt_sqlite_global_unlock(mutex);
+      return user_data;
+    }
+    scope = scope->next;
+  }
+  cpkt_sqlite_global_unlock(mutex);
   binding = (cpkt_sqlite_function_binding *)sqlite3_user_data(
       cpkt_sqlite_native_context(context));
   return binding == NULL ? NULL : binding->user_data;
