@@ -519,12 +519,30 @@ static int cpkt_sqlite_vfs_open_native(sqlite3_vfs *vfs, sqlite3_filename name,
   native_file->native_methods.xSectorSize = cpkt_sqlite_vfs_file_sector_size;
   native_file->native_methods.xDeviceCharacteristics =
       cpkt_sqlite_vfs_file_characteristics;
-  native_file->native_methods.xShmMap = cpkt_sqlite_vfs_file_shm_map;
-  native_file->native_methods.xShmLock = cpkt_sqlite_vfs_file_shm_lock;
-  native_file->native_methods.xShmBarrier = cpkt_sqlite_vfs_file_shm_barrier;
-  native_file->native_methods.xShmUnmap = cpkt_sqlite_vfs_file_shm_unmap;
-  native_file->native_methods.xFetch = cpkt_sqlite_vfs_file_fetch;
-  native_file->native_methods.xUnfetch = cpkt_sqlite_vfs_file_unfetch;
+  native_file->native_methods.xShmMap =
+      native_file->public_file.methods->shm_map == NULL
+          ? NULL
+          : cpkt_sqlite_vfs_file_shm_map;
+  native_file->native_methods.xShmLock =
+      native_file->public_file.methods->shm_lock == NULL
+          ? NULL
+          : cpkt_sqlite_vfs_file_shm_lock;
+  native_file->native_methods.xShmBarrier =
+      native_file->public_file.methods->shm_barrier == NULL
+          ? NULL
+          : cpkt_sqlite_vfs_file_shm_barrier;
+  native_file->native_methods.xShmUnmap =
+      native_file->public_file.methods->shm_unmap == NULL
+          ? NULL
+          : cpkt_sqlite_vfs_file_shm_unmap;
+  native_file->native_methods.xFetch =
+      native_file->public_file.methods->fetch == NULL
+          ? NULL
+          : cpkt_sqlite_vfs_file_fetch;
+  native_file->native_methods.xUnfetch =
+      native_file->public_file.methods->unfetch == NULL
+          ? NULL
+          : cpkt_sqlite_vfs_file_unfetch;
   native_file->native.pMethods = &native_file->native_methods;
   return status;
 }

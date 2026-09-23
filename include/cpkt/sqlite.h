@@ -954,6 +954,7 @@ struct cpkt_sqlite_io_methods {
   cpkt_sqlite_file_control_callback control;
   cpkt_sqlite_file_sector_size_callback sector_size;
   cpkt_sqlite_file_characteristics_callback characteristics;
+  /* Leave shared-memory callbacks NULL when the VFS does not support WAL. */
   cpkt_sqlite_file_shm_map_callback shm_map;
   cpkt_sqlite_file_shm_lock_callback shm_lock;
   cpkt_sqlite_file_shm_barrier_callback shm_barrier;

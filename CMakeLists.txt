@@ -1654,6 +1654,13 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
     target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_vfs_wal_capability_test
+      tests/sqlite_vfs_wal_capability_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_vfs_wal_capability_test)
+    target_compile_options(cpkt_sqlite_vfs_wal_capability_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_vfs_wal_capability_test)
+    target_link_libraries(cpkt_sqlite_vfs_wal_capability_test PRIVATE
+      cpkt_sqlite_static cpkt::sqlite_static)
     add_executable(cpkt_sqlite_child_lifetime_concurrency_test
       tests/sqlite_child_lifetime_concurrency_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_child_lifetime_concurrency_test)
@@ -1886,6 +1893,9 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
+      add_test(NAME sqlite_vfs_wal_capability
+        COMMAND cpkt_sqlite_vfs_wal_capability_test
+          "${CMAKE_CURRENT_BINARY_DIR}/sqlite-vfs-no-shm.db")
       add_test(NAME pdf_facade_static COMMAND cpkt_pdf_facade_static_test)
       add_test(NAME pdf_facade_shared COMMAND cpkt_pdf_facade_shared_test)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -2037,6 +2047,15 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}"
           "${CMAKE_SOURCE_DIR}/build/dependency-cache-disabled-external"
           "${CMAKE_SOURCE_DIR}/build/dependency-cache-disabled-build")
+      add_test(
+        NAME darwin_install_name_normalization
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/darwin_install_name_normalization_test.sh"
+          "${CMAKE_SOURCE_DIR}"
+          "${CMAKE_COMMAND}")
+      set_tests_properties(darwin_install_name_normalization PROPERTIES
+        LABELS "packaging;smoke"
+        TIMEOUT 30)
       if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu" AND CPKT_BUILD_DEPENDENCIES)
         add_test(
           NAME dependency_reuse_configure

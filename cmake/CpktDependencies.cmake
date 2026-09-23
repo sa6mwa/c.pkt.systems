@@ -2246,6 +2246,7 @@ function(cpkt_add_krb5)
     set(krb5_darwin_install_name_normalize_command
       ${CMAKE_COMMAND}
         -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
         -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
@@ -2492,6 +2493,7 @@ function(cpkt_add_cyrus_sasl)
     set(cyrus_sasl_darwin_install_name_normalize_command
       ${CMAKE_COMMAND}
         -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
         -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
@@ -2664,6 +2666,7 @@ function(cpkt_add_openldap)
     set(openldap_darwin_install_name_normalize_command
       ${CMAKE_COMMAND}
         -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
         -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
@@ -2814,6 +2817,7 @@ function(cpkt_add_postgresql)
     set(postgresql_darwin_install_name_normalize_command
       ${CMAKE_COMMAND}
         -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
         -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
         -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)

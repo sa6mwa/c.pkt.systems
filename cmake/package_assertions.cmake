@@ -1551,6 +1551,18 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.1.1.2.dylib"
     "@rpath/libmqttc.1.dylib"
     "libmqttc Darwin install name")
+  set(_krb5_real "${_assert_extract_root}/${_archive_stem}/lib/libkrb5.3.3.dylib")
+  set(_krb5_alias "${_assert_extract_root}/${_archive_stem}/lib/libkrb5.dylib")
+  if(NOT IS_SYMLINK "${_krb5_alias}")
+    message(FATAL_ERROR "Darwin libkrb5 alias must be a symlink to its canonical library")
+  endif()
+  file(READ_SYMLINK "${_krb5_alias}" _krb5_alias_target)
+  if(NOT _krb5_alias_target STREQUAL "libkrb5.3.3.dylib")
+    message(FATAL_ERROR "Darwin libkrb5 alias must point to libkrb5.3.3.dylib")
+  endif()
+  cpkt_assert_darwin_install_name(
+    "${_krb5_real}" "@rpath/libkrb5.3.3.dylib"
+    "canonical libkrb5 Darwin install name")
   file(STRINGS
     "${_assert_extract_root}/${_archive_stem}/lib/libpq.5.dylib"
     _postgresql_oauth_loader_strings
