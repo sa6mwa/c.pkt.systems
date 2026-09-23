@@ -183,6 +183,17 @@ include/
 lib/
 lib/cmake/OpenSSL/OpenSSLConfig.cmake
 lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake
+lib/cmake/CpktOpenSSL/CpktOpenSSLConfig.cmake
+lib/cmake/CpktPng/CpktPngConfig.cmake
+lib/cmake/CpktHaru/CpktHaruConfig.cmake
+lib/cmake/CpktPdf/CpktPdfConfig.cmake
+lib/cmake/CpktNghttp2/CpktNghttp2Config.cmake
+lib/cmake/CpktLibssh2/CpktLibssh2Config.cmake
+lib/cmake/CpktMqttc/CpktMqttcConfig.cmake
+lib/cmake/CpktSqlite/CpktSqliteConfig.cmake
+lib/cmake/CpktSasl/CpktSaslConfig.cmake
+lib/cmake/CpktGssapi/CpktGssapiConfig.cmake
+lib/cmake/CpktPostgres/CpktPostgresConfig.cmake
 lib/cmake/zlib/ZLIBConfig.cmake
 lib/cmake/zlib/ZLIBConfigVersion.cmake
 lib/cmake/nghttp2/nghttp2Config.cmake
@@ -212,6 +223,18 @@ lib/cmake/open62541/open62541ConfigVersion.cmake
 lib/pkgconfig/libcrypto.pc
 lib/pkgconfig/libssl.pc
 lib/pkgconfig/openssl.pc
+lib/pkgconfig/cpkt-openssl.pc
+lib/pkgconfig/cpkt-png.pc
+lib/pkgconfig/cpkt-haru.pc
+lib/pkgconfig/cpkt-pdf.pc
+lib/pkgconfig/cpkt-nghttp2.pc
+lib/pkgconfig/cpkt-libssh2.pc
+lib/pkgconfig/cpkt-mqttc.pc
+lib/pkgconfig/cpkt-lua.pc
+lib/pkgconfig/cpkt-sqlite.pc
+lib/pkgconfig/cpkt-sasl.pc
+lib/pkgconfig/cpkt-gssapi.pc
+lib/pkgconfig/cpkt-postgres.pc
 lib/pkgconfig/zlib.pc
 lib/pkgconfig/libnghttp2.pc
 lib/pkgconfig/libssh2.pc
@@ -257,6 +280,11 @@ LibXml2::LibXml2
 cpkt::png
 cpkt::haru
 cpkt::pdf
+cpkt::openssl
+cpkt::sqlite
+cpkt::sasl
+cpkt::gssapi
+cpkt::postgres
 Lua::Lua
 cpkt::lua
 cpkt::lua_runtime
@@ -275,6 +303,13 @@ For PDF generation, use `find_package(CpktPdf CONFIG REQUIRED)` and link
 available through `find_package(CpktPng CONFIG REQUIRED)` and `cpkt::png`.
 The C89 facade API and its transitive dependencies are described in
 [`docs/pdf-c89-facade.md`](docs/pdf-c89-facade.md).
+The other facade contracts are documented in the matching files under `docs/`:
+[`PostgreSQL`](docs/postgres-c89-facade-spec.md),
+[`SQLite`](docs/sqlite-c89-facade-spec.md),
+[`SASL`](docs/sasl-c89-facade-spec.md),
+[`GSSAPI`](docs/gssapi-c89-facade-spec.md),
+[`OpenSSL`](docs/openssl-c89-facade-surface.md), and
+[`OPC UA`](docs/opcua-c89-facade-spec.md).
 
 The bundled `open62541::open62541` target is built with OpenSSL-backed
 security policy support, the upstream default reduced namespace zero, and static
@@ -369,6 +404,8 @@ convenience macros. Its header never includes upstream Lua headers or exposes
 `long long`; its two-word C89 integer value preserves the configured 64-bit
 Lua integer ABI. Link it with `find_package(CpktLua CONFIG REQUIRED)` and
 `cpkt::lua`, or `pkg-config --static --libs cpkt-lua`.
+The generated API's naming, integer representation, callback lifetimes, and
+stack behavior are described in [`docs/lua-c89-facade.md`](docs/lua-c89-facade.md).
 
 `cpkt_lua_runtime` is intentionally a narrower embedding/runtime API, not a
 replacement for the full `cpkt_lua` C API. Consumers of the runtime facade can:

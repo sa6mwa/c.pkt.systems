@@ -234,23 +234,33 @@ def convenience_header() -> str:
 #define CPKT_LUA_MIN_INTEGER cpkt_lua_integer_make(0x80000000U, 0U)
 #define CPKT_LUA_MAX_UNSIGNED cpkt_lua_unsigned_make(0xffffffffU, 0xffffffffU)
 
+/** Raises a Lua error if the loaded Lua ABI does not match this facade. */
 CPKT_LUA_API void cpkt_lua_l_checkversion(cpkt_lua_state *state);
+/** Appends one character to an auxiliary string buffer. */
 CPKT_LUA_API void cpkt_lua_l_addchar(cpkt_lua_buffer *buffer_ptr,
                                      char character);
+/** Adds two exact two-word Lua integers. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_add(cpkt_lua_integer left,
                                                        cpkt_lua_integer right);
+/** Subtracts two exact two-word Lua integers. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_subtract(cpkt_lua_integer left,
                                                             cpkt_lua_integer right);
+/** Multiplies two exact two-word Lua integers. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_multiply(cpkt_lua_integer left,
                                                             cpkt_lua_integer right);
+/** Computes bitwise AND of two Lua integers. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_bit_and(cpkt_lua_integer left,
                                                            cpkt_lua_integer right);
+/** Computes bitwise OR of two Lua integers. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_bit_or(cpkt_lua_integer left,
                                                           cpkt_lua_integer right);
+/** Computes bitwise XOR of two Lua integers. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_bit_xor(cpkt_lua_integer left,
                                                            cpkt_lua_integer right);
+/** Shifts a Lua integer left by count bits. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_shift_left(cpkt_lua_integer value,
                                                               unsigned int count);
+/** Shifts a Lua integer right by count bits. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_shift_right(cpkt_lua_integer value,
                                                                unsigned int count);
 
@@ -344,9 +354,42 @@ CPKT_LUA_API cpkt_lua_integer cpkt_lua_l_integer_shift_right(cpkt_lua_integer va
 
 def header(items: Sequence[Tuple[str, str, str]]) -> str:
     prototypes: List[str] = []
+    contracts = {
+        "lua_newstate": "Creates an owned Lua state with the supplied allocator; close it with cpkt_lua_close().",
+        "lua_close": "Closes a Lua state and releases its Lua-owned objects; the pointer becomes invalid.",
+        "lua_newthread": "Pushes a new coroutine on the parent stack; it shares the parent's global state.",
+        "lua_gettop": "Returns the number of values on the Lua stack.",
+        "lua_settop": "Sets stack height; a negative index is relative to the stack top.",
+        "lua_tointegerx": "Converts a stack value to an exact two-word integer; isnum reports conversion success.",
+        "lua_tolstring": "Returns a Lua-owned string view and optionally its byte length; stack changes can invalidate it.",
+        "lua_pushlstring": "Copies len bytes onto the Lua stack as a string; the returned view is Lua-owned.",
+        "lua_pushexternalstring": "Pushes an external string; keep its NUL-terminated buffer unchanged while Lua uses it. Lua calls a supplied finalizer after use.",
+        "lua_callk": "Calls a Lua function on the stack; errors may long-jump through the caller.",
+        "lua_pcallk": "Calls a Lua function with protected error handling and a status result.",
+        "lua_load": "Loads a chunk from a reader callback and leaves the compiled function or error on the stack.",
+        "lua_dump": "Writes a compiled function through the writer callback; it does not pop the function.",
+        "lua_gc": "Controls Lua garbage collection; option-specific arguments follow the Lua 5.5 API.",
+        "luaL_newstate": "Creates an owned Lua state with the standard allocator; close it with cpkt_lua_close().",
+        "luaL_loadfilex": "Loads a file as a chunk without running it; returns a Lua status code.",
+        "luaL_loadbufferx": "Loads a byte buffer as a chunk without running it; returns a Lua status code.",
+        "luaL_ref": "Stores the stack-top value in a table and returns a registry reference.",
+        "luaL_unref": "Releases a registry reference in the given table.",
+        "luaL_openselectedlibs": "Loads or preloads the selected standard libraries according to the bitmasks.",
+    }
     for result, name, parameters in items:
         public_result = transform(result).strip()
         public_parameters = transform(parameters).strip()
+        description = contracts.get(name, "Uses the Lua 5.5 C API contract for {}.".format(name))
+        anchor = name
+        if name.startswith("luaopen_"):
+            description = "Opens the {} standard library in the given state.".format(
+                name[len("luaopen_"):])
+            anchor = "6.1"
+        elif name == "luaL_checkversion_":
+            description = "Checks the Lua ABI version and numeric type sizes; raises a Lua error on mismatch."
+            anchor = "luaL_checkversion"
+        prototypes.append("/** {}\n * @see https://www.lua.org/manual/5.5/manual.html#{}\n */".format(
+            description, anchor))
         prototypes.append("CPKT_LUA_API {} {}({});".format(
             public_result, public_name(name), public_parameters))
     return """/* Generated by tools/generate_lua_c89_facade.py; do not edit. */
@@ -415,26 +458,41 @@ extern "C" {
 #define CPKT_LUA_IDSIZE 60
 #define CPKT_LUA_BUFFER_SIZE (16 * sizeof(void *) * sizeof(double))
 
+/** Opaque Lua VM state; close the owner with cpkt_lua_close(). */
 typedef struct cpkt_lua_state cpkt_lua_state;
+/** Lua numeric value; this bundle configures it as double. */
 typedef double cpkt_lua_number;
+/** Opaque C continuation context passed unchanged to its callback. */
 typedef ptrdiff_t cpkt_lua_kcontext;
+/** Exact 64-bit Lua integer bits as high and low 32-bit words. */
 typedef struct cpkt_lua_integer {
+  /** Most significant 32 bits, including the signed value's sign bit. */
   unsigned int high;
+  /** Least significant 32 bits. */
   unsigned int low;
 } cpkt_lua_integer;
+/** Unsigned 64-bit Lua integer bits in the same two-word layout. */
 typedef cpkt_lua_integer cpkt_lua_unsigned;
+/** Lua C function; return the number of results left on the stack. */
 typedef int (*cpkt_lua_c_function)(cpkt_lua_state *state);
+/** Continuation callback for a yielded protected call or call. */
 typedef int (*cpkt_lua_k_function)(cpkt_lua_state *state, int status,
                                    cpkt_lua_kcontext context);
+/** Return a borrowed chunk valid until the next reader call; NULL or zero
+ * size signals end of input. */
 typedef const char *(*cpkt_lua_reader)(cpkt_lua_state *state, void *user,
                                        size_t *size);
+/** Return zero on successful consumption of a chunk, nonzero on failure. */
 typedef int (*cpkt_lua_writer)(cpkt_lua_state *state, const void *data,
                                size_t size, void *user);
+/** Lua allocator: a zero new_size frees pointer; NULL signals failure. */
 typedef void *(*cpkt_lua_alloc)(void *user, void *pointer, size_t old_size,
                                 size_t new_size);
+/** Receives warning fragments; to_continue marks an unfinished message. */
 typedef void (*cpkt_lua_warn_function)(void *user, const char *message,
                                        int to_continue);
 
+/** Hook/debug record; string fields are Lua-owned views. */
 typedef struct cpkt_lua_debug {
   int event;
   const char *name;
@@ -455,12 +513,15 @@ typedef struct cpkt_lua_debug {
   char short_src[CPKT_LUA_IDSIZE];
   void *i_ci;
 } cpkt_lua_debug;
+/** Lua debug hook; record is borrowed for this callback invocation. */
 typedef void (*cpkt_lua_hook)(cpkt_lua_state *state, cpkt_lua_debug *record);
 
+/** Name/function record; registration arrays end with a NULL name. */
 typedef struct cpkt_lua_reg {
   const char *name;
   cpkt_lua_c_function func;
 } cpkt_lua_reg;
+/** Auxiliary string builder; finish with a cpkt_lua_l_pushresult* operation. */
 typedef struct cpkt_lua_buffer {
   char *b;
   size_t size;
@@ -472,21 +533,30 @@ typedef struct cpkt_lua_buffer {
     char bytes[CPKT_LUA_BUFFER_SIZE];
   } init;
 } cpkt_lua_buffer;
+/** File stream record used by Lua's standard I/O library. */
 typedef struct cpkt_lua_stream {
   FILE *f;
   cpkt_lua_c_function closef;
 } cpkt_lua_stream;
 
+/** Packs exact 64-bit two's-complement bits from high and low words. */
 CPKT_LUA_API cpkt_lua_integer cpkt_lua_integer_make(unsigned int high,
                                                      unsigned int low);
+/** Returns the high 32 bits of a Lua integer. */
 CPKT_LUA_API unsigned int cpkt_lua_integer_high(cpkt_lua_integer value);
+/** Returns the low 32 bits of a Lua integer. */
 CPKT_LUA_API unsigned int cpkt_lua_integer_low(cpkt_lua_integer value);
+/** Packs the high and low words of an unsigned Lua integer. */
 CPKT_LUA_API cpkt_lua_unsigned cpkt_lua_unsigned_make(unsigned int high,
                                                        unsigned int low);
+/** Returns a static build-identification string; do not free it. */
 CPKT_LUA_API const char *cpkt_lua_ident(void);
+/** Formats a string and pushes it on the Lua stack. */
 CPKT_LUA_API const char *cpkt_lua_pushfstring(cpkt_lua_state *state,
                                               const char *format, ...);
+/** Controls Lua garbage collection; option-specific arguments follow Lua 5.5. */
 CPKT_LUA_API int cpkt_lua_gc(cpkt_lua_state *state, int option, ...);
+/** Raises a formatted Lua error; does not return normally. */
 CPKT_LUA_API int cpkt_lua_l_error(cpkt_lua_state *state,
                                   const char *format, ...);
 

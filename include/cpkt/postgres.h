@@ -1,15 +1,22 @@
 #ifndef CPKT_POSTGRES_H
 #define CPKT_POSTGRES_H
 
-/*
- * C89 facade for PostgreSQL.  This header deliberately does not expose
- * native client headers, C99 integer typedefs, or provider-specific TLS/GSS
- * objects.
+/**
+ * @defgroup cpkt_postgres PostgreSQL C89 facade
+ *
+ * Receiver methods take the receiver as their first argument. Results are
+ * separately owned; release each with cpkt_postgres_result_free(), including
+ * results returned by tx() and receive(). Text returned by the provider remains
+ * borrowed from its connection or result unless a function says otherwise.
+ * Connection and callback lifetime rules are in
+ * docs/postgres-c89-facade-spec.md.
+ * @{
  */
 
 #include <stddef.h>
 #include <stdio.h>
 
+/** Opaque native connection; release with cpkt_postgres_connection_free(). */
 typedef struct cpkt_postgres_connection cpkt_postgres_connection;
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 typedef struct cpkt_postgres_result cpkt_postgres_result;
@@ -232,12 +239,14 @@ typedef struct cpkt_postgres_print_options {
   char **field_names;
 } cpkt_postgres_print_options;
 
-/*
- * C89 receiver shell over a PostgreSQL connection.  Every method receives its
- * receiver explicitly, making ownership and connection affinity visible at
- * every call site: pg->tx(pg, "select 1"), pg->close(pg).
+/**
+ * Receiver shell owning one PostgreSQL connection. Every method receives this
+ * receiver explicitly, for example pg->tx(pg, "select 1"). Close with
+ * pg->close(pg). Query results outlive the receiver until freed separately.
  */
 struct cpkt_postgres {
+  /** Runs a query and returns an owned result, or NULL if none can be produced.
+   */
   cpkt_postgres_result *(*tx)(cpkt_postgres *self, const char *query);
   cpkt_postgres_result *(*tx_params)(cpkt_postgres *self, const char *command,
                                      int parameter_count,
@@ -282,13 +291,15 @@ struct cpkt_postgres {
 #define CPKT_POSTGRES_TRACE_SUPPRESS_TIMESTAMPS 1
 #define CPKT_POSTGRES_TRACE_REGRESSION_MODE 2
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Opens a connection and returns an owned receiver; close with self->close().
+ */
 cpkt_postgres *cpkt_postgres_new(const char *connection_info);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Opens a connection from NULL-terminated keyword/value arrays. */
 cpkt_postgres *cpkt_postgres_new_params(const char *const *keywords,
                                         const char *const *values,
                                         int expand_database_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Closes and frees a receiver; does not free separately owned query results.
+ */
 void cpkt_postgres_close(cpkt_postgres *self);
 
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
@@ -888,4 +899,5 @@ const char *cpkt_postgres_encoding_name(int encoding);
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 int cpkt_postgres_server_encoding_is_valid(int encoding);
 
+/** @} */
 #endif

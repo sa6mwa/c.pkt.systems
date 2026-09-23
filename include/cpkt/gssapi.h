@@ -1,14 +1,19 @@
 #ifndef CPKT_GSSAPI_H
 #define CPKT_GSSAPI_H
 
-/*
- * C89 boundary for the bundled GSSAPI implementation.  All opaque handles
- * are owned by the provider and must be released with their matching facade
- * operation.  A buffer returned by this API is provider-owned until released.
+/**
+ * @defgroup cpkt_gssapi GSSAPI C89 facade
+ *
+ * Opaque names, credentials, contexts, OIDs, and OID sets returned as owned
+ * results use their matching release operation. Standard name-type OIDs and
+ * OID-set members are borrowed. Output buffers are provider-owned until
+ * cpkt_gss_release_buffer(). See docs/gssapi-c89-facade-spec.md.
+ * @{
  */
 
 #include <stddef.h>
 
+/** Opaque GSS name; release owned instances with cpkt_gss_release_name(). */
 typedef struct cpkt_gss_name cpkt_gss_name;
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 typedef struct cpkt_gss_credential cpkt_gss_credential;
@@ -30,7 +35,8 @@ typedef unsigned long cpkt_gss_lifetime;
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 typedef unsigned long cpkt_gss_flags;
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Provider-owned output byte buffer; release with cpkt_gss_release_buffer().
+ */
 typedef struct cpkt_gss_buffer {
   size_t length;
   void *value;
@@ -66,7 +72,7 @@ enum cpkt_gss_constants {
 
 #define CPKT_GSS_LIFETIME_INDEFINITE 4294967295UL
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Returns nonzero when the major status contains a GSSAPI error. */
 int cpkt_gss_status_is_error(cpkt_gss_status status);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 const cpkt_gss_oid *cpkt_gss_name_type_user(void);
@@ -81,7 +87,7 @@ const cpkt_gss_oid *cpkt_gss_name_type_anonymous(void);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
 const cpkt_gss_oid *cpkt_gss_name_type_exported_name(void);
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Releases provider-owned bytes and clears the buffer on success. */
 cpkt_gss_status cpkt_gss_release_buffer(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_buffer *buffer);
 /** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
@@ -230,4 +236,5 @@ cpkt_gss_status cpkt_gss_display_status(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_status *message_context_in_out,
                                         cpkt_gss_buffer *text_out);
 
+/** @} */
 #endif

@@ -301,7 +301,9 @@ cpkt_lua_runtime_set_global_number(cpkt_lua_runtime *runtime, const char *name,
                                    double value);
 
 /**
- * Sets a Lua global integer value.
+ * Sets a Lua global integer from a C89 long. The accepted range is the host
+ * long range; use cpkt_lua_pushinteger() in the full Lua facade for exact
+ * two-word 64-bit values on hosts where long is narrower.
  */
 cpkt_lua_runtime_status
 cpkt_lua_runtime_set_global_integer(cpkt_lua_runtime *runtime, const char *name,

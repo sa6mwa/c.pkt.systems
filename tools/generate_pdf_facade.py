@@ -19,6 +19,27 @@ STRUCTS = {
     "HPDF_3DMatrix", "HPDF_RGBColor", "HPDF_CMYKColor",
 }
 
+# These contracts matter at the C89 boundary and must remain visible in hover
+# text after regenerating the checked-in header.
+CONTRACTS = {
+    "HPDF_GetVersion": "Returns a static libHaru version string; do not free it.",
+    "HPDF_NewEx": "Creates an owned document with caller allocator and error callbacks; release it with cpkt_pdf_free().",
+    "HPDF_New": "Creates an owned document; release it with cpkt_pdf_free().",
+    "HPDF_Free": "Releases the document and all objects owned by it.",
+    "HPDF_NewDoc": "Starts a new document in this handle; previously created document objects become invalid.",
+    "HPDF_FreeDoc": "Releases the current document and its page, font, and image objects.",
+    "HPDF_FreeDocAll": "Releases every document owned by this handle.",
+    "HPDF_SaveToStream": "Serializes the full PDF into libHaru's in-memory stream; this is buffered output.",
+    "HPDF_GetContents": "Serializes a full PDF into temporary memory, then copies up to the input size into buf and writes the copied byte count to size.",
+    "HPDF_GetStreamSize": "Returns the size of the document's saved in-memory stream.",
+    "HPDF_ReadFromStream": "Reads up to the input size from the saved in-memory PDF stream and writes the byte count read to size.",
+    "HPDF_ResetStream": "Rewinds the saved in-memory stream for another read.",
+    "HPDF_SaveToFile": "Serializes the PDF to the named file; the caller owns the pathname.",
+    "HPDF_AddPage": "Adds a page owned by the current document; free the document to release it.",
+    "HPDF_LoadPngImageFromFile": "Loads a PNG file as a document-owned image.",
+    "HPDF_LoadPngImageFromMem": "Loads a PNG byte buffer as a document-owned image.",
+}
+
 
 def c89_text(value):
     value = re.sub(r"/\*.*?\*/", "", value, flags=re.S)
@@ -65,7 +86,14 @@ def main():
         '#define CPKT_PDF_API __attribute__((visibility("default")))',
         "#else", "#define CPKT_PDF_API", "#endif",
         "#ifdef __cplusplus", 'extern "C" {', "#endif",
-        "#define CPKT_PDF_STDCALL", "", types, "", consts,
+        "#define CPKT_PDF_STDCALL", "",
+        "/** @defgroup cpkt_pdf libHaru C89 PDF facade",
+        " * Documents own their pages, fonts, and images. PDF stream output is",
+        " * buffered in memory; read_from_stream consumes that saved buffer.",
+        " * See docs/pdf-c89-facade.md for ownership and output behavior.",
+        " * @{ */",
+        types, "", consts,
+        "/** Opaque libHaru object handle; the containing document owns child objects. */",
         "typedef void *CPKT_PDF_HANDLE;",
     ]
     header.extend("typedef CPKT_PDF_HANDLE CPKT_PDF_%s;" % h[5:] for h in handles)
@@ -88,7 +116,9 @@ def main():
         exported_names.append(name)
         public_ret = ret.replace("HPDF_", "CPKT_PDF_")
         public_params = [p.replace("HPDF_", "CPKT_PDF_") for p in params]
-        comment = "/** Calls libHaru's %s with C89 facade types. */" % original
+        contract = CONTRACTS.get(original)
+        comment = ("/** %s */" % contract if contract else
+                   "/** Calls libHaru's %s with C89 facade types. */" % original)
         header.append(comment)
         header.append("CPKT_PDF_API %s %s(%s);" % (public_ret, name, ", ".join(public_params) or "void"))
         source.append(comment)
@@ -145,7 +175,7 @@ def main():
             else:
                 source.append("    return %s;" % call)
         source.extend(["}", ""])
-    header.extend(["", "#ifdef __cplusplus", "}", "#endif", "#endif", ""])
+    header.extend(["", "/** @} */", "#ifdef __cplusplus", "}", "#endif", "#endif", ""])
     (ROOT / "include/cpkt/pdf.h").write_text("\n".join(header))
     (ROOT / "src/pdf.c").write_text("\n".join(source))
     (ROOT / "cmake/exports/cpkt_pdf.txt").write_text(

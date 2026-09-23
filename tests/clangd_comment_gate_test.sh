@@ -12,7 +12,8 @@ trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 source_dir="$work_dir/source"
 build_dir="$work_dir/build"
-mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" "$build_dir" "$work_dir/bin"
+mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" \
+  "$build_dir/generated/lua/include/cpkt" "$work_dir/bin"
 
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/bin/clangd"
 chmod +x "$work_dir/bin/clangd"
@@ -25,6 +26,16 @@ write_header() {
 write_source() {
   local comment=$1
   printf '%s\nvoid cpkt_documented(void) {}\n' "$comment" > "$source_dir/src/facade.c"
+}
+
+write_lua_header() {
+  local comment=$1
+  {
+    local index
+    for ((index = 0; index < 156; index++)); do
+      printf '%s\nCPKT_LUA_API void cpkt_lua_fixture_%d(void);\n' "$comment" "$index"
+    done
+  } > "$build_dir/generated/lua/include/cpkt/lua.h"
 }
 
 for source_file in \
@@ -46,6 +57,7 @@ run_gate() {
 
 write_header '/** Public facade declaration. */'
 write_source '/** Public facade definition. */'
+write_lua_header '/** Generated Lua facade declaration. */'
 run_gate
 
 write_header '/* Ordinary block comment is not Doxygen. */'
@@ -62,3 +74,11 @@ if run_gate >"$work_dir/source.out" 2>"$work_dir/source.err"; then
   exit 1
 fi
 grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/source.err" >/dev/null
+
+write_source '/** Public facade definition. */'
+write_lua_header '/* Ordinary block comment is not Doxygen. */'
+if run_gate >"$work_dir/lua.out" 2>"$work_dir/lua.err"; then
+  printf 'clangd comment gate accepted undocumented generated Lua declarations\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/lua.err" >/dev/null

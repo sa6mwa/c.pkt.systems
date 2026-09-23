@@ -19,12 +19,13 @@ require_compile_command() {
   fi
 }
 
-python3 - "$SOURCE_DIR" <<'PY'
+python3 - "$SOURCE_DIR" "$BUILD_DIR" <<'PY'
 import pathlib
 import re
 import sys
 
 source_dir = pathlib.Path(sys.argv[1])
+build_dir = pathlib.Path(sys.argv[2])
 
 
 def previous_nonblank_is_doxygen_comment(lines, index):
@@ -173,6 +174,23 @@ for header in public_headers:
 for source in facade_sources:
     for line, symbol in verify_source(source, documented_symbols):
         all_failures.append((source, line, symbol))
+
+# The complete Lua C89 header is generated in the build tree, so the installed
+# header scan above cannot see its function comments.
+lua_header = build_dir / "generated/lua/include/cpkt/lua.h"
+if not lua_header.is_file():
+    print(f"generated Lua facade header not found: {lua_header}", file=sys.stderr)
+    sys.exit(1)
+lua_lines = lua_header.read_text(encoding="utf-8").splitlines()
+lua_declarations = 0
+for index, line in enumerate(lua_lines):
+    if line.startswith("CPKT_LUA_API "):
+        lua_declarations += 1
+        if not previous_nonblank_is_doxygen_comment(lua_lines, index):
+            all_failures.append((lua_header, index + 1, line.strip()))
+if lua_declarations < 156:
+    print(f"generated Lua facade has only {lua_declarations} public declarations", file=sys.stderr)
+    sys.exit(1)
 
 if all_failures:
     for path, line, symbol in all_failures:

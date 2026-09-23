@@ -1,14 +1,19 @@
 #ifndef CPKT_SASL_H
 #define CPKT_SASL_H
 
-/*
- * C89 boundary for the bundled Cyrus SASL client/server library.  Callback
- * records and connection receivers are owned by this facade; no SASL header
- * or native callback type is part of this public contract.
+/**
+ * @defgroup cpkt_sasl Cyrus SASL C89 facade
+ *
+ * Each receiver owns one SASL connection; close it after borrowed output and
+ * interaction views are no longer needed. Callback records are copied, while
+ * their context pointers remain caller-owned. See
+ * docs/sasl-c89-facade-spec.md for callback and interaction lifetimes.
+ * @{
  */
 
 #include <stddef.h>
 
+/** Receiver shell for one SASL connection; close with self->close(). */
 typedef struct cpkt_sasl cpkt_sasl;
 
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
@@ -21,7 +26,7 @@ typedef struct cpkt_sasl_security_properties {
   const char *const *property_values;
 } cpkt_sasl_security_properties;
 
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Borrowed channel-binding bytes used while configuring a connection. */
 typedef struct cpkt_sasl_channel_binding {
   const char *name;
   int critical;
@@ -38,7 +43,8 @@ typedef struct cpkt_sasl_http_request {
   unsigned long non_persistent;
 } cpkt_sasl_http_request;
 
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Borrowed interaction fields to fill before retrying the same start/step
+ * call. */
 typedef struct cpkt_sasl_interaction {
   unsigned long id;
   const char *challenge;
@@ -114,8 +120,8 @@ typedef int (*cpkt_sasl_canonicalize_callback)(
     unsigned long input_length, unsigned long flags, const char *realm,
     char *output, unsigned long output_capacity, unsigned long *output_length);
 
-/* A zero-initialized callback record installs no callbacks. */
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Zero-initialization installs no callbacks. The facade copies the record but
+ * does not own context or data returned by callbacks. */
 typedef struct cpkt_sasl_callbacks {
   void *context;
   cpkt_sasl_option_callback option;
@@ -218,20 +224,21 @@ int cpkt_sasl_server_initialize(const cpkt_sasl_callbacks *callbacks,
 int cpkt_sasl_client_finish(void);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 int cpkt_sasl_server_finish(void);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Creates an owned client receiver; inspect status_out and close when done. */
 cpkt_sasl *cpkt_sasl_client_new(const char *service, const char *server_name,
                                 const char *local_endpoint,
                                 const char *remote_endpoint,
                                 const cpkt_sasl_callbacks *callbacks,
                                 unsigned long flags, int *status_out);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Creates an owned server receiver; inspect status_out and close when done. */
 cpkt_sasl *cpkt_sasl_server_new(const char *service, const char *server_name,
                                 const char *user_realm,
                                 const char *local_endpoint,
                                 const char *remote_endpoint,
                                 const cpkt_sasl_callbacks *callbacks,
                                 unsigned long flags, int *status_out);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Closes a receiver and invalidates its borrowed outputs. NULL is accepted. */
 void cpkt_sasl_close(cpkt_sasl *self);
 
+/** @} */
 #endif

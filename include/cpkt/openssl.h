@@ -6,8 +6,8 @@
  * c.pkt.systems.  OpenSSL's legacy SHA-512 state declares long long despite
  * otherwise accepting strict C89; contain that upstream diagnostic here so a
  * consumer's own source remains warning-clean under -std=c89 -pedantic-errors.
- * Typed cpkt_openssl_* adapters will provide C89 word values for APIs that
- * accept or return native 64-bit values.
+ * Typed cpkt_openssl_* adapters provide C89 word values for APIs that accept
+ * or return native 64-bit values.
  */
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push

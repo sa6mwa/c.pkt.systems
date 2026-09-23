@@ -14,6 +14,12 @@ extern "C" {
 #endif
 #define CPKT_PDF_STDCALL
 
+/** @defgroup cpkt_pdf libHaru C89 PDF facade
+ * Documents own their pages, fonts, and images. PDF stream output is
+ * buffered in memory; read_from_stream consumes that saved buffer.
+ * See docs/pdf-c89-facade.md for ownership and output behavior.
+ * @{ */
+
 typedef signed int CPKT_PDF_INT;
 typedef unsigned int CPKT_PDF_UINT;
 
@@ -976,6 +982,7 @@ typedef enum _CPKT_PDF_Shading_FreeFormTriangleMeshEdgeFlag {
 #define CPKT_PDF_GMODE_INLINE_IMAGE 0x0020
 #define CPKT_PDF_GMODE_EXTERNAL_OBJECT 0x0040
 
+/** Opaque libHaru object handle; the containing document owns child objects. */
 typedef void *CPKT_PDF_HANDLE;
 typedef CPKT_PDF_HANDLE CPKT_PDF_Boolean;
 typedef CPKT_PDF_HANDLE CPKT_PDF_Doc;
@@ -1003,47 +1010,52 @@ typedef CPKT_PDF_HANDLE CPKT_PDF_OutputIntent;
 typedef CPKT_PDF_HANDLE CPKT_PDF_Xref;
 typedef CPKT_PDF_HANDLE CPKT_PDF_Shading;
 
-/** Calls libHaru's HPDF_GetVersion with C89 facade types. */
+/** Returns a static libHaru version string; do not free it. */
 CPKT_PDF_API const char *cpkt_pdf_get_version(void);
-/** Calls libHaru's HPDF_NewEx with C89 facade types. */
+/** Creates an owned document with caller allocator and error callbacks; release
+ * it with cpkt_pdf_free(). */
 CPKT_PDF_API CPKT_PDF_Doc cpkt_pdf_new_ex(CPKT_PDF_Error_Handler user_error_fn,
                                           CPKT_PDF_Alloc_Func user_alloc_fn,
                                           CPKT_PDF_Free_Func user_free_fn,
                                           CPKT_PDF_UINT mem_pool_buf_size,
                                           void *user_data);
-/** Calls libHaru's HPDF_New with C89 facade types. */
+/** Creates an owned document; release it with cpkt_pdf_free(). */
 CPKT_PDF_API CPKT_PDF_Doc cpkt_pdf_new(CPKT_PDF_Error_Handler user_error_fn,
                                        void *user_data);
 /** Calls libHaru's HPDF_SetErrorHandler with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_error_handler(
     CPKT_PDF_Doc pdf, CPKT_PDF_Error_Handler user_error_fn);
-/** Calls libHaru's HPDF_Free with C89 facade types. */
+/** Releases the document and all objects owned by it. */
 CPKT_PDF_API void cpkt_pdf_free(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_GetDocMMgr with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_MMgr cpkt_pdf_get_doc_m_mgr(CPKT_PDF_Doc doc);
-/** Calls libHaru's HPDF_NewDoc with C89 facade types. */
+/** Starts a new document in this handle; previously created document objects
+ * become invalid. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_new_doc(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_FreeDoc with C89 facade types. */
+/** Releases the current document and its page, font, and image objects. */
 CPKT_PDF_API void cpkt_pdf_free_doc(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_HasDoc with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_BOOL cpkt_pdf_has_doc(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_FreeDocAll with C89 facade types. */
+/** Releases every document owned by this handle. */
 CPKT_PDF_API void cpkt_pdf_free_doc_all(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_SaveToStream with C89 facade types. */
+/** Serializes the full PDF into libHaru's in-memory stream; this is buffered
+ * output. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_save_to_stream(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_GetContents with C89 facade types. */
+/** Serializes a full PDF into temporary memory, then copies up to the input
+ * size into buf and writes the copied byte count to size. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_get_contents(CPKT_PDF_Doc pdf,
                                                    CPKT_PDF_BYTE *buf,
                                                    CPKT_PDF_UINT32 *size);
-/** Calls libHaru's HPDF_GetStreamSize with C89 facade types. */
+/** Returns the size of the document's saved in-memory stream. */
 CPKT_PDF_API CPKT_PDF_UINT32 cpkt_pdf_get_stream_size(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_ReadFromStream with C89 facade types. */
+/** Reads up to the input size from the saved in-memory PDF stream and writes
+ * the byte count read to size. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_read_from_stream(CPKT_PDF_Doc pdf,
                                                        CPKT_PDF_BYTE *buf,
                                                        CPKT_PDF_UINT32 *size);
-/** Calls libHaru's HPDF_ResetStream with C89 facade types. */
+/** Rewinds the saved in-memory stream for another read. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_reset_stream(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_SaveToFile with C89 facade types. */
+/** Serializes the PDF to the named file; the caller owns the pathname. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_save_to_file(CPKT_PDF_Doc pdf,
                                                    const char *file_name);
 /** Calls libHaru's HPDF_GetError with C89 facade types. */
@@ -1091,7 +1103,8 @@ CPKT_PDF_API CPKT_PDF_STATUS
 cpkt_pdf_set_open_action(CPKT_PDF_Doc pdf, CPKT_PDF_Destination open_action);
 /** Calls libHaru's HPDF_GetCurrentPage with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_Page cpkt_pdf_get_current_page(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_AddPage with C89 facade types. */
+/** Adds a page owned by the current document; free the document to release it.
+ */
 CPKT_PDF_API CPKT_PDF_Page cpkt_pdf_add_page(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_InsertPage with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_Page cpkt_pdf_insert_page(CPKT_PDF_Doc pdf,
@@ -1456,10 +1469,10 @@ cpkt_pdf_page_create3_d_view(CPKT_PDF_Page page, CPKT_PDF_U3D u3d,
 /** Calls libHaru's HPDF_3DView_Add3DC3DMeasure with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_d_view_add3_dc3_d_measure(
     CPKT_PDF_Dict view, CPKT_PDF_3DMeasure measure);
-/** Calls libHaru's HPDF_LoadPngImageFromMem with C89 facade types. */
+/** Loads a PNG byte buffer as a document-owned image. */
 CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_png_image_from_mem(
     CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buffer, CPKT_PDF_UINT size);
-/** Calls libHaru's HPDF_LoadPngImageFromFile with C89 facade types. */
+/** Loads a PNG file as a document-owned image. */
 CPKT_PDF_API CPKT_PDF_Image
 cpkt_pdf_load_png_image_from_file(CPKT_PDF_Doc pdf, const char *filename);
 /** Calls libHaru's HPDF_LoadPngImageFromFile2 with C89 facade types. */
@@ -1921,6 +1934,7 @@ CPKT_PDF_API CPKT_PDF_OutputIntent cpkt_pdf_icc_load_icc_from_mem(
 CPKT_PDF_API CPKT_PDF_OutputIntent cpkt_pdf_load_icc_profile_from_file(
     CPKT_PDF_Doc pdf, const char *icc_file_name, int numcomponent);
 
+/** @} */
 #ifdef __cplusplus
 }
 #endif
