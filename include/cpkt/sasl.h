@@ -48,6 +48,13 @@ typedef struct cpkt_sasl_interaction {
   unsigned long result_byte_count;
 } cpkt_sasl_interaction;
 
+/* Password bytes are borrowed for the callback. The facade copies them into
+ * receiver-owned storage before returning to the native client. */
+typedef struct cpkt_sasl_secret {
+  const unsigned char *data;
+  unsigned long byte_count;
+} cpkt_sasl_secret;
+
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_option_callback)(void *context, const char *plugin_name,
                                          const char *option,
@@ -70,7 +77,8 @@ typedef int (*cpkt_sasl_simple_callback)(void *context, int id,
                                          unsigned long *result_byte_count);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_secret_callback)(cpkt_sasl *connection, void *context,
-                                         int id, void **secret_out);
+                                         int id,
+                                         const cpkt_sasl_secret **secret_out);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 typedef int (*cpkt_sasl_challenge_callback)(void *context, int id,
                                             const char *challenge,

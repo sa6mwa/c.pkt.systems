@@ -8,12 +8,16 @@ static int mock_connection;
 static const sasl_callback_t *mock_callbacks;
 static int mock_start_calls;
 static int mock_step_calls;
+static int mock_secret_mode;
+static unsigned char mock_password[] = "secret";
+static cpkt_sasl_secret mock_public_secret;
 static sasl_interact_t mock_start_interactions[2];
 static sasl_interact_t mock_step_interactions[2];
 
 typedef union mock_callback_bridge {
   int (*generic)(void);
   sasl_getsimple_t *simple;
+  sasl_getsecret_t *secret;
 } mock_callback_bridge;
 
 static const sasl_callback_t *mock_callback(unsigned long identifier) {
@@ -38,6 +42,24 @@ static int mock_simple(void *context, int identifier, const char **result,
   if (result_byte_count != 0)
     *result_byte_count = (unsigned long)strlen(*result);
   return SASL_OK;
+}
+
+static int mock_secret(cpkt_sasl *connection, void *context, int identifier,
+                       const cpkt_sasl_secret **result) {
+  int *call_count;
+  (void)connection;
+  call_count = (int *)context;
+  if (identifier != SASL_CB_PASS || result == 0)
+    return CPKT_SASL_BADPARAM;
+  ++*call_count;
+  if (mock_secret_mode == 1) {
+    *result = 0;
+  } else {
+    mock_public_secret.data = mock_secret_mode == 2 ? 0 : mock_password;
+    mock_public_secret.byte_count = mock_secret_mode == 3 ? 0 : 6;
+    *result = &mock_public_secret;
+  }
+  return CPKT_SASL_OK;
 }
 
 int sasl_client_init(const sasl_callback_t *callbacks) {
@@ -267,6 +289,7 @@ int main(void) {
   const char *result;
   const char *output;
   const char *mechanism;
+  sasl_secret_t *native_secret;
   unsigned length;
   unsigned long output_length;
   int callback_calls;
@@ -276,6 +299,7 @@ int main(void) {
   callback_calls = 0;
   callbacks.context = &callback_calls;
   callbacks.simple = mock_simple;
+  callbacks.secret = mock_secret;
   status = CPKT_SASL_FAIL;
   client = cpkt_sasl_client_new("imap", "mail.example.test", 0, 0, &callbacks,
                                 0, &status);
@@ -292,6 +316,37 @@ int main(void) {
       result == 0 || strcmp(result, "facade-authentication-user") != 0 ||
       length != strlen(result) || callback_calls != 1)
     return 3;
+  callback = mock_callback(SASL_CB_PASS);
+  if (callback == 0 || callback->proc == 0)
+    return 8;
+  callback_bridge.generic = callback->proc;
+  native_secret = 0;
+  if (callback_bridge.secret((sasl_conn_t *)&mock_connection, callback->context,
+                             SASL_CB_PASS, &native_secret) != SASL_OK ||
+      native_secret == 0 || native_secret->len != 6 ||
+      memcmp(native_secret->data, "secret", 6) != 0 ||
+      native_secret->data[6] != 0 || callback_calls != 2)
+    return 9;
+  mock_password[0] = 'S';
+  if (native_secret->data[0] != 's')
+    return 10;
+  mock_secret_mode = 1;
+  native_secret = (sasl_secret_t *)&mock_connection;
+  if (callback_bridge.secret((sasl_conn_t *)&mock_connection, callback->context,
+                             SASL_CB_PASS, &native_secret) != SASL_OK ||
+      native_secret != 0 || callback_calls != 3)
+    return 11;
+  mock_secret_mode = 2;
+  if (callback_bridge.secret((sasl_conn_t *)&mock_connection, callback->context,
+                             SASL_CB_PASS, &native_secret) != SASL_BADPARAM ||
+      native_secret != 0)
+    return 12;
+  mock_secret_mode = 3;
+  if (callback_bridge.secret((sasl_conn_t *)&mock_connection, callback->context,
+                             SASL_CB_PASS, &native_secret) != SASL_OK ||
+      native_secret == 0 || native_secret->len != 0 ||
+      native_secret->data[0] != 0)
+    return 13;
   interactions = 0;
   output = 0;
   output_length = 0;

@@ -2,6 +2,17 @@
 
 #include <string.h>
 
+static int facade_secret(cpkt_sasl *connection, void *context, int id,
+                         const cpkt_sasl_secret **secret_out) {
+  static const unsigned char password[] = "secret";
+  static const cpkt_sasl_secret secret = {password, 6};
+  (void)connection;
+  (void)context;
+  (void)id;
+  *secret_out = &secret;
+  return CPKT_SASL_OK;
+}
+
 int main(void) {
   const char *implementation;
   const char *version;
@@ -9,6 +20,7 @@ int main(void) {
   const char *mechanisms;
   cpkt_sasl *client;
   cpkt_sasl_security_properties properties;
+  cpkt_sasl_callbacks callbacks;
   unsigned long mechanisms_length;
   int mechanisms_count;
   int major;
@@ -34,9 +46,11 @@ int main(void) {
     return 10;
   if (cpkt_sasl_client_initialize(0) != CPKT_SASL_OK)
     return 3;
+  memset(&callbacks, 0, sizeof(callbacks));
+  callbacks.secret = facade_secret;
   status = CPKT_SASL_FAIL;
-  client =
-      cpkt_sasl_client_new("imap", "mail.example.test", 0, 0, 0, 0, &status);
+  client = cpkt_sasl_client_new("imap", "mail.example.test", 0, 0, &callbacks,
+                                0, &status);
   if (client == 0 || status != CPKT_SASL_OK)
     return 4;
   mechanisms = 0;

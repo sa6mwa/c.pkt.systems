@@ -21,6 +21,8 @@ typedef struct cpkt_sasl_state {
   sasl_interact_t *pending_native_interactions;
   cpkt_sasl_interaction *pending_public_interactions;
   unsigned long pending_interaction_count;
+  sasl_secret_t *native_secret;
+  size_t native_secret_size;
   int is_server;
 } cpkt_sasl_state;
 
@@ -53,6 +55,19 @@ static cpkt_sasl_global_callbacks cpkt_sasl_server_callbacks;
 
 static cpkt_sasl_state *cpkt_sasl_state_for(const cpkt_sasl *self) {
   return self == NULL ? NULL : (cpkt_sasl_state *)self->internal;
+}
+
+static void cpkt_sasl_clear_native_secret(cpkt_sasl_state *state) {
+  volatile unsigned char *bytes;
+  size_t index;
+  if (state == NULL || state->native_secret == NULL)
+    return;
+  bytes = (volatile unsigned char *)state->native_secret;
+  for (index = 0; index < state->native_secret_size; ++index)
+    bytes[index] = 0;
+  free(state->native_secret);
+  state->native_secret = NULL;
+  state->native_secret_size = 0;
 }
 
 static void cpkt_sasl_clear_pending_interactions(cpkt_sasl_state *state) {
@@ -212,13 +227,47 @@ static int cpkt_sasl_simple_native(void *context, int id, const char **result,
 static int cpkt_sasl_secret_native(sasl_conn_t *native, void *context, int id,
                                    sasl_secret_t **secret) {
   cpkt_sasl_callback_owner *owner;
+  cpkt_sasl_state *state;
+  const cpkt_sasl_secret *public_secret;
+  sasl_secret_t *native_secret;
+  size_t byte_count;
+  size_t allocation_size;
+  int status;
   (void)native;
   owner = (cpkt_sasl_callback_owner *)context;
-  return owner == NULL || owner->callbacks.secret == NULL
-             ? SASL_FAIL
-             : owner->callbacks.secret(owner->public_receiver,
-                                       owner->callbacks.context, id,
-                                       (void **)secret);
+  if (secret != NULL)
+    *secret = NULL;
+  if (owner == NULL || owner->callbacks.secret == NULL || secret == NULL)
+    return SASL_FAIL;
+  state = cpkt_sasl_state_for(owner->public_receiver);
+  if (state == NULL)
+    return SASL_BADPARAM;
+  public_secret = NULL;
+  status = owner->callbacks.secret(
+      owner->public_receiver, owner->callbacks.context, id, &public_secret);
+  cpkt_sasl_clear_native_secret(state);
+  if (status != SASL_OK || public_secret == NULL)
+    return status;
+  if (public_secret->byte_count > 0U && public_secret->data == NULL)
+    return SASL_BADPARAM;
+  if (sizeof(size_t) < sizeof(unsigned long) &&
+      public_secret->byte_count > (unsigned long)((size_t)-1))
+    return SASL_BADPARAM;
+  byte_count = (size_t)public_secret->byte_count;
+  if (byte_count > (size_t)-1 - sizeof(*native_secret))
+    return SASL_BADPARAM;
+  allocation_size = sizeof(*native_secret) + byte_count;
+  native_secret = (sasl_secret_t *)malloc(allocation_size);
+  if (native_secret == NULL)
+    return SASL_NOMEM;
+  native_secret->len = public_secret->byte_count;
+  if (byte_count > 0U)
+    memcpy(native_secret->data, public_secret->data, byte_count);
+  native_secret->data[byte_count] = 0;
+  state->native_secret = native_secret;
+  state->native_secret_size = allocation_size;
+  *secret = native_secret;
+  return SASL_OK;
 }
 
 static int cpkt_sasl_challenge_native(void *context, int id,
@@ -599,6 +648,7 @@ void cpkt_sasl_close(cpkt_sasl *self) {
     cpkt_sasl_clear_pending_interactions(state);
     if (state->native != NULL)
       sasl_dispose(&state->native);
+    cpkt_sasl_clear_native_secret(state);
   }
   free(state);
   self->internal = NULL;
@@ -691,6 +741,7 @@ static cpkt_sasl *cpkt_sasl_new(int is_server, const char *service,
     return NULL;
   }
   state->is_server = is_server;
+  self->internal = state;
   state->callback_owner.public_receiver = self;
   cpkt_sasl_callbacks_build(state->native_callbacks,
                             &state->callback_owner.callbacks, callbacks,
@@ -707,6 +758,7 @@ static cpkt_sasl *cpkt_sasl_new(int is_server, const char *service,
                         (unsigned)flags, &state->native);
   }
   if (status != SASL_OK) {
+    cpkt_sasl_clear_native_secret(state);
     free(state);
     free(self);
     if (status_out != NULL)

@@ -24,6 +24,12 @@ Global initialization accepts only process callbacks; callbacks that receive a
 connection must be supplied at receiver creation so the facade can preserve
 receiver identity and lifetime.
 
+The `secret` callback returns a borrowed `cpkt_sasl_secret` containing password
+bytes and their exact length. The facade copies those bytes into native storage
+for the receiver and clears that storage on the next secret callback or receiver
+close. Return a null secret with `CPKT_SASL_OK` to cancel. Callback contexts and
+the borrowed public secret remain caller-owned.
+
 `encode` and `decode` preserve Cyrus SASL's provider-owned output lifetime;
 they do not materialize or concatenate an input stream. Input byte counts use
 `unsigned long` and are rejected when they cannot be represented by the
