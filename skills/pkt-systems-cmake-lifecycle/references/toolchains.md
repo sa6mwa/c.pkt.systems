@@ -6,7 +6,8 @@ This lifecycle owns C and C++ compiler resolution for pkt.systems C/CMake projec
 
 - Every ordinary Linux build uses the pinned Bootlin GCC collection for its target. Its triple-prefixed `gcc`, `g++`, `ld`, `ar`, `ranlib`, `strip`, `nm`, `objcopy`, `objdump`, `addr2line`, `gdb`, and `readelf`, plus its sysroot libc and headers, are one inseparable collection.
 - Do not use `/usr/bin/cc`, `gcc`, `clang`, distro cross compilers, or unpinned compiler paths as a fallback. A cached Bootlin collection is the only Linux default.
-- `arm64-apple-darwin` uses a local, project-pinned osxcross collection. The lifecycle must not download Apple SDKs or Darwin compiler collections. Once that collection is ready, the lifecycle may provision its separately pinned, Linux-host `mig` helper as described below.
+- `arm64-apple-darwin` uses a local, project-pinned osxcross collection. The lifecycle must not download Apple SDKs or Darwin compiler collections. Once that collection is ready, the lifecycle provisions its separately pinned, Linux-host `mig` helper as described below.
+- c.pkt.systems owns the pinned PureDarwin-derived Linux host `mig` and `migcom` build helpers. The resolver downloads and builds them into the shared toolchain cache when ensuring Darwin; neither helper is a workstation package-manager prerequisite or an SDK payload.
 - Native memory checking uses host-provided Valgrind against executables compiled by the selected Bootlin collection. It is a required gate on the native x86_64 Linux host, but it is not an MSan substitute. Never run Valgrind through cross-compilation, an emulator, or QEMU.
 - Native fuzzing uses a pinned cached AFL++ release built with the matching x86_64 Bootlin GCC plugin headers. AFL++ compiler wrappers must delegate to the selected Bootlin `gcc`/`g++`; never use host GCC or Clang for project targets. Never run fuzzing through cross-compilation, an emulator, or QEMU.
 - LLVM/Clang is installed by the workstation operator outside all c.pkt.systems caches and artifacts. Host `clang`/`clang++` support osxcross; `clang-format` and `clangd` are native development tools. None may enter Linux CMake compiler or linker discovery. `clangd` validation is a native development-host editor gate: register and run it only against the native host compile database. Cross-target CTest, package, and release configurations must not invoke it or rely on host `clangd` to emulate a target compiler or sysroot ABI; prove those targets through their selected compiler, supported target runner, and package verification gates.
@@ -32,7 +33,7 @@ Default root:
 ${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}
 ```
 
-- `archives/` contains verified Bootlin and AFL++ source tarballs.
+- `archives/` contains verified Bootlin, AFL++, and host MIG source tarballs.
 - `roots/` contains extracted immutable compiler collections.
 - `locks/` contains per-collection advisory lock files. Provisioning must hold the matching lock from its post-lock readiness check through publication; a waiting process must recheck readiness and never remove a root another process has already published. Use host `flock` for these lifecycle cache locks, with `CPKT_TOOLCHAIN_LOCK_TIMEOUT` (default `600` seconds) as the bounded wait.
 
@@ -231,10 +232,18 @@ The workstation must not configure a c.pkt.systems Darwin build until this
 Mach-O smoke check passes. Do not distribute osxcross, the SDK package, the
 Xcode archive, or their Apple license material with a c.pkt.systems SDK.
 
-After osxcross can produce a Darwin arm64 Mach-O smoke executable, provision
-the host-side MIG helper and verify the complete collection:
+After osxcross can produce a Darwin arm64 Mach-O smoke executable, inspect its
+installed compiler names and pin the exact command prefix. osxcross may install
+`arm64-apple-darwin25.4-clang` without an `arm64-apple-darwin25-clang` major
+version alias. Set `CPKT_OSXCROSS_HOST` to the exact installed prefix; the
+example below matches a 25.4 toolchain and must be adjusted for another SDK.
+`bison` and `flex` from the host baseline are required to build MIG. Provision
+the host-side helper and verify the complete collection:
 
 ```sh
+export OSXCROSS_ROOT="${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}"
+ls "$OSXCROSS_ROOT"/bin/arm64-apple-darwin*-clang
+export CPKT_OSXCROSS_HOST=arm64-apple-darwin25.4
 scripts/cpkt-toolchains.sh ensure arm64-apple-darwin
 scripts/cpkt-toolchains.sh discover arm64-apple-darwin
 ```
@@ -246,7 +255,11 @@ the local osxcross target compiler to preprocess Darwin definitions. It is
 build-only tooling: do not bundle it, its source, or its license in the SDK.
 Require `discover` to report `status=ready`, the osxcross compiler/binutils,
 `mig`, `migcom`, and the pinned `mig_revision` before configuring a Darwin
-build.
+build. Run the reported `migcom` path with `-version` and confirm it prints
+`cpkt-host-mig`; `file` should identify it as a static x86_64 Linux executable.
+Keep the selected `CPKT_OSXCROSS_HOST` in the shell used for Darwin configure,
+build, and package commands. A bare `mig` in `PATH` is not the readiness check:
+use the resolver-reported pinned paths.
 
 ## CMake Setup
 

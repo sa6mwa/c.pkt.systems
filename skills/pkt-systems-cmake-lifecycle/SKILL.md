@@ -96,6 +96,8 @@ development-machine and user-supplied Xcode requirements in
 
 On a native x86_64 Linux development host, install Valgrind through the host OS package manager and follow [references/toolchains.md](references/toolchains.md#host-llvm-and-clang) to install the latest stable host LLVM/Clang release, including `clangd` and `clang-format`. c.pkt.systems does not provision or ship these host tools. Valgrind and AFL++ are never run through a cross target, emulator, or QEMU.
 
+Darwin MIG is different: c.pkt.systems owns its pinned PureDarwin-derived Linux host `mig`/`migcom` build helper. After the developer supplies a working osxcross SDK, run `scripts/cpkt-toolchains.sh ensure arm64-apple-darwin` with `CPKT_OSXCROSS_HOST` set to the exact installed osxcross command prefix when it differs from the resolver default. Check `discover arm64-apple-darwin` for `status=ready`, `mig`, and `migcom` before configuring Darwin. Follow [references/toolchains.md](references/toolchains.md#darwin-osxcross-input-and-setup) for the complete commands. MIG stays in the shared toolchain cache and is never shipped in an SDK.
+
 ```sh
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
 skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <target|all>

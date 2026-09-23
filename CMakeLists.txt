@@ -1956,6 +1956,12 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/toolchain_resolver_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME lifecycle_toolchain_resolvers
+        COMMAND
+          "${CMAKE_SOURCE_DIR}/tests/toolchain_resolver_test.sh"
+          "${CMAKE_SOURCE_DIR}"
+          "${CMAKE_SOURCE_DIR}/skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh")
+      add_test(
         NAME aflpp_resolver_cleanup
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/aflpp_resolver_cleanup_test.sh"
