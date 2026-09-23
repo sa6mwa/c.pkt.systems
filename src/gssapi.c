@@ -377,10 +377,10 @@ cpkt_gss_status cpkt_gss_acquire_credential(
   OM_uint32 minor, lifetime = 0;
   gss_cred_id_t credential = GSS_C_NO_CREDENTIAL;
   gss_OID_set actual = GSS_C_NO_OID_SET;
-  OM_uint32 status = gss_acquire_cred(
-      &minor, (gss_name_t)name, (OM_uint32)requested_lifetime,
-      (gss_OID_set)desired, usage, &credential,
-      actual_out == NULL ? NULL : &actual, &lifetime);
+  OM_uint32 status =
+      gss_acquire_cred(&minor, (gss_name_t)name, (OM_uint32)requested_lifetime,
+                       (gss_OID_set)desired, usage, &credential,
+                       actual_out == NULL ? NULL : &actual, &lifetime);
   if (credential_out != NULL)
     *credential_out = (cpkt_gss_credential *)credential;
   if (actual_out != NULL)

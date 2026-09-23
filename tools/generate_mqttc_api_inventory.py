@@ -9,6 +9,7 @@ import subprocess
 import sys
 from typing import Set
 
+sys.dont_write_bytecode = True
 from generate_mqttc_c89_facade import functions, transform
 
 

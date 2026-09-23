@@ -1745,9 +1745,9 @@ int main(void) {
   if (db->prepare(db, "select value from carray(?1)", -1, 0, &statement, 0) !=
           CPKT_SQLITE_OK ||
       statement == 0 ||
-      statement->bind_carray_with_context(
-          statement, 1, carray_i64_values, 2, CPKT_SQLITE_CARRAY_I64, 0,
-          0) != CPKT_SQLITE_OK ||
+      statement->bind_carray_with_context(statement, 1, carray_i64_values, 2,
+                                          CPKT_SQLITE_CARRAY_I64, 0,
+                                          0) != CPKT_SQLITE_OK ||
       statement->step(statement) != CPKT_SQLITE_ROW ||
       cpkt_sqlite_i64_compare(statement->column_i64(statement, 0),
                               cpkt_sqlite_i64_make(0, 7)) != 0 ||

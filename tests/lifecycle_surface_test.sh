@@ -49,12 +49,12 @@ require_ordered_make_recipe() {
 
 for target in \
   help deps deps-all deps-debug deps-release deps-cross build build-debug build-release \
-  build-host cross-build test test-debug test-host test-cross cross-test test-all \
+  build-host cross-build test test-debug test-host test-cross cross-test test-all test-e2e \
   test-install-tree valgrind fuzz-smoke fuzz fuzz-long package package-source \
   package-source-smoke package-checksums package-verify verify-release-archives \
   verify-release-privacy release-matrix release-final-matrix finalize-slice prerelease prerelease-live \
   prerelease-hardening lifecycle-version-contract release print-release-version \
-  format clean clean-dist; do
+  format format-check dev-up dev-down dev-ps dev-logs dev-reset clean clean-dist; do
   require_help_target "$target"
 done
 
@@ -65,6 +65,8 @@ for script in \
   scripts/configure-preset.sh \
   scripts/fuzz.sh \
   scripts/test.sh \
+  scripts/devenv.sh \
+  scripts/test-e2e.sh \
   scripts/package.sh \
   scripts/run_linux_release_matrix.sh \
   scripts/clean.sh \
@@ -110,11 +112,17 @@ grep -Eq '^/VERSION$' "$repo_root/.gitignore"
 require_ordered_make_recipe \
   release-pipeline \
   'format
+format-check
 debug
+e2e-postgres
 clangd-surface
 valgrind
 fuzz-smoke
 release-matrix'
+require_ordered_make_recipe finalize-slice 'format
+debug
+clangd-surface
+format-check'
 require_ordered_make_recipe \
   release-matrix \
   'package
@@ -135,7 +143,9 @@ require_ordered_make_recipe prerelease 'release-pipeline'
 require_ordered_make_recipe release 'lifecycle-version-contract
 clean
 format
+format-check
 debug
+e2e-postgres
 clangd-surface
 valgrind
 fuzz-smoke

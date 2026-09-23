@@ -1,7 +1,6 @@
 #include <cpkt/libssh2.h>
 
-int main(void)
-{
+int main(void) {
   cpkt_libssh2_sftp_handle *handle;
   cpkt_libssh2_u64 value;
 

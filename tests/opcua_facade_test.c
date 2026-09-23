@@ -1978,7 +1978,6 @@ static void cpkt_native_client_reads_and_writes_facade_server(void **state) {
       UA_NodeId_equal(&browse_result.references[0].nodeId.nodeId,
                       &browse_next_result.references[0].nodeId.nodeId));
   UA_BrowseResult_clear(&browse_next_result);
-  UA_ByteString_init(&browse_result.continuationPoint);
   UA_BrowseResult_clear(&browse_result);
   assert_int_equal(UA_Client_deleteReference(
                        client, reference_source_node_id, reference_type_id,

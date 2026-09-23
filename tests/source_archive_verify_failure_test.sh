@@ -41,6 +41,8 @@ required_payloads='
 CMakeLists.txt
 Makefile
 README.md
+devenv.yaml.in
+docs/dependencies.md
 docs/opcua-c89-facade-spec.md
 docs/gssapi-c89-facade-spec.md
 docs/sasl-c89-facade-spec.md
@@ -66,6 +68,7 @@ tests/sasl_facade_test.c
 tests/sasl_header_facade_test.sh
 tests/postgres_e2e_harness_test.sh
 tests/postgres_integration_test.c
+tests/valgrind.supp
 tests/postgres_header_facade_test.sh
 tests/sqlite_facade_test.c
 tests/sqlite_api_coverage_test.sh
@@ -73,6 +76,8 @@ tests/sqlite_header_facade_test.sh
 examples/opcua-c89/main.c
 scripts/package-source.sh
 scripts/e2e-postgres.sh
+scripts/devenv.sh
+scripts/test-e2e.sh
 scripts/package-verify.sh
 scripts/release-version.sh
 scripts/source-archive-verify.sh

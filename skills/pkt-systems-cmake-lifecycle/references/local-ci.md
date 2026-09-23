@@ -25,7 +25,7 @@ Do not add a separate umbrella target as a standard lifecycle target. The exhaus
 
 Recommended production-loop tiers:
 
-- `make finalize-slice`: formatting plus the narrow debug tests needed before committing a small slice.
+- `make finalize-slice`: formatting, narrow debug checks, and a read-only formatting assertion before committing a small slice. Run it after each implementation iteration and before every commit; any edit after it requires rerunning it or at least `make format` and `make format-check` with the affected checks.
 - `make prerelease`: local, deterministic pre-release confidence. Include formatting, debug unit tests, the native Valgrind target, native fuzz smoke, Lua tests, local example smoke, and deterministic local e2e when those surfaces exist.
 - `make prerelease-live`: opt-in external-provider or credentialed integration tests. Refuse to run unless a project-prefixed environment variable explicitly enables them.
 - `make prerelease-hardening`: the expensive tier. Include `prerelease`, live checks when explicitly enabled, long fuzz runs, benchmark gates when applicable, and the release matrix.
@@ -123,7 +123,7 @@ Valgrind Memcheck is the first-class native memory hardening gate.
 
 Contract:
 
-- `valgrind` builds a native x86_64 Linux Bootlin debug facade subset and runs it with leak checking, origin tracking, and a nonzero error exit code. It must not run through cross-compilation, emulation, or QEMU.
+- `valgrind` runs the native x86_64 Linux Bootlin debug C facade CTests under Memcheck with leak checking, origin tracking, and a nonzero error exit code. Include the executable tests for every public C facade, including local database e2e where that facade needs services; do not limit it to one facade or a mock. It must not run through cross-compilation, emulation, or QEMU.
 - The gate runs serially and fails clearly when the host has not installed Valgrind.
 - Valgrind does not provide true MemorySanitizer coverage; document that boundary rather than claiming MSan equivalence.
 - Release package verification must fail if hardening runtime paths or build paths appear in shipped artifacts.

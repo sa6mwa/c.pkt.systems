@@ -1579,6 +1579,9 @@ static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
 
   impl = (struct cpkt_audio_decoder_impl *)decoder->pUserData;
   reader = impl != NULL ? &impl->reader : NULL;
+  if (bytes_read != NULL) {
+    *bytes_read = 0;
+  }
   if (reader == NULL || reader->read == NULL || bytes_read == NULL) {
     if (impl != NULL) {
       impl->callback_error = 1;

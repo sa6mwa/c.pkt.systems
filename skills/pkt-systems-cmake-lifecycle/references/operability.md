@@ -190,7 +190,7 @@ Required configure presets:
 - `base`: hidden, Ninja generator, build directory `build/${presetName}`, compile commands on.
 - `debug`: host Debug build with tests and examples.
 - `debug-lua`, when Lua is supported.
-- `valgrind`: native Debug facade subset checked by host-provided Valgrind.
+- `valgrind`: native Debug C facade CTests checked by host-provided Valgrind.
 - `fuzz`, when fuzzing exists.
 - `integration`, when opt-in integration tests exist.
 - `x86_64-linux-gnu-release`

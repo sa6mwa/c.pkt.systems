@@ -1940,6 +1940,28 @@ if(CPKT_BUILD_TESTS)
         sasl_privileged_plugin_path sasl_ordinary_plugin_path PROPERTIES
         ENVIRONMENT "SASL_PATH=${CMAKE_BINARY_DIR}/sasl-empty-plugin-path")
       add_test(NAME sasl_callback_retry COMMAND cpkt_sasl_callback_retry_test)
+      set(_cpkt_memcheck_facade_tests
+        abi_test_shared abi_test_static
+        lua_facade_unit lua_runtime_unit
+        audio_facade_unit sus_facade_unit
+        opcua_facade_integration
+        opcua_boundary_server_c99_client_c89
+        opcua_boundary_server_c89_client_c99
+        opcua_boundary_server_c89_client_c89
+        opcua_facade_failure_modes
+        postgres_receiver_shell
+        openssl_facade nghttp2_facade libssh2_header_facade libssh2_facade
+        mqttc_header_facade mqttc_facade
+        sqlite_facade sqlite_vfs_wal_capability
+        pdf_facade_static pdf_facade_shared
+        sqlite_child_lifetime_concurrency sqlite_page_cache_lifetime
+        sqlite_auto_extension_shutdown sqlite_rtree_registration_failure
+        sqlite_session_hook_guard sqlite_collation_failure
+        gssapi_facade sasl_facade sasl_callback_retry)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        list(APPEND _cpkt_memcheck_facade_tests
+          libssh2_sftp_eof sqlite_page_cache_discard)
+      endif()
       set_tests_properties(
         opcua_facade_integration
         opcua_boundary_server_c99_client_c89
@@ -1950,7 +1972,14 @@ if(CPKT_BUILD_TESTS)
         PROPERTIES
           LABELS "integration;offline;opcua"
           TIMEOUT 30)
+      foreach(_cpkt_memcheck_test IN LISTS _cpkt_memcheck_facade_tests)
+        set_property(TEST ${_cpkt_memcheck_test} APPEND PROPERTY LABELS
+          facade memcheck)
+      endforeach()
+      set_tests_properties(opcua_facade_integration PROPERTIES TIMEOUT 120)
+      set_tests_properties(opcua_facade_failure_modes PROPERTIES TIMEOUT 90)
       add_test(NAME lua_runtime_mock_unit COMMAND cpkt_lua_runtime_mock_test)
+      set_tests_properties(lua_runtime_mock_unit PROPERTIES LABELS "facade;memcheck")
       add_test(
         NAME sus_model_catalog_metadata
         COMMAND

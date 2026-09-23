@@ -1,7 +1,6 @@
 #include <cpkt/mqttc.h>
 
-int main(void)
-{
+int main(void) {
   struct cpkt_mqtt_fixed_header header;
   cpkt_mqtt_u8 buffer[4];
 

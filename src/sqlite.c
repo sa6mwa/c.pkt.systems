@@ -1036,8 +1036,8 @@ cpkt_sqlite_carray_i64_binding_new(void *data, int element_count,
     free(binding);
     return NULL;
   }
-  binding->values = (sqlite3_int64 *)malloc((size_t)element_count *
-                                             sizeof(*binding->values));
+  binding->values =
+      (sqlite3_int64 *)malloc((size_t)element_count * sizeof(*binding->values));
   if (binding->values == NULL) {
     free(binding);
     return NULL;
@@ -1709,8 +1709,8 @@ static int cpkt_sqlite_statement_bind_carray(
                                parameter_index, data, element_count,
                                element_type, destroy);
   }
-  binding = cpkt_sqlite_carray_i64_binding_new(data, element_count, destroy,
-                                               data);
+  binding =
+      cpkt_sqlite_carray_i64_binding_new(data, element_count, destroy, data);
   if (binding == NULL) {
     if (destroy != NULL)
       destroy(data);
@@ -3017,9 +3017,8 @@ int cpkt_sqlite_create_module(cpkt_sqlite *database, const char *name,
   module->database = database;
   module->methods = *methods;
   module->module.iVersion = 4;
-  module->module.xCreate = methods->create == NULL
-                               ? NULL
-                               : cpkt_sqlite_module_create_trampoline;
+  module->module.xCreate =
+      methods->create == NULL ? NULL : cpkt_sqlite_module_create_trampoline;
   module->module.xConnect = methods->connect == NULL
                                 ? NULL
                                 : (methods->connect == methods->create

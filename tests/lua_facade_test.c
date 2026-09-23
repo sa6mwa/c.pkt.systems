@@ -5,14 +5,13 @@
 #include <string.h>
 
 static int cpkt_lua_facade_check_integer(cpkt_lua_integer value,
-                                         unsigned int high,
-                                         unsigned int low) {
+                                         unsigned int high, unsigned int low) {
   return cpkt_lua_integer_high(value) == high &&
          cpkt_lua_integer_low(value) == low;
 }
 
 static const char *cpkt_lua_facade_pushvfstring(cpkt_lua_state *state,
-                                                 const char *format, ...) {
+                                                const char *format, ...) {
   va_list arguments;
   const char *result;
 
@@ -45,16 +44,15 @@ int main(void) {
   }
   cpkt_lua_pop(state, 1);
 
-  string = cpkt_lua_facade_pushvfstring(
-      state, "%I:%U", cpkt_lua_integer_make(0U, 1U), 65UL);
+  string = cpkt_lua_facade_pushvfstring(state, "%I:%U",
+                                        cpkt_lua_integer_make(0U, 1U), 65UL);
   if (string == 0 || strcmp(string, "1:A") != 0) {
     cpkt_lua_close(state);
     return 8;
   }
   cpkt_lua_pop(state, 1);
 
-  string = cpkt_lua_pushfstring(state, "%I",
-                                cpkt_lua_integer_make(0U, 1U));
+  string = cpkt_lua_pushfstring(state, "%I", cpkt_lua_integer_make(0U, 1U));
   if (string == 0 || strcmp(string, "1") != 0) {
     cpkt_lua_close(state);
     return 7;
@@ -118,19 +116,19 @@ int main(void) {
                                  cpkt_lua_integer_make(0U, 2U));
   if (!cpkt_lua_facade_check_integer(value, 0U, 3U) ||
       !cpkt_lua_facade_check_integer(
-          cpkt_lua_l_integer_shift_left(cpkt_lua_integer_make(0U, 1U), 32U),
-          1U, 0U) ||
+          cpkt_lua_l_integer_shift_left(cpkt_lua_integer_make(0U, 1U), 32U), 1U,
+          0U) ||
       !cpkt_lua_facade_check_integer(
           cpkt_lua_l_integer_shift_right(cpkt_lua_integer_make(1U, 0U), 32U),
-          0U, 1U) || cpkt_lua_ident() == 0) {
+          0U, 1U) ||
+      cpkt_lua_ident() == 0) {
     cpkt_lua_close(state);
     return 5;
   }
 
   if (cpkt_lua_gc(state, CPKT_LUA_GCGEN) != CPKT_LUA_GCINC ||
       cpkt_lua_gc(state, CPKT_LUA_GCINC) != CPKT_LUA_GCGEN ||
-      cpkt_lua_gc(state, CPKT_LUA_GCSTEP,
-                  (size_t)INT_MAX + 1U) < 0) {
+      cpkt_lua_gc(state, CPKT_LUA_GCSTEP, (size_t)INT_MAX + 1U) < 0) {
     cpkt_lua_close(state);
     return 6;
   }

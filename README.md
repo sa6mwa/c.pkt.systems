@@ -86,8 +86,9 @@ make release
 ```
 
 `make prerelease` runs the complete release proof graph without first deleting
-generated state: formatting, deterministic debug and clangd checks, native
-Valgrind and AFL++ smoke checks, then the release matrix. It therefore produces
+generated state: formatting, deterministic debug and local Podman database e2e,
+clangd checks, native Valgrind and AFL++ smoke checks, then the release matrix.
+It therefore produces
 and verifies the same package set as the final gate. `make release` first runs
 the release-version contract check, then removes repository-local generated
 state and invokes that same proof graph. It builds and verifies local artifacts;
@@ -540,17 +541,37 @@ make fuzz-smoke
 make fuzz
 ```
 
-`make test-all` combines `debug`, `clangd-surface`, `valgrind`, and `fuzz-smoke`.
+Local PostgreSQL facade integration uses the rootless Podman Kube manifest
+[`devenv.yaml.in`](devenv.yaml.in). It starts the version-pinned official
+PostgreSQL Alpine image and one CockroachDB node, then runs the same facade
+query, parameter, asynchronous receive, prepared statement, and transaction
+checks against both. No credentials are required for these loopback-only test
+services. Run `make e2e-postgres` or `make test-e2e`; both start and stop the
+pods automatically. `make dev-up`, `make dev-down`, `make dev-ps`,
+`make dev-logs`, and `make dev-reset` manage them manually. The default host
+ports are 55432 and 56257; override them with `CPKT_DEV_POSTGRES_PORT` and
+`CPKT_DEV_COCKROACH_PORT`. Set `CPKT_E2E_KEEP_DEVSERVICES=1` to leave the
+pods running after a test. All database state and the rendered manifest are
+under ignored `build/devenv/`; `make dev-reset` removes them as the host user.
+The local e2e gate runs before native hardening and the release matrix.
+
+`make test-all` combines `debug`, local database e2e, `clangd-surface`,
+`valgrind`, and `fuzz-smoke`.
 The debug suite includes the real Lua runtime tests, mock-backed Lua tests, and
 C89 embedding examples; there is no separate Lua-test command.
 
-`valgrind` is the required native x86_64 Linux Memcheck gate for
-`cpkt_lua_runtime_mock_test`. It does not cover every facade under Memcheck.
+`valgrind` runs the native C facade CTests, including static and shared PDF
+tests, plus PostgreSQL facade e2e against both local database pods, under
+Memcheck with leak checking and origin tracking. It uses the normal debug build
+so it exercises the same facade executables as CTest. The
+suppression in [`tests/valgrind.supp`](tests/valgrind.supp) is limited to one
+allocation by bundled SQLite on the intentionally failed custom-VFS open in
+the facade test; other leaks remain release blockers.
 AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
 plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
 runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
 dependency install tree for linkage. These hardening builds live under
-`build/valgrind`, `build/fuzz`, and `build/opcua-fuzz`; they are part of the
+`build/debug`, `build/fuzz`, and `build/opcua-fuzz`; they are part of the
 shared prerelease and release proof graph and never instrument release package
 artifacts. Valgrind and AFL++ never run via a cross target, emulator, or QEMU.
 
@@ -565,9 +586,9 @@ CPKT_LIVE_CHECKS=1 make E2E_SUS_PRESET=debug prerelease-live
 
 Dependency updates must follow the [bundle ABI policy](AGENTS.md), including
 embedded libraries and downstream consumers. OpenSSL remains on version 3.
-The [September 2026 audit](docs/dependency-audit-2026-09.md) records selected
-versions, security context, verification results, and supported compatibility
-scope. Direct whisper.cpp/ggml API/ABI compatibility for external consumers is
+The [dependency inventory](docs/dependencies.md) points to authoritative
+source pins, SDK manifests, and license notices. Direct whisper.cpp/ggml
+API/ABI compatibility for external consumers is
 out of scope; supported downstream speech use goes through `cpkt_sus`.
 
 `clang-format` and `clangd` are host development tools supplied by the
