@@ -1488,6 +1488,36 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_postgres_integration_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_postgres_integration_test)
     target_link_libraries(cpkt_postgres_integration_test PRIVATE cpkt_postgres_static)
+    add_executable(cpkt_postgres_oauth_module_test
+      tests/postgres_oauth_module_test.c)
+    if(CPKT_BUILD_DEPENDENCIES)
+      add_dependencies(cpkt_postgres_oauth_module_test cpkt_postgresql_project)
+    endif()
+    cpkt_use_local_runtime(cpkt_postgres_oauth_module_test)
+    target_compile_options(cpkt_postgres_oauth_module_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_postgres_oauth_module_test)
+    target_link_libraries(cpkt_postgres_oauth_module_test PRIVATE
+      ${CMAKE_DL_LIBS} cpkt::postgresql_shared cpkt::curl_shared)
+    # Dependency staging keeps curl and its closure in separate prefixes.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      set(_cpkt_postgresql_oauth_staging_paths)
+      foreach(_cpkt_postgresql_oauth_dependency IN ITEMS
+          cpkt::curl_shared cpkt::zlib_shared cpkt::openssl_ssl_shared
+          cpkt::libssh2_shared cpkt::nghttp2_shared cpkt::gssapi_krb5_shared
+          cpkt::openldap_shared cpkt::cyrus_sasl_shared)
+        get_target_property(_cpkt_postgresql_oauth_dependency_location
+          ${_cpkt_postgresql_oauth_dependency} IMPORTED_LOCATION)
+        get_filename_component(_cpkt_postgresql_oauth_dependency_dir
+          "${_cpkt_postgresql_oauth_dependency_location}" DIRECTORY)
+        list(APPEND _cpkt_postgresql_oauth_staging_paths
+          "${_cpkt_postgresql_oauth_dependency_dir}")
+      endforeach()
+      list(JOIN _cpkt_postgresql_oauth_staging_paths ":"
+        _cpkt_postgresql_oauth_staging_rpath)
+      target_link_options(cpkt_postgres_oauth_module_test PRIVATE
+        LINKER:--disable-new-dtags
+        "LINKER:-rpath,${_cpkt_postgresql_oauth_staging_rpath}")
+    endif()
     add_executable(cpkt_gssapi_facade_test tests/gssapi_facade_test.c)
     cpkt_use_local_runtime(cpkt_gssapi_facade_test)
     target_compile_options(cpkt_gssapi_facade_test PRIVATE -std=c89)
@@ -1781,6 +1811,15 @@ if(CPKT_BUILD_TESTS)
         COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
+      string(REGEX MATCH "^[0-9]+" _cpkt_postgresql_oauth_major
+        "${CPKT_POSTGRESQL_VERSION}")
+      get_target_property(_cpkt_postgresql_shared_location
+        cpkt::postgresql_shared IMPORTED_LOCATION)
+      get_filename_component(_cpkt_postgresql_library_dir
+        "${_cpkt_postgresql_shared_location}" DIRECTORY)
+      add_test(NAME postgres_oauth_module
+        COMMAND cpkt_postgres_oauth_module_test
+          "${_cpkt_postgresql_library_dir}/libpq-oauth-${_cpkt_postgresql_oauth_major}${CMAKE_SHARED_MODULE_SUFFIX}")
       add_test(NAME openssl_facade COMMAND cpkt_openssl_facade_test)
       add_test(NAME nghttp2_facade COMMAND cpkt_nghttp2_facade_test)
       add_test(NAME libssh2_header_facade COMMAND cpkt_libssh2_header_facade_test)
@@ -1810,6 +1849,9 @@ if(CPKT_BUILD_TESTS)
       add_test(
         NAME postgres_e2e_harness
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_e2e_harness_test.sh")
+      add_test(
+        NAME postgres_oauth_loader_patch
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_oauth_loader_patch_test.sh")
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
       add_test(NAME sasl_facade COMMAND cpkt_sasl_facade_test)
       add_test(NAME sasl_callback_retry COMMAND cpkt_sasl_callback_retry_test)

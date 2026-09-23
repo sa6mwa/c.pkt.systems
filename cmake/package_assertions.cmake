@@ -1435,7 +1435,8 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpkt_postgres.dylib"
       "lib/libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib"
       "lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
-      "lib/libpq.5.dylib")
+      "lib/libpq.5.dylib"
+      "lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
@@ -1467,9 +1468,17 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.1.1.2.dylib"
     "@rpath/libmqttc.1.dylib"
     "libmqttc Darwin install name")
+  file(STRINGS
+    "${_assert_extract_root}/${_archive_stem}/lib/libpq.5.dylib"
+    _postgresql_oauth_loader_strings
+    REGEX "@loader_path/libpq-oauth-${_manifest_postgresql_major_version}[.]so")
+  if(NOT _postgresql_oauth_loader_strings)
+    message(FATAL_ERROR "Darwin libpq must load its private OAuth module beside the library")
+  endif()
   file(GLOB_RECURSE _packaged_darwin_dylibs
     "${_assert_extract_root}/${_archive_stem}/lib/*.dylib"
-    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so")
+    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so"
+    "${_assert_extract_root}/${_archive_stem}/lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
   foreach(_packaged_darwin_dylib IN LISTS _packaged_darwin_dylibs)
     if(IS_SYMLINK "${_packaged_darwin_dylib}")
       continue()
@@ -1615,7 +1624,8 @@ else()
       "lib/libcpkt_postgres.so"
       "lib/libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"
       "lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
-      "lib/libpq.so.5.${_manifest_postgresql_major_version}")
+      "lib/libpq.so.5.${_manifest_postgresql_major_version}"
+      "lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
 
@@ -1627,6 +1637,13 @@ else()
       "${_legacy_open62541_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
+  file(STRINGS
+    "${_assert_extract_root}/${_archive_stem}/lib/libpq.so.5.${_manifest_postgresql_major_version}"
+    _postgresql_oauth_loader_strings
+    REGEX "libpq-oauth-${_manifest_postgresql_major_version}[.]so")
+  if(NOT _postgresql_oauth_loader_strings)
+    message(FATAL_ERROR "Linux libpq must name its bundled private OAuth module")
+  endif()
   file(GLOB_RECURSE _elf_runtime_candidates
     LIST_DIRECTORIES FALSE
     "${_assert_extract_root}/${_archive_stem}/bin/*"
@@ -1662,7 +1679,9 @@ else()
       "lib/libwhisper.so.1.9.4"
       "lib/libggml.so.0.23.0"
       "lib/libggml-base.so.0.23.0"
-      "lib/libggml-cpu.so.0.23.0")
+      "lib/libggml-cpu.so.0.23.0"
+      "lib/libpq.so.5.${_manifest_postgresql_major_version}"
+      "lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
     cpkt_assert_elf_runpath(
       "${_assert_extract_root}/${_archive_stem}/${_runpath_library}"
       "\\$ORIGIN"

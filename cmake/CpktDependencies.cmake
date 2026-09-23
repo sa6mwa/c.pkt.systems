@@ -2595,10 +2595,9 @@ function(cpkt_add_postgresql)
   set(shared_library "${install_dir}/lib/libpq${CMAKE_SHARED_LIBRARY_SUFFIX}")
   string(REGEX MATCH "^[0-9]+" postgresql_major_version "${CPKT_POSTGRESQL_VERSION}")
   set(oauth_static_library "${install_dir}/lib/libpq-oauth${CMAKE_STATIC_LIBRARY_SUFFIX}")
-  # PostgreSQL defines libpq-oauth as an internal shared module with no
-  # install-name/SONAME.  Keep its static archive in libpq's static closure,
-  # but do not ship an unsupported runtime library without ABI identity.
-  set(oauth_shared_library "${install_dir}/lib/libpq-oauth-${postgresql_major_version}${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  # libpq dlopens this private module for its built-in OAuth flow. It has no
+  # SONAME or install ID because it is tied to PostgreSQL's major version.
+  set(oauth_shared_library "${install_dir}/lib/libpq-oauth-${postgresql_major_version}${CMAKE_SHARED_MODULE_SUFFIX}")
   cpkt_get_target_triple(target_triple)
   cpkt_get_external_c_flags(external_cflags)
   cpkt_get_autotools_link_flags(external_ldflags)
@@ -2655,6 +2654,12 @@ function(cpkt_add_postgresql)
     COMMAND ${CMAKE_COMMAND}
       -DCPKT_POSTGRESQL_SOURCE_DIR=${source_dir}
       -P ${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND postgresql_post_configure_command
+      COMMAND ${CMAKE_COMMAND}
+        -DCPKT_POSTGRESQL_SOURCE_DIR=${source_dir}
+        -P ${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_oauth_loader.cmake)
+  endif()
   # PostgreSQL relies on make's built-in C object rules.  The top-level
   # c.pkt.systems Makefile exports --no-builtin-rules, so do not propagate
   # that project policy into PostgreSQL's independent upstream makefiles.
@@ -2713,7 +2718,6 @@ function(cpkt_add_postgresql)
         ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq-oauth install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
-        COMMAND ${CMAKE_COMMAND} -E rm -f "${oauth_shared_library}"
         COMMAND ${postgresql_darwin_install_name_normalize_command}
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "${build_dir}/src/common/libpgcommon_shlib${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -2726,7 +2730,7 @@ function(cpkt_add_postgresql)
           "${install_dir}/include/postgres_ext.h"
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}/share"
         COMMAND ${strip_install_command}
-      BUILD_BYPRODUCTS "${static_library}" "${common_static_library}" "${port_static_library}" "${oauth_static_library}" "${shared_library}"
+      BUILD_BYPRODUCTS "${static_library}" "${common_static_library}" "${port_static_library}" "${oauth_static_library}" "${oauth_shared_library}" "${shared_library}"
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   endif()
   add_library(cpkt::postgresql_static STATIC IMPORTED GLOBAL)
@@ -2748,6 +2752,7 @@ function(cpkt_add_postgresql)
     cpkt_require_dependency_file("${common_static_library}" "PostgreSQL frontend common static library")
     cpkt_require_dependency_file("${port_static_library}" "PostgreSQL frontend port static library")
     cpkt_require_dependency_file("${oauth_static_library}" "PostgreSQL OAuth static library")
+    cpkt_require_dependency_file("${oauth_shared_library}" "PostgreSQL OAuth loadable module")
     cpkt_require_dependency_file("${shared_library}" "PostgreSQL libpq shared library")
     cpkt_require_dependency_file("${install_dir}/include/libpq-fe.h" "PostgreSQL libpq header")
   endif()

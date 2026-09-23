@@ -43,9 +43,9 @@ link `cpkt::postgres`, or use `pkg-config --static --libs cpkt-postgres`.
 Those interfaces carry libpq's complete static closure, including its OAuth,
 frontend-common, frontend-port, LDAP, SASL, GSSAPI, TLS, resolver, and math
 dependencies. Shared consumers link `cpkt::postgres_shared`. The OAuth client
-module is a libpq-internal loadable component with no stable shared-library
-identity, so c.pkt.systems retains it only in the static closure rather than
-shipping it as a runtime library.
+module is a libpq-internal loadable component tied to PostgreSQL's major
+version. The SDK ships it beside shared libpq so the built-in OAuth flow can
+load it at runtime; it has no public shared-library ABI or link target.
 
 ## Live protocol compatibility gate
 
