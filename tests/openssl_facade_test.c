@@ -44,6 +44,27 @@ static int openssl_mmsg_test_write(BIO *bio, const char *data, int size) {
 }
 
 static int openssl_mmsg_destroy_calls;
+static BIO *openssl_duplicate_source;
+
+static long openssl_mmsg_test_ctrl(BIO *bio, int command, long number,
+                                   void *argument) {
+  (void)bio;
+  (void)number;
+  (void)argument;
+  return command == BIO_CTRL_DUP ? 1L : 0L;
+}
+
+static long openssl_duplicate_callback(void *context, BIO *bio, int operation,
+                                       const void *argument,
+                                       int argument_integer, long argument_long,
+                                       long result) {
+  (void)context;
+  (void)operation;
+  (void)argument;
+  (void)argument_integer;
+  (void)argument_long;
+  return bio == openssl_duplicate_source ? result : 0L;
+}
 
 static int openssl_mmsg_test_destroy(BIO *bio) {
   (void)bio;
@@ -165,6 +186,8 @@ int main(void) {
   BIO *bio;
   BIO *dgram_left;
   BIO *dgram_right;
+  BIO *ordinary_bio;
+  BIO *ordinary_copy;
   BIO *retained_bio;
   OSSL_LIB_CTX *library_context;
   OSSL_PARAM *built_parameters;
@@ -334,6 +357,9 @@ int main(void) {
       BIO_meth_set_destroy(
           (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
           openssl_mmsg_test_destroy) != 1 ||
+      BIO_meth_set_ctrl(
+          (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
+          openssl_mmsg_test_ctrl) != 1 ||
       cpkt_openssl_BIO_meth_set_sendmmsg(facade_method,
                                          openssl_mmsg_test_callback) != 1 ||
       cpkt_openssl_BIO_meth_set_recvmmsg(facade_method,
@@ -354,6 +380,27 @@ int main(void) {
     cpkt_openssl_BIO_meth_close(facade_method);
     return 31;
   }
+  openssl_duplicate_source = cpkt_openssl_BIO_native(plain_facade_bio);
+  cpkt_openssl_BIO_set_callback(plain_facade_bio, openssl_duplicate_callback);
+  if (BIO_dup_chain(openssl_duplicate_source) != 0 ||
+      openssl_mmsg_destroy_calls != 1 ||
+      BIO_write(openssl_duplicate_source, "abc", 3) != 3) {
+    cpkt_openssl_BIO_close(plain_facade_bio);
+    cpkt_openssl_BIO_meth_close(plain_facade_method);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 43;
+  }
+  ordinary_bio = BIO_new(BIO_s_mem());
+  ordinary_copy = ordinary_bio == 0 ? 0 : BIO_dup_chain(ordinary_bio);
+  if (ordinary_copy == 0) {
+    BIO_free(ordinary_bio);
+    cpkt_openssl_BIO_close(plain_facade_bio);
+    cpkt_openssl_BIO_meth_close(plain_facade_method);
+    cpkt_openssl_BIO_meth_close(facade_method);
+    return 44;
+  }
+  BIO_free(ordinary_copy);
+  BIO_free(ordinary_bio);
   retained_bio = cpkt_openssl_BIO_native(plain_facade_bio);
   if (BIO_up_ref(retained_bio) != 1) {
     cpkt_openssl_BIO_close(plain_facade_bio);
@@ -370,7 +417,7 @@ int main(void) {
   plain_facade_bio = 0;
   if (cpkt_openssl_BIO_meth_close(plain_facade_method) != 0 ||
       BIO_write(retained_bio, "abc", 3) != 3 || BIO_free(retained_bio) != 1 ||
-      openssl_mmsg_destroy_calls != 1 ||
+      openssl_mmsg_destroy_calls != 2 ||
       cpkt_openssl_BIO_meth_close(plain_facade_method) != 1) {
     cpkt_openssl_BIO_meth_close(facade_method);
     return 31;

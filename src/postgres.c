@@ -1844,7 +1844,6 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   cpkt_postgres_notice_binding *dispose;
 
   native_result = cpkt_postgres_native_result(result);
-  PQclear(native_result);
   cpkt_postgres_hook_lock_acquire();
   slot = &cpkt_postgres_result_bindings;
   while (*slot != NULL && (*slot)->result != native_result) {
@@ -1854,12 +1853,18 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   dispose = NULL;
   if (entry != NULL) {
     *slot = entry->next;
-    --entry->owner->result_count;
-    if (entry->owner->closed && entry->owner->result_count == 0U) {
-      dispose = entry->owner;
-    }
   }
   cpkt_postgres_hook_lock_release();
+  /* Detach before PQclear can release this address for another result.
+   * Keep the owner's reference until native cleanup is finished. */
+  PQclear(native_result);
+  if (entry != NULL) {
+    cpkt_postgres_hook_lock_acquire();
+    --entry->owner->result_count;
+    if (entry->owner->closed && entry->owner->result_count == 0U)
+      dispose = entry->owner;
+    cpkt_postgres_hook_lock_release();
+  }
   free(entry);
   cpkt_postgres_dispose_notice_binding(dispose);
 }

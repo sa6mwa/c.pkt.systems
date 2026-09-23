@@ -660,7 +660,8 @@ cpkt_openssl_BIO_new_ex(OSSL_LIB_CTX *library_context,
                         void *callback_context);
 /** Closes one facade BIO. It returns zero during any batch callback. */
 CPKT_OPENSSL_API int cpkt_openssl_BIO_close(cpkt_openssl_bio *bio);
-/** Returns the borrowed native BIO owned by a facade BIO. */
+/** Returns the borrowed native BIO owned by a facade BIO. BIO_dup_chain on
+ * this BIO fails because a copy cannot share its facade ownership. */
 CPKT_OPENSSL_API BIO *cpkt_openssl_BIO_native(cpkt_openssl_bio *bio);
 /** Sets the legacy callback for a facade BIO; argument is C89 mmsg args when
  * applicable. */

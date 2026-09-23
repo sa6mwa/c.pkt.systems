@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <openssl/bioerr.h>
+#include <openssl/err.h>
+
 typedef char cpkt_openssl_u64_is_eight_bytes[sizeof(uint64_t) == 8 ? 1 : -1];
 typedef char cpkt_openssl_i64_is_eight_bytes[sizeof(int64_t) == 8 ? 1 : -1];
 typedef char cpkt_openssl_octet_is_eight_bits[CHAR_BIT == 8 ? 1 : -1];
@@ -77,9 +80,27 @@ static void cpkt_openssl_bio_ex_data_free(void *parent, void *pointer,
   free(bio);
 }
 
+static int cpkt_openssl_bio_ex_data_dup(CRYPTO_EX_DATA *to,
+                                        const CRYPTO_EX_DATA *from,
+                                        void **pointer, int index,
+                                        long argument, void *context) {
+  (void)to;
+  (void)from;
+  (void)index;
+  (void)argument;
+  (void)context;
+  if (pointer == NULL || *pointer == NULL)
+    return 1;
+  /* The facade shell owns the native BIO and its method pin. A shallow copy
+   * would give both BIOs the same owner and release it twice. */
+  ERR_raise(ERR_LIB_BIO, BIO_R_UNSUPPORTED_METHOD);
+  return 0;
+}
+
 static void cpkt_openssl_bio_ex_data_initialize(void) {
   cpkt_openssl_bio_ex_data_index =
-      BIO_get_ex_new_index(0L, NULL, NULL, NULL, cpkt_openssl_bio_ex_data_free);
+      BIO_get_ex_new_index(0L, NULL, NULL, cpkt_openssl_bio_ex_data_dup,
+                           cpkt_openssl_bio_ex_data_free);
 }
 
 static uint64_t cpkt_openssl_native_u64(cpkt_openssl_u64 value) {
@@ -409,6 +430,8 @@ static long cpkt_openssl_bio_callback_trampoline(BIO *bio, int operation,
   long callback_result;
 
   facade_bio = (cpkt_openssl_bio *)BIO_get_callback_arg(bio);
+  if (facade_bio != NULL && facade_bio->native != bio)
+    return 1;
   if (!cpkt_openssl_bio_callback_enter(facade_bio, &method)) {
     return 0;
   }
@@ -455,6 +478,8 @@ static long cpkt_openssl_bio_callback_ex_trampoline(
   long callback_result;
 
   facade_bio = (cpkt_openssl_bio *)BIO_get_callback_arg(bio);
+  if (facade_bio != NULL && facade_bio->native != bio)
+    return 1;
   if (!cpkt_openssl_bio_callback_enter(facade_bio, &method)) {
     return 0;
   }
