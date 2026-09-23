@@ -550,9 +550,10 @@ services. Run `make e2e-postgres` or `make test-e2e`; both start and stop the
 pods automatically. `make dev-up`, `make dev-down`, `make dev-ps`,
 `make dev-logs`, and `make dev-reset` manage them manually. The default host
 ports are 55432 and 56257; override them with `CPKT_DEV_POSTGRES_PORT` and
-`CPKT_DEV_COCKROACH_PORT`. Set `CPKT_E2E_KEEP_DEVSERVICES=1` to leave the
-pods running after a test. All database state and the rendered manifest are
-under ignored `build/devenv/`; `make dev-reset` removes them as the host user.
+`CPKT_DEV_COCKROACH_PORT`. The e2e runner stops both pods after success or
+failure, including when they were already running. All database state and the
+rendered manifest are under ignored `build/devenv/`; `make dev-reset` removes
+them as the host user.
 The local e2e gate runs before native hardening and the release matrix.
 
 `make test-all` combines `debug`, local database e2e, `clangd-surface`,

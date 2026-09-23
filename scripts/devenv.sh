@@ -103,6 +103,10 @@ down() {
   if [[ -f $manifest ]]; then
     podman kube down "$manifest"
   fi
+  if podman pod exists "$postgres_pod" || podman pod exists "$cockroach_pod"; then
+    printf '[devenv] database pods remain after shutdown\n' >&2
+    return 1
+  fi
 }
 
 case ${1:-} in
