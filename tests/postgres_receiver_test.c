@@ -15,6 +15,24 @@ static void notice_processor(void *context,
   (void)message;
 }
 
+static cpkt_postgres_connection *observed_connection;
+
+static void counted_receiver(void *context,
+                             cpkt_postgres_connection *connection,
+                             const cpkt_postgres_result *result) {
+  ++*(int *)context;
+  observed_connection = connection;
+  (void)result;
+}
+
+static void counted_processor(void *context,
+                              cpkt_postgres_connection *connection,
+                              const char *message) {
+  ++*(int *)context;
+  observed_connection = connection;
+  (void)message;
+}
+
 static void thread_lock(int acquire) { (void)acquire; }
 
 static int ssl_key_password(char *buffer, int buffer_size,
@@ -41,6 +59,10 @@ int main(void) {
   cpkt_postgres_notice_processor old_processor;
   cpkt_postgres_auth_data_hook auth_callback;
   void *old_context;
+  cpkt_postgres_result *result;
+  cpkt_postgres_result *copy;
+  int first_count;
+  int second_count;
 
   pg = cpkt_postgres_new("host=/tmp/cpkt-postgres-no-socket connect_timeout=1");
   if (pg == 0 || pg->tx == 0 || pg->send == 0 || pg->receive == 0 ||
@@ -90,6 +112,55 @@ int main(void) {
     return 9;
   }
   cpkt_postgres_set_auth_data_hook(0, 0);
+  first_count = 0;
+  second_count = 0;
+  cpkt_postgres_set_notice_receiver(pg->connection, counted_receiver,
+                                    &first_count, 0, 0);
+  result = cpkt_postgres_result_new_empty(pg->connection,
+                                          CPKT_POSTGRES_RESULT_TUPLES_OK);
+  copy = result == 0 ? 0 : cpkt_postgres_result_copy(result, 0);
+  if (result == 0 || copy == 0)
+    return 10;
+  cpkt_postgres_set_notice_receiver(pg->connection, counted_receiver,
+                                    &second_count, 0, 0);
+  (void)cpkt_postgres_result_field_name(result, -1);
+  if (first_count != 1 || second_count != 0 ||
+      observed_connection != pg->connection)
+    return 11;
   pg->close(pg);
+  observed_connection = (cpkt_postgres_connection *)1;
+  (void)cpkt_postgres_result_field_name(result, -1);
+  if (first_count != 2 || second_count != 0 || observed_connection != 0)
+    return 12;
+  /* Libpq's PQcopyResult does not copy notice hooks. */
+  (void)cpkt_postgres_result_field_name(copy, -1);
+  if (first_count != 2 || second_count != 0)
+    return 17;
+  cpkt_postgres_result_free(result);
+  cpkt_postgres_result_free(copy);
+
+  pg = cpkt_postgres_new("host=/tmp/cpkt-postgres-no-socket connect_timeout=1");
+  if (pg == 0)
+    return 13;
+  first_count = 0;
+  second_count = 0;
+  cpkt_postgres_set_notice_processor(pg->connection, counted_processor,
+                                     &first_count, 0, 0);
+  result = cpkt_postgres_result_new_empty(pg->connection,
+                                          CPKT_POSTGRES_RESULT_TUPLES_OK);
+  if (result == 0)
+    return 14;
+  cpkt_postgres_set_notice_processor(pg->connection, counted_processor,
+                                     &second_count, 0, 0);
+  (void)cpkt_postgres_result_field_name(result, -1);
+  if (first_count != 1 || second_count != 0 ||
+      observed_connection != pg->connection)
+    return 15;
+  pg->close(pg);
+  observed_connection = (cpkt_postgres_connection *)1;
+  (void)cpkt_postgres_result_field_name(result, -1);
+  if (first_count != 2 || second_count != 0 || observed_connection != 0)
+    return 16;
+  cpkt_postgres_result_free(result);
   return 0;
 }

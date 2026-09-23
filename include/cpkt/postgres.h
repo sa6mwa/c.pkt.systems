@@ -468,7 +468,10 @@ cpkt_postgres_context_visibility cpkt_postgres_set_error_context_visibility(
 /*
  * Callback registration is connection-affine.  The old callback and context
  * are returned when their output pointers are non-NULL.  Passing a NULL
- * callback selects the native client's no-op callback behavior.
+ * callback selects the native client's no-op callback behavior. A result
+ * retains the callback and context present when the client creates it. Keep
+ * that context valid until the result is freed. If a result outlives its
+ * connection, the callback receives a NULL connection pointer.
  */
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 void cpkt_postgres_set_notice_receiver(

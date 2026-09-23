@@ -19,14 +19,29 @@ typedef char
 typedef char
     cpkt_postgres_i64_is_64_bits[(sizeof(int64_t) * CHAR_BIT == 64) ? 1 : -1];
 
-typedef struct cpkt_postgres_notice_binding {
+typedef struct cpkt_postgres_notice_snapshot {
   PGconn *connection;
   cpkt_postgres_notice_receiver receiver;
   void *receiver_context;
   cpkt_postgres_notice_processor processor;
   void *processor_context;
+  struct cpkt_postgres_notice_snapshot *next;
+} cpkt_postgres_notice_snapshot;
+
+typedef struct cpkt_postgres_notice_binding {
+  PGconn *connection;
+  cpkt_postgres_notice_snapshot *latest;
+  cpkt_postgres_notice_snapshot *snapshots;
+  size_t result_count;
+  int closed;
   struct cpkt_postgres_notice_binding *next;
 } cpkt_postgres_notice_binding;
+
+typedef struct cpkt_postgres_result_binding {
+  PGresult *result;
+  cpkt_postgres_notice_binding *owner;
+  struct cpkt_postgres_result_binding *next;
+} cpkt_postgres_result_binding;
 
 typedef struct cpkt_postgres_oauth_request_state {
   cpkt_postgres_oauth_async async;
@@ -35,6 +50,7 @@ typedef struct cpkt_postgres_oauth_request_state {
 } cpkt_postgres_oauth_request_state;
 
 static cpkt_postgres_notice_binding *cpkt_postgres_notice_bindings = NULL;
+static cpkt_postgres_result_binding *cpkt_postgres_result_bindings = NULL;
 static cpkt_postgres_thread_lock cpkt_postgres_thread_lock_callback = NULL;
 static cpkt_postgres_ssl_key_password_hook
     cpkt_postgres_ssl_key_password_callback = NULL;
@@ -105,9 +121,28 @@ cpkt_postgres_ensure_notice_binding(PGconn *connection) {
   return binding;
 }
 
-static void cpkt_postgres_remove_notice_binding(PGconn *connection) {
+static void
+cpkt_postgres_dispose_notice_binding(cpkt_postgres_notice_binding *binding) {
+  cpkt_postgres_notice_snapshot *snapshot;
+  cpkt_postgres_notice_snapshot *next;
+
+  if (binding == NULL) {
+    return;
+  }
+  snapshot = binding->snapshots;
+  while (snapshot != NULL) {
+    next = snapshot->next;
+    free(snapshot);
+    snapshot = next;
+  }
+  free(binding);
+}
+
+static cpkt_postgres_notice_binding *
+cpkt_postgres_detach_notice_binding(PGconn *connection) {
   cpkt_postgres_notice_binding **slot;
   cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_notice_snapshot *snapshot;
 
   cpkt_postgres_hook_lock_acquire();
   slot = &cpkt_postgres_notice_bindings;
@@ -117,21 +152,86 @@ static void cpkt_postgres_remove_notice_binding(PGconn *connection) {
   binding = *slot;
   if (binding != NULL) {
     *slot = binding->next;
+    binding->closed = 1;
+    ++binding->result_count; /* Pin snapshots while PQfinish runs. */
+    for (snapshot = binding->snapshots; snapshot != NULL;
+         snapshot = snapshot->next) {
+      snapshot->connection = NULL;
+    }
   }
   cpkt_postgres_hook_lock_release();
-  free(binding);
+  return binding;
+}
+
+static void cpkt_postgres_release_detached_notice_binding(
+    cpkt_postgres_notice_binding *binding) {
+  int dispose;
+  if (binding == NULL) {
+    return;
+  }
+  cpkt_postgres_hook_lock_acquire();
+  --binding->result_count;
+  dispose = binding->result_count == 0U;
+  cpkt_postgres_hook_lock_release();
+  if (dispose) {
+    cpkt_postgres_dispose_notice_binding(binding);
+  }
+}
+
+/* A PGresult copies libpq's notice arguments when it is created. Keep every
+ * snapshot for a connection until that connection and its results are gone. */
+static cpkt_postgres_result *
+cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
+                           const PGresult *source) {
+  cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_result_binding *entry;
+  cpkt_postgres_result_binding *cursor;
+
+  if (result == NULL) {
+    return NULL;
+  }
+  cpkt_postgres_hook_lock_acquire();
+  binding =
+      connection == NULL ? NULL : cpkt_postgres_find_notice_binding(connection);
+  if (source != NULL) {
+    for (cursor = cpkt_postgres_result_bindings; cursor != NULL;
+         cursor = cursor->next) {
+      if (cursor->result == source) {
+        binding = cursor->owner;
+        break;
+      }
+    }
+  }
+  entry = NULL;
+  if (binding != NULL) {
+    entry = (cpkt_postgres_result_binding *)malloc(sizeof(*entry));
+    if (entry != NULL) {
+      entry->result = result;
+      entry->owner = binding;
+      entry->next = cpkt_postgres_result_bindings;
+      cpkt_postgres_result_bindings = entry;
+      ++binding->result_count;
+    }
+  }
+  cpkt_postgres_hook_lock_release();
+  if (binding != NULL && entry == NULL) {
+    PQclear(result);
+    return NULL;
+  }
+  return (cpkt_postgres_result *)result;
 }
 
 static void cpkt_postgres_native_notice_receiver(void *argument,
                                                  const PGresult *result) {
-  cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_notice_snapshot *snapshot;
   cpkt_postgres_notice_receiver callback;
   void *context;
 
   cpkt_postgres_hook_lock_acquire();
-  binding = cpkt_postgres_find_notice_binding((const PGconn *)argument);
-  callback = binding == NULL ? NULL : binding->receiver;
-  context = binding == NULL ? NULL : binding->receiver_context;
+  snapshot = (cpkt_postgres_notice_snapshot *)argument;
+  callback = snapshot->receiver;
+  context = snapshot->receiver_context;
+  argument = snapshot->connection;
   cpkt_postgres_hook_lock_release();
   if (callback != NULL) {
     callback(context, (cpkt_postgres_connection *)argument,
@@ -141,14 +241,15 @@ static void cpkt_postgres_native_notice_receiver(void *argument,
 
 static void cpkt_postgres_native_notice_processor(void *argument,
                                                   const char *message) {
-  cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_notice_snapshot *snapshot;
   cpkt_postgres_notice_processor callback;
   void *context;
 
   cpkt_postgres_hook_lock_acquire();
-  binding = cpkt_postgres_find_notice_binding((const PGconn *)argument);
-  callback = binding == NULL ? NULL : binding->processor;
-  context = binding == NULL ? NULL : binding->processor_context;
+  snapshot = (cpkt_postgres_notice_snapshot *)argument;
+  callback = snapshot->processor;
+  context = snapshot->processor_context;
+  argument = snapshot->connection;
   cpkt_postgres_hook_lock_release();
   if (callback != NULL) {
     callback(context, (cpkt_postgres_connection *)argument, message);
@@ -643,13 +744,15 @@ cpkt_postgres_connection *cpkt_postgres_connect_login(
  * cpkt_postgres_connection_free. */
 void cpkt_postgres_connection_free(cpkt_postgres_connection *connection) {
   PGconn *native_connection;
+  cpkt_postgres_notice_binding *binding;
 
   if (connection == NULL) {
     return;
   }
   native_connection = cpkt_postgres_native_connection(connection);
-  cpkt_postgres_remove_notice_binding(native_connection);
+  binding = cpkt_postgres_detach_notice_binding(native_connection);
   PQfinish(native_connection);
+  cpkt_postgres_release_detached_notice_binding(binding);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -998,6 +1101,8 @@ void cpkt_postgres_set_notice_receiver(
     cpkt_postgres_notice_receiver *old_callback_out, void **old_context_out) {
   PGconn *native_connection;
   cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_notice_snapshot *snapshot;
+  cpkt_postgres_notice_snapshot *old;
 
   if (old_callback_out != NULL) {
     *old_callback_out = NULL;
@@ -1014,17 +1119,31 @@ void cpkt_postgres_set_notice_receiver(
     return;
   }
   cpkt_postgres_hook_lock_acquire();
+  old = binding->latest;
   if (old_callback_out != NULL) {
-    *old_callback_out = binding->receiver;
+    *old_callback_out = old == NULL ? NULL : old->receiver;
   }
   if (old_context_out != NULL) {
-    *old_context_out = binding->receiver_context;
+    *old_context_out = old == NULL ? NULL : old->receiver_context;
   }
-  binding->receiver = callback;
-  binding->receiver_context = context;
+  snapshot = (cpkt_postgres_notice_snapshot *)calloc(1, sizeof(*snapshot));
+  if (snapshot != NULL) {
+    if (old != NULL) {
+      snapshot->processor = old->processor;
+      snapshot->processor_context = old->processor_context;
+    }
+    snapshot->connection = native_connection;
+    snapshot->receiver = callback;
+    snapshot->receiver_context = context;
+    snapshot->next = binding->snapshots;
+    binding->snapshots = snapshot;
+    binding->latest = snapshot;
+  }
   cpkt_postgres_hook_lock_release();
-  PQsetNoticeReceiver(native_connection, cpkt_postgres_native_notice_receiver,
-                      native_connection);
+  if (snapshot != NULL) {
+    PQsetNoticeReceiver(native_connection, cpkt_postgres_native_notice_receiver,
+                        snapshot);
+  }
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -1035,6 +1154,8 @@ void cpkt_postgres_set_notice_processor(
     cpkt_postgres_notice_processor *old_callback_out, void **old_context_out) {
   PGconn *native_connection;
   cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_notice_snapshot *snapshot;
+  cpkt_postgres_notice_snapshot *old;
 
   if (old_callback_out != NULL) {
     *old_callback_out = NULL;
@@ -1051,17 +1172,31 @@ void cpkt_postgres_set_notice_processor(
     return;
   }
   cpkt_postgres_hook_lock_acquire();
+  old = binding->latest;
   if (old_callback_out != NULL) {
-    *old_callback_out = binding->processor;
+    *old_callback_out = old == NULL ? NULL : old->processor;
   }
   if (old_context_out != NULL) {
-    *old_context_out = binding->processor_context;
+    *old_context_out = old == NULL ? NULL : old->processor_context;
   }
-  binding->processor = callback;
-  binding->processor_context = context;
+  snapshot = (cpkt_postgres_notice_snapshot *)calloc(1, sizeof(*snapshot));
+  if (snapshot != NULL) {
+    if (old != NULL) {
+      snapshot->receiver = old->receiver;
+      snapshot->receiver_context = old->receiver_context;
+    }
+    snapshot->connection = native_connection;
+    snapshot->processor = callback;
+    snapshot->processor_context = context;
+    snapshot->next = binding->snapshots;
+    binding->snapshots = snapshot;
+    binding->latest = snapshot;
+  }
   cpkt_postgres_hook_lock_release();
-  PQsetNoticeProcessor(native_connection, cpkt_postgres_native_notice_processor,
-                       native_connection);
+  if (snapshot != NULL) {
+    PQsetNoticeProcessor(native_connection,
+                         cpkt_postgres_native_notice_processor, snapshot);
+  }
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -1170,8 +1305,10 @@ void cpkt_postgres_set_trace_flags(cpkt_postgres_connection *connection,
  * cpkt_postgres_execute. */
 cpkt_postgres_result *
 cpkt_postgres_execute(cpkt_postgres_connection *connection, const char *query) {
-  return (cpkt_postgres_result *)PQexec(
-      cpkt_postgres_native_connection(connection), query);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(PQexec(native_connection, query),
+                                    native_connection, NULL);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -1192,7 +1329,8 @@ cpkt_postgres_result *cpkt_postgres_execute_params(
                         parameter_count, native_types, parameter_values,
                         parameter_lengths, parameter_formats, result_format);
   free(native_types);
-  return (cpkt_postgres_result *)result;
+  return cpkt_postgres_track_result(
+      result, cpkt_postgres_native_connection(connection), NULL);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -1212,7 +1350,8 @@ cpkt_postgres_prepare(cpkt_postgres_connection *connection,
   result = PQprepare(cpkt_postgres_native_connection(connection),
                      statement_name, query, parameter_count, native_types);
   free(native_types);
-  return (cpkt_postgres_result *)result;
+  return cpkt_postgres_track_result(
+      result, cpkt_postgres_native_connection(connection), NULL);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -1222,10 +1361,13 @@ cpkt_postgres_result *cpkt_postgres_execute_prepared(
     int parameter_count, const char *const *parameter_values,
     const int *parameter_lengths, const int *parameter_formats,
     int result_format) {
-  return (cpkt_postgres_result *)PQexecPrepared(
-      cpkt_postgres_native_connection(connection), statement_name,
-      parameter_count, parameter_values, parameter_lengths, parameter_formats,
-      result_format);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(
+      PQexecPrepared(native_connection, statement_name, parameter_count,
+                     parameter_values, parameter_lengths, parameter_formats,
+                     result_format),
+      native_connection, NULL);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -1309,8 +1451,10 @@ int cpkt_postgres_set_chunked_rows_mode(cpkt_postgres_connection *connection,
  * cpkt_postgres_get_result. */
 cpkt_postgres_result *
 cpkt_postgres_get_result(cpkt_postgres_connection *connection) {
-  return (cpkt_postgres_result *)PQgetResult(
-      cpkt_postgres_native_connection(connection));
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(PQgetResult(native_connection),
+                                    native_connection, NULL);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_is_busy. */
@@ -1464,7 +1608,8 @@ cpkt_postgres_result *cpkt_postgres_fastpath(
                 result_buffer, result_length_out, result_is_integer,
                 native_arguments, argument_count);
   free(native_arguments);
-  return (cpkt_postgres_result *)result;
+  return cpkt_postgres_track_result(
+      result, cpkt_postgres_native_connection(connection), NULL);
 }
 
 #define CPKT_POSTGRES_RESULT_INT_WRAPPER(name, native_name)                    \
@@ -1624,16 +1769,22 @@ cpkt_postgres_result_parameter_type(const cpkt_postgres_result *result,
 cpkt_postgres_result *
 cpkt_postgres_describe_prepared(cpkt_postgres_connection *connection,
                                 const char *statement_name) {
-  return (cpkt_postgres_result *)PQdescribePrepared(
-      cpkt_postgres_native_connection(connection), statement_name);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(
+      PQdescribePrepared(native_connection, statement_name), native_connection,
+      NULL);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_describe_portal. */
 cpkt_postgres_result *
 cpkt_postgres_describe_portal(cpkt_postgres_connection *connection,
                               const char *portal_name) {
-  return (cpkt_postgres_result *)PQdescribePortal(
-      cpkt_postgres_native_connection(connection), portal_name);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(
+      PQdescribePortal(native_connection, portal_name), native_connection,
+      NULL);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_send_describe_prepared. */
@@ -1654,16 +1805,21 @@ int cpkt_postgres_send_describe_portal(cpkt_postgres_connection *connection,
 cpkt_postgres_result *
 cpkt_postgres_close_prepared(cpkt_postgres_connection *connection,
                              const char *statement_name) {
-  return (cpkt_postgres_result *)PQclosePrepared(
-      cpkt_postgres_native_connection(connection), statement_name);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(
+      PQclosePrepared(native_connection, statement_name), native_connection,
+      NULL);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_close_portal. */
 cpkt_postgres_result *
 cpkt_postgres_close_portal(cpkt_postgres_connection *connection,
                            const char *portal_name) {
-  return (cpkt_postgres_result *)PQclosePortal(
-      cpkt_postgres_native_connection(connection), portal_name);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(
+      PQclosePortal(native_connection, portal_name), native_connection, NULL);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_send_close_prepared. */
@@ -1682,7 +1838,30 @@ int cpkt_postgres_send_close_portal(cpkt_postgres_connection *connection,
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_result_free. */
 void cpkt_postgres_result_free(cpkt_postgres_result *result) {
-  PQclear(cpkt_postgres_native_result(result));
+  PGresult *native_result;
+  cpkt_postgres_result_binding **slot;
+  cpkt_postgres_result_binding *entry;
+  cpkt_postgres_notice_binding *dispose;
+
+  native_result = cpkt_postgres_native_result(result);
+  PQclear(native_result);
+  cpkt_postgres_hook_lock_acquire();
+  slot = &cpkt_postgres_result_bindings;
+  while (*slot != NULL && (*slot)->result != native_result) {
+    slot = &(*slot)->next;
+  }
+  entry = *slot;
+  dispose = NULL;
+  if (entry != NULL) {
+    *slot = entry->next;
+    --entry->owner->result_count;
+    if (entry->owner->closed && entry->owner->result_count == 0U) {
+      dispose = entry->owner;
+    }
+  }
+  cpkt_postgres_hook_lock_release();
+  free(entry);
+  cpkt_postgres_dispose_notice_binding(dispose);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_text_free. */
@@ -1789,16 +1968,21 @@ void cpkt_postgres_notification_free(cpkt_postgres_notification *notification) {
 cpkt_postgres_result *
 cpkt_postgres_result_new_empty(cpkt_postgres_connection *connection,
                                cpkt_postgres_result_status status) {
-  return (cpkt_postgres_result *)PQmakeEmptyPGresult(
-      cpkt_postgres_native_connection(connection), (ExecStatusType)status);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(
+      PQmakeEmptyPGresult(native_connection, (ExecStatusType)status),
+      native_connection, NULL);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_result_copy. */
 cpkt_postgres_result *
 cpkt_postgres_result_copy(const cpkt_postgres_result *source, int flags) {
-  return (cpkt_postgres_result *)PQcopyResult(
-      cpkt_postgres_native_result_const(source), flags);
+  const PGresult *native_source;
+  native_source = cpkt_postgres_native_result_const(source);
+  return cpkt_postgres_track_result(PQcopyResult(native_source, flags), NULL,
+                                    native_source);
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
@@ -2094,8 +2278,11 @@ char *cpkt_postgres_encrypt_password_connection(
 cpkt_postgres_result *
 cpkt_postgres_change_password(cpkt_postgres_connection *connection,
                               const char *user, const char *password) {
-  return (cpkt_postgres_result *)PQchangePassword(
-      cpkt_postgres_native_connection(connection), user, password);
+  PGconn *native_connection;
+  native_connection = cpkt_postgres_native_connection(connection);
+  return cpkt_postgres_track_result(
+      PQchangePassword(native_connection, user, password), native_connection,
+      NULL);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_encoding_from_name. */
