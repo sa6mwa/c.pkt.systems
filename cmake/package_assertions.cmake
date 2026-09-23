@@ -1,18 +1,32 @@
 function(cpkt_get_osxcross_lookup out_host_var out_hints_var)
-  set(_osxcross_host "${CPKT_OSXCROSS_HOST}")
-  if(_osxcross_host STREQUAL "" AND DEFINED ENV{CPKT_OSXCROSS_HOST})
-    set(_osxcross_host "$ENV{CPKT_OSXCROSS_HOST}")
-  endif()
-  if(_osxcross_host STREQUAL "")
-    set(_osxcross_host "arm64-apple-darwin25")
-  endif()
-
   set(_osxcross_root "${CPKT_OSXCROSS_ROOT}")
   if(_osxcross_root STREQUAL "" AND DEFINED ENV{OSXCROSS_ROOT})
     set(_osxcross_root "$ENV{OSXCROSS_ROOT}")
   endif()
   if(_osxcross_root STREQUAL "" AND DEFINED ENV{HOME})
     set(_osxcross_root "$ENV{HOME}/.local/cross/osxcross")
+  endif()
+
+  set(_osxcross_host "${CPKT_OSXCROSS_HOST}")
+  if(_osxcross_host STREQUAL "" AND DEFINED ENV{CPKT_OSXCROSS_HOST})
+    set(_osxcross_host "$ENV{CPKT_OSXCROSS_HOST}")
+  endif()
+  if(_osxcross_host STREQUAL "")
+    get_filename_component(_cpkt_repo_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" DIRECTORY)
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E env "OSXCROSS_ROOT=${_osxcross_root}"
+        "${_cpkt_repo_root}/scripts/cpkt-toolchains.sh" discover arm64-apple-darwin
+      RESULT_VARIABLE _resolver_result
+      OUTPUT_VARIABLE _resolver_report
+      ERROR_VARIABLE _resolver_error)
+    if(NOT _resolver_result EQUAL 0 OR NOT _resolver_report MATCHES "status=ready")
+      message(FATAL_ERROR "Darwin toolchain is not ready for package assertions: ${_resolver_error}${_resolver_report}")
+    endif()
+    string(REGEX MATCH "(^|\n)prefix=([^\n]+)" _prefix_match "${_resolver_report}")
+    if(NOT _prefix_match)
+      message(FATAL_ERROR "Darwin toolchain resolver did not report an osxcross prefix")
+    endif()
+    set(_osxcross_host "${CMAKE_MATCH_2}")
   endif()
 
   set(_osxcross_hints "")
@@ -39,11 +53,11 @@ function(cpkt_find_darwin_otool out_var)
   cpkt_get_osxcross_lookup(_osxcross_host _osxcross_hints)
 
   find_program(_cpkt_otool_bin
-    NAMES "${_osxcross_host}-otool" arm64-apple-darwin25-otool otool
+    NAMES "${_osxcross_host}-otool" otool
     HINTS ${_osxcross_hints})
   if(NOT _cpkt_otool_bin)
     message(FATAL_ERROR
-      "otool is required to verify Darwin package artifacts; tried ${_osxcross_host}-otool, arm64-apple-darwin25-otool, and otool")
+      "otool is required to verify Darwin package artifacts; tried ${_osxcross_host}-otool and otool")
   endif()
 
   set(${out_var} "${_cpkt_otool_bin}" PARENT_SCOPE)
@@ -271,29 +285,40 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
 
   if(file_path MATCHES "[.]dylib$")
     execute_process(
-      COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
-      RESULT_VARIABLE _id_result
-      OUTPUT_VARIABLE _id_output
-      ERROR_VARIABLE _id_error
+      COMMAND "${CPKT_OTOOL_BIN}" -hv "${file_path}"
+      RESULT_VARIABLE _header_result
+      OUTPUT_VARIABLE _header_output
+      ERROR_VARIABLE _header_error
     )
-    if(NOT _id_result EQUAL 0)
-      message(FATAL_ERROR "failed to inspect Darwin install name for ${description}: ${file_path}\n${_id_error}")
+    if(NOT _header_result EQUAL 0)
+      message(FATAL_ERROR "failed to inspect Darwin Mach-O type for ${description}: ${file_path}\n${_header_error}")
     endif()
-    string(REPLACE "\r\n" "\n" _id_output "${_id_output}")
-    string(REPLACE "\n" ";" _id_lines "${_id_output}")
-    set(_id_found OFF)
-    foreach(_id_line IN LISTS _id_lines)
-      string(STRIP "${_id_line}" _id_line)
-      if(_id_line MATCHES "^@rpath/[^/]+\\.dylib$")
-        set(_id_found ON)
-      elseif(_id_line MATCHES "^(|.*:)$")
-        continue()
-      elseif(NOT _id_line STREQUAL "")
-        message(FATAL_ERROR "${description} has non-rpath Darwin install name: ${_id_line}")
+    if(NOT _header_output MATCHES "[ \t]BUNDLE[ \t]")
+      execute_process(
+        COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
+        RESULT_VARIABLE _id_result
+        OUTPUT_VARIABLE _id_output
+        ERROR_VARIABLE _id_error
+      )
+      if(NOT _id_result EQUAL 0)
+        message(FATAL_ERROR "failed to inspect Darwin install name for ${description}: ${file_path}\n${_id_error}")
       endif()
-    endforeach()
-    if(NOT _id_found)
-      message(FATAL_ERROR "${description} must have an @rpath Darwin install name")
+      string(REPLACE "\r\n" "\n" _id_output "${_id_output}")
+      string(REPLACE "\n" ";" _id_lines "${_id_output}")
+      set(_id_found OFF)
+      foreach(_id_line IN LISTS _id_lines)
+        string(STRIP "${_id_line}" _id_line)
+        if(_id_line MATCHES "^@rpath/[^/]+\\.dylib$")
+          set(_id_found ON)
+        elseif(_id_line MATCHES "^(|.*:)$")
+          continue()
+        elseif(NOT _id_line STREQUAL "")
+          message(FATAL_ERROR "${description} has non-rpath Darwin install name: ${_id_line}")
+        endif()
+      endforeach()
+      if(NOT _id_found)
+        message(FATAL_ERROR "${description} must have an @rpath Darwin install name")
+      endif()
     endif()
   endif()
 
@@ -1436,7 +1461,7 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib"
       "lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libpq.5.dylib"
-      "lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
+      "lib/libpq-oauth-${_manifest_postgresql_major_version}.dylib")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
@@ -1471,14 +1496,13 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   file(STRINGS
     "${_assert_extract_root}/${_archive_stem}/lib/libpq.5.dylib"
     _postgresql_oauth_loader_strings
-    REGEX "@loader_path/libpq-oauth-${_manifest_postgresql_major_version}[.]so")
+    REGEX "@loader_path/libpq-oauth-${_manifest_postgresql_major_version}[.]dylib")
   if(NOT _postgresql_oauth_loader_strings)
     message(FATAL_ERROR "Darwin libpq must load its private OAuth module beside the library")
   endif()
   file(GLOB_RECURSE _packaged_darwin_dylibs
     "${_assert_extract_root}/${_archive_stem}/lib/*.dylib"
-    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so"
-    "${_assert_extract_root}/${_archive_stem}/lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
+    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so")
   foreach(_packaged_darwin_dylib IN LISTS _packaged_darwin_dylibs)
     if(IS_SYMLINK "${_packaged_darwin_dylib}")
       continue()

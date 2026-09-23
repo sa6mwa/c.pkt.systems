@@ -59,6 +59,20 @@ foreach(expected IN ITEMS
   endif()
 endforeach()
 
+set(CMAKE_SYSTEM_NAME Darwin)
+set(CPKT_OSXCROSS_HOST arm64-apple-darwin25.4)
+set(CPKT_MACOS_DEPLOYMENT_TARGET 15.0)
+cpkt_append_common_external_cmake_args(darwin_cmake_args)
+foreach(expected IN ITEMS
+    "-DCPKT_OSXCROSS_HOST=${CPKT_OSXCROSS_HOST}"
+    "-DCPKT_MACOS_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET}")
+  list(FIND darwin_cmake_args "${expected}" found_index)
+  if(found_index LESS 0)
+    message(FATAL_ERROR "Darwin ExternalProject arguments did not propagate ${expected}")
+  endif()
+endforeach()
+set(CMAKE_SYSTEM_NAME Linux)
+
 set(CPKT_TARGET_ARCH x86_64)
 set(CPKT_TARGET_LIBC gnu)
 set(CPKT_TARGET_OS Linux)

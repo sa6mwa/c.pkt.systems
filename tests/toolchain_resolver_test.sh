@@ -46,7 +46,9 @@ darwin_prefix=arm64-apple-darwin25.4
 mkdir -p "$darwin_root/bin"
 for tool in clang clang++ ld ar ranlib strip nm otool; do
   make_executable "$darwin_root/bin/$darwin_prefix-$tool" '#!/bin/sh\nexit 0'
+  make_executable "$darwin_root/bin/arm64-apple-darwin25.3-$tool" '#!/bin/sh\nexit 0'
 done
+make_executable "$darwin_root/bin/arm64-apple-darwin25.5-clang" '#!/bin/sh\nexit 0'
 host_mig_revision=88753c478c97b9a08bcdb66cecc68ba5881ff3af
 host_mig_root="$cache/roots/host-mig-puredarwin-$host_mig_revision-x86_64-linux-gnu"
 darwin_missing=$(OSXCROSS_ROOT="$darwin_root" CPKT_OSXCROSS_HOST="$darwin_prefix" CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" discover arm64-apple-darwin)
@@ -66,6 +68,10 @@ require_line "mig=$host_mig_root/bin/mig" "$darwin_description"
 require_line "migcom=$host_mig_root/libexec/migcom" "$darwin_description"
 require_line "mig_revision=$host_mig_revision" "$darwin_description"
 OSXCROSS_ROOT="$darwin_root" CPKT_OSXCROSS_HOST="$darwin_prefix" CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" ensure arm64-apple-darwin >/dev/null
+darwin_latest=$(env -u CPKT_OSXCROSS_HOST OSXCROSS_ROOT="$darwin_root" CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" discover arm64-apple-darwin)
+require_line "prefix=$darwin_prefix" "$darwin_latest"
+darwin_pinned=$(OSXCROSS_ROOT="$darwin_root" CPKT_OSXCROSS_HOST=arm64-apple-darwin25.3 CPKT_TOOLCHAIN_CACHE="$cache" "$bootlin" discover arm64-apple-darwin)
+require_line 'prefix=arm64-apple-darwin25.3' "$darwin_pinned"
 
 make_executable "$fake_bin/curl" '#!/bin/sh
 while [ "$#" -gt 0 ]; do

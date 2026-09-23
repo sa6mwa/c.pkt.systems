@@ -114,12 +114,31 @@ bootlin_ready() {
 }
 
 osxcross_candidate() {
-  local root=${OSXCROSS_ROOT:-${HOME:-}/.local/cross/osxcross} prefix=${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}
-  [[ -x "$root/bin/$prefix-clang" ]] && [[ -x "$root/bin/$prefix-clang++" ]] &&
-    [[ -x "$root/bin/$prefix-ld" ]] && [[ -x "$root/bin/$prefix-ar" ]] &&
-    [[ -x "$root/bin/$prefix-ranlib" ]] && [[ -x "$root/bin/$prefix-strip" ]] &&
-    [[ -x "$root/bin/$prefix-nm" ]] && [[ -x "$root/bin/$prefix-otool" ]] || return 1
-  printf 'osxcross|%s|%s\n' "$root" "$prefix"
+  local root=${OSXCROSS_ROOT:-${HOME:-}/.local/cross/osxcross} prefix candidate
+  local -a prefixes=()
+  if [[ -n ${CPKT_OSXCROSS_HOST:-} ]]; then
+    prefixes=("$CPKT_OSXCROSS_HOST")
+  else
+    for candidate in "$root"/bin/arm64-apple-darwin25*-clang; do
+      [[ -e "$candidate" ]] || continue
+      prefix=${candidate##*/}
+      prefix=${prefix%-clang}
+      [[ "$prefix" =~ ^arm64-apple-darwin25(\.[0-9]+)*$ ]] || continue
+      prefixes+=("$prefix")
+    done
+    if ((${#prefixes[@]})); then
+      mapfile -t prefixes < <(printf '%s\n' "${prefixes[@]}" | sort -Vr)
+    fi
+  fi
+  for prefix in "${prefixes[@]}"; do
+    [[ -x "$root/bin/$prefix-clang" ]] && [[ -x "$root/bin/$prefix-clang++" ]] &&
+      [[ -x "$root/bin/$prefix-ld" ]] && [[ -x "$root/bin/$prefix-ar" ]] &&
+      [[ -x "$root/bin/$prefix-ranlib" ]] && [[ -x "$root/bin/$prefix-strip" ]] &&
+      [[ -x "$root/bin/$prefix-nm" ]] && [[ -x "$root/bin/$prefix-otool" ]] || continue
+    printf 'osxcross|%s|%s\n' "$root" "$prefix"
+    return 0
+  done
+  return 1
 }
 
 host_mig_meta() {

@@ -99,9 +99,14 @@ case "$target_id" in
     case "$target_id" in *-linux-gnu) pkg_config_static_flag= ;; esac
     ;;
   arm64-apple-darwin)
-    osxcross_root=${OSXCROSS_ROOT:-"$HOME/.local/cross/osxcross"}
-    osxcross_host=${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}
-    cc=${CC:-"$osxcross_root/bin/$osxcross_host-clang"}
+    darwin_toolchain_report=$("$repo_root/scripts/cpkt-toolchains.sh" discover arm64-apple-darwin)
+    if ! grep -Fxq 'status=ready' <<<"$darwin_toolchain_report"; then
+      printf 'Darwin osxcross SDK and pinned host MIG are not ready:\n%s\n' "$darwin_toolchain_report" >&2
+      exit 1
+    fi
+    osxcross_root=$(cpkt_resolver_value "$darwin_toolchain_report" root)
+    osxcross_host=$(cpkt_resolver_value "$darwin_toolchain_report" prefix)
+    cc=${CC:-$(cpkt_resolver_value "$darwin_toolchain_report" cc)}
     target_command_env=("LD_LIBRARY_PATH=$osxcross_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")
     run_prefix=
     run_consumers=0
@@ -313,7 +318,7 @@ common_flags="-std=c99 -Wall -Wextra -Wpedantic -isystem $prefix/include"
 common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"
 cpkt_run_checked "strict C89 Kerberos SDK header consumer" \
   "$cc" -std=c89 -Wall -Wextra -Wpedantic -pedantic-errors -Werror \
-  -isystem "$prefix/include" -fsyntax-only \
+  -isystem "$prefix/include" -c -o "$work_root/bin/krb5_sdk_header_c89.o" \
   "$repo_root/tests/krb5_sdk_header_c89.c"
 assert_package_file() {
   package_path=$1

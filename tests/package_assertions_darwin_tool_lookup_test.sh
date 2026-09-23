@@ -114,6 +114,38 @@ esac
 cat > "$osxcross_root/bin/$osxcross_host-otool" <<'SH'
 #!/usr/bin/env sh
 case "$1" in
+  -hv) printf 'Mach header\nmagic cputype filetype\nMH_MAGIC_64 ARM64 BUNDLE flags\n' ;;
+  -D) printf 'Mach-O bundle has no install name\n' >&2; exit 1 ;;
+  -L)
+    printf '%s:\n' "$2"
+    printf '@rpath/libpq.5.dylib (compatibility version 5.0.0, current version 5.18.0)\n'
+    printf '/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1351.0.0)\n'
+    ;;
+  -l) printf 'Load command 0\n' ;;
+esac
+SH
+chmod +x "$osxcross_root/bin/$osxcross_host-otool"
+touch "$work_dir/libpq-oauth-18.dylib"
+output=$(
+  OSXCROSS_ROOT="$osxcross_root" \
+  CPKT_OSXCROSS_HOST="$osxcross_host" \
+  cmake \
+    -DCPKT_TARGET_ID=arm64-apple-darwin \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE=ON \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libpq-oauth-18.dylib" \
+    -P "$repo_root/cmake/package_assertions.cmake"
+)
+case "$output" in
+  *"CPKT_TEST_DARWIN_RELOCATABLE=ok"*) ;;
+  *)
+    printf 'package assertion rejected a relocatable Mach-O bundle without an install name\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+
+cat > "$osxcross_root/bin/$osxcross_host-otool" <<'SH'
+#!/usr/bin/env sh
+case "$1" in
   -D)
     printf '%s:\n' "$2"
     printf '@rpath/libssl.3.dylib\n'

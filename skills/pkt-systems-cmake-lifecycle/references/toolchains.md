@@ -233,17 +233,18 @@ Mach-O smoke check passes. Do not distribute osxcross, the SDK package, the
 Xcode archive, or their Apple license material with a c.pkt.systems SDK.
 
 After osxcross can produce a Darwin arm64 Mach-O smoke executable, inspect its
-installed compiler names and pin the exact command prefix. osxcross may install
-`arm64-apple-darwin25.4-clang` without an `arm64-apple-darwin25-clang` major
-version alias. Set `CPKT_OSXCROSS_HOST` to the exact installed prefix; the
-example below matches a 25.4 toolchain and must be adjusted for another SDK.
+installed compiler names. osxcross may install `arm64-apple-darwin25.4-clang`
+without an `arm64-apple-darwin25-clang` major version alias. The resolver
+selects the newest complete 25.x prefix by default. To pin a particular
+installed prefix, set `CPKT_OSXCROSS_HOST` before provisioning and CMake
+configuration; the example below shows an optional pin for a 25.4 toolchain.
 `bison` and `flex` from the host baseline are required to build MIG. Provision
 the host-side helper and verify the complete collection:
 
 ```sh
 export OSXCROSS_ROOT="${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}"
 ls "$OSXCROSS_ROOT"/bin/arm64-apple-darwin*-clang
-export CPKT_OSXCROSS_HOST=arm64-apple-darwin25.4
+# Optional repository pin: export CPKT_OSXCROSS_HOST=arm64-apple-darwin25.4
 scripts/cpkt-toolchains.sh ensure arm64-apple-darwin
 scripts/cpkt-toolchains.sh discover arm64-apple-darwin
 ```
