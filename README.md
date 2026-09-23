@@ -130,6 +130,10 @@ check the selected version before packaging.
 
 `make build` and `make test` cover the six Linux targets. `make package`,
 `make release-matrix`, and the full release gates also require Darwin.
+Cross-target tests and package consumers use `/usr/bin/qemu-aarch64` and
+`/usr/bin/qemu-arm` by default. Set `CPKT_QEMU_AARCH64` and `CPKT_QEMU_ARM`
+to executable paths when QEMU is installed elsewhere; use those values for
+configure, test, and package verification.
 
 The release matrix builds each dependency tree, runs the ABI/link smoke tests
 where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,

@@ -93,8 +93,8 @@ case "$target_id" in
     static_extra_libs=
     case "$target_id" in
       x86_64-linux-*) run_prefix= ;;
-      aarch64-linux-*) run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_sysroot" ;;
-      armhf-linux-*) run_prefix="/usr/bin/qemu-arm -L $toolchain_sysroot"; static_extra_libs=-latomic ;;
+      aarch64-linux-*) run_prefix="${CPKT_QEMU_AARCH64:-/usr/bin/qemu-aarch64} -L $toolchain_sysroot" ;;
+      armhf-linux-*) run_prefix="${CPKT_QEMU_ARM:-/usr/bin/qemu-arm} -L $toolchain_sysroot"; static_extra_libs=-latomic ;;
     esac
     case "$target_id" in *-linux-gnu) pkg_config_static_flag= ;; esac
     ;;

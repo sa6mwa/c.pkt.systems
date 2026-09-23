@@ -1,6 +1,5 @@
 #include <cpkt/libssh2.h>
 
-#include <assert.h>
 #include <stdlib.h>
 
 static void *test_alloc(size_t count, void **abstract) {
@@ -24,11 +23,14 @@ int main(void) {
 
   offset.high = 1UL;
   offset.low = 0UL;
-  assert(cpkt_libssh2_init(0) == 0);
+  if (cpkt_libssh2_init(0) != 0)
+    return 1;
   session =
       cpkt_libssh2_session_init_ex(test_alloc, test_free, test_realloc, NULL);
-  assert(session != NULL);
-  assert(cpkt_libssh2_session_free(session) == 0);
+  if (session == NULL)
+    return 2;
+  if (cpkt_libssh2_session_free(session) != 0)
+    return 3;
   cpkt_libssh2_exit();
   return offset.high != 1UL || offset.low != 0UL;
 }

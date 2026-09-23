@@ -1,5 +1,6 @@
 #include <cpkt/openssl.h>
 
+#include <limits.h>
 #include <string.h>
 
 typedef struct openssl_mmsg_test_context {
@@ -611,6 +612,7 @@ int main(void) {
   if (context == 0) {
     return 19;
   }
+#if ULONG_MAX > 0xffffffffUL
   returned = cpkt_openssl_u64_make(0UL, 1UL);
   if (cpkt_openssl_SSL_get_value_uint(0, 0x100000000UL, 0UL, &returned) != 0 ||
       !cpkt_openssl_u64_is_zero(returned) ||
@@ -618,6 +620,7 @@ int main(void) {
     SSL_CTX_free(context);
     return 20;
   }
+#endif
   returned = cpkt_openssl_SSL_CTX_set_options(context, options);
   if ((cpkt_openssl_u64_low_word(returned) & 0x4000UL) == 0UL) {
     SSL_CTX_free(context);
