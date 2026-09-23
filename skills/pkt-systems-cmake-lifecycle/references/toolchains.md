@@ -72,22 +72,26 @@ Refresh apt metadata and install this complete baseline as one transaction:
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   autoconf automake binutils bison bzip2 ca-certificates \
-  ccrypt cmake cpio curl default-jre-headless flex \
-  fuse-overlayfs gawk git git-crypt git-lfs help2man \
-  libbz2-dev libcurl4-openssl-dev libcairo2-dev liblzma-dev \
+  cmake cpio curl default-jre-headless flex \
+  fuse-overlayfs gawk git git-lfs help2man \
+  libbz2-dev libcairo2-dev liblzma-dev \
   libssl-dev libtool libxml2-dev libx11-dev make \
-  ninja-build nodejs npm patch perl pkg-config podman python-is-python3 \
+  ninja-build patch perl pkg-config podman python-is-python3 \
   python3 python3-pip python3-venv qemu-user ripgrep slirp4netns texinfo \
   uidmap unzip uuid-dev valgrind wget xar xz-utils zip zlib1g-dev
 ```
 
 This baseline supplies build/Autotools tools, native quality tools, source and
-archive utilities, Node-based project utilities, Java-based generators,
-containers with rootless networking, QEMU cross-target runners, and headers
-needed to build osxcross and common pkt.systems dependencies. Host tools are
+archive utilities, Java-based generators, containers with rootless networking,
+QEMU cross-target runners, and headers needed to build osxcross and common
+pkt.systems dependencies. Host tools are
 workstation support only; they must never enter Linux C/C++ compiler discovery.
 Provision the pinned Bootlin collections through the lifecycle resolver before
 configuring every pkt.systems Linux C/C++ build.
+
+The host `curl` command is used for downloads. c.pkt.systems builds libcurl
+from its pinned source and ships its headers and libraries in the SDK; its
+workstation baseline does not require host libcurl development files.
 
 `valgrind` is a host package prerequisite. Install LLVM/Clang separately as
 described below. Confirm the baseline host command surfaces before treating
