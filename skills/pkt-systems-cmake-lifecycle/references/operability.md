@@ -113,7 +113,7 @@ Optional extension surfaces, enabled when the project needs them:
 - Coverage reports.
 - Fuzzing.
 - Benchmarks and performance gates.
-- Docker Compose-backed e2e.
+- Podman Kube-backed e2e.
 - External integration tests.
 - Lua facade and Lua rock artifacts.
 - Single-header artifacts.
@@ -154,7 +154,6 @@ fuzz/
 lua/
 gobencher/
 devenv/
-docker/
 vendor/
 performance-logs/
 perflogs/
@@ -163,6 +162,7 @@ perflogs/
 Rules:
 
 - `Makefile` is the public command surface.
+- Container-backed local e2e uses a root `devenv.yaml` or `devenv.yaml.in` and generated state under `build/devenv/`; see [podman-kube-e2e.md](podman-kube-e2e.md).
 - `CMakePresets.json` is the build configuration surface.
 - `.clang-format` is checked in and starts from `clang-format -style=llvm -dump-config`; project style changes are explicit edits to that file, not hidden formatter defaults.
 - `VERSION` is not checked into git for normal repositories. Add `/VERSION` to `.gitignore`; generate or inject it only for source archives and other non-git build contexts.
@@ -360,12 +360,7 @@ Use these script names when the behavior exists:
 - `scripts/package-verify.sh`
 - `scripts/run_linux_release_matrix.sh`
 - `scripts/clean.sh`
-- `scripts/compose.sh`
-- `scripts/dev-up.sh`
-- `scripts/dev-down.sh`
-- `scripts/dev-reset.sh`
-- `scripts/dev-ps.sh`
-- `scripts/dev-logs.sh`
+- `scripts/devenv.sh`
 - `scripts/test-e2e.sh`
 - `scripts/run_timed.sh`
 - `scripts/osxcross_available.sh`
@@ -389,7 +384,7 @@ Script safety contract:
 - Resolve the repository root once and operate relative to it.
 - Validate argument count and required files before mutating generated state.
 - Trap cleanup for temporary directories, child processes, local daemons, and service state created by the script.
-- Destructive cleanup must be limited to known generated directories inside the repository such as `build/`, `dist/`, `.cache/`, package-manager build roots, temporary directories, and `devenv/volumes`. It must not reach the shared XDG/HOME `c.pkt.systems/deps` archive cache or the toolchain cache.
+- Destructive cleanup must be limited to known generated directories inside the repository such as `build/`, `dist/`, `.cache/`, package-manager build roots, and temporary directories. Container service state belongs under `build/devenv/`; `dev-reset` removes that root only after stopping its pods. Cleanup must not reach tracked `devenv/` config, the shared XDG/HOME `c.pkt.systems/deps` archive cache, or the toolchain cache.
 - Scripts that delete or recreate a directory must refuse empty paths, `/`, the repository root, parent directories, home directories, and any path outside the expected generated-state root.
 - Never remove source-controlled files, parent directories, home directories, or arbitrary user-provided paths.
 - Print actionable errors with the failed surface, phase, and next step. Use the structured diagnostic block for important lifecycle failures.

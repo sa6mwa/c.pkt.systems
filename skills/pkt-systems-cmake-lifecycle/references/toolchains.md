@@ -159,7 +159,7 @@ c.pkt.systems cache update.
 
 Install Go independently using the version policy of the Go components being
 worked on. This baseline intentionally does not select, pin, or update Go.
-It likewise does not install `nerdctl` or `containerd`.
+Rootless Podman is a host package prerequisite for local container-backed e2e. The lifecycle does not provision a container engine into the c.pkt.systems toolchain cache or SDK; follow [podman-kube-e2e.md](podman-kube-e2e.md) for the project service contract.
 
 ### Developer identity and local source roots
 

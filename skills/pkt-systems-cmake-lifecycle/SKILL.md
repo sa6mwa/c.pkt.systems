@@ -20,6 +20,7 @@ This skill is the process authority. It must not require external example reposi
 ## Non-Negotiables
 
 - No scanner, test, verifier, packaging helper, or other tool may create temporary files or directories in the repository root or source directories. Put repository-local scratch under the repository's `build/`, which must be excluded by a checked-in `/build/` rule in `.gitignore`. Resolve that location independently of the caller's working directory; see [references/operability.md](references/operability.md#generated-workspaces).
+- Local container-backed e2e uses rootless Podman Kube manifests. Keep all project-owned container state, caches, and temporary files under `build/devenv/`; `dev-reset` must remove them as the ordinary host user after stopping the pods. Follow [references/podman-kube-e2e.md](references/podman-kube-e2e.md).
 - Do not tell the user or future agents to derive this lifecycle from other repositories.
 - Do not write source-repository provenance, workstation-local paths, parent-relative project paths, credentials, or temporary machine paths into generated repository files.
 - Release artifacts must be relocatable and must not contain `$HOME`, source repository paths, build directory paths, dependency cache paths, package-manager temporary paths, or any absolute local workstation path. The release gate must expand and scan all checksum-listed artifacts, including nested source rocks and nested source archives, inspect runtime loader metadata, and fail before release on any local path or non-relocatable runtime path.
@@ -46,7 +47,7 @@ Use the lifecycle on every pkt.systems C/CMake task, but do not turn every reque
 - If the request is release work, follow the release protocol exactly.
 - If the request is ambiguous, inspect first. Ask only when ambiguity changes product behavior, API/ABI, release authority, external services, lifecycle architecture, or unsupported-tool decisions.
 
-Do not maintain an exhaustive list of possible engineering task types. Instead, map the work to affected surfaces: public API, ABI, dependencies, build graph, tests, hardening, Docker Compose e2e, Lua, packaging, release, benchmarks, fuzzing, documentation, or local developer workflow.
+Do not maintain an exhaustive list of possible engineering task types. Instead, map the work to affected surfaces: public API, ABI, dependencies, build graph, tests, hardening, Podman Kube e2e, Lua, packaging, release, benchmarks, fuzzing, documentation, or local developer workflow.
 
 The normal operating loop is:
 
@@ -67,7 +68,7 @@ Read references only after the request and repository state indicate they are re
 - Read [references/toolchains.md](references/toolchains.md) when touching C/C++ compiler discovery, cross-target setup, autodownloaded compiler collections, CMake toolchain files or presets, static C++ runtime closure, downstream setup instructions, release target matrices, or package metadata that exposes compiler/runtime requirements.
 - Read [references/dependencies.md](references/dependencies.md) when touching SDK dependencies, cache invalidation, dependency provenance, bundled/external dependency rules, license provenance, any JSON behavior owned by `lonejson`, or project-owned dependency behavior.
 - Read [references/local-ci.md](references/local-ci.md) when touching build/test gates, API or ABI behavior, native memory checking, fuzzing, benchmarks, install-tree consumers, or quality contracts.
-- Read [references/docker-compose-e2e.md](references/docker-compose-e2e.md) when the repository has or needs deterministic local service e2e.
+- Read [references/podman-kube-e2e.md](references/podman-kube-e2e.md) when the repository has or needs deterministic local service e2e, including migration from containerd/Compose.
 - Read [references/lua.md](references/lua.md) when the repository has or needs Lua facades, Lua C modules, source rocks, Lua benchmarks, or Lua release artifacts.
 - Read [references/packaging.md](references/packaging.md) when touching `dist/`, binary SDKs, checksums, source archives, single-header artifacts, vendored upstreams, RPATH/RUNPATH, Darwin install names, or artifact verification.
 - Read [references/bootstrap.md](references/bootstrap.md) when creating a new repository or filling an intentionally blank lifecycle from a spec.
@@ -76,7 +77,7 @@ Read references only after the request and repository state indicate they are re
 
 Suggested starting sets:
 
-- Blank repository from a spec: `bootstrap`, `api-design`, `operability`, `toolchains`, `dependencies`, `local-ci`, `packaging`; add `lua` or `docker-compose-e2e` only when the spec calls for them.
+- Blank repository from a spec: `bootstrap`, `api-design`, `operability`, `toolchains`, `dependencies`, `local-ci`, `packaging`; add `lua` or `podman-kube-e2e` only when the spec calls for them.
 - Existing repository consolidation: `migration`, `operability`, `api-design`, then inspect and load the affected surface references.
 - Ordinary feature or fix: inspect first, then load only the affected surface references. Do not run the migration procedure unless the feature requires lifecycle restructuring.
 - Cross-target, compiler, or C++ facade work: `toolchains`, `operability`, `packaging`, and any API/dependency references affected by the product change.
