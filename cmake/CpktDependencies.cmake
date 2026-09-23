@@ -1050,6 +1050,191 @@ function(cpkt_add_curl)
 
 endfunction()
 
+function(cpkt_add_libpng)
+  set(project_name cpkt_libpng_project)
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/libpng/install")
+  set(static_library "${install_dir}/lib/libpng16${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_library "${install_dir}/lib/libpng16${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(zlib_shared_library "${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_configure_command(cmake_configure_command)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(install_rpath "@loader_path")
+  else()
+    set(install_rpath "$ORIGIN")
+  endif()
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://github.com/pnggroup/libpng/archive/refs/tags/v${CPKT_LIBPNG_VERSION}.tar.gz"
+      URL_HASH "SHA256=a9d4df463d36a6e5f9c29bd6f4967312d17e996c1854f3511f833924eb1993cf"
+      DOWNLOAD_NAME "libpng-v${CPKT_LIBPNG_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${prefix_dir}/stamp"
+      TMP_DIR "${prefix_dir}/tmp"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_zlib_project
+      CONFIGURE_COMMAND ${cmake_configure_command}
+        -DCMAKE_INSTALL_PREFIX=${install_dir}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_INSTALL_RPATH=${install_rpath}
+        -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+        -DPNG_SHARED=ON
+        -DPNG_STATIC=ON
+        -DPNG_TESTS=OFF
+        -DPNG_TOOLS=OFF
+        -DPNG_HARDWARE_OPTIMIZATIONS=OFF
+        -DPNG_LIBCONF_HEADER=${source_dir}/scripts/pnglibconf.h.prebuilt
+        -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
+        -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+        -DZLIB_LIBRARY=${zlib_shared_library}
+        ${common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${static_library}" "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::png_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::png_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::zlib_static;m")
+  add_library(cpkt::png_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::png_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::zlib_shared;m")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::png_static ${project_name})
+    add_dependencies(cpkt::png_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${static_library}" "libpng static library")
+    cpkt_require_dependency_file("${shared_library}" "libpng shared library")
+    cpkt_require_dependency_file("${install_dir}/include/png.h" "libpng public header")
+  endif()
+  set(CPKT_LIBPNG_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_libharu)
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu")
+  set(source_dir "${prefix_dir}/src")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/libharu/install")
+  set(shared_project cpkt_libharu_shared_project)
+  set(static_project cpkt_libharu_static_project)
+  set(shared_library "${install_dir}/lib/libhpdf${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(static_library "${install_dir}/lib/libhpdf${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_configure_command(cmake_configure_command)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(install_rpath "@loader_path")
+  else()
+    set(install_rpath "$ORIGIN")
+  endif()
+  set(shared_png_library "${CPKT_LIBPNG_PREFIX}/lib/libpng16${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(static_png_library "${CPKT_LIBPNG_PREFIX}/lib/libpng16${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_zlib_library "${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(static_zlib_library "${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${shared_project}
+      URL "https://github.com/libharu/libharu/archive/refs/tags/v${CPKT_LIBHARU_VERSION}.tar.gz"
+      URL_HASH "SHA256=ec8f327520d1d354ce58b5d2af75b64f380cddc522437c169463b39760921348"
+      DOWNLOAD_NAME "libharu-v${CPKT_LIBHARU_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}/shared"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${prefix_dir}/build-shared"
+      STAMP_DIR "${prefix_dir}/stamp-shared"
+      TMP_DIR "${prefix_dir}/tmp-shared"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_libpng_project
+      CONFIGURE_COMMAND ${cmake_configure_command}
+        -DCMAKE_INSTALL_PREFIX=${install_dir}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_INSTALL_RPATH=${install_rpath}
+        -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+        -DBUILD_SHARED_LIBS=ON
+        -DLIBHPDF_EXAMPLES=OFF
+        -DPNG_PNG_INCLUDE_DIR=${CPKT_LIBPNG_PREFIX}/include
+        -DPNG_LIBRARY=${shared_png_library}
+        -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+        -DZLIB_LIBRARY=${shared_zlib_library}
+        ${common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    cpkt_cached_external_project_add(${static_project}
+      URL "https://github.com/libharu/libharu/archive/refs/tags/v${CPKT_LIBHARU_VERSION}.tar.gz"
+      URL_HASH "SHA256=ec8f327520d1d354ce58b5d2af75b64f380cddc522437c169463b39760921348"
+      DOWNLOAD_NAME "libharu-v${CPKT_LIBHARU_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}/static"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${prefix_dir}/build-static"
+      STAMP_DIR "${prefix_dir}/stamp-static"
+      TMP_DIR "${prefix_dir}/tmp-static"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS ${shared_project}
+      CONFIGURE_COMMAND ${cmake_configure_command}
+        -DCMAKE_INSTALL_PREFIX=${install_dir}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DBUILD_SHARED_LIBS=OFF
+        -DLIBHPDF_EXAMPLES=OFF
+        -DPNG_PNG_INCLUDE_DIR=${CPKT_LIBPNG_PREFIX}/include
+        -DPNG_LIBRARY=${static_png_library}
+        -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+        -DZLIB_LIBRARY=${static_zlib_library}
+        ${common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+      BUILD_BYPRODUCTS "${static_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::haru_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::haru_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::png_static;cpkt::zlib_static")
+  add_library(cpkt::haru_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::haru_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::png_shared;cpkt::zlib_shared")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::haru_static ${static_project})
+    add_dependencies(cpkt::haru_shared ${shared_project})
+    cpkt_record_dependency_target(${static_project})
+  else()
+    cpkt_require_dependency_file("${static_library}" "libHaru static library")
+    cpkt_require_dependency_file("${shared_library}" "libHaru shared library")
+    cpkt_require_dependency_file("${install_dir}/include/hpdf.h" "libHaru public header")
+  endif()
+  set(CPKT_LIBHARU_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_add_libxml2)
   set(project_name_shared "cpkt_libxml2_shared_project")
   set(project_name_static "cpkt_libxml2_static_project")
@@ -2338,8 +2523,10 @@ function(cpkt_add_cyrus_sasl)
       BINARY_DIR "${build_dir}"
       STAMP_DIR "${stamp_dir}"
       TMP_DIR "${tmp_dir}"
-      PATCH_COMMAND ${CMAKE_COMMAND} -E chdir "${source_dir}"
-        patch -p1 -i "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_relocatable_plugins.patch"
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS cpkt_krb5_shared_project cpkt_openssl_project
@@ -3066,6 +3253,26 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
     RECIPE_FUNCTIONS cpkt_add_libxml2)
   cpkt_prepare_dependency_component(
+    NAME libpng
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libpng/install"
+    VARIABLES CPKT_LIBPNG_VERSION
+    DEPENDS zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libpng)
+  cpkt_prepare_dependency_component(
+    NAME libharu
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libharu/install"
+    VARIABLES CPKT_LIBHARU_VERSION
+    DEPENDS libpng zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libharu)
+  cpkt_prepare_dependency_component(
     NAME lua
     BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/lua"
     INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/lua/install"
@@ -3138,6 +3345,8 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
       "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_relocatable_plugins.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl.series"
+      "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_gssapi.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/enable_cyrus_sasl_static_gs2.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_plugins.cmake"
@@ -3180,6 +3389,8 @@ function(cpkt_configure_dependencies)
   cpkt_add_libssh2()
   cpkt_add_nghttp2()
   cpkt_add_curl()
+  cpkt_add_libpng()
+  cpkt_add_libharu()
   cpkt_add_libxml2()
   cpkt_add_lua()
   cpkt_add_miniaudio()
@@ -3215,6 +3426,8 @@ function(cpkt_configure_dependencies)
       add_custom_target(cpkt_deps_nghttp2 DEPENDS cpkt_nghttp2_project)
       add_custom_target(cpkt_deps_libssh2 DEPENDS cpkt_libssh2_project)
       add_custom_target(cpkt_deps_curl DEPENDS cpkt_curl_project)
+      add_custom_target(cpkt_deps_libpng DEPENDS cpkt_libpng_project)
+      add_custom_target(cpkt_deps_libharu DEPENDS cpkt_libharu_static_project)
       add_custom_target(cpkt_deps_libxml2 DEPENDS cpkt_libxml2_static_project)
       add_custom_target(cpkt_deps_lua DEPENDS cpkt_lua_project)
       add_custom_target(cpkt_deps_miniaudio DEPENDS cpkt_miniaudio_project)

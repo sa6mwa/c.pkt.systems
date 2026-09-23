@@ -247,6 +247,8 @@ set(CPKT_OPENSSL_VERSION "3.6.4" CACHE STRING "Pinned OpenSSL release.")
 set(CPKT_OPENSSL_BUILD_CONFIG_REVISION "origin-runpath-1" CACHE INTERNAL
   "OpenSSL Configure contract revision." FORCE)
 set(CPKT_ZLIB_VERSION "1.3.2" CACHE STRING "Pinned zlib release.")
+set(CPKT_LIBPNG_VERSION "1.6.58" CACHE STRING "Pinned libpng release.")
+set(CPKT_LIBHARU_VERSION "2.4.6" CACHE STRING "Pinned libHaru release.")
 set(CPKT_CURL_VERSION "8.22.0" CACHE STRING "Pinned curl release.")
 set(CPKT_NGHTTP2_VERSION "1.70.0" CACHE STRING "Pinned nghttp2 release.")
 set(CPKT_LIBSSH2_VERSION "1.11.1" CACHE STRING "Pinned libssh2 release.")
@@ -273,6 +275,7 @@ set(CPKT_GSSAPI_ABI_VERSION "0" CACHE STRING "GSSAPI facade ABI major. Do not bu
 set(CPKT_SASL_ABI_VERSION "0" CACHE STRING "Cyrus SASL facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_POSTGRES_ABI_VERSION "0" CACHE STRING "PostgreSQL facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_SQLITE_ABI_VERSION "0" CACHE STRING "SQLite facade ABI major. Do not bump without maintainer approval.")
+set(CPKT_PDF_ABI_VERSION "0" CACHE STRING "PDF facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_OPENSSL_ABI_VERSION "0" CACHE STRING "OpenSSL C89 facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_MQTTC_ABI_VERSION "0" CACHE STRING "MQTT-C facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_NGHTTP2_ABI_VERSION "0" CACHE STRING "nghttp2 C89 facade ABI major. Do not bump without maintainer approval.")
@@ -1167,6 +1170,31 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
+add_library(cpkt_pdf_static STATIC src/pdf.c)
+cpkt_configure_c89_target(cpkt_pdf_static)
+cpkt_add_repo_warning_errors(cpkt_pdf_static)
+target_include_directories(cpkt_pdf_static PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_pdf_static PUBLIC cpkt::haru_static)
+set_target_properties(cpkt_pdf_static PROPERTIES OUTPUT_NAME cpkt_pdf POSITION_INDEPENDENT_CODE ON)
+
+add_library(cpkt_pdf_shared SHARED src/pdf.c)
+cpkt_configure_c89_target(cpkt_pdf_shared)
+cpkt_add_repo_warning_errors(cpkt_pdf_shared)
+target_include_directories(cpkt_pdf_shared PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+target_link_libraries(cpkt_pdf_shared PUBLIC cpkt::haru_shared)
+set_target_properties(cpkt_pdf_shared PROPERTIES
+  OUTPUT_NAME cpkt_pdf POSITION_INDEPENDENT_CODE ON
+  SOVERSION "${CPKT_PDF_ABI_VERSION}" VERSION "${PROJECT_VERSION}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  set_target_properties(cpkt_pdf_shared PROPERTIES
+    INSTALL_NAME_DIR "@rpath" BUILD_RPATH "@loader_path"
+    INSTALL_RPATH "@loader_path" BUILD_WITH_INSTALL_RPATH ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set_target_properties(cpkt_pdf_shared PROPERTIES
+    BUILD_RPATH "$ORIGIN" INSTALL_RPATH "$ORIGIN"
+    BUILD_WITH_INSTALL_RPATH ON)
+endif()
+
 add_library(cpkt_sqlite_static STATIC src/sqlite.c)
 cpkt_configure_c89_target(cpkt_sqlite_static)
 cpkt_add_repo_warning_errors(cpkt_sqlite_static)
@@ -1601,6 +1629,16 @@ if(CPKT_BUILD_TESTS)
       "${cpkt_sasl_native_include_dir}")
     target_compile_options(cpkt_sasl_callback_retry_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sasl_callback_retry_test)
+    add_executable(cpkt_pdf_facade_static_test tests/pdf_facade_test.c)
+    cpkt_use_local_runtime(cpkt_pdf_facade_static_test)
+    target_compile_options(cpkt_pdf_facade_static_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_pdf_facade_static_test)
+    target_link_libraries(cpkt_pdf_facade_static_test PRIVATE cpkt_pdf_static cpkt::png_static)
+    add_executable(cpkt_pdf_facade_shared_test tests/pdf_facade_test.c)
+    cpkt_use_local_runtime(cpkt_pdf_facade_shared_test)
+    target_compile_options(cpkt_pdf_facade_shared_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_pdf_facade_shared_test)
+    target_link_libraries(cpkt_pdf_facade_shared_test PRIVATE cpkt_pdf_shared cpkt::png_shared)
     add_executable(cpkt_sqlite_facade_test tests/sqlite_facade_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_facade_test)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
@@ -1838,6 +1876,16 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
+      add_test(NAME pdf_facade_static COMMAND cpkt_pdf_facade_static_test)
+      add_test(NAME pdf_facade_shared COMMAND cpkt_pdf_facade_shared_test)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME pdf_api_surface COMMAND python3
+          "${CMAKE_SOURCE_DIR}/tests/pdf_api_surface_test.py"
+          "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu/src/include/hpdf.h"
+          "${CMAKE_SOURCE_DIR}/include/cpkt/pdf.h"
+          "$<TARGET_FILE:cpkt_pdf_shared>"
+          "${CMAKE_NM}")
+      endif()
       add_test(NAME sqlite_child_lifetime_concurrency
         COMMAND cpkt_sqlite_child_lifetime_concurrency_test)
       add_test(NAME sqlite_page_cache_lifetime
@@ -2107,7 +2155,12 @@ if(CPKT_BUILD_TESTS)
       # is deliberately native-host-only and never participates in a target
       # build, package, or release compiler path.
       if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu")
-        find_program(CPKT_OPENSSL_API_INVENTORY_CLANG NAMES clang REQUIRED)
+        if(CPKT_OPENSSL_API_INVENTORY_CLANG AND
+            NOT EXISTS "${CPKT_OPENSSL_API_INVENTORY_CLANG}")
+          unset(CPKT_OPENSSL_API_INVENTORY_CLANG CACHE)
+        endif()
+        find_program(CPKT_OPENSSL_API_INVENTORY_CLANG NAMES clang REQUIRED
+          NO_CMAKE_FIND_ROOT_PATH)
         add_test(
           NAME openssl_api_inventory
           COMMAND
@@ -2352,6 +2405,8 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_OPENSSL_VERSION=${CPKT_OPENSSL_VERSION}
         -DCPKT_OPENSSL_ABI_VERSION=${CPKT_OPENSSL_ABI_VERSION}
         -DCPKT_ZLIB_VERSION=${CPKT_ZLIB_VERSION}
+        -DCPKT_LIBPNG_VERSION=${CPKT_LIBPNG_VERSION}
+        -DCPKT_LIBHARU_VERSION=${CPKT_LIBHARU_VERSION}
         -DCPKT_CURL_VERSION=${CPKT_CURL_VERSION}
         -DCPKT_NGHTTP2_VERSION=${CPKT_NGHTTP2_VERSION}
         -DCPKT_NGHTTP2_ABI_VERSION=${CPKT_NGHTTP2_ABI_VERSION}
@@ -2408,6 +2463,9 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_SQLITE_ABI_VERSION=${CPKT_SQLITE_ABI_VERSION}
         -DCPKT_SQLITE_STATIC_LIBRARY=$<TARGET_FILE:cpkt_sqlite_static>
         -DCPKT_SQLITE_SHARED_LIBRARY=$<TARGET_FILE:cpkt_sqlite_shared>
+        -DCPKT_PDF_ABI_VERSION=${CPKT_PDF_ABI_VERSION}
+        -DCPKT_PDF_STATIC_LIBRARY=$<TARGET_FILE:cpkt_pdf_static>
+        -DCPKT_PDF_SHARED_LIBRARY=$<TARGET_FILE:cpkt_pdf_shared>
         -DCPKT_WHISPER_VERSION=${CPKT_WHISPER_VERSION}
         -DCPKT_SUS_ABI_VERSION=${CPKT_SUS_ABI_VERSION}
         -DCPKT_SUS_BACKEND_CAPABILITIES=${CPKT_SUS_BACKEND_CAPABILITIES}
@@ -2444,6 +2502,8 @@ if(CPKT_BUILD_DEPENDENCIES)
       cpkt_postgres_shared
       cpkt_sqlite_static
       cpkt_sqlite_shared
+      cpkt_pdf_static
+      cpkt_pdf_shared
       cpkt_sus_static
       cpkt_sus_shared
     VERBATIM

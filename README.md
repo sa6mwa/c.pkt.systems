@@ -6,6 +6,8 @@ The project builds release artifacts for:
 
 - OpenSSL
 - zlib
+- libpng, with its complete public C API
+- libHaru, with a complete strict C89 `cpkt_pdf` facade
 - nghttp2
 - libssh2
 - curl
@@ -252,6 +254,9 @@ nghttp2::nghttp2
 Libssh2::libssh2
 CURL::libcurl
 LibXml2::LibXml2
+cpkt::png
+cpkt::haru
+cpkt::pdf
 Lua::Lua
 cpkt::lua
 cpkt::lua_runtime
@@ -265,6 +270,12 @@ cpkt::opcua
 Static transitive dependencies are part of the imported targets. Consumers
 should not add private workaround libraries such as `-ldl`, `-pthread`,
 `-latomic`, zlib, nghttp2, libssh2, OpenSSL, or Darwin frameworks by hand.
+For PDF generation, use `find_package(CpktPdf CONFIG REQUIRED)` and link
+`cpkt::pdf` (or `cpkt::pdf_shared`). The full upstream libpng surface is
+available through `find_package(CpktPng CONFIG REQUIRED)` and `cpkt::png`.
+The C89 facade API and its transitive dependencies are described in
+[`docs/pdf-c89-facade.md`](docs/pdf-c89-facade.md).
+
 The bundled `open62541::open62541` target is built with OpenSSL-backed
 security policy support, the upstream default reduced namespace zero, and static
 OpenSSL plus POSIX system-library requirements carried through the imported

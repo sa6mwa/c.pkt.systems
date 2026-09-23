@@ -10,6 +10,8 @@ foreach(_required
     CPKT_OPENSSL_ABI_VERSION
     CPKT_NGHTTP2_ABI_VERSION
     CPKT_ZLIB_VERSION
+    CPKT_LIBPNG_VERSION
+    CPKT_LIBHARU_VERSION
     CPKT_CURL_VERSION
     CPKT_NGHTTP2_VERSION
     CPKT_LIBSSH2_VERSION
@@ -69,7 +71,10 @@ foreach(_required
     CPKT_POSTGRES_SHARED_LIBRARY
     CPKT_SQLITE_ABI_VERSION
     CPKT_SQLITE_STATIC_LIBRARY
-    CPKT_SQLITE_SHARED_LIBRARY)
+    CPKT_SQLITE_SHARED_LIBRARY
+    CPKT_PDF_ABI_VERSION
+    CPKT_PDF_STATIC_LIBRARY
+    CPKT_PDF_SHARED_LIBRARY)
   if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
     message(FATAL_ERROR "${_required} is required")
   endif()
@@ -77,6 +82,15 @@ endforeach()
 
 if(NOT EXISTS "${CPKT_EXTERNAL_ROOT}")
   message(FATAL_ERROR "dependency install root does not exist: ${CPKT_EXTERNAL_ROOT}")
+endif()
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_pdf_shared_library_link_name "libcpkt_pdf.dylib")
+  set(_cpkt_pdf_shared_library_abi_name "libcpkt_pdf.${CPKT_PDF_ABI_VERSION}.dylib")
+  set(_cpkt_pdf_shared_library_real_name "libcpkt_pdf.${CPKT_BUNDLE_VERSION}.dylib")
+else()
+  set(_cpkt_pdf_shared_library_link_name "libcpkt_pdf.so")
+  set(_cpkt_pdf_shared_library_abi_name "libcpkt_pdf.so.${CPKT_PDF_ABI_VERSION}")
+  set(_cpkt_pdf_shared_library_real_name "libcpkt_pdf.so.${CPKT_BUNDLE_VERSION}")
 endif()
 if(NOT EXISTS "${CPKT_STRIP_BIN}")
   message(FATAL_ERROR "target strip tool does not exist: ${CPKT_STRIP_BIN}")
@@ -205,7 +219,7 @@ function(cpkt_stage_dependency_install dependency_name)
   endforeach()
 endfunction()
 
-foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541 krb5 cyrus-sasl openldap postgresql sqlite)
+foreach(_dependency openssl zlib libpng libharu nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541 krb5 cyrus-sasl openldap postgresql sqlite)
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
 
@@ -393,6 +407,14 @@ cpkt_stage_facade_library(
   "${_cpkt_sqlite_shared_library_real_name}"
   "${_cpkt_sqlite_shared_library_abi_name}"
   "${_cpkt_sqlite_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "libHaru PDF facade"
+  "${CPKT_PDF_STATIC_LIBRARY}"
+  "libcpkt_pdf"
+  "${CPKT_PDF_SHARED_LIBRARY}"
+  "${_cpkt_pdf_shared_library_real_name}"
+  "${_cpkt_pdf_shared_library_abi_name}"
+  "${_cpkt_pdf_shared_library_link_name}")
 
 if(CPKT_TARGET_ID MATCHES "-linux-")
   if(NOT DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY OR "${CPKT_CXX_STDLIB_STATIC_LIBRARY}" STREQUAL "")
@@ -1068,6 +1090,66 @@ file(WRITE "${_stage_root}/lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
 )
 cpkt_write_config_version("CpktOpcUa" "CpktOpcUa" "${CPKT_OPEN62541_VERSION}")
 
+set(_cpkt_pdf_math_library "")
+set(_cpkt_pdf_private_math "")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  set(_cpkt_pdf_math_library "m")
+  set(_cpkt_pdf_private_math " -lm")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktPng")
+file(WRITE "${_stage_root}/lib/cmake/CpktPng/CpktPngConfig.cmake"
+  "get_filename_component(_cpkt_png_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktPng_FOUND TRUE)\n"
+  "set(CpktPng_VERSION \"${CPKT_LIBPNG_VERSION}\")\n"
+  "if(NOT TARGET cpkt::png_static)\n"
+  "  add_library(cpkt::png_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::png_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_png_prefix}/lib/libpng16${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_png_prefix}/include\" INTERFACE_LINK_LIBRARIES \"\${_cpkt_png_prefix}/lib/libz${_cpkt_static_library_suffix};${_cpkt_pdf_math_library}\")\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::png_shared)\n"
+  "  add_library(cpkt::png_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::png_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_png_prefix}/lib/libpng16${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_png_prefix}/include\")\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::png)\n  add_library(cpkt::png ALIAS cpkt::png_static)\nendif()\n")
+cpkt_write_config_version("CpktPng" "CpktPng" "${CPKT_LIBPNG_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktHaru")
+file(WRITE "${_stage_root}/lib/cmake/CpktHaru/CpktHaruConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_haru_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktPng_DIR \"\${_cpkt_haru_prefix}/lib/cmake/CpktPng\")\n"
+  "find_dependency(CpktPng CONFIG REQUIRED)\n"
+  "set(CpktHaru_FOUND TRUE)\n"
+  "set(CpktHaru_VERSION \"${CPKT_LIBHARU_VERSION}\")\n"
+  "if(NOT TARGET cpkt::haru_static)\n"
+  "  add_library(cpkt::haru_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::haru_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_haru_prefix}/lib/libhpdf${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_haru_prefix}/include\" INTERFACE_LINK_LIBRARIES \"cpkt::png_static;\${_cpkt_haru_prefix}/lib/libz${_cpkt_static_library_suffix};${_cpkt_pdf_math_library}\")\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::haru_shared)\n"
+  "  add_library(cpkt::haru_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::haru_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_haru_prefix}/lib/libhpdf${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_haru_prefix}/include\" INTERFACE_LINK_LIBRARIES cpkt::png_shared)\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::haru)\n  add_library(cpkt::haru ALIAS cpkt::haru_static)\nendif()\n")
+cpkt_write_config_version("CpktHaru" "CpktHaru" "${CPKT_LIBHARU_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktPdf")
+file(WRITE "${_stage_root}/lib/cmake/CpktPdf/CpktPdfConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_pdf_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktHaru_DIR \"\${_cpkt_pdf_prefix}/lib/cmake/CpktHaru\")\n"
+  "find_dependency(CpktHaru CONFIG REQUIRED)\n"
+  "set(CpktPdf_FOUND TRUE)\n"
+  "set(CpktPdf_VERSION \"${CPKT_LIBHARU_VERSION}\")\n"
+  "if(NOT TARGET cpkt::pdf_static)\n"
+  "  add_library(cpkt::pdf_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::pdf_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_pdf_prefix}/lib/libcpkt_pdf${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_pdf_prefix}/include\" INTERFACE_LINK_LIBRARIES cpkt::haru_static)\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::pdf_shared)\n"
+  "  add_library(cpkt::pdf_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::pdf_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_pdf_prefix}/lib/libcpkt_pdf${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_pdf_prefix}/include\" INTERFACE_LINK_LIBRARIES cpkt::haru_shared)\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::pdf)\n  add_library(cpkt::pdf ALIAS cpkt::pdf_static)\nendif()\n")
+cpkt_write_config_version("CpktPdf" "CpktPdf" "${CPKT_LIBHARU_VERSION}")
+
 set(_cpkt_sqlite_static_system_libraries "m;Threads::Threads")
 set(_cpkt_sqlite_static_private_pc_libraries "-lm -pthread")
 if(CPKT_TARGET_ID MATCHES "-linux-")
@@ -1720,6 +1802,18 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-sasl.pc"
   "Libs: -L\${libdir} -lcpkt_sasl\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-png.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-png\nDescription: Full libpng API from c.pkt.systems\nVersion: ${CPKT_LIBPNG_VERSION}\n"
+  "Requires.private: zlib\nLibs: -L\${libdir} -lpng16\nLibs.private: ${_cpkt_pdf_private_math}\nCflags: -I\${includedir}\n")
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-haru.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-haru\nDescription: libHaru PDF library from c.pkt.systems\nVersion: ${CPKT_LIBHARU_VERSION}\n"
+  "Requires.private: cpkt-png zlib\nLibs: -L\${libdir} -lhpdf\nLibs.private: ${_cpkt_pdf_private_math}\nCflags: -I\${includedir}\n")
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-pdf.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-pdf\nDescription: Complete C89 libHaru PDF facade from c.pkt.systems\nVersion: ${CPKT_LIBHARU_VERSION}\n"
+  "Requires.private: cpkt-haru\nLibs: -L\${libdir} -lcpkt_pdf\nCflags: -I\${includedir}\n")
 file(WRITE "${_stage_root}/lib/pkgconfig/sqlite3.pc"
   "prefix=\${pcfiledir}/../..\n"
   "exec_prefix=\${prefix}\n"
@@ -1833,6 +1927,8 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "target_id=${CPKT_TARGET_ID}\n"
   "openssl_version=${CPKT_OPENSSL_VERSION}\n"
   "zlib_version=${CPKT_ZLIB_VERSION}\n"
+  "libpng_version=${CPKT_LIBPNG_VERSION}\n"
+  "libharu_version=${CPKT_LIBHARU_VERSION}\n"
   "curl_version=${CPKT_CURL_VERSION}\n"
   "nghttp2_version=${CPKT_NGHTTP2_VERSION}\n"
   "nghttp2_abi_version=${CPKT_NGHTTP2_ABI_VERSION}\n"
@@ -1861,6 +1957,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "opcua_abi_version=${CPKT_OPCUA_ABI_VERSION}\n"
   "postgres_abi_version=${CPKT_POSTGRES_ABI_VERSION}\n"
   "sqlite_abi_version=${CPKT_SQLITE_ABI_VERSION}\n"
+  "pdf_abi_version=${CPKT_PDF_ABI_VERSION}\n"
   "gssapi_abi_version=${CPKT_GSSAPI_ABI_VERSION}\n"
   "sasl_abi_version=${CPKT_SASL_ABI_VERSION}\n"
 )
@@ -1902,6 +1999,9 @@ file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/sqlite-c89-facade-surface.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/sqlite-c89-facade-surface.md")
 file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/pdf-c89-facade.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/pdf-c89-facade.md")
+file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
   "${_stage_root}/share/doc/c.pkt.systems/docs/sus-model-catalog.tsv")
 file(COPY
@@ -1923,6 +2023,11 @@ cpkt_stage_license("openssl" "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl/src/LICENSE.
 cpkt_stage_license("curl" "${CPKT_DEPENDENCY_BUILD_ROOT}/curl/src/COPYING")
 cpkt_stage_license("libssh2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libssh2/src/COPYING")
 cpkt_stage_license("zlib" "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib/src/LICENSE")
+cpkt_stage_license("libpng" "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng/src/LICENSE")
+cpkt_stage_license("libharu" "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu/src/LICENSE")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/third_party/THIRD_PARTY_NOTICES.md"
+  "${_stage_root}/share/doc/c.pkt.systems/THIRD_PARTY_NOTICES.md")
 cpkt_stage_license("nghttp2" "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2/src/COPYING")
 cpkt_stage_license("libxml2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2/src/Copyright")
 cpkt_stage_license("lua" "${CPKT_DEPENDENCY_BUILD_ROOT}/lua/src/src/lua.h")

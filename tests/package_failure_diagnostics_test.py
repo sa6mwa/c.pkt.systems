@@ -57,6 +57,13 @@ fi
         path = cross / "bin" / ("arm64-apple-darwin25-" + name)
         path.write_text("#!/bin/sh\nexit 0\n")
         path.chmod(0o755)
+    resolver = root / "scripts/cpkt-toolchains.sh"
+    resolver.write_text(
+        "#!/bin/sh\n"
+        "printf 'status=ready\\nroot=%s\\nprefix=arm64-apple-darwin25\\n' "
+        '"$OSXCROSS_ROOT"\n'
+    )
+    resolver.chmod(0o755)
     (root / "Makefile").write_text("all:\n\tbash scripts/package.sh\n")
     cases = []
 

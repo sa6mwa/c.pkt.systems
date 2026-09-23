@@ -48,7 +48,7 @@ typedef struct cpkt_sasl_interaction {
   unsigned long result_byte_count;
 } cpkt_sasl_interaction;
 
-/* Password bytes are borrowed for the callback. The facade copies them into
+/** Password bytes are borrowed for the callback. The facade copies them into
  * receiver-owned storage before returning to the native client. */
 typedef struct cpkt_sasl_secret {
   const unsigned char *data;

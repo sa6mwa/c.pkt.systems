@@ -602,6 +602,16 @@ set(_manifest_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.syste
 if(NOT EXISTS "${_manifest_path}")
   message(FATAL_ERROR "missing package manifest: ${_manifest_path}")
 endif()
+set(_libharu_config_path "${_manifest_extract_root}/${_archive_stem}/include/hpdf_config.h")
+if(NOT EXISTS "${_libharu_config_path}")
+  message(FATAL_ERROR "package is missing libHaru configuration header")
+endif()
+file(READ "${_libharu_config_path}" _libharu_config_text)
+foreach(_libharu_required_feature LIBHPDF_HAVE_LIBPNG LIBHPDF_HAVE_ZLIB)
+  if(NOT _libharu_config_text MATCHES "(^|\n)#define ${_libharu_required_feature}(\n|$)")
+    message(FATAL_ERROR "bundled libHaru lacks ${_libharu_required_feature}")
+  endif()
+endforeach()
 file(READ "${_manifest_path}" _manifest_text)
 set(_sus_model_catalog_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/sus-model-catalog.tsv")
 if(NOT EXISTS "${_sus_model_catalog_path}")
@@ -624,6 +634,12 @@ if(NOT _manifest_text MATCHES "(^|\n)openssl_abi_version=([A-Za-z0-9_.+-]+)(\n|$
   message(FATAL_ERROR "package manifest is missing openssl_abi_version")
 endif()
 set(_manifest_openssl_abi_version "${CMAKE_MATCH_2}")
+foreach(_pdf_manifest_key libpng_version libharu_version pdf_abi_version)
+  if(NOT _manifest_text MATCHES "(^|\n)${_pdf_manifest_key}=([A-Za-z0-9_.+-]+)(\n|$)")
+    message(FATAL_ERROR "package manifest is missing ${_pdf_manifest_key}")
+  endif()
+  set(_manifest_${_pdf_manifest_key} "${CMAKE_MATCH_2}")
+endforeach()
 if(NOT _manifest_text MATCHES "(^|\n)nghttp2_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing nghttp2_abi_version")
 endif()
@@ -1030,6 +1046,23 @@ foreach(_path
     "lib/liblua.a"
     "lib/libmqttc.a"
     "lib/libopen62541.a"
+    "lib/libpng16.a"
+    "lib/libhpdf.a"
+    "lib/libcpkt_pdf.a"
+    "include/png.h"
+    "include/pngconf.h"
+    "include/pnglibconf.h"
+    "include/hpdf.h"
+    "include/cpkt/pdf.h"
+    "lib/cmake/CpktPng/CpktPngConfig.cmake"
+    "lib/cmake/CpktPng/CpktPngConfigVersion.cmake"
+    "lib/cmake/CpktHaru/CpktHaruConfig.cmake"
+    "lib/cmake/CpktHaru/CpktHaruConfigVersion.cmake"
+    "lib/cmake/CpktPdf/CpktPdfConfig.cmake"
+    "lib/cmake/CpktPdf/CpktPdfConfigVersion.cmake"
+    "lib/pkgconfig/cpkt-png.pc"
+    "lib/pkgconfig/cpkt-haru.pc"
+    "lib/pkgconfig/cpkt-pdf.pc"
     "lib/libcpktaudio.a"
     "lib/libcpkt_lua_runtime.a"
     "lib/libcpktsus.a"
@@ -1082,6 +1115,8 @@ foreach(_path
     "share/c.pkt.systems/manifest.txt"
     "share/c.pkt.systems/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/LICENSE"
+    "share/doc/c.pkt.systems/THIRD_PARTY_NOTICES.md"
+    "share/doc/c.pkt.systems/docs/pdf-c89-facade.md"
     "share/doc/c.pkt.systems/README.md"
     "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
@@ -1119,6 +1154,8 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/curl/LICENSE"
     "share/doc/c.pkt.systems/third_party/libssh2/LICENSE"
     "share/doc/c.pkt.systems/third_party/zlib/LICENSE"
+    "share/doc/c.pkt.systems/third_party/libpng/LICENSE"
+    "share/doc/c.pkt.systems/third_party/libharu/LICENSE"
     "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE"
     "share/doc/c.pkt.systems/third_party/libxml2/LICENSE"
     "share/doc/c.pkt.systems/third_party/lua/LICENSE"
@@ -1136,6 +1173,27 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
     "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
+endforeach()
+
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_pdf_shared_paths
+    "lib/libpng16.dylib"
+    "lib/libhpdf.dylib"
+    "lib/libcpkt_pdf.dylib"
+    "lib/libcpkt_pdf.${_manifest_pdf_abi_version}.dylib"
+    "lib/libcpkt_pdf.${CPKT_BUNDLE_VERSION}.dylib")
+else()
+  set(_cpkt_pdf_shared_paths
+    "lib/libpng16.so"
+    "lib/libhpdf.so"
+    "lib/libcpkt_pdf.so"
+    "lib/libcpkt_pdf.so.${_manifest_pdf_abi_version}"
+    "lib/libcpkt_pdf.so.${CPKT_BUNDLE_VERSION}")
+endif()
+foreach(_cpkt_pdf_shared_path IN LISTS _cpkt_pdf_shared_paths)
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/${_cpkt_pdf_shared_path}(\n|$)"
+    "${_cpkt_pdf_shared_path}")
 endforeach()
 
 if(CPKT_TARGET_ID MATCHES "-linux-")
