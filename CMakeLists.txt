@@ -1581,6 +1581,14 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sasl_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sasl_facade_test)
     target_link_libraries(cpkt_sasl_facade_test PRIVATE cpkt_sasl_static)
+    add_executable(cpkt_sasl_privileged_plugin_path_test
+      tests/sasl_privileged_plugin_path_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_privileged_plugin_path_test)
+    target_compile_options(cpkt_sasl_privileged_plugin_path_test PRIVATE
+      -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_privileged_plugin_path_test)
+    target_link_libraries(cpkt_sasl_privileged_plugin_path_test PRIVATE
+      cpkt::cyrus_sasl_shared cpkt::gssapi_krb5_shared)
     add_executable(cpkt_sasl_callback_retry_test
       tests/sasl_callback_retry_test.c
       src/sasl.c)
@@ -1854,6 +1862,14 @@ if(CPKT_BUILD_TESTS)
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_oauth_loader_patch_test.sh")
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
       add_test(NAME sasl_facade COMMAND cpkt_sasl_facade_test)
+      file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/sasl-empty-plugin-path")
+      add_test(NAME sasl_privileged_plugin_path
+        COMMAND cpkt_sasl_privileged_plugin_path_test privileged)
+      add_test(NAME sasl_ordinary_plugin_path
+        COMMAND cpkt_sasl_privileged_plugin_path_test ordinary)
+      set_tests_properties(
+        sasl_privileged_plugin_path sasl_ordinary_plugin_path PROPERTIES
+        ENVIRONMENT "SASL_PATH=${CMAKE_BINARY_DIR}/sasl-empty-plugin-path")
       add_test(NAME sasl_callback_retry COMMAND cpkt_sasl_callback_retry_test)
       set_tests_properties(
         opcua_facade_integration

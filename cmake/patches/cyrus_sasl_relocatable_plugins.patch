@@ -59,13 +59,14 @@
  static int
  _sasl_getpath(void *context __attribute__((unused)),
                const char ** path_dest)
-@@ -1589,6 +1616,14 @@
+@@ -1589,6 +1616,15 @@
                                                           SASL_PLUGIN_PATH_ATTR,
                                                           PLUGINDIR);
  #else
 +#if defined(PIC)
-+        /* Preserve the documented explicit SASL_PATH override. */
-+        path = getenv(SASL_PATH_ENV_VAR);
++        /* Honor SASL_PATH only under upstream's real/effective ID check. */
++        path = _sasl_get_default_unix_path(context, SASL_PATH_ENV_VAR,
++                                           NULL);
 +        if (path != NULL)
 +            res = _sasl_strdup(path, &default_plugin_path, NULL);
 +        else
@@ -74,7 +75,7 @@
          /* NB: On Unix platforms this value is never allocated */
          path = _sasl_get_default_unix_path(context,
                                             SASL_PATH_ENV_VAR,
-@@ -1596,5 +1631,6 @@
+@@ -1596,5 +1632,6 @@
                                             PLUGINDIR);
  
          res = _sasl_strdup(path, &default_plugin_path, NULL);
