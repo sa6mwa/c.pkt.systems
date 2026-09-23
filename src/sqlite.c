@@ -3793,16 +3793,19 @@ static sqlite3_pcache *cpkt_sqlite_page_cache_create(int page_byte_count,
                                                      int purgeable) {
   cpkt_sqlite_page_cache_binding *binding;
   cpkt_sqlite_page_cache *cache;
+  size_t adapter_bytes;
   if (!cpkt_sqlite_page_cache_methods_are_set ||
       cpkt_sqlite_page_cache_methods_current.create == NULL)
     return NULL;
-  if (extra_byte_count < 0 ||
-      (size_t)extra_byte_count >
-          (size_t)INT_MAX - sizeof(cpkt_sqlite_page_binding))
+  /* The backend only promises pointer alignment, which can be four bytes.
+   * Reserve enough space to align SQLite's pExtra to eight bytes. */
+  adapter_bytes = sizeof(cpkt_sqlite_page_binding) + 7U;
+  if (extra_byte_count < 0 || adapter_bytes > (size_t)INT_MAX ||
+      (size_t)extra_byte_count > (size_t)INT_MAX - adapter_bytes)
     return NULL;
   cache = cpkt_sqlite_page_cache_methods_current.create(
       cpkt_sqlite_page_cache_methods_current.context, page_byte_count,
-      extra_byte_count + (int)sizeof(cpkt_sqlite_page_binding), purgeable);
+      extra_byte_count + (int)adapter_bytes, purgeable);
   if (cache == NULL)
     return NULL;
   binding = (cpkt_sqlite_page_cache_binding *)calloc(1, sizeof(*binding));
@@ -3845,6 +3848,8 @@ static sqlite3_pcache_page *cpkt_sqlite_page_cache_fetch(sqlite3_pcache *cache,
   cpkt_sqlite_page_cache_binding *binding;
   cpkt_sqlite_page_binding *page_binding;
   cpkt_sqlite_page *page;
+  char *native_extra;
+  size_t padding;
   binding = cpkt_sqlite_page_cache_native_binding(cache);
   if (binding == NULL || binding->methods->fetch == NULL)
     return NULL;
@@ -3857,8 +3862,9 @@ static sqlite3_pcache_page *cpkt_sqlite_page_cache_fetch(sqlite3_pcache *cache,
    * cannot be released reliably. The prefix is private to this adapter. */
   page_binding = (cpkt_sqlite_page_binding *)page->extra;
   page_binding->native_page.pBuf = page->buffer;
-  page_binding->native_page.pExtra =
-      (char *)page->extra + sizeof(*page_binding);
+  native_extra = (char *)page->extra + sizeof(*page_binding);
+  padding = (8U - ((size_t)native_extra & 7U)) & 7U;
+  page_binding->native_page.pExtra = native_extra + padding;
   page_binding->page = page;
   return &page_binding->native_page;
 }

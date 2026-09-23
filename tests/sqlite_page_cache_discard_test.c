@@ -8,7 +8,7 @@ static cpkt_sqlite_page_cache test_cache;
 static cpkt_sqlite_page test_page;
 static unsigned char test_buffer[1024];
 static union {
-  void *alignment;
+  double alignment;
   unsigned char bytes[256];
 } test_extra;
 static void *tracked_allocation;
@@ -108,7 +108,11 @@ int main(void) {
   public_methods.truncate = test_truncate;
   public_methods.destroy = test_destroy;
   test_page.buffer = test_buffer;
+  /* On 32-bit targets, exercise the documented pointer-aligned backend page
+   * whose extra storage begins four bytes past an eight-byte boundary. */
   test_page.extra = test_extra.bytes;
+  if (sizeof(void *) == 4U && ((size_t)test_page.extra & 7U) == 0U)
+    test_page.extra = test_extra.bytes + 4;
   test_page.state = NULL;
   if (cpkt_sqlite_global_config_page_cache_methods_set(&public_methods) !=
           CPKT_SQLITE_OK ||
@@ -125,8 +129,10 @@ int main(void) {
         unexpected_allocation_count != 0)
       return 3;
     if (native_page->pBuf != test_buffer ||
-        native_page->pExtra == test_extra.bytes)
+        native_page->pExtra == test_page.extra)
       return 4;
+    if (((size_t)native_page->pExtra & 7U) != 0U)
+      return 12;
     native_methods.xUnpin(native_cache, native_page, 1);
     if (tracked_allocation != NULL || tracked_free_count != 0 ||
         discard_count != index + 1)
