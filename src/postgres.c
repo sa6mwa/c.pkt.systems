@@ -21,6 +21,7 @@ typedef char
 
 typedef struct cpkt_postgres_notice_snapshot {
   PGconn *connection;
+  struct cpkt_postgres_notice_binding *owner;
   cpkt_postgres_notice_receiver receiver;
   void *receiver_context;
   cpkt_postgres_notice_processor processor;
@@ -43,6 +44,12 @@ typedef struct cpkt_postgres_result_binding {
   struct cpkt_postgres_result_binding *next;
 } cpkt_postgres_result_binding;
 
+typedef struct cpkt_postgres_callback_result {
+  const PGresult *result;
+  cpkt_postgres_notice_binding *owner;
+  struct cpkt_postgres_callback_result *next;
+} cpkt_postgres_callback_result;
+
 typedef struct cpkt_postgres_oauth_request_state {
   cpkt_postgres_oauth_async async;
   cpkt_postgres_oauth_cleanup cleanup;
@@ -51,6 +58,7 @@ typedef struct cpkt_postgres_oauth_request_state {
 
 static cpkt_postgres_notice_binding *cpkt_postgres_notice_bindings = NULL;
 static cpkt_postgres_result_binding *cpkt_postgres_result_bindings = NULL;
+static cpkt_postgres_callback_result *cpkt_postgres_callback_results = NULL;
 static cpkt_postgres_thread_lock cpkt_postgres_thread_lock_callback = NULL;
 static cpkt_postgres_ssl_key_password_hook
     cpkt_postgres_ssl_key_password_callback = NULL;
@@ -201,6 +209,16 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
         break;
       }
     }
+    if (cursor == NULL) {
+      cpkt_postgres_callback_result *callback_result;
+      for (callback_result = cpkt_postgres_callback_results;
+           callback_result != NULL; callback_result = callback_result->next) {
+        if (callback_result->result == source) {
+          binding = callback_result->owner;
+          break;
+        }
+      }
+    }
   }
   entry = NULL;
   if (binding != NULL) {
@@ -224,11 +242,19 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
 static void cpkt_postgres_native_notice_receiver(void *argument,
                                                  const PGresult *result) {
   cpkt_postgres_notice_snapshot *snapshot;
+  cpkt_postgres_callback_result callback_result;
+  cpkt_postgres_callback_result **slot;
+  cpkt_postgres_notice_binding *dispose;
   cpkt_postgres_notice_receiver callback;
   void *context;
 
   cpkt_postgres_hook_lock_acquire();
   snapshot = (cpkt_postgres_notice_snapshot *)argument;
+  callback_result.result = result;
+  callback_result.owner = snapshot->owner;
+  callback_result.next = cpkt_postgres_callback_results;
+  cpkt_postgres_callback_results = &callback_result;
+  ++callback_result.owner->result_count;
   callback = snapshot->receiver;
   context = snapshot->receiver_context;
   argument = snapshot->connection;
@@ -237,6 +263,18 @@ static void cpkt_postgres_native_notice_receiver(void *argument,
     callback(context, (cpkt_postgres_connection *)argument,
              (const cpkt_postgres_result *)result);
   }
+  cpkt_postgres_hook_lock_acquire();
+  slot = &cpkt_postgres_callback_results;
+  while (*slot != &callback_result)
+    slot = &(*slot)->next;
+  *slot = callback_result.next;
+  --callback_result.owner->result_count;
+  dispose =
+      callback_result.owner->closed && callback_result.owner->result_count == 0U
+          ? callback_result.owner
+          : NULL;
+  cpkt_postgres_hook_lock_release();
+  cpkt_postgres_dispose_notice_binding(dispose);
 }
 
 static void cpkt_postgres_native_notice_processor(void *argument,
@@ -1133,6 +1171,7 @@ void cpkt_postgres_set_notice_receiver(
       snapshot->processor_context = old->processor_context;
     }
     snapshot->connection = native_connection;
+    snapshot->owner = binding;
     snapshot->receiver = callback;
     snapshot->receiver_context = context;
     snapshot->next = binding->snapshots;
@@ -1186,6 +1225,7 @@ void cpkt_postgres_set_notice_processor(
       snapshot->receiver_context = old->receiver_context;
     }
     snapshot->connection = native_connection;
+    snapshot->owner = binding;
     snapshot->processor = callback;
     snapshot->processor_context = context;
     snapshot->next = binding->snapshots;

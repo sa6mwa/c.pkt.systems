@@ -16,6 +16,17 @@ static void notice_processor(void *context,
 }
 
 static cpkt_postgres_connection *observed_connection;
+static cpkt_postgres_result *callback_notice_copy;
+
+static void copying_receiver(void *context,
+                             cpkt_postgres_connection *connection,
+                             const cpkt_postgres_result *result) {
+  ++*(int *)context;
+  observed_connection = connection;
+  if (callback_notice_copy == 0)
+    callback_notice_copy = cpkt_postgres_result_copy(
+        result, CPKT_POSTGRES_COPY_RESULT_NOTICE_HOOKS);
+}
 
 static void counted_receiver(void *context,
                              cpkt_postgres_connection *connection,
@@ -162,5 +173,37 @@ int main(void) {
   if (first_count != 2 || second_count != 0 || observed_connection != 0)
     return 16;
   cpkt_postgres_result_free(result);
+  pg = cpkt_postgres_new("host=/tmp/cpkt-postgres-no-socket connect_timeout=1");
+  if (pg == 0)
+    return 18;
+  first_count = 0;
+  callback_notice_copy = 0;
+  cpkt_postgres_set_notice_receiver(pg->connection, copying_receiver,
+                                    &first_count, 0, 0);
+  result = cpkt_postgres_result_new_empty(pg->connection,
+                                          CPKT_POSTGRES_RESULT_TUPLES_OK);
+  if (result == 0)
+    return 19;
+  (void)cpkt_postgres_result_field_name(result, -1);
+  if (first_count != 1 || callback_notice_copy == 0 ||
+      observed_connection != pg->connection)
+    return 20;
+  pg->close(pg);
+  cpkt_postgres_result_free(result);
+  observed_connection = (cpkt_postgres_connection *)1;
+  (void)cpkt_postgres_result_field_name(callback_notice_copy, -1);
+  if (first_count != 2 || observed_connection != 0)
+    return 21;
+  copy = cpkt_postgres_result_copy(callback_notice_copy,
+                                   CPKT_POSTGRES_COPY_RESULT_NOTICE_HOOKS);
+  if (copy == 0)
+    return 22;
+  cpkt_postgres_result_free(callback_notice_copy);
+  callback_notice_copy = copy;
+  observed_connection = (cpkt_postgres_connection *)1;
+  (void)cpkt_postgres_result_field_name(copy, -1);
+  if (first_count != 3 || observed_connection != 0)
+    return 23;
+  cpkt_postgres_result_free(copy);
   return 0;
 }

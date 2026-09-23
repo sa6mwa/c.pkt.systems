@@ -464,7 +464,9 @@ add_custom_command(
 set_source_files_properties("${CPKT_NGHTTP2_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_nghttp2_facade_generated
   DEPENDS "${CPKT_NGHTTP2_FACADE_HEADER}" "${CPKT_NGHTTP2_FACADE_SOURCE}")
-add_dependencies(cpkt_nghttp2_facade_generated cpkt_nghttp2_project)
+if(TARGET cpkt_nghttp2_project)
+  add_dependencies(cpkt_nghttp2_facade_generated cpkt_nghttp2_project)
+endif()
 
 add_library(cpkt_nghttp2_static STATIC "${CPKT_NGHTTP2_FACADE_SOURCE}")
 add_dependencies(cpkt_nghttp2_static cpkt_nghttp2_facade_generated)
@@ -526,7 +528,9 @@ add_custom_command(
 set_source_files_properties("${CPKT_LIBSSH2_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_libssh2_facade_generated
   DEPENDS "${CPKT_LIBSSH2_FACADE_HEADER}" "${CPKT_LIBSSH2_FACADE_SOURCE}")
-add_dependencies(cpkt_libssh2_facade_generated cpkt_libssh2_project)
+if(TARGET cpkt_libssh2_project)
+  add_dependencies(cpkt_libssh2_facade_generated cpkt_libssh2_project)
+endif()
 
 add_library(cpkt_libssh2_static STATIC "${CPKT_LIBSSH2_FACADE_SOURCE}")
 add_dependencies(cpkt_libssh2_static cpkt_libssh2_facade_generated)
@@ -599,7 +603,9 @@ add_custom_command(
 set_source_files_properties("${CPKT_MQTTC_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_mqttc_facade_generated
   DEPENDS "${CPKT_MQTTC_FACADE_HEADER}" "${CPKT_MQTTC_FACADE_SOURCE}")
-add_dependencies(cpkt_mqttc_facade_generated cpkt_mqttc_project)
+if(TARGET cpkt_mqttc_project)
+  add_dependencies(cpkt_mqttc_facade_generated cpkt_mqttc_project)
+endif()
 
 add_library(cpkt_mqttc_static STATIC "${CPKT_MQTTC_FACADE_SOURCE}")
 add_dependencies(cpkt_mqttc_static cpkt_mqttc_facade_generated)
@@ -727,7 +733,9 @@ add_custom_command(
 set_source_files_properties("${CPKT_LUA_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_lua_facade_generated
   DEPENDS "${CPKT_LUA_FACADE_HEADER}" "${CPKT_LUA_FACADE_SOURCE}")
-add_dependencies(cpkt_lua_facade_generated cpkt_lua_project)
+if(TARGET cpkt_lua_project)
+  add_dependencies(cpkt_lua_facade_generated cpkt_lua_project)
+endif()
 
 add_library(cpkt_lua_static STATIC "${CPKT_LUA_FACADE_SOURCE}")
 cpkt_configure_c89_lua_native_header_target(cpkt_lua_static)
@@ -1620,7 +1628,9 @@ if(CPKT_BUILD_TESTS)
     add_executable(cpkt_sasl_callback_retry_test
       tests/sasl_callback_retry_test.c
       src/sasl.c)
-    add_dependencies(cpkt_sasl_callback_retry_test cpkt_cyrus_sasl_project)
+    if(TARGET cpkt_cyrus_sasl_project)
+      add_dependencies(cpkt_sasl_callback_retry_test cpkt_cyrus_sasl_project)
+    endif()
     cpkt_use_local_runtime(cpkt_sasl_callback_retry_test)
     get_target_property(cpkt_sasl_native_include_dir cpkt::cyrus_sasl_static
       INTERFACE_INCLUDE_DIRECTORIES)
@@ -2027,6 +2037,17 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}"
           "${CMAKE_SOURCE_DIR}/build/dependency-cache-disabled-external"
           "${CMAKE_SOURCE_DIR}/build/dependency-cache-disabled-build")
+      if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu" AND CPKT_BUILD_DEPENDENCIES)
+        add_test(
+          NAME dependency_reuse_configure
+          COMMAND
+            "${CMAKE_SOURCE_DIR}/tests/dependency_reuse_configure_test.sh"
+            "${CMAKE_SOURCE_DIR}"
+            "${CMAKE_COMMAND}")
+        set_tests_properties(dependency_reuse_configure PROPERTIES
+          LABELS "packaging;smoke"
+          TIMEOUT 60)
+      endif()
       add_test(
         NAME privacy_scan_failure
         COMMAND
