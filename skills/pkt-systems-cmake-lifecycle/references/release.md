@@ -79,7 +79,7 @@ Version decision:
 
 Review gate:
 
-- Resolve the repository default branch as described above (normally `trunk` for pkt.systems) and run every independent local Codex review against it: `codex review -c model=gpt-6-astra -c model_reasoning_effort=medium --base <default-branch>`.
+- Resolve the repository default branch as described above (normally `trunk` for pkt.systems) and run every independent local Codex review against it: `codex review -c model=gpt-6-sol -c model_reasoning_effort=high --base <default-branch>`.
 - Do not use `codex review --uncommitted`; review committed candidate changes against the default-branch baseline.
 - Do not run a second Codex review after squashing onto the local default branch when the squash commit contains the same code already reviewed against `<default-branch>`. The squash changes commit topology, not the reviewed tree content.
 - Treat actionable findings as blockers and stop the release process.
