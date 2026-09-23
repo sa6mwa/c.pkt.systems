@@ -61,6 +61,9 @@ def main():
         "/* Generated from libHaru 2.4.6 public headers; see tools/generate_pdf_facade.py. */",
         "/* libHaru license: share/doc/c.pkt.systems/third_party/libharu/LICENSE. */",
         "#ifndef CPKT_PDF_H", "#define CPKT_PDF_H", "#include <stdlib.h>",
+        "#if defined(__GNUC__) || defined(__clang__)",
+        '#define CPKT_PDF_API __attribute__((visibility("default")))',
+        "#else", "#define CPKT_PDF_API", "#endif",
         "#ifdef __cplusplus", 'extern "C" {', "#endif",
         "#define CPKT_PDF_STDCALL", "", types, "", consts,
         "typedef void *CPKT_PDF_HANDLE;",
@@ -76,16 +79,18 @@ def main():
         source.append("typedef char cpkt_pdf_%s_layout[(sizeof(%s) == sizeof(CPKT_PDF_%s)) ? 1 : -1];" % (
             struct.lower(), struct, struct[5:]))
     source.append("")
+    exported_names = []
     for ret, original, args in functions:
         ret = ret.strip()
         args = re.sub(r"/\*.*?\*/", "", args, flags=re.S)
         params = [p.strip() for p in args.split(",")] if args.strip() != "void" else []
         name = "cpkt_pdf_" + snake(original[5:])
+        exported_names.append(name)
         public_ret = ret.replace("HPDF_", "CPKT_PDF_")
         public_params = [p.replace("HPDF_", "CPKT_PDF_") for p in params]
         comment = "/** Calls libHaru's %s with C89 facade types. */" % original
         header.append(comment)
-        header.append("%s %s(%s);" % (public_ret, name, ", ".join(public_params) or "void"))
+        header.append("CPKT_PDF_API %s %s(%s);" % (public_ret, name, ", ".join(public_params) or "void"))
         source.append(comment)
         source.append("%s %s(%s)" % (public_ret, name, ", ".join(public_params) or "void"))
         source.append("{")
@@ -143,6 +148,10 @@ def main():
     header.extend(["", "#ifdef __cplusplus", "}", "#endif", "#endif", ""])
     (ROOT / "include/cpkt/pdf.h").write_text("\n".join(header))
     (ROOT / "src/pdf.c").write_text("\n".join(source))
+    (ROOT / "cmake/exports/cpkt_pdf.txt").write_text(
+        "# Defined dynamic exports of libcpkt_pdf. Keep this list exact.\n"
+        + "\n".join(sorted(exported_names)) + "\n"
+    )
     formatter = shutil.which("clang-format")
     if formatter is None:
         raise SystemExit("clang-format is required to regenerate the PDF facade")

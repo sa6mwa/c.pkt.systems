@@ -1590,6 +1590,10 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib"
     "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_mqttc.txt"
     "libcpkt_mqttc extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_pdf.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_pdf.txt"
+    "libcpkt_pdf extracted SDK ABI surface")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
   cpkt_assert_archive_exact_matches(
@@ -1878,6 +1882,10 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
     "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_mqttc.txt"
     "libcpkt_mqttc extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_pdf.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_pdf.txt"
+    "libcpkt_pdf extracted SDK ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

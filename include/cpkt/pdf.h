@@ -4,6 +4,11 @@
 #ifndef CPKT_PDF_H
 #define CPKT_PDF_H
 #include <stdlib.h>
+#if defined(__GNUC__) || defined(__clang__)
+#define CPKT_PDF_API __attribute__((visibility("default")))
+#else
+#define CPKT_PDF_API
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -999,939 +1004,922 @@ typedef CPKT_PDF_HANDLE CPKT_PDF_Xref;
 typedef CPKT_PDF_HANDLE CPKT_PDF_Shading;
 
 /** Calls libHaru's HPDF_GetVersion with C89 facade types. */
-const char *cpkt_pdf_get_version(void);
+CPKT_PDF_API const char *cpkt_pdf_get_version(void);
 /** Calls libHaru's HPDF_NewEx with C89 facade types. */
-CPKT_PDF_Doc cpkt_pdf_new_ex(CPKT_PDF_Error_Handler user_error_fn,
-                             CPKT_PDF_Alloc_Func user_alloc_fn,
-                             CPKT_PDF_Free_Func user_free_fn,
-                             CPKT_PDF_UINT mem_pool_buf_size, void *user_data);
+CPKT_PDF_API CPKT_PDF_Doc cpkt_pdf_new_ex(CPKT_PDF_Error_Handler user_error_fn,
+                                          CPKT_PDF_Alloc_Func user_alloc_fn,
+                                          CPKT_PDF_Free_Func user_free_fn,
+                                          CPKT_PDF_UINT mem_pool_buf_size,
+                                          void *user_data);
 /** Calls libHaru's HPDF_New with C89 facade types. */
-CPKT_PDF_Doc cpkt_pdf_new(CPKT_PDF_Error_Handler user_error_fn,
-                          void *user_data);
+CPKT_PDF_API CPKT_PDF_Doc cpkt_pdf_new(CPKT_PDF_Error_Handler user_error_fn,
+                                       void *user_data);
 /** Calls libHaru's HPDF_SetErrorHandler with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_set_error_handler(CPKT_PDF_Doc pdf,
-                           CPKT_PDF_Error_Handler user_error_fn);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_error_handler(
+    CPKT_PDF_Doc pdf, CPKT_PDF_Error_Handler user_error_fn);
 /** Calls libHaru's HPDF_Free with C89 facade types. */
-void cpkt_pdf_free(CPKT_PDF_Doc pdf);
+CPKT_PDF_API void cpkt_pdf_free(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_GetDocMMgr with C89 facade types. */
-CPKT_PDF_MMgr cpkt_pdf_get_doc_m_mgr(CPKT_PDF_Doc doc);
+CPKT_PDF_API CPKT_PDF_MMgr cpkt_pdf_get_doc_m_mgr(CPKT_PDF_Doc doc);
 /** Calls libHaru's HPDF_NewDoc with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_new_doc(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_new_doc(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_FreeDoc with C89 facade types. */
-void cpkt_pdf_free_doc(CPKT_PDF_Doc pdf);
+CPKT_PDF_API void cpkt_pdf_free_doc(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_HasDoc with C89 facade types. */
-CPKT_PDF_BOOL cpkt_pdf_has_doc(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_BOOL cpkt_pdf_has_doc(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_FreeDocAll with C89 facade types. */
-void cpkt_pdf_free_doc_all(CPKT_PDF_Doc pdf);
+CPKT_PDF_API void cpkt_pdf_free_doc_all(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_SaveToStream with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_save_to_stream(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_save_to_stream(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_GetContents with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_get_contents(CPKT_PDF_Doc pdf, CPKT_PDF_BYTE *buf,
-                                      CPKT_PDF_UINT32 *size);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_get_contents(CPKT_PDF_Doc pdf,
+                                                   CPKT_PDF_BYTE *buf,
+                                                   CPKT_PDF_UINT32 *size);
 /** Calls libHaru's HPDF_GetStreamSize with C89 facade types. */
-CPKT_PDF_UINT32 cpkt_pdf_get_stream_size(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_UINT32 cpkt_pdf_get_stream_size(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_ReadFromStream with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_read_from_stream(CPKT_PDF_Doc pdf, CPKT_PDF_BYTE *buf,
-                                          CPKT_PDF_UINT32 *size);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_read_from_stream(CPKT_PDF_Doc pdf,
+                                                       CPKT_PDF_BYTE *buf,
+                                                       CPKT_PDF_UINT32 *size);
 /** Calls libHaru's HPDF_ResetStream with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_reset_stream(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_reset_stream(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_SaveToFile with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_save_to_file(CPKT_PDF_Doc pdf, const char *file_name);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_save_to_file(CPKT_PDF_Doc pdf,
+                                                   const char *file_name);
 /** Calls libHaru's HPDF_GetError with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_get_error(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_get_error(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_GetErrorDetail with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_get_error_detail(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_get_error_detail(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_ResetError with C89 facade types. */
-void cpkt_pdf_reset_error(CPKT_PDF_Doc pdf);
+CPKT_PDF_API void cpkt_pdf_reset_error(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_CheckError with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_check_error(CPKT_PDF_Error error);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_check_error(CPKT_PDF_Error error);
 /** Calls libHaru's HPDF_SetPagesConfiguration with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_pages_configuration(CPKT_PDF_Doc pdf,
-                                                 CPKT_PDF_UINT page_per_pages);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_pages_configuration(
+    CPKT_PDF_Doc pdf, CPKT_PDF_UINT page_per_pages);
 /** Calls libHaru's HPDF_GetPageByIndex with C89 facade types. */
-CPKT_PDF_Page cpkt_pdf_get_page_by_index(CPKT_PDF_Doc pdf, CPKT_PDF_UINT index);
+CPKT_PDF_API CPKT_PDF_Page cpkt_pdf_get_page_by_index(CPKT_PDF_Doc pdf,
+                                                      CPKT_PDF_UINT index);
 /** Calls libHaru's HPDF_SetPDFAConformance with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_pdfa_conformance(CPKT_PDF_Doc pdf,
-                                              CPKT_PDF_PDFAType pdfa_type);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_set_pdfa_conformance(CPKT_PDF_Doc pdf, CPKT_PDF_PDFAType pdfa_type);
 /** Calls libHaru's HPDF_AddPDFAXmpExtension with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_add_pdfa_xmp_extension(CPKT_PDF_Doc pdf,
-                                                const char *xmp_description);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_add_pdfa_xmp_extension(CPKT_PDF_Doc pdf, const char *xmp_description);
 /** Calls libHaru's HPDF_AppendOutputIntents with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_append_output_intents(CPKT_PDF_Doc pdf,
-                                               const char *iccname,
-                                               CPKT_PDF_Dict iccdict);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_append_output_intents(
+    CPKT_PDF_Doc pdf, const char *iccname, CPKT_PDF_Dict iccdict);
 /** Calls libHaru's HPDF_GetPageMMgr with C89 facade types. */
-CPKT_PDF_MMgr cpkt_pdf_get_page_m_mgr(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_MMgr cpkt_pdf_get_page_m_mgr(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_GetPageLayout with C89 facade types. */
-CPKT_PDF_PageLayout cpkt_pdf_get_page_layout(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_PageLayout cpkt_pdf_get_page_layout(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_SetPageLayout with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_page_layout(CPKT_PDF_Doc pdf,
-                                         CPKT_PDF_PageLayout layout);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_set_page_layout(CPKT_PDF_Doc pdf, CPKT_PDF_PageLayout layout);
 /** Calls libHaru's HPDF_GetPageMode with C89 facade types. */
-CPKT_PDF_PageMode cpkt_pdf_get_page_mode(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_PageMode cpkt_pdf_get_page_mode(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_SetPageMode with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_page_mode(CPKT_PDF_Doc pdf,
-                                       CPKT_PDF_PageMode mode);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_page_mode(CPKT_PDF_Doc pdf,
+                                                    CPKT_PDF_PageMode mode);
 /** Calls libHaru's HPDF_GetViewerPreference with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_get_viewer_preference(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_get_viewer_preference(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_SetViewerPreference with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_viewer_preference(CPKT_PDF_Doc pdf,
-                                               CPKT_PDF_UINT value);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_set_viewer_preference(CPKT_PDF_Doc pdf, CPKT_PDF_UINT value);
 /** Calls libHaru's HPDF_SetOpenAction with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_open_action(CPKT_PDF_Doc pdf,
-                                         CPKT_PDF_Destination open_action);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_set_open_action(CPKT_PDF_Doc pdf, CPKT_PDF_Destination open_action);
 /** Calls libHaru's HPDF_GetCurrentPage with C89 facade types. */
-CPKT_PDF_Page cpkt_pdf_get_current_page(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_Page cpkt_pdf_get_current_page(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_AddPage with C89 facade types. */
-CPKT_PDF_Page cpkt_pdf_add_page(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_Page cpkt_pdf_add_page(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_InsertPage with C89 facade types. */
-CPKT_PDF_Page cpkt_pdf_insert_page(CPKT_PDF_Doc pdf, CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_Page cpkt_pdf_insert_page(CPKT_PDF_Doc pdf,
+                                                CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_SetWidth with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_width(CPKT_PDF_Page page,
-                                        CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_width(CPKT_PDF_Page page,
+                                                     CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_SetHeight with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_height(CPKT_PDF_Page page,
-                                         CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_height(CPKT_PDF_Page page,
+                                                      CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_SetBoundary with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_page_set_boundary(CPKT_PDF_Page page, CPKT_PDF_PageBoundary boundary,
-                           CPKT_PDF_REAL left, CPKT_PDF_REAL bottom,
-                           CPKT_PDF_REAL right, CPKT_PDF_REAL top);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_boundary(
+    CPKT_PDF_Page page, CPKT_PDF_PageBoundary boundary, CPKT_PDF_REAL left,
+    CPKT_PDF_REAL bottom, CPKT_PDF_REAL right, CPKT_PDF_REAL top);
 /** Calls libHaru's HPDF_Page_SetSize with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_size(CPKT_PDF_Page page,
-                                       CPKT_PDF_PageSizes size,
-                                       CPKT_PDF_PageDirection direction);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_size(CPKT_PDF_Page page, CPKT_PDF_PageSizes size,
+                       CPKT_PDF_PageDirection direction);
 /** Calls libHaru's HPDF_Page_SetRotate with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_rotate(CPKT_PDF_Page page,
-                                         CPKT_PDF_UINT16 angle);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_rotate(CPKT_PDF_Page page,
+                                                      CPKT_PDF_UINT16 angle);
 /** Calls libHaru's HPDF_Page_SetZoom with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_zoom(CPKT_PDF_Page page, CPKT_PDF_REAL zoom);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_zoom(CPKT_PDF_Page page,
+                                                    CPKT_PDF_REAL zoom);
 /** Calls libHaru's HPDF_GetFont with C89 facade types. */
-CPKT_PDF_Font cpkt_pdf_get_font(CPKT_PDF_Doc pdf, const char *font_name,
-                                const char *encoding_name);
-/** Calls libHaru's HPDF_LoadType1FontFromFile with C89 facade types. */
-const char *cpkt_pdf_load_type1_font_from_file(CPKT_PDF_Doc pdf,
-                                               const char *afm_file_name,
-                                               const char *data_file_name);
-/** Calls libHaru's HPDF_GetTTFontDefFromFile with C89 facade types. */
-CPKT_PDF_FontDef cpkt_pdf_get_tt_font_def_from_file(CPKT_PDF_Doc pdf,
-                                                    const char *file_name,
-                                                    CPKT_PDF_BOOL embedding);
-/** Calls libHaru's HPDF_LoadTTFontFromFile with C89 facade types. */
-const char *cpkt_pdf_load_tt_font_from_file(CPKT_PDF_Doc pdf,
-                                            const char *file_name,
-                                            CPKT_PDF_BOOL embedding);
-/** Calls libHaru's HPDF_LoadTTFontFromFile2 with C89 facade types. */
-const char *cpkt_pdf_load_tt_font_from_file2(CPKT_PDF_Doc pdf,
-                                             const char *file_name,
-                                             CPKT_PDF_UINT index,
-                                             CPKT_PDF_BOOL embedding);
-/** Calls libHaru's HPDF_LoadTTFontFromMemory with C89 facade types. */
-const char *cpkt_pdf_load_tt_font_from_memory(CPKT_PDF_Doc pdf,
-                                              const CPKT_PDF_BYTE *buffer,
-                                              CPKT_PDF_UINT size,
-                                              CPKT_PDF_BOOL embedding);
-/** Calls libHaru's HPDF_AddPageLabel with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_add_page_label(CPKT_PDF_Doc pdf,
-                                        CPKT_PDF_UINT page_num,
-                                        CPKT_PDF_PageNumStyle style,
-                                        CPKT_PDF_UINT first_page,
-                                        const char *prefix);
-/** Calls libHaru's HPDF_UseJPFonts with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_jp_fonts(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_UseKRFonts with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_kr_fonts(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_UseCNSFonts with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_cns_fonts(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_UseCNTFonts with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_cnt_fonts(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_CreateOutline with C89 facade types. */
-CPKT_PDF_Outline cpkt_pdf_create_outline(CPKT_PDF_Doc pdf,
-                                         CPKT_PDF_Outline parent,
-                                         const char *title,
-                                         CPKT_PDF_Encoder encoder);
-/** Calls libHaru's HPDF_Outline_SetOpened with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_outline_set_opened(CPKT_PDF_Outline outline,
-                                            CPKT_PDF_BOOL opened);
-/** Calls libHaru's HPDF_Outline_SetDestination with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_outline_set_destination(CPKT_PDF_Outline outline,
-                                                 CPKT_PDF_Destination dst);
-/** Calls libHaru's HPDF_Page_CreateDestination with C89 facade types. */
-CPKT_PDF_Destination cpkt_pdf_page_create_destination(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Destination_SetXYZ with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_xyz(CPKT_PDF_Destination dst,
-                                             CPKT_PDF_REAL left,
-                                             CPKT_PDF_REAL top,
-                                             CPKT_PDF_REAL zoom);
-/** Calls libHaru's HPDF_Destination_SetFit with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_fit(CPKT_PDF_Destination dst);
-/** Calls libHaru's HPDF_Destination_SetFitH with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_fit_h(CPKT_PDF_Destination dst,
-                                               CPKT_PDF_REAL top);
-/** Calls libHaru's HPDF_Destination_SetFitV with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_fit_v(CPKT_PDF_Destination dst,
-                                               CPKT_PDF_REAL left);
-/** Calls libHaru's HPDF_Destination_SetFitR with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_fit_r(CPKT_PDF_Destination dst,
-                                               CPKT_PDF_REAL left,
-                                               CPKT_PDF_REAL bottom,
-                                               CPKT_PDF_REAL right,
-                                               CPKT_PDF_REAL top);
-/** Calls libHaru's HPDF_Destination_SetFitB with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_fit_b(CPKT_PDF_Destination dst);
-/** Calls libHaru's HPDF_Destination_SetFitBH with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_fit_bh(CPKT_PDF_Destination dst,
-                                                CPKT_PDF_REAL top);
-/** Calls libHaru's HPDF_Destination_SetFitBV with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_destination_set_fit_bv(CPKT_PDF_Destination dst,
-                                                CPKT_PDF_REAL left);
-/** Calls libHaru's HPDF_GetEncoder with C89 facade types. */
-CPKT_PDF_Encoder cpkt_pdf_get_encoder(CPKT_PDF_Doc pdf,
-                                      const char *encoding_name);
-/** Calls libHaru's HPDF_GetCurrentEncoder with C89 facade types. */
-CPKT_PDF_Encoder cpkt_pdf_get_current_encoder(CPKT_PDF_Doc pdf);
-/** Calls libHaru's HPDF_SetCurrentEncoder with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_current_encoder(CPKT_PDF_Doc pdf,
+CPKT_PDF_API CPKT_PDF_Font cpkt_pdf_get_font(CPKT_PDF_Doc pdf,
+                                             const char *font_name,
                                              const char *encoding_name);
+/** Calls libHaru's HPDF_LoadType1FontFromFile with C89 facade types. */
+CPKT_PDF_API const char *
+cpkt_pdf_load_type1_font_from_file(CPKT_PDF_Doc pdf, const char *afm_file_name,
+                                   const char *data_file_name);
+/** Calls libHaru's HPDF_GetTTFontDefFromFile with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_FontDef cpkt_pdf_get_tt_font_def_from_file(
+    CPKT_PDF_Doc pdf, const char *file_name, CPKT_PDF_BOOL embedding);
+/** Calls libHaru's HPDF_LoadTTFontFromFile with C89 facade types. */
+CPKT_PDF_API const char *
+cpkt_pdf_load_tt_font_from_file(CPKT_PDF_Doc pdf, const char *file_name,
+                                CPKT_PDF_BOOL embedding);
+/** Calls libHaru's HPDF_LoadTTFontFromFile2 with C89 facade types. */
+CPKT_PDF_API const char *
+cpkt_pdf_load_tt_font_from_file2(CPKT_PDF_Doc pdf, const char *file_name,
+                                 CPKT_PDF_UINT index, CPKT_PDF_BOOL embedding);
+/** Calls libHaru's HPDF_LoadTTFontFromMemory with C89 facade types. */
+CPKT_PDF_API const char *
+cpkt_pdf_load_tt_font_from_memory(CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buffer,
+                                  CPKT_PDF_UINT size, CPKT_PDF_BOOL embedding);
+/** Calls libHaru's HPDF_AddPageLabel with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_add_page_label(
+    CPKT_PDF_Doc pdf, CPKT_PDF_UINT page_num, CPKT_PDF_PageNumStyle style,
+    CPKT_PDF_UINT first_page, const char *prefix);
+/** Calls libHaru's HPDF_UseJPFonts with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_jp_fonts(CPKT_PDF_Doc pdf);
+/** Calls libHaru's HPDF_UseKRFonts with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_kr_fonts(CPKT_PDF_Doc pdf);
+/** Calls libHaru's HPDF_UseCNSFonts with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_cns_fonts(CPKT_PDF_Doc pdf);
+/** Calls libHaru's HPDF_UseCNTFonts with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_cnt_fonts(CPKT_PDF_Doc pdf);
+/** Calls libHaru's HPDF_CreateOutline with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_Outline cpkt_pdf_create_outline(CPKT_PDF_Doc pdf,
+                                                      CPKT_PDF_Outline parent,
+                                                      const char *title,
+                                                      CPKT_PDF_Encoder encoder);
+/** Calls libHaru's HPDF_Outline_SetOpened with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_outline_set_opened(CPKT_PDF_Outline outline, CPKT_PDF_BOOL opened);
+/** Calls libHaru's HPDF_Outline_SetDestination with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_outline_set_destination(
+    CPKT_PDF_Outline outline, CPKT_PDF_Destination dst);
+/** Calls libHaru's HPDF_Page_CreateDestination with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_Destination
+cpkt_pdf_page_create_destination(CPKT_PDF_Page page);
+/** Calls libHaru's HPDF_Destination_SetXYZ with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_destination_set_xyz(CPKT_PDF_Destination dst, CPKT_PDF_REAL left,
+                             CPKT_PDF_REAL top, CPKT_PDF_REAL zoom);
+/** Calls libHaru's HPDF_Destination_SetFit with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_destination_set_fit(CPKT_PDF_Destination dst);
+/** Calls libHaru's HPDF_Destination_SetFitH with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_destination_set_fit_h(CPKT_PDF_Destination dst, CPKT_PDF_REAL top);
+/** Calls libHaru's HPDF_Destination_SetFitV with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_destination_set_fit_v(CPKT_PDF_Destination dst, CPKT_PDF_REAL left);
+/** Calls libHaru's HPDF_Destination_SetFitR with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_destination_set_fit_r(
+    CPKT_PDF_Destination dst, CPKT_PDF_REAL left, CPKT_PDF_REAL bottom,
+    CPKT_PDF_REAL right, CPKT_PDF_REAL top);
+/** Calls libHaru's HPDF_Destination_SetFitB with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_destination_set_fit_b(CPKT_PDF_Destination dst);
+/** Calls libHaru's HPDF_Destination_SetFitBH with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_destination_set_fit_bh(CPKT_PDF_Destination dst, CPKT_PDF_REAL top);
+/** Calls libHaru's HPDF_Destination_SetFitBV with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_destination_set_fit_bv(CPKT_PDF_Destination dst, CPKT_PDF_REAL left);
+/** Calls libHaru's HPDF_GetEncoder with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_Encoder cpkt_pdf_get_encoder(CPKT_PDF_Doc pdf,
+                                                   const char *encoding_name);
+/** Calls libHaru's HPDF_GetCurrentEncoder with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_Encoder cpkt_pdf_get_current_encoder(CPKT_PDF_Doc pdf);
+/** Calls libHaru's HPDF_SetCurrentEncoder with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_set_current_encoder(CPKT_PDF_Doc pdf, const char *encoding_name);
 /** Calls libHaru's HPDF_Encoder_GetType with C89 facade types. */
-CPKT_PDF_EncoderType cpkt_pdf_encoder_get_type(CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_EncoderType
+cpkt_pdf_encoder_get_type(CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Encoder_GetByteType with C89 facade types. */
-CPKT_PDF_ByteType cpkt_pdf_encoder_get_byte_type(CPKT_PDF_Encoder encoder,
-                                                 const char *text,
-                                                 CPKT_PDF_UINT index);
+CPKT_PDF_API CPKT_PDF_ByteType cpkt_pdf_encoder_get_byte_type(
+    CPKT_PDF_Encoder encoder, const char *text, CPKT_PDF_UINT index);
 /** Calls libHaru's HPDF_Encoder_GetUnicode with C89 facade types. */
-CPKT_PDF_UNICODE cpkt_pdf_encoder_get_unicode(CPKT_PDF_Encoder encoder,
-                                              CPKT_PDF_UINT16 code);
+CPKT_PDF_API CPKT_PDF_UNICODE
+cpkt_pdf_encoder_get_unicode(CPKT_PDF_Encoder encoder, CPKT_PDF_UINT16 code);
 /** Calls libHaru's HPDF_Encoder_GetWritingMode with C89 facade types. */
-CPKT_PDF_WritingMode
+CPKT_PDF_API CPKT_PDF_WritingMode
 cpkt_pdf_encoder_get_writing_mode(CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_UseJPEncodings with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_jp_encodings(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_jp_encodings(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_UseKREncodings with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_kr_encodings(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_kr_encodings(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_UseCNSEncodings with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_cns_encodings(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_cns_encodings(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_UseCNTEncodings with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_cnt_encodings(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_cnt_encodings(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_UseUTFEncodings with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_use_utf_encodings(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_use_utf_encodings(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_Page_CreateXObjectFromImage with C89 facade types. */
-CPKT_PDF_XObject cpkt_pdf_page_create_x_object_from_image(CPKT_PDF_Doc pdf,
-                                                          CPKT_PDF_Page page,
-                                                          CPKT_PDF_Rect rect,
-                                                          CPKT_PDF_Image image,
-                                                          CPKT_PDF_BOOL zoom);
+CPKT_PDF_API CPKT_PDF_XObject cpkt_pdf_page_create_x_object_from_image(
+    CPKT_PDF_Doc pdf, CPKT_PDF_Page page, CPKT_PDF_Rect rect,
+    CPKT_PDF_Image image, CPKT_PDF_BOOL zoom);
 /** Calls libHaru's HPDF_Page_CreateXObjectAsWhiteRect with C89 facade types. */
-CPKT_PDF_XObject cpkt_pdf_page_create_x_object_as_white_rect(
+CPKT_PDF_API CPKT_PDF_XObject cpkt_pdf_page_create_x_object_as_white_rect(
     CPKT_PDF_Doc pdf, CPKT_PDF_Page page, CPKT_PDF_Rect rect);
 /** Calls libHaru's HPDF_Page_Create3DAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create3_d_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                              CPKT_PDF_BOOL tb, CPKT_PDF_BOOL np,
-                              CPKT_PDF_U3D u3d, CPKT_PDF_Image ap);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create3_d_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, CPKT_PDF_BOOL tb, CPKT_PDF_BOOL np,
+    CPKT_PDF_U3D u3d, CPKT_PDF_Image ap);
 /** Calls libHaru's HPDF_Page_CreateTextAnnot with C89 facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_text_annot(CPKT_PDF_Page page,
-                                                    CPKT_PDF_Rect rect,
-                                                    const char *text,
-                                                    CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation
+cpkt_pdf_page_create_text_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
+                                const char *text, CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateFreeTextAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create_free_text_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                                     const char *text,
-                                     CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_free_text_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, const char *text,
+    CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateLineAnnot with C89 facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_line_annot(CPKT_PDF_Page page,
-                                                    const char *text,
-                                                    CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_line_annot(
+    CPKT_PDF_Page page, const char *text, CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateWidgetAnnot_WhiteOnlyWhilePrint with C89
  * facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_widget_annot_white_only_while_print(
-    CPKT_PDF_Doc pdf, CPKT_PDF_Page page, CPKT_PDF_Rect rect);
+CPKT_PDF_API CPKT_PDF_Annotation
+cpkt_pdf_page_create_widget_annot_white_only_while_print(CPKT_PDF_Doc pdf,
+                                                         CPKT_PDF_Page page,
+                                                         CPKT_PDF_Rect rect);
 /** Calls libHaru's HPDF_Page_CreateWidgetAnnot with C89 facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_widget_annot(CPKT_PDF_Page page,
-                                                      CPKT_PDF_Rect rect);
+CPKT_PDF_API CPKT_PDF_Annotation
+cpkt_pdf_page_create_widget_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect);
 /** Calls libHaru's HPDF_Page_CreateLinkAnnot with C89 facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_link_annot(CPKT_PDF_Page page,
-                                                    CPKT_PDF_Rect rect,
-                                                    CPKT_PDF_Destination dst);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_link_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, CPKT_PDF_Destination dst);
 /** Calls libHaru's HPDF_Page_CreateURILinkAnnot with C89 facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_uri_link_annot(CPKT_PDF_Page page,
-                                                        CPKT_PDF_Rect rect,
-                                                        const char *uri);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_uri_link_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, const char *uri);
 /** Calls libHaru's HPDF_Page_CreateHighlightAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create_highlight_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                                     const char *text,
-                                     CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_highlight_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, const char *text,
+    CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateUnderlineAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create_underline_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                                     const char *text,
-                                     CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_underline_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, const char *text,
+    CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateSquigglyAnnot with C89 facade types. */
-CPKT_PDF_Annotation
+CPKT_PDF_API CPKT_PDF_Annotation
 cpkt_pdf_page_create_squiggly_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
                                     const char *text, CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateStrikeOutAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create_strike_out_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                                      const char *text,
-                                      CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_strike_out_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, const char *text,
+    CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreatePopupAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create_popup_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                                 CPKT_PDF_Annotation parent);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_popup_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, CPKT_PDF_Annotation parent);
 /** Calls libHaru's HPDF_Page_CreateStampAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create_stamp_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                                 CPKT_PDF_StampAnnotName name, const char *text,
-                                 CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_stamp_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, CPKT_PDF_StampAnnotName name,
+    const char *text, CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateProjectionAnnot with C89 facade types. */
-CPKT_PDF_Annotation
-cpkt_pdf_page_create_projection_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
-                                      const char *text,
-                                      CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation cpkt_pdf_page_create_projection_annot(
+    CPKT_PDF_Page page, CPKT_PDF_Rect rect, const char *text,
+    CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateSquareAnnot with C89 facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_square_annot(CPKT_PDF_Page page,
-                                                      CPKT_PDF_Rect rect,
-                                                      const char *text,
-                                                      CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation
+cpkt_pdf_page_create_square_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
+                                  const char *text, CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_Page_CreateCircleAnnot with C89 facade types. */
-CPKT_PDF_Annotation cpkt_pdf_page_create_circle_annot(CPKT_PDF_Page page,
-                                                      CPKT_PDF_Rect rect,
-                                                      const char *text,
-                                                      CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_Annotation
+cpkt_pdf_page_create_circle_annot(CPKT_PDF_Page page, CPKT_PDF_Rect rect,
+                                  const char *text, CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_LinkAnnot_SetHighlightMode with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_link_annot_set_highlight_mode(CPKT_PDF_Annotation annot,
-                                       CPKT_PDF_AnnotHighlightMode mode);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_link_annot_set_highlight_mode(
+    CPKT_PDF_Annotation annot, CPKT_PDF_AnnotHighlightMode mode);
 /** Calls libHaru's HPDF_LinkAnnot_SetJavaScript with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_link_annot_set_java_script(CPKT_PDF_Annotation annot,
-                                    CPKT_PDF_JavaScript javascript);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_link_annot_set_java_script(
+    CPKT_PDF_Annotation annot, CPKT_PDF_JavaScript javascript);
 /** Calls libHaru's HPDF_LinkAnnot_SetBorderStyle with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_link_annot_set_border_style(CPKT_PDF_Annotation annot,
-                                                     CPKT_PDF_REAL width,
-                                                     CPKT_PDF_UINT16 dash_on,
-                                                     CPKT_PDF_UINT16 dash_off);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_link_annot_set_border_style(
+    CPKT_PDF_Annotation annot, CPKT_PDF_REAL width, CPKT_PDF_UINT16 dash_on,
+    CPKT_PDF_UINT16 dash_off);
 /** Calls libHaru's HPDF_TextAnnot_SetIcon with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_text_annot_set_icon(CPKT_PDF_Annotation annot,
-                                             CPKT_PDF_AnnotIcon icon);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_text_annot_set_icon(
+    CPKT_PDF_Annotation annot, CPKT_PDF_AnnotIcon icon);
 /** Calls libHaru's HPDF_TextAnnot_SetOpened with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_text_annot_set_opened(CPKT_PDF_Annotation annot,
-                                               CPKT_PDF_BOOL opened);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_text_annot_set_opened(CPKT_PDF_Annotation annot, CPKT_PDF_BOOL opened);
 /** Calls libHaru's HPDF_Annot_SetRGBColor with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_annot_set_rgb_color(CPKT_PDF_Annotation annot,
-                                             CPKT_PDF_RGBColor color);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_annot_set_rgb_color(
+    CPKT_PDF_Annotation annot, CPKT_PDF_RGBColor color);
 /** Calls libHaru's HPDF_Annot_SetCMYKColor with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_annot_set_cmyk_color(CPKT_PDF_Annotation annot,
-                                              CPKT_PDF_CMYKColor color);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_annot_set_cmyk_color(
+    CPKT_PDF_Annotation annot, CPKT_PDF_CMYKColor color);
 /** Calls libHaru's HPDF_Annot_SetGrayColor with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_annot_set_gray_color(CPKT_PDF_Annotation annot,
-                                              CPKT_PDF_REAL color);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_annot_set_gray_color(CPKT_PDF_Annotation annot, CPKT_PDF_REAL color);
 /** Calls libHaru's HPDF_Annot_SetNoColor with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_annot_set_no_color(CPKT_PDF_Annotation annot);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_annot_set_no_color(CPKT_PDF_Annotation annot);
 /** Calls libHaru's HPDF_MarkupAnnot_SetTitle with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_title(CPKT_PDF_Annotation annot,
-                                                const char *name);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_markup_annot_set_title(CPKT_PDF_Annotation annot, const char *name);
 /** Calls libHaru's HPDF_MarkupAnnot_SetSubject with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_subject(CPKT_PDF_Annotation annot,
-                                                  const char *name);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_markup_annot_set_subject(CPKT_PDF_Annotation annot, const char *name);
 /** Calls libHaru's HPDF_MarkupAnnot_SetCreationDate with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_markup_annot_set_creation_date(CPKT_PDF_Annotation annot,
-                                        CPKT_PDF_Date value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_creation_date(
+    CPKT_PDF_Annotation annot, CPKT_PDF_Date value);
 /** Calls libHaru's HPDF_MarkupAnnot_SetTransparency with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_markup_annot_set_transparency(CPKT_PDF_Annotation annot,
-                                       CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_transparency(
+    CPKT_PDF_Annotation annot, CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_MarkupAnnot_SetIntent with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_intent(CPKT_PDF_Annotation annot,
-                                                 CPKT_PDF_AnnotIntent intent);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_intent(
+    CPKT_PDF_Annotation annot, CPKT_PDF_AnnotIntent intent);
 /** Calls libHaru's HPDF_MarkupAnnot_SetPopup with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_popup(CPKT_PDF_Annotation annot,
-                                                CPKT_PDF_Annotation popup);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_popup(
+    CPKT_PDF_Annotation annot, CPKT_PDF_Annotation popup);
 /** Calls libHaru's HPDF_MarkupAnnot_SetRectDiff with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_rect_diff(CPKT_PDF_Annotation annot,
-                                                    CPKT_PDF_Rect rect);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_rect_diff(
+    CPKT_PDF_Annotation annot, CPKT_PDF_Rect rect);
 /** Calls libHaru's HPDF_MarkupAnnot_SetCloudEffect with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_markup_annot_set_cloud_effect(CPKT_PDF_Annotation annot,
-                                       CPKT_PDF_INT cloudIntensity);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_cloud_effect(
+    CPKT_PDF_Annotation annot, CPKT_PDF_INT cloudIntensity);
 /** Calls libHaru's HPDF_MarkupAnnot_SetInteriorRGBColor with C89 facade types.
  */
-CPKT_PDF_STATUS
-cpkt_pdf_markup_annot_set_interior_rgb_color(CPKT_PDF_Annotation annot,
-                                             CPKT_PDF_RGBColor color);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_interior_rgb_color(
+    CPKT_PDF_Annotation annot, CPKT_PDF_RGBColor color);
 /** Calls libHaru's HPDF_MarkupAnnot_SetInteriorCMYKColor with C89 facade types.
  */
-CPKT_PDF_STATUS
-cpkt_pdf_markup_annot_set_interior_cmyk_color(CPKT_PDF_Annotation annot,
-                                              CPKT_PDF_CMYKColor color);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_interior_cmyk_color(
+    CPKT_PDF_Annotation annot, CPKT_PDF_CMYKColor color);
 /** Calls libHaru's HPDF_MarkupAnnot_SetInteriorGrayColor with C89 facade types.
  */
-CPKT_PDF_STATUS
-cpkt_pdf_markup_annot_set_interior_gray_color(CPKT_PDF_Annotation annot,
-                                              CPKT_PDF_REAL color);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_markup_annot_set_interior_gray_color(
+    CPKT_PDF_Annotation annot, CPKT_PDF_REAL color);
 /** Calls libHaru's HPDF_MarkupAnnot_SetInteriorTransparent with C89 facade
  * types. */
-CPKT_PDF_STATUS
+CPKT_PDF_API CPKT_PDF_STATUS
 cpkt_pdf_markup_annot_set_interior_transparent(CPKT_PDF_Annotation annot);
 /** Calls libHaru's HPDF_TextMarkupAnnot_SetQuadPoints with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_text_markup_annot_set_quad_points(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_text_markup_annot_set_quad_points(
     CPKT_PDF_Annotation annot, CPKT_PDF_Point lb, CPKT_PDF_Point rb,
     CPKT_PDF_Point rt, CPKT_PDF_Point lt);
 /** Calls libHaru's HPDF_Annot_Set3DView with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_annot_set3_d_view(CPKT_PDF_MMgr mmgr,
-                                           CPKT_PDF_Annotation annot,
-                                           CPKT_PDF_Annotation annot3d,
-                                           CPKT_PDF_Dict view);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_annot_set3_d_view(CPKT_PDF_MMgr mmgr, CPKT_PDF_Annotation annot,
+                           CPKT_PDF_Annotation annot3d, CPKT_PDF_Dict view);
 /** Calls libHaru's HPDF_PopupAnnot_SetOpened with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_popup_annot_set_opened(CPKT_PDF_Annotation annot,
-                                                CPKT_PDF_BOOL opened);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_popup_annot_set_opened(
+    CPKT_PDF_Annotation annot, CPKT_PDF_BOOL opened);
 /** Calls libHaru's HPDF_FreeTextAnnot_SetLineEndingStyle with C89 facade types.
  */
-CPKT_PDF_STATUS cpkt_pdf_free_text_annot_set_line_ending_style(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_free_text_annot_set_line_ending_style(
     CPKT_PDF_Annotation annot, CPKT_PDF_LineAnnotEndingStyle startStyle,
     CPKT_PDF_LineAnnotEndingStyle endStyle);
 /** Calls libHaru's HPDF_FreeTextAnnot_Set3PointCalloutLine with C89 facade
  * types. */
-CPKT_PDF_STATUS cpkt_pdf_free_text_annot_set3_point_callout_line(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_free_text_annot_set3_point_callout_line(
     CPKT_PDF_Annotation annot, CPKT_PDF_Point startPoint,
     CPKT_PDF_Point kneePoint, CPKT_PDF_Point endPoint);
 /** Calls libHaru's HPDF_FreeTextAnnot_Set2PointCalloutLine with C89 facade
  * types. */
-CPKT_PDF_STATUS
-cpkt_pdf_free_text_annot_set2_point_callout_line(CPKT_PDF_Annotation annot,
-                                                 CPKT_PDF_Point startPoint,
-                                                 CPKT_PDF_Point endPoint);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_free_text_annot_set2_point_callout_line(
+    CPKT_PDF_Annotation annot, CPKT_PDF_Point startPoint,
+    CPKT_PDF_Point endPoint);
 /** Calls libHaru's HPDF_FreeTextAnnot_SetDefaultStyle with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_free_text_annot_set_default_style(CPKT_PDF_Annotation annot,
-                                           const char *style);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_free_text_annot_set_default_style(
+    CPKT_PDF_Annotation annot, const char *style);
 /** Calls libHaru's HPDF_LineAnnot_SetPosition with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_line_annot_set_position(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_line_annot_set_position(
     CPKT_PDF_Annotation annot, CPKT_PDF_Point startPoint,
     CPKT_PDF_LineAnnotEndingStyle startStyle, CPKT_PDF_Point endPoint,
     CPKT_PDF_LineAnnotEndingStyle endStyle);
 /** Calls libHaru's HPDF_LineAnnot_SetLeader with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_line_annot_set_leader(CPKT_PDF_Annotation annot,
-                                               CPKT_PDF_INT leaderLen,
-                                               CPKT_PDF_INT leaderExtLen,
-                                               CPKT_PDF_INT leaderOffsetLen);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_line_annot_set_leader(
+    CPKT_PDF_Annotation annot, CPKT_PDF_INT leaderLen,
+    CPKT_PDF_INT leaderExtLen, CPKT_PDF_INT leaderOffsetLen);
 /** Calls libHaru's HPDF_LineAnnot_SetCaption with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_line_annot_set_caption(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_line_annot_set_caption(
     CPKT_PDF_Annotation annot, CPKT_PDF_BOOL showCaption,
     CPKT_PDF_LineAnnotCapPosition position, CPKT_PDF_INT horzOffset,
     CPKT_PDF_INT vertOffset);
 /** Calls libHaru's HPDF_Annotation_SetBorderStyle with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_annotation_set_border_style(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_annotation_set_border_style(
     CPKT_PDF_Annotation annot, CPKT_PDF_BSSubtype subtype, CPKT_PDF_REAL width,
     CPKT_PDF_UINT16 dash_on, CPKT_PDF_UINT16 dash_off,
     CPKT_PDF_UINT16 dash_phase);
 /** Calls libHaru's HPDF_ProjectionAnnot_SetExData with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_projection_annot_set_ex_data(CPKT_PDF_Annotation annot,
-                                                      CPKT_PDF_ExData exdata);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_projection_annot_set_ex_data(
+    CPKT_PDF_Annotation annot, CPKT_PDF_ExData exdata);
 /** Calls libHaru's HPDF_Page_Create3DC3DMeasure with C89 facade types. */
-CPKT_PDF_3DMeasure
-cpkt_pdf_page_create3_dc3_d_measure(CPKT_PDF_Page page,
-                                    CPKT_PDF_Point3D firstanchorpoint,
-                                    CPKT_PDF_Point3D textanchorpoint);
+CPKT_PDF_API CPKT_PDF_3DMeasure cpkt_pdf_page_create3_dc3_d_measure(
+    CPKT_PDF_Page page, CPKT_PDF_Point3D firstanchorpoint,
+    CPKT_PDF_Point3D textanchorpoint);
 /** Calls libHaru's HPDF_Page_CreatePD33DMeasure with C89 facade types. */
-CPKT_PDF_3DMeasure cpkt_pdf_page_create_pd33_d_measure(
+CPKT_PDF_API CPKT_PDF_3DMeasure cpkt_pdf_page_create_pd33_d_measure(
     CPKT_PDF_Page page, CPKT_PDF_Point3D annotationPlaneNormal,
     CPKT_PDF_Point3D firstAnchorPoint, CPKT_PDF_Point3D secondAnchorPoint,
     CPKT_PDF_Point3D leaderLinesDirection,
     CPKT_PDF_Point3D measurementValuePoint, CPKT_PDF_Point3D textYDirection,
     CPKT_PDF_REAL value, const char *unitsString);
 /** Calls libHaru's HPDF_3DMeasure_SetName with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_3_d_measure_set_name(CPKT_PDF_3DMeasure measure,
-                                              const char *name);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_3_d_measure_set_name(CPKT_PDF_3DMeasure measure, const char *name);
 /** Calls libHaru's HPDF_3DMeasure_SetColor with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_3_d_measure_set_color(CPKT_PDF_3DMeasure measure,
-                                               CPKT_PDF_RGBColor color);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_d_measure_set_color(
+    CPKT_PDF_3DMeasure measure, CPKT_PDF_RGBColor color);
 /** Calls libHaru's HPDF_3DMeasure_SetTextSize with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_3_d_measure_set_text_size(CPKT_PDF_3DMeasure measure,
-                                                   CPKT_PDF_REAL textsize);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_d_measure_set_text_size(
+    CPKT_PDF_3DMeasure measure, CPKT_PDF_REAL textsize);
 /** Calls libHaru's HPDF_3DC3DMeasure_SetTextBoxSize with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_3_dc3_d_measure_set_text_box_size(CPKT_PDF_3DMeasure measure,
-                                           CPKT_PDF_INT32 x, CPKT_PDF_INT32 y);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_dc3_d_measure_set_text_box_size(
+    CPKT_PDF_3DMeasure measure, CPKT_PDF_INT32 x, CPKT_PDF_INT32 y);
 /** Calls libHaru's HPDF_3DC3DMeasure_SetText with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_3_dc3_d_measure_set_text(CPKT_PDF_3DMeasure measure,
-                                                  const char *text,
-                                                  CPKT_PDF_Encoder encoder);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_dc3_d_measure_set_text(
+    CPKT_PDF_3DMeasure measure, const char *text, CPKT_PDF_Encoder encoder);
 /** Calls libHaru's HPDF_3DC3DMeasure_SetProjectionAnotation with C89 facade
  * types. */
-CPKT_PDF_STATUS cpkt_pdf_3_dc3_d_measure_set_projection_anotation(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_dc3_d_measure_set_projection_anotation(
     CPKT_PDF_3DMeasure measure, CPKT_PDF_Annotation projectionanotation);
 /** Calls libHaru's HPDF_Page_Create3DAnnotExData with C89 facade types. */
-CPKT_PDF_ExData cpkt_pdf_page_create3_d_annot_ex_data(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_ExData
+cpkt_pdf_page_create3_d_annot_ex_data(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_3DAnnotExData_Set3DMeasurement with C89 facade types.
  */
-CPKT_PDF_STATUS
-cpkt_pdf_3_d_annot_ex_data_set3_d_measurement(CPKT_PDF_ExData exdata,
-                                              CPKT_PDF_3DMeasure measure);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_d_annot_ex_data_set3_d_measurement(
+    CPKT_PDF_ExData exdata, CPKT_PDF_3DMeasure measure);
 /** Calls libHaru's HPDF_Page_Create3DView with C89 facade types. */
-CPKT_PDF_Dict cpkt_pdf_page_create3_d_view(CPKT_PDF_Page page, CPKT_PDF_U3D u3d,
-                                           CPKT_PDF_Annotation annot3d,
-                                           const char *name);
+CPKT_PDF_API CPKT_PDF_Dict
+cpkt_pdf_page_create3_d_view(CPKT_PDF_Page page, CPKT_PDF_U3D u3d,
+                             CPKT_PDF_Annotation annot3d, const char *name);
 /** Calls libHaru's HPDF_3DView_Add3DC3DMeasure with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_3_d_view_add3_dc3_d_measure(CPKT_PDF_Dict view,
-                                     CPKT_PDF_3DMeasure measure);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_3_d_view_add3_dc3_d_measure(
+    CPKT_PDF_Dict view, CPKT_PDF_3DMeasure measure);
 /** Calls libHaru's HPDF_LoadPngImageFromMem with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_load_png_image_from_mem(CPKT_PDF_Doc pdf,
-                                                const CPKT_PDF_BYTE *buffer,
-                                                CPKT_PDF_UINT size);
+CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_png_image_from_mem(
+    CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buffer, CPKT_PDF_UINT size);
 /** Calls libHaru's HPDF_LoadPngImageFromFile with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_load_png_image_from_file(CPKT_PDF_Doc pdf,
-                                                 const char *filename);
+CPKT_PDF_API CPKT_PDF_Image
+cpkt_pdf_load_png_image_from_file(CPKT_PDF_Doc pdf, const char *filename);
 /** Calls libHaru's HPDF_LoadPngImageFromFile2 with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_load_png_image_from_file2(CPKT_PDF_Doc pdf,
-                                                  const char *filename);
+CPKT_PDF_API CPKT_PDF_Image
+cpkt_pdf_load_png_image_from_file2(CPKT_PDF_Doc pdf, const char *filename);
 /** Calls libHaru's HPDF_LoadJpegImageFromFile with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_load_jpeg_image_from_file(CPKT_PDF_Doc pdf,
-                                                  const char *filename);
+CPKT_PDF_API CPKT_PDF_Image
+cpkt_pdf_load_jpeg_image_from_file(CPKT_PDF_Doc pdf, const char *filename);
 /** Calls libHaru's HPDF_LoadJpegImageFromMem with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_load_jpeg_image_from_mem(CPKT_PDF_Doc pdf,
-                                                 const CPKT_PDF_BYTE *buffer,
-                                                 CPKT_PDF_UINT size);
+CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_jpeg_image_from_mem(
+    CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buffer, CPKT_PDF_UINT size);
 /** Calls libHaru's HPDF_LoadU3DFromFile with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_load_u3_d_from_file(CPKT_PDF_Doc pdf,
-                                            const char *filename);
+CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_u3_d_from_file(CPKT_PDF_Doc pdf,
+                                                         const char *filename);
 /** Calls libHaru's HPDF_LoadU3DFromMem with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_load_u3_d_from_mem(CPKT_PDF_Doc pdf,
-                                           const CPKT_PDF_BYTE *buffer,
-                                           CPKT_PDF_UINT size);
+CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_u3_d_from_mem(
+    CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buffer, CPKT_PDF_UINT size);
 /** Calls libHaru's HPDF_Image_LoadRaw1BitImageFromMem with C89 facade types. */
-CPKT_PDF_Image cpkt_pdf_image_load_raw1_bit_image_from_mem(
+CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_image_load_raw1_bit_image_from_mem(
     CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buf, CPKT_PDF_UINT width,
     CPKT_PDF_UINT height, CPKT_PDF_UINT line_width, CPKT_PDF_BOOL black_is1,
     CPKT_PDF_BOOL top_is_first);
 /** Calls libHaru's HPDF_LoadRawImageFromFile with C89 facade types. */
-CPKT_PDF_Image
-cpkt_pdf_load_raw_image_from_file(CPKT_PDF_Doc pdf, const char *filename,
-                                  CPKT_PDF_UINT width, CPKT_PDF_UINT height,
-                                  CPKT_PDF_ColorSpace color_space);
+CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_raw_image_from_file(
+    CPKT_PDF_Doc pdf, const char *filename, CPKT_PDF_UINT width,
+    CPKT_PDF_UINT height, CPKT_PDF_ColorSpace color_space);
 /** Calls libHaru's HPDF_LoadRawImageFromMem with C89 facade types. */
-CPKT_PDF_Image
-cpkt_pdf_load_raw_image_from_mem(CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buf,
-                                 CPKT_PDF_UINT width, CPKT_PDF_UINT height,
-                                 CPKT_PDF_ColorSpace color_space,
-                                 CPKT_PDF_UINT bits_per_component);
+CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_raw_image_from_mem(
+    CPKT_PDF_Doc pdf, const CPKT_PDF_BYTE *buf, CPKT_PDF_UINT width,
+    CPKT_PDF_UINT height, CPKT_PDF_ColorSpace color_space,
+    CPKT_PDF_UINT bits_per_component);
 /** Calls libHaru's HPDF_Image_AddSMask with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_image_add_s_mask(CPKT_PDF_Image image,
-                                          CPKT_PDF_Image smask);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_image_add_s_mask(CPKT_PDF_Image image,
+                                                       CPKT_PDF_Image smask);
 /** Calls libHaru's HPDF_Image_GetSize with C89 facade types. */
-CPKT_PDF_Point cpkt_pdf_image_get_size(CPKT_PDF_Image image);
+CPKT_PDF_API CPKT_PDF_Point cpkt_pdf_image_get_size(CPKT_PDF_Image image);
 /** Calls libHaru's HPDF_Image_GetSize2 with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_image_get_size2(CPKT_PDF_Image image,
-                                         CPKT_PDF_Point *size);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_image_get_size2(CPKT_PDF_Image image,
+                                                      CPKT_PDF_Point *size);
 /** Calls libHaru's HPDF_Image_GetWidth with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_image_get_width(CPKT_PDF_Image image);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_image_get_width(CPKT_PDF_Image image);
 /** Calls libHaru's HPDF_Image_GetHeight with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_image_get_height(CPKT_PDF_Image image);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_image_get_height(CPKT_PDF_Image image);
 /** Calls libHaru's HPDF_Image_GetBitsPerComponent with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_image_get_bits_per_component(CPKT_PDF_Image image);
+CPKT_PDF_API CPKT_PDF_UINT
+cpkt_pdf_image_get_bits_per_component(CPKT_PDF_Image image);
 /** Calls libHaru's HPDF_Image_GetColorSpace with C89 facade types. */
-const char *cpkt_pdf_image_get_color_space(CPKT_PDF_Image image);
+CPKT_PDF_API const char *cpkt_pdf_image_get_color_space(CPKT_PDF_Image image);
 /** Calls libHaru's HPDF_Image_SetColorMask with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_image_set_color_mask(CPKT_PDF_Image image, CPKT_PDF_UINT rmin,
-                              CPKT_PDF_UINT rmax, CPKT_PDF_UINT gmin,
-                              CPKT_PDF_UINT gmax, CPKT_PDF_UINT bmin,
-                              CPKT_PDF_UINT bmax);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_image_set_color_mask(
+    CPKT_PDF_Image image, CPKT_PDF_UINT rmin, CPKT_PDF_UINT rmax,
+    CPKT_PDF_UINT gmin, CPKT_PDF_UINT gmax, CPKT_PDF_UINT bmin,
+    CPKT_PDF_UINT bmax);
 /** Calls libHaru's HPDF_Image_SetMaskImage with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_image_set_mask_image(CPKT_PDF_Image image,
-                                              CPKT_PDF_Image mask_image);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_image_set_mask_image(CPKT_PDF_Image image, CPKT_PDF_Image mask_image);
 /** Calls libHaru's HPDF_SetInfoAttr with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_info_attr(CPKT_PDF_Doc pdf, CPKT_PDF_InfoType type,
-                                       const char *value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_info_attr(CPKT_PDF_Doc pdf,
+                                                    CPKT_PDF_InfoType type,
+                                                    const char *value);
 /** Calls libHaru's HPDF_GetInfoAttr with C89 facade types. */
-const char *cpkt_pdf_get_info_attr(CPKT_PDF_Doc pdf, CPKT_PDF_InfoType type);
+CPKT_PDF_API const char *cpkt_pdf_get_info_attr(CPKT_PDF_Doc pdf,
+                                                CPKT_PDF_InfoType type);
 /** Calls libHaru's HPDF_SetInfoDateAttr with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_info_date_attr(CPKT_PDF_Doc pdf,
-                                            CPKT_PDF_InfoType type,
-                                            CPKT_PDF_Date value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_info_date_attr(CPKT_PDF_Doc pdf,
+                                                         CPKT_PDF_InfoType type,
+                                                         CPKT_PDF_Date value);
 /** Calls libHaru's HPDF_SetPassword with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_password(CPKT_PDF_Doc pdf,
-                                      const char *owner_passwd,
-                                      const char *user_passwd);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_password(CPKT_PDF_Doc pdf,
+                                                   const char *owner_passwd,
+                                                   const char *user_passwd);
 /** Calls libHaru's HPDF_SetPermission with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_permission(CPKT_PDF_Doc pdf,
-                                        CPKT_PDF_UINT permission);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_permission(CPKT_PDF_Doc pdf,
+                                                     CPKT_PDF_UINT permission);
 /** Calls libHaru's HPDF_SetEncryptionMode with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_encryption_mode(CPKT_PDF_Doc pdf,
-                                             CPKT_PDF_EncryptMode mode,
-                                             CPKT_PDF_UINT key_len);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_encryption_mode(
+    CPKT_PDF_Doc pdf, CPKT_PDF_EncryptMode mode, CPKT_PDF_UINT key_len);
 /** Calls libHaru's HPDF_SetCompressionMode with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_set_compression_mode(CPKT_PDF_Doc pdf,
-                                              CPKT_PDF_UINT mode);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_set_compression_mode(CPKT_PDF_Doc pdf,
+                                                           CPKT_PDF_UINT mode);
 /** Calls libHaru's HPDF_Font_GetFontName with C89 facade types. */
-const char *cpkt_pdf_font_get_font_name(CPKT_PDF_Font font);
+CPKT_PDF_API const char *cpkt_pdf_font_get_font_name(CPKT_PDF_Font font);
 /** Calls libHaru's HPDF_Font_GetEncodingName with C89 facade types. */
-const char *cpkt_pdf_font_get_encoding_name(CPKT_PDF_Font font);
+CPKT_PDF_API const char *cpkt_pdf_font_get_encoding_name(CPKT_PDF_Font font);
 /** Calls libHaru's HPDF_Font_GetUnicodeWidth with C89 facade types. */
-CPKT_PDF_INT cpkt_pdf_font_get_unicode_width(CPKT_PDF_Font font,
-                                             CPKT_PDF_UNICODE code);
+CPKT_PDF_API CPKT_PDF_INT
+cpkt_pdf_font_get_unicode_width(CPKT_PDF_Font font, CPKT_PDF_UNICODE code);
 /** Calls libHaru's HPDF_Font_GetBBox with C89 facade types. */
-CPKT_PDF_Box cpkt_pdf_font_get_b_box(CPKT_PDF_Font font);
+CPKT_PDF_API CPKT_PDF_Box cpkt_pdf_font_get_b_box(CPKT_PDF_Font font);
 /** Calls libHaru's HPDF_Font_GetAscent with C89 facade types. */
-CPKT_PDF_INT cpkt_pdf_font_get_ascent(CPKT_PDF_Font font);
+CPKT_PDF_API CPKT_PDF_INT cpkt_pdf_font_get_ascent(CPKT_PDF_Font font);
 /** Calls libHaru's HPDF_Font_GetDescent with C89 facade types. */
-CPKT_PDF_INT cpkt_pdf_font_get_descent(CPKT_PDF_Font font);
+CPKT_PDF_API CPKT_PDF_INT cpkt_pdf_font_get_descent(CPKT_PDF_Font font);
 /** Calls libHaru's HPDF_Font_GetXHeight with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_font_get_x_height(CPKT_PDF_Font font);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_font_get_x_height(CPKT_PDF_Font font);
 /** Calls libHaru's HPDF_Font_GetCapHeight with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_font_get_cap_height(CPKT_PDF_Font font);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_font_get_cap_height(CPKT_PDF_Font font);
 /** Calls libHaru's HPDF_Font_TextWidth with C89 facade types. */
-CPKT_PDF_TextWidth cpkt_pdf_font_text_width(CPKT_PDF_Font font,
-                                            const CPKT_PDF_BYTE *text,
-                                            CPKT_PDF_UINT len);
+CPKT_PDF_API CPKT_PDF_TextWidth cpkt_pdf_font_text_width(
+    CPKT_PDF_Font font, const CPKT_PDF_BYTE *text, CPKT_PDF_UINT len);
 /** Calls libHaru's HPDF_Font_MeasureText with C89 facade types. */
-CPKT_PDF_UINT
-cpkt_pdf_font_measure_text(CPKT_PDF_Font font, const CPKT_PDF_BYTE *text,
-                           CPKT_PDF_UINT len, CPKT_PDF_REAL width,
-                           CPKT_PDF_REAL font_size, CPKT_PDF_REAL char_space,
-                           CPKT_PDF_REAL word_space, CPKT_PDF_BOOL wordwrap,
-                           CPKT_PDF_REAL *real_width);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_font_measure_text(
+    CPKT_PDF_Font font, const CPKT_PDF_BYTE *text, CPKT_PDF_UINT len,
+    CPKT_PDF_REAL width, CPKT_PDF_REAL font_size, CPKT_PDF_REAL char_space,
+    CPKT_PDF_REAL word_space, CPKT_PDF_BOOL wordwrap,
+    CPKT_PDF_REAL *real_width);
 /** Calls libHaru's HPDF_AttachFile with C89 facade types. */
-CPKT_PDF_EmbeddedFile cpkt_pdf_attach_file(CPKT_PDF_Doc pdf, const char *file);
+CPKT_PDF_API CPKT_PDF_EmbeddedFile cpkt_pdf_attach_file(CPKT_PDF_Doc pdf,
+                                                        const char *file);
 /** Calls libHaru's HPDF_EmbeddedFile_SetName with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_name(CPKT_PDF_EmbeddedFile emfile,
-                                                const char *name);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_embedded_file_set_name(CPKT_PDF_EmbeddedFile emfile, const char *name);
 /** Calls libHaru's HPDF_EmbeddedFile_SetDescription with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_embedded_file_set_description(CPKT_PDF_EmbeddedFile emfile,
-                                       const char *new_description);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_description(
+    CPKT_PDF_EmbeddedFile emfile, const char *new_description);
 /** Calls libHaru's HPDF_EmbeddedFile_SetSubtype with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_subtype(CPKT_PDF_EmbeddedFile emfile,
-                                                   const char *subtype);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_subtype(
+    CPKT_PDF_EmbeddedFile emfile, const char *subtype);
 /** Calls libHaru's HPDF_EmbeddedFile_SetAFRelationship with C89 facade types.
  */
-CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_af_relationship(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_af_relationship(
     CPKT_PDF_EmbeddedFile emfile, CPKT_PDF_AFRelationship relationship);
 /** Calls libHaru's HPDF_EmbeddedFile_SetSize with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_size(CPKT_PDF_EmbeddedFile emfile,
-                                                CPKT_PDF_UINT64 size);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_size(
+    CPKT_PDF_EmbeddedFile emfile, CPKT_PDF_UINT64 size);
 /** Calls libHaru's HPDF_EmbeddedFile_SetCreationDate with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_embedded_file_set_creation_date(CPKT_PDF_EmbeddedFile emfile,
-                                         CPKT_PDF_Date creationDate);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_creation_date(
+    CPKT_PDF_EmbeddedFile emfile, CPKT_PDF_Date creationDate);
 /** Calls libHaru's HPDF_EmbeddedFile_SetLastModificationDate with C89 facade
  * types. */
-CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_last_modification_date(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_embedded_file_set_last_modification_date(
     CPKT_PDF_EmbeddedFile emfile, CPKT_PDF_Date lastModificationDate);
 /** Calls libHaru's HPDF_CreateExtGState with C89 facade types. */
-CPKT_PDF_ExtGState cpkt_pdf_create_ext_g_state(CPKT_PDF_Doc pdf);
+CPKT_PDF_API CPKT_PDF_ExtGState cpkt_pdf_create_ext_g_state(CPKT_PDF_Doc pdf);
 /** Calls libHaru's HPDF_ExtGState_SetAlphaStroke with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_ext_g_state_set_alpha_stroke(CPKT_PDF_ExtGState ext_gstate,
-                                      CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_ext_g_state_set_alpha_stroke(
+    CPKT_PDF_ExtGState ext_gstate, CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_ExtGState_SetAlphaFill with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_ext_g_state_set_alpha_fill(CPKT_PDF_ExtGState ext_gstate,
-                                    CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_ext_g_state_set_alpha_fill(
+    CPKT_PDF_ExtGState ext_gstate, CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_ExtGState_SetBlendMode with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_ext_g_state_set_blend_mode(CPKT_PDF_ExtGState ext_gstate,
-                                    CPKT_PDF_BlendMode mode);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_ext_g_state_set_blend_mode(
+    CPKT_PDF_ExtGState ext_gstate, CPKT_PDF_BlendMode mode);
 /** Calls libHaru's HPDF_Page_TextWidth with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_text_width(CPKT_PDF_Page page, const char *text);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_text_width(CPKT_PDF_Page page,
+                                                    const char *text);
 /** Calls libHaru's HPDF_Page_MeasureText with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_page_measure_text(CPKT_PDF_Page page, const char *text,
-                                         CPKT_PDF_REAL width,
-                                         CPKT_PDF_BOOL wordwrap,
-                                         CPKT_PDF_REAL *real_width);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_page_measure_text(
+    CPKT_PDF_Page page, const char *text, CPKT_PDF_REAL width,
+    CPKT_PDF_BOOL wordwrap, CPKT_PDF_REAL *real_width);
 /** Calls libHaru's HPDF_Page_GetWidth with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_width(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_width(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetHeight with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_height(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_height(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetGMode with C89 facade types. */
-CPKT_PDF_UINT16 cpkt_pdf_page_get_g_mode(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_UINT16 cpkt_pdf_page_get_g_mode(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetCurrentPos with C89 facade types. */
-CPKT_PDF_Point cpkt_pdf_page_get_current_pos(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_Point cpkt_pdf_page_get_current_pos(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetCurrentPos2 with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_get_current_pos2(CPKT_PDF_Page page,
-                                               CPKT_PDF_Point *pos);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_get_current_pos2(CPKT_PDF_Page page, CPKT_PDF_Point *pos);
 /** Calls libHaru's HPDF_Page_GetCurrentTextPos with C89 facade types. */
-CPKT_PDF_Point cpkt_pdf_page_get_current_text_pos(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_Point
+cpkt_pdf_page_get_current_text_pos(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetCurrentTextPos2 with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_get_current_text_pos2(CPKT_PDF_Page page,
-                                                    CPKT_PDF_Point *pos);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_get_current_text_pos2(CPKT_PDF_Page page, CPKT_PDF_Point *pos);
 /** Calls libHaru's HPDF_Page_GetCurrentFont with C89 facade types. */
-CPKT_PDF_Font cpkt_pdf_page_get_current_font(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_Font cpkt_pdf_page_get_current_font(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetCurrentFontSize with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_current_font_size(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL
+cpkt_pdf_page_get_current_font_size(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetTransMatrix with C89 facade types. */
-CPKT_PDF_TransMatrix cpkt_pdf_page_get_trans_matrix(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_TransMatrix
+cpkt_pdf_page_get_trans_matrix(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetLineWidth with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_line_width(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_line_width(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetLineCap with C89 facade types. */
-CPKT_PDF_LineCap cpkt_pdf_page_get_line_cap(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_LineCap cpkt_pdf_page_get_line_cap(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetLineJoin with C89 facade types. */
-CPKT_PDF_LineJoin cpkt_pdf_page_get_line_join(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_LineJoin cpkt_pdf_page_get_line_join(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetMiterLimit with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_miter_limit(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_miter_limit(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetDash with C89 facade types. */
-CPKT_PDF_DashMode cpkt_pdf_page_get_dash(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_DashMode cpkt_pdf_page_get_dash(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetFlat with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_flat(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_flat(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetCharSpace with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_char_space(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_char_space(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetWordSpace with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_word_space(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_word_space(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetHorizontalScalling with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_horizontal_scalling(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL
+cpkt_pdf_page_get_horizontal_scalling(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetTextLeading with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_text_leading(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_text_leading(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetTextRenderingMode with C89 facade types. */
-CPKT_PDF_TextRenderingMode
+CPKT_PDF_API CPKT_PDF_TextRenderingMode
 cpkt_pdf_page_get_text_rendering_mode(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetTextRaise with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_text_raise(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_text_raise(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetTextRise with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_text_rise(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_text_rise(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetRGBFill with C89 facade types. */
-CPKT_PDF_RGBColor cpkt_pdf_page_get_rgb_fill(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_RGBColor cpkt_pdf_page_get_rgb_fill(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetRGBStroke with C89 facade types. */
-CPKT_PDF_RGBColor cpkt_pdf_page_get_rgb_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_RGBColor cpkt_pdf_page_get_rgb_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetCMYKFill with C89 facade types. */
-CPKT_PDF_CMYKColor cpkt_pdf_page_get_cmyk_fill(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_CMYKColor cpkt_pdf_page_get_cmyk_fill(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetCMYKStroke with C89 facade types. */
-CPKT_PDF_CMYKColor cpkt_pdf_page_get_cmyk_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_CMYKColor
+cpkt_pdf_page_get_cmyk_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetGrayFill with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_gray_fill(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_gray_fill(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetGrayStroke with C89 facade types. */
-CPKT_PDF_REAL cpkt_pdf_page_get_gray_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_REAL cpkt_pdf_page_get_gray_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetStrokingColorSpace with C89 facade types. */
-CPKT_PDF_ColorSpace cpkt_pdf_page_get_stroking_color_space(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_ColorSpace
+cpkt_pdf_page_get_stroking_color_space(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetFillingColorSpace with C89 facade types. */
-CPKT_PDF_ColorSpace cpkt_pdf_page_get_filling_color_space(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_ColorSpace
+cpkt_pdf_page_get_filling_color_space(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetTextMatrix with C89 facade types. */
-CPKT_PDF_TransMatrix cpkt_pdf_page_get_text_matrix(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_TransMatrix
+cpkt_pdf_page_get_text_matrix(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GetGStateDepth with C89 facade types. */
-CPKT_PDF_UINT cpkt_pdf_page_get_g_state_depth(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_UINT cpkt_pdf_page_get_g_state_depth(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_SetLineWidth with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_line_width(CPKT_PDF_Page page,
-                                             CPKT_PDF_REAL line_width);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_line_width(CPKT_PDF_Page page, CPKT_PDF_REAL line_width);
 /** Calls libHaru's HPDF_Page_SetLineCap with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_line_cap(CPKT_PDF_Page page,
-                                           CPKT_PDF_LineCap line_cap);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_line_cap(CPKT_PDF_Page page, CPKT_PDF_LineCap line_cap);
 /** Calls libHaru's HPDF_Page_SetLineJoin with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_line_join(CPKT_PDF_Page page,
-                                            CPKT_PDF_LineJoin line_join);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_line_join(CPKT_PDF_Page page, CPKT_PDF_LineJoin line_join);
 /** Calls libHaru's HPDF_Page_SetMiterLimit with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_miter_limit(CPKT_PDF_Page page,
-                                              CPKT_PDF_REAL miter_limit);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_miter_limit(CPKT_PDF_Page page, CPKT_PDF_REAL miter_limit);
 /** Calls libHaru's HPDF_Page_SetDash with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_dash(CPKT_PDF_Page page,
-                                       const CPKT_PDF_REAL *dash_ptn,
-                                       CPKT_PDF_UINT num_param,
-                                       CPKT_PDF_REAL phase);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_dash(CPKT_PDF_Page page, const CPKT_PDF_REAL *dash_ptn,
+                       CPKT_PDF_UINT num_param, CPKT_PDF_REAL phase);
 /** Calls libHaru's HPDF_Page_SetFlat with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_flat(CPKT_PDF_Page page,
-                                       CPKT_PDF_REAL flatness);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_flat(CPKT_PDF_Page page,
+                                                    CPKT_PDF_REAL flatness);
 /** Calls libHaru's HPDF_Page_SetExtGState with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_ext_g_state(CPKT_PDF_Page page,
-                                              CPKT_PDF_ExtGState ext_gstate);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_ext_g_state(
+    CPKT_PDF_Page page, CPKT_PDF_ExtGState ext_gstate);
 /** Calls libHaru's HPDF_Page_SetShading with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_shading(CPKT_PDF_Page page,
-                                          CPKT_PDF_Shading shading);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_shading(CPKT_PDF_Page page, CPKT_PDF_Shading shading);
 /** Calls libHaru's HPDF_Page_GSave with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_g_save(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_g_save(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_GRestore with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_g_restore(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_g_restore(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_Concat with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_concat(CPKT_PDF_Page page, CPKT_PDF_REAL a,
-                                     CPKT_PDF_REAL b, CPKT_PDF_REAL c,
-                                     CPKT_PDF_REAL d, CPKT_PDF_REAL x,
-                                     CPKT_PDF_REAL y);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_concat(
+    CPKT_PDF_Page page, CPKT_PDF_REAL a, CPKT_PDF_REAL b, CPKT_PDF_REAL c,
+    CPKT_PDF_REAL d, CPKT_PDF_REAL x, CPKT_PDF_REAL y);
 /** Calls libHaru's HPDF_Page_MoveTo with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_move_to(CPKT_PDF_Page page, CPKT_PDF_REAL x,
-                                      CPKT_PDF_REAL y);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_move_to(CPKT_PDF_Page page,
+                                                   CPKT_PDF_REAL x,
+                                                   CPKT_PDF_REAL y);
 /** Calls libHaru's HPDF_Page_LineTo with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_line_to(CPKT_PDF_Page page, CPKT_PDF_REAL x,
-                                      CPKT_PDF_REAL y);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_line_to(CPKT_PDF_Page page,
+                                                   CPKT_PDF_REAL x,
+                                                   CPKT_PDF_REAL y);
 /** Calls libHaru's HPDF_Page_CurveTo with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_curve_to(CPKT_PDF_Page page, CPKT_PDF_REAL x1,
-                                       CPKT_PDF_REAL y1, CPKT_PDF_REAL x2,
-                                       CPKT_PDF_REAL y2, CPKT_PDF_REAL x3,
-                                       CPKT_PDF_REAL y3);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_curve_to(
+    CPKT_PDF_Page page, CPKT_PDF_REAL x1, CPKT_PDF_REAL y1, CPKT_PDF_REAL x2,
+    CPKT_PDF_REAL y2, CPKT_PDF_REAL x3, CPKT_PDF_REAL y3);
 /** Calls libHaru's HPDF_Page_CurveTo2 with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_curve_to2(CPKT_PDF_Page page, CPKT_PDF_REAL x2,
-                                        CPKT_PDF_REAL y2, CPKT_PDF_REAL x3,
-                                        CPKT_PDF_REAL y3);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_curve_to2(CPKT_PDF_Page page,
+                                                     CPKT_PDF_REAL x2,
+                                                     CPKT_PDF_REAL y2,
+                                                     CPKT_PDF_REAL x3,
+                                                     CPKT_PDF_REAL y3);
 /** Calls libHaru's HPDF_Page_CurveTo3 with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_curve_to3(CPKT_PDF_Page page, CPKT_PDF_REAL x1,
-                                        CPKT_PDF_REAL y1, CPKT_PDF_REAL x3,
-                                        CPKT_PDF_REAL y3);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_curve_to3(CPKT_PDF_Page page,
+                                                     CPKT_PDF_REAL x1,
+                                                     CPKT_PDF_REAL y1,
+                                                     CPKT_PDF_REAL x3,
+                                                     CPKT_PDF_REAL y3);
 /** Calls libHaru's HPDF_Page_ClosePath with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_close_path(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_close_path(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_Rectangle with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_rectangle(CPKT_PDF_Page page, CPKT_PDF_REAL x,
-                                        CPKT_PDF_REAL y, CPKT_PDF_REAL width,
-                                        CPKT_PDF_REAL height);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_rectangle(CPKT_PDF_Page page,
+                                                     CPKT_PDF_REAL x,
+                                                     CPKT_PDF_REAL y,
+                                                     CPKT_PDF_REAL width,
+                                                     CPKT_PDF_REAL height);
 /** Calls libHaru's HPDF_Page_Stroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_ClosePathStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_close_path_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_close_path_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_Fill with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_fill(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_fill(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_Eofill with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_eofill(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_eofill(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_FillStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_fill_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_fill_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_EofillStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_eofill_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_eofill_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_ClosePathFillStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_close_path_fill_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_close_path_fill_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_ClosePathEofillStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_close_path_eofill_stroke(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_close_path_eofill_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_EndPath with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_end_path(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_end_path(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_Clip with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_clip(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_clip(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_Eoclip with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_eoclip(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_eoclip(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_BeginText with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_begin_text(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_begin_text(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_EndText with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_end_text(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_end_text(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_SetCharSpace with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_char_space(CPKT_PDF_Page page,
-                                             CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_char_space(CPKT_PDF_Page page,
+                                                          CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_SetWordSpace with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_word_space(CPKT_PDF_Page page,
-                                             CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_word_space(CPKT_PDF_Page page,
+                                                          CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_SetHorizontalScalling with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_horizontal_scalling(CPKT_PDF_Page page,
-                                                      CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_horizontal_scalling(CPKT_PDF_Page page, CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_SetTextLeading with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_text_leading(CPKT_PDF_Page page,
-                                               CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_text_leading(CPKT_PDF_Page page, CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_SetFontAndSize with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_font_and_size(CPKT_PDF_Page page,
-                                                CPKT_PDF_Font font,
-                                                CPKT_PDF_REAL size);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_font_and_size(
+    CPKT_PDF_Page page, CPKT_PDF_Font font, CPKT_PDF_REAL size);
 /** Calls libHaru's HPDF_Page_SetTextRenderingMode with C89 facade types. */
-CPKT_PDF_STATUS
-cpkt_pdf_page_set_text_rendering_mode(CPKT_PDF_Page page,
-                                      CPKT_PDF_TextRenderingMode mode);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_text_rendering_mode(
+    CPKT_PDF_Page page, CPKT_PDF_TextRenderingMode mode);
 /** Calls libHaru's HPDF_Page_SetTextRise with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_text_rise(CPKT_PDF_Page page,
-                                            CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_text_rise(CPKT_PDF_Page page,
+                                                         CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_SetTextRaise with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_text_raise(CPKT_PDF_Page page,
-                                             CPKT_PDF_REAL value);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_text_raise(CPKT_PDF_Page page,
+                                                          CPKT_PDF_REAL value);
 /** Calls libHaru's HPDF_Page_MoveTextPos with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_move_text_pos(CPKT_PDF_Page page, CPKT_PDF_REAL x,
-                                            CPKT_PDF_REAL y);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_move_text_pos(CPKT_PDF_Page page,
+                                                         CPKT_PDF_REAL x,
+                                                         CPKT_PDF_REAL y);
 /** Calls libHaru's HPDF_Page_MoveTextPos2 with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_move_text_pos2(CPKT_PDF_Page page,
-                                             CPKT_PDF_REAL x, CPKT_PDF_REAL y);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_move_text_pos2(CPKT_PDF_Page page,
+                                                          CPKT_PDF_REAL x,
+                                                          CPKT_PDF_REAL y);
 /** Calls libHaru's HPDF_Page_SetTextMatrix with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_text_matrix(CPKT_PDF_Page page,
-                                              CPKT_PDF_REAL a, CPKT_PDF_REAL b,
-                                              CPKT_PDF_REAL c, CPKT_PDF_REAL d,
-                                              CPKT_PDF_REAL x, CPKT_PDF_REAL y);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_text_matrix(
+    CPKT_PDF_Page page, CPKT_PDF_REAL a, CPKT_PDF_REAL b, CPKT_PDF_REAL c,
+    CPKT_PDF_REAL d, CPKT_PDF_REAL x, CPKT_PDF_REAL y);
 /** Calls libHaru's HPDF_Page_MoveToNextLine with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_move_to_next_line(CPKT_PDF_Page page);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_move_to_next_line(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_ShowText with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_show_text(CPKT_PDF_Page page, const char *text);
-/** Calls libHaru's HPDF_Page_ShowTextNextLine with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_show_text_next_line(CPKT_PDF_Page page,
-                                                  const char *text);
-/** Calls libHaru's HPDF_Page_ShowTextNextLineEx with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_show_text_next_line_ex(CPKT_PDF_Page page,
-                                                     CPKT_PDF_REAL word_space,
-                                                     CPKT_PDF_REAL char_space,
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_show_text(CPKT_PDF_Page page,
                                                      const char *text);
+/** Calls libHaru's HPDF_Page_ShowTextNextLine with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_show_text_next_line(CPKT_PDF_Page page, const char *text);
+/** Calls libHaru's HPDF_Page_ShowTextNextLineEx with C89 facade types. */
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_show_text_next_line_ex(
+    CPKT_PDF_Page page, CPKT_PDF_REAL word_space, CPKT_PDF_REAL char_space,
+    const char *text);
 /** Calls libHaru's HPDF_Page_SetGrayFill with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_gray_fill(CPKT_PDF_Page page,
-                                            CPKT_PDF_REAL gray);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_gray_fill(CPKT_PDF_Page page,
+                                                         CPKT_PDF_REAL gray);
 /** Calls libHaru's HPDF_Page_SetGrayStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_gray_stroke(CPKT_PDF_Page page,
-                                              CPKT_PDF_REAL gray);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_gray_stroke(CPKT_PDF_Page page,
+                                                           CPKT_PDF_REAL gray);
 /** Calls libHaru's HPDF_Page_SetRGBFill with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_rgb_fill(CPKT_PDF_Page page, CPKT_PDF_REAL r,
-                                           CPKT_PDF_REAL g, CPKT_PDF_REAL b);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_rgb_fill(CPKT_PDF_Page page,
+                                                        CPKT_PDF_REAL r,
+                                                        CPKT_PDF_REAL g,
+                                                        CPKT_PDF_REAL b);
 /** Calls libHaru's HPDF_Page_SetRGBStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_rgb_stroke(CPKT_PDF_Page page,
-                                             CPKT_PDF_REAL r, CPKT_PDF_REAL g,
-                                             CPKT_PDF_REAL b);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_rgb_stroke(CPKT_PDF_Page page,
+                                                          CPKT_PDF_REAL r,
+                                                          CPKT_PDF_REAL g,
+                                                          CPKT_PDF_REAL b);
 /** Calls libHaru's HPDF_Page_SetCMYKFill with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_cmyk_fill(CPKT_PDF_Page page, CPKT_PDF_REAL c,
-                                            CPKT_PDF_REAL m, CPKT_PDF_REAL y,
-                                            CPKT_PDF_REAL k);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_cmyk_fill(CPKT_PDF_Page page,
+                                                         CPKT_PDF_REAL c,
+                                                         CPKT_PDF_REAL m,
+                                                         CPKT_PDF_REAL y,
+                                                         CPKT_PDF_REAL k);
 /** Calls libHaru's HPDF_Page_SetCMYKStroke with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_cmyk_stroke(CPKT_PDF_Page page,
-                                              CPKT_PDF_REAL c, CPKT_PDF_REAL m,
-                                              CPKT_PDF_REAL y, CPKT_PDF_REAL k);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_cmyk_stroke(CPKT_PDF_Page page,
+                                                           CPKT_PDF_REAL c,
+                                                           CPKT_PDF_REAL m,
+                                                           CPKT_PDF_REAL y,
+                                                           CPKT_PDF_REAL k);
 /** Calls libHaru's HPDF_Shading_New with C89 facade types. */
-CPKT_PDF_Shading cpkt_pdf_shading_new(CPKT_PDF_Doc pdf,
-                                      CPKT_PDF_ShadingType type,
-                                      CPKT_PDF_ColorSpace colorSpace,
-                                      CPKT_PDF_REAL xMin, CPKT_PDF_REAL xMax,
-                                      CPKT_PDF_REAL yMin, CPKT_PDF_REAL yMax);
+CPKT_PDF_API CPKT_PDF_Shading cpkt_pdf_shading_new(
+    CPKT_PDF_Doc pdf, CPKT_PDF_ShadingType type, CPKT_PDF_ColorSpace colorSpace,
+    CPKT_PDF_REAL xMin, CPKT_PDF_REAL xMax, CPKT_PDF_REAL yMin,
+    CPKT_PDF_REAL yMax);
 /** Calls libHaru's HPDF_Shading_AddVertexRGB with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_shading_add_vertex_rgb(
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_shading_add_vertex_rgb(
     CPKT_PDF_Shading shading,
     CPKT_PDF_Shading_FreeFormTriangleMeshEdgeFlag edgeFlag, CPKT_PDF_REAL x,
     CPKT_PDF_REAL y, CPKT_PDF_UINT8 r, CPKT_PDF_UINT8 g, CPKT_PDF_UINT8 b);
 /** Calls libHaru's HPDF_Page_ExecuteXObject with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_execute_x_object(CPKT_PDF_Page page,
-                                               CPKT_PDF_XObject obj);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_execute_x_object(CPKT_PDF_Page page, CPKT_PDF_XObject obj);
 /** Calls libHaru's HPDF_Page_New_Content_Stream with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_new_content_stream(CPKT_PDF_Page page,
-                                                 CPKT_PDF_Dict *new_stream);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_new_content_stream(CPKT_PDF_Page page, CPKT_PDF_Dict *new_stream);
 /** Calls libHaru's HPDF_Page_Insert_Shared_Content_Stream with C89 facade
  * types. */
-CPKT_PDF_STATUS
-cpkt_pdf_page_insert_shared_content_stream(CPKT_PDF_Page page,
-                                           CPKT_PDF_Dict shared_stream);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_insert_shared_content_stream(
+    CPKT_PDF_Page page, CPKT_PDF_Dict shared_stream);
 /** Calls libHaru's HPDF_Page_DrawImage with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_draw_image(CPKT_PDF_Page page,
-                                         CPKT_PDF_Image image, CPKT_PDF_REAL x,
-                                         CPKT_PDF_REAL y, CPKT_PDF_REAL width,
-                                         CPKT_PDF_REAL height);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_draw_image(
+    CPKT_PDF_Page page, CPKT_PDF_Image image, CPKT_PDF_REAL x, CPKT_PDF_REAL y,
+    CPKT_PDF_REAL width, CPKT_PDF_REAL height);
 /** Calls libHaru's HPDF_Page_Circle with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_circle(CPKT_PDF_Page page, CPKT_PDF_REAL x,
-                                     CPKT_PDF_REAL y, CPKT_PDF_REAL ray);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_circle(CPKT_PDF_Page page,
+                                                  CPKT_PDF_REAL x,
+                                                  CPKT_PDF_REAL y,
+                                                  CPKT_PDF_REAL ray);
 /** Calls libHaru's HPDF_Page_Ellipse with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_ellipse(CPKT_PDF_Page page, CPKT_PDF_REAL x,
-                                      CPKT_PDF_REAL y, CPKT_PDF_REAL xray,
-                                      CPKT_PDF_REAL yray);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_ellipse(CPKT_PDF_Page page,
+                                                   CPKT_PDF_REAL x,
+                                                   CPKT_PDF_REAL y,
+                                                   CPKT_PDF_REAL xray,
+                                                   CPKT_PDF_REAL yray);
 /** Calls libHaru's HPDF_Page_Arc with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_arc(CPKT_PDF_Page page, CPKT_PDF_REAL x,
-                                  CPKT_PDF_REAL y, CPKT_PDF_REAL ray,
-                                  CPKT_PDF_REAL ang1, CPKT_PDF_REAL ang2);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_arc(CPKT_PDF_Page page,
+                                               CPKT_PDF_REAL x, CPKT_PDF_REAL y,
+                                               CPKT_PDF_REAL ray,
+                                               CPKT_PDF_REAL ang1,
+                                               CPKT_PDF_REAL ang2);
 /** Calls libHaru's HPDF_Page_TextOut with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_text_out(CPKT_PDF_Page page, CPKT_PDF_REAL xpos,
-                                       CPKT_PDF_REAL ypos, const char *text);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_text_out(CPKT_PDF_Page page,
+                                                    CPKT_PDF_REAL xpos,
+                                                    CPKT_PDF_REAL ypos,
+                                                    const char *text);
 /** Calls libHaru's HPDF_Page_TextRect with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_text_rect(CPKT_PDF_Page page, CPKT_PDF_REAL left,
-                                        CPKT_PDF_REAL top, CPKT_PDF_REAL right,
-                                        CPKT_PDF_REAL bottom, const char *text,
-                                        CPKT_PDF_TextAlignment align,
-                                        CPKT_PDF_UINT *len);
+CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_text_rect(
+    CPKT_PDF_Page page, CPKT_PDF_REAL left, CPKT_PDF_REAL top,
+    CPKT_PDF_REAL right, CPKT_PDF_REAL bottom, const char *text,
+    CPKT_PDF_TextAlignment align, CPKT_PDF_UINT *len);
 /** Calls libHaru's HPDF_Page_SetSlideShow with C89 facade types. */
-CPKT_PDF_STATUS cpkt_pdf_page_set_slide_show(CPKT_PDF_Page page,
-                                             CPKT_PDF_TransitionStyle type,
-                                             CPKT_PDF_REAL disp_time,
-                                             CPKT_PDF_REAL trans_time);
+CPKT_PDF_API CPKT_PDF_STATUS
+cpkt_pdf_page_set_slide_show(CPKT_PDF_Page page, CPKT_PDF_TransitionStyle type,
+                             CPKT_PDF_REAL disp_time, CPKT_PDF_REAL trans_time);
 /** Calls libHaru's HPDF_ICC_LoadIccFromMem with C89 facade types. */
-CPKT_PDF_OutputIntent cpkt_pdf_icc_load_icc_from_mem(CPKT_PDF_Doc pdf,
-                                                     CPKT_PDF_MMgr mmgr,
-                                                     CPKT_PDF_Stream iccdata,
-                                                     CPKT_PDF_Xref xref,
-                                                     int numcomponent);
+CPKT_PDF_API CPKT_PDF_OutputIntent cpkt_pdf_icc_load_icc_from_mem(
+    CPKT_PDF_Doc pdf, CPKT_PDF_MMgr mmgr, CPKT_PDF_Stream iccdata,
+    CPKT_PDF_Xref xref, int numcomponent);
 /** Calls libHaru's HPDF_LoadIccProfileFromFile with C89 facade types. */
-CPKT_PDF_OutputIntent
-cpkt_pdf_load_icc_profile_from_file(CPKT_PDF_Doc pdf, const char *icc_file_name,
-                                    int numcomponent);
+CPKT_PDF_API CPKT_PDF_OutputIntent cpkt_pdf_load_icc_profile_from_file(
+    CPKT_PDF_Doc pdf, const char *icc_file_name, int numcomponent);
 
 #ifdef __cplusplus
 }

@@ -1183,7 +1183,7 @@ cpkt_add_repo_warning_errors(cpkt_pdf_shared)
 target_include_directories(cpkt_pdf_shared PUBLIC "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
 target_link_libraries(cpkt_pdf_shared PUBLIC cpkt::haru_shared)
 set_target_properties(cpkt_pdf_shared PROPERTIES
-  OUTPUT_NAME cpkt_pdf POSITION_INDEPENDENT_CODE ON
+  OUTPUT_NAME cpkt_pdf C_VISIBILITY_PRESET hidden POSITION_INDEPENDENT_CODE ON
   SOVERSION "${CPKT_PDF_ABI_VERSION}" VERSION "${PROJECT_VERSION}")
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   set_target_properties(cpkt_pdf_shared PROPERTIES
@@ -1884,7 +1884,8 @@ if(CPKT_BUILD_TESTS)
           "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu/src/include/hpdf.h"
           "${CMAKE_SOURCE_DIR}/include/cpkt/pdf.h"
           "$<TARGET_FILE:cpkt_pdf_shared>"
-          "${CMAKE_NM}")
+          "${CMAKE_NM}"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_pdf.txt")
       endif()
       add_test(NAME sqlite_child_lifetime_concurrency
         COMMAND cpkt_sqlite_child_lifetime_concurrency_test)

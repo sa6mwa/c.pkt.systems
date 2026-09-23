@@ -14,7 +14,7 @@ def facade_name(upstream_name):
     return "cpkt_pdf_" + name.lower().replace("__", "_")
 
 
-upstream_header, facade_header, shared_library, nm = map(pathlib.Path, sys.argv[1:])
+upstream_header, facade_header, shared_library, nm, allowlist = map(pathlib.Path, sys.argv[1:])
 upstream_exports = set(re.findall(
     r"HPDF_EXPORT\([^)]*\)\s*(HPDF_\w+)\s*\(",
     upstream_header.read_text(), re.S
@@ -32,8 +32,19 @@ symbols = subprocess.run(
     [str(nm), "-D", "--defined-only", str(shared_library)],
     check=True, capture_output=True, text=True,
 ).stdout
-exported = set(re.findall(r"\b(cpkt_pdf_[a-zA-Z0-9_]+)(?:@@?\S+)?$",
-                          symbols, re.M))
+exported = {
+    line.split()[-1].split("@")[0]
+    for line in symbols.splitlines()
+    if line.strip()
+} - {"_init", "_fini"}
+allowed = {
+    line.strip() for line in allowlist.read_text().splitlines()
+    if line.strip() and not line.lstrip().startswith("#")
+}
+assert allowed == expected, (
+    "allowlist missing=%s extra=%s" %
+    (sorted(expected - allowed), sorted(allowed - expected))
+)
 assert exported == expected, (
     "shared library missing=%s extra=%s" %
     (sorted(expected - exported), sorted(exported - expected))
