@@ -9,7 +9,7 @@ This lifecycle owns C and C++ compiler resolution for pkt.systems C/CMake projec
 - `arm64-apple-darwin` uses a local, project-pinned osxcross collection. The lifecycle must not download Apple SDKs or Darwin compiler collections. Once that collection is ready, the lifecycle may provision its separately pinned, Linux-host `mig` helper as described below.
 - Native memory checking uses host-provided Valgrind against executables compiled by the selected Bootlin collection. It is a required gate on the native x86_64 Linux host, but it is not an MSan substitute. Never run Valgrind through cross-compilation, an emulator, or QEMU.
 - Native fuzzing uses a pinned cached AFL++ release built with the matching x86_64 Bootlin GCC plugin headers. AFL++ compiler wrappers must delegate to the selected Bootlin `gcc`/`g++`; never use host GCC or Clang for project targets. Never run fuzzing through cross-compilation, an emulator, or QEMU.
-- `clang-format` and `clangd` are host OS development-tool prerequisites only. They must not enter CMake compiler or linker discovery. `clangd` validation is a native development-host editor gate: register and run it only against the native host compile database. Cross-target CTest, package, and release configurations must not invoke it or rely on host `clangd` to emulate a target compiler or sysroot ABI; prove those targets through their selected compiler, supported target runner, and package verification gates.
+- LLVM/Clang is installed by the workstation operator outside all c.pkt.systems caches and artifacts. Host `clang`/`clang++` support osxcross; `clang-format` and `clangd` are native development tools. None may enter Linux CMake compiler or linker discovery. `clangd` validation is a native development-host editor gate: register and run it only against the native host compile database. Cross-target CTest, package, and release configurations must not invoke it or rely on host `clangd` to emulate a target compiler or sysroot ABI; prove those targets through their selected compiler, supported target runner, and package verification gates.
 
 ## Linux Targets
 
@@ -71,10 +71,10 @@ Refresh apt metadata and install this complete baseline as one transaction:
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   autoconf automake binutils bison bzip2 ca-certificates \
-  ccrypt clang clang-format clangd cmake cpio curl default-jre-headless flex \
+  ccrypt cmake cpio curl default-jre-headless flex \
   fuse-overlayfs gawk git git-crypt git-lfs help2man \
-  libbz2-dev libclang-rt-dev libcurl4-openssl-dev libcairo2-dev liblzma-dev \
-  libssl-dev libtool libxml2-dev libx11-dev lld llvm-dev make \
+  libbz2-dev libcurl4-openssl-dev libcairo2-dev liblzma-dev \
+  libssl-dev libtool libxml2-dev libx11-dev make \
   ninja-build nodejs npm patch perl pkg-config podman python-is-python3 \
   python3 python3-pip python3-venv qemu-user ripgrep slirp4netns texinfo \
   uidmap unzip uuid-dev valgrind wget xar xz-utils zip zlib1g-dev
@@ -88,18 +88,69 @@ workstation support only; they must never enter Linux C/C++ compiler discovery.
 Provision the pinned Bootlin collections through the lifecycle resolver before
 configuring every pkt.systems Linux C/C++ build.
 
-`valgrind` and `clangd` are explicit lifecycle quality prerequisites even when
-an earlier workstation helper did not list them. Confirm the required host
-command surfaces before treating the workstation as ready:
+`valgrind` is a host package prerequisite. Install LLVM/Clang separately as
+described below. Confirm the baseline host command surfaces before treating
+the workstation as ready:
 
 ```sh
-command -v git cmake ninja podman qemu-aarch64 valgrind clang-format clangd
+command -v git cmake ninja podman qemu-aarch64 valgrind
 cmake --version
 ```
 
 `cmake` must be at least 3.24 for pkt.systems components that require that
 version. On older Ubuntu releases, install a compatible CMake through the
 organization-approved host package source before continuing.
+
+### Host LLVM and Clang
+
+Install the latest **stable** upstream LLVM release on the development host,
+outside repositories and outside `${CPKT_TOOLCHAIN_CACHE}`. The host installation
+must supply `clang`, `clang++`, `clangd`, `clang-format`, and LLVM tools used by
+osxcross. Do not make c.pkt.systems download, extract, cache, wrap, or package
+LLVM/Clang. Distro packages may lag the upstream stable release; the unversioned
+apt.llvm.org version 23 packages are a development snapshot as of 2026-09-23.
+
+Before installation, check [LLVM's release page](https://llvm.org/) for the
+latest stable release and [its official Linux x86_64 archive](https://github.com/llvm/llvm-project/releases).
+As of 2026-09-23 this is `23.1.2`. For that release, the upstream archive is
+`LLVM-23.1.2-Linux-X64.tar.xz` and its published SHA-256 is
+`b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7`.
+Use the matching published checksum or signature when a newer stable release
+is selected; never reuse this checksum for another archive.
+
+For the current example, install manually in a host-controlled versioned path:
+
+```sh
+LLVM_RELEASE=23.1.2
+LLVM_ARCHIVE="LLVM-${LLVM_RELEASE}-Linux-X64.tar.xz"
+LLVM_ROOT="$HOME/.local/opt/LLVM-${LLVM_RELEASE}-Linux-X64"
+mkdir -p "$HOME/Downloads" "$HOME/.local/opt"
+curl -fL "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_RELEASE}/${LLVM_ARCHIVE}" \
+  -o "$HOME/Downloads/$LLVM_ARCHIVE"
+printf '%s  %s\n' \
+  b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7 \
+  "$HOME/Downloads/$LLVM_ARCHIVE" | sha256sum -c -
+if [ ! -e "$LLVM_ROOT" ]; then
+  tar -xf "$HOME/Downloads/$LLVM_ARCHIVE" -C "$HOME/.local/opt"
+fi
+export PATH="$LLVM_ROOT/bin:$PATH"
+export LD_LIBRARY_PATH="$LLVM_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+"$LLVM_ROOT/bin/clang" --version
+"$LLVM_ROOT/bin/clang++" --version
+"$LLVM_ROOT/bin/clangd" --version
+"$LLVM_ROOT/bin/clang-format" --version
+"$LLVM_ROOT/bin/llvm-config" --version
+```
+
+Stop if checksum verification fails; do not extract or use that archive. The
+selected version must appear in every version output. Check that
+`command -v clang` resolves under `LLVM_ROOT`, and check `ld64.lld` too if
+using osxcross's `llvm` build flavor. Keep these exports in the shell sessions
+that build or invoke osxcross; do not write LLVM paths into c.pkt.systems
+artifacts or use this host Clang to build Linux targets. Record the host LLVM
+version and installation path in workstation records. A newer stable release
+requires a new host installation and fresh verification, not an automatic
+c.pkt.systems cache update.
 
 Install Go independently using the version policy of the Go components being
 worked on. This baseline intentionally does not select, pin, or update Go.
@@ -143,9 +194,9 @@ environment files, or source. The former workstation helper's authenticated
 download pathway is not lifecycle policy: the developer supplies the Xcode
 input manually. If it is absent, stop with an actionable prerequisite naming
 the expected local archive or extracted SDK path. `xar`, `cpio`, `xz`, `bzip2`,
-`libxml2` development headers, OpenSSL development headers, Python, and the
-normal build tools above are required to turn the approved local Xcode input
-into osxcross's packaged `MacOSX*.sdk` input.
+`libxml2` development headers, OpenSSL development headers, Python, the host
+LLVM/Clang installation above, and the normal build tools are required to turn
+the approved local Xcode input into osxcross's packaged `MacOSX*.sdk` input.
 
 Provision osxcross as a regular developer user from a project-approved pinned
 source revision. Keep its source under `$HOME/src/osxcross`, record the exact
@@ -161,7 +212,11 @@ The provisioning sequence is:
 2. Use osxcross's SDK packaging helper on the developer-supplied Xcode archive.
    Place the resulting `MacOSX*.sdk.tar.{xz,bz2,gz}` package in the checkout's
    `tarballs/` directory. Reuse a matching existing package when present.
-3. Build the required architecture only. The current baseline is
+3. Build with the selected host LLVM `bin` first in `PATH`, and set
+   `CC="$LLVM_ROOT/bin/clang"` and `CXX="$LLVM_ROOT/bin/clang++"` in that
+   shell. The osxcross build defaults to host Clang when these variables are
+   unset; its `llvm` build flavor additionally requires `ld64.lld`. Build the
+   required architecture only. The current baseline is
    `ENABLE_ARCHS=arm64` and `OSX_VERSION_MIN=11.0`; use the packaged SDK's
    version as `SDK_VERSION`, set `UNATTENDED=1`, and set `TARGET_DIR` to the
    osxcross collection path.

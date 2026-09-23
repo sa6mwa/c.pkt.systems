@@ -522,8 +522,10 @@ versions, security context, verification results, and supported compatibility
 scope. Direct whisper.cpp/ggml API/ABI compatibility for external consumers is
 out of scope; supported downstream speech use goes through `cpkt_sus`.
 
-`clang-format` and `clangd` are required host development tools and must be
-installed with the host OS package manager. `make clangd-surface` configures
+`clang-format` and `clangd` are host development tools supplied by the
+[latest stable host LLVM installation](skills/pkt-systems-cmake-lifecycle/references/toolchains.md#host-llvm-and-clang),
+which also supplies Clang for osxcross. c.pkt.systems does not download, cache,
+or ship LLVM/Clang. `make clangd-surface` configures
 the native debug compile database, verifies that every public facade header
 declaration and non-static facade implementation has adjacent Doxygen
 documentation for LSP hover text, and checks that the shipped examples are
