@@ -2477,7 +2477,9 @@ function(cpkt_add_krb5)
     IMPORTED_LOCATION "${gssapi_shared_library}"
     INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
   if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt::gssapi_krb5_static ${project_name_static})
+    # The shared install copies into the static archive tree; link only after
+    # both install steps finish so the linker never reads a partial archive.
+    add_dependencies(cpkt::gssapi_krb5_static ${project_name_shared})
     add_dependencies(cpkt::gssapi_krb5_shared ${project_name_shared})
     cpkt_record_dependency_target(${project_name_shared})
   else()
