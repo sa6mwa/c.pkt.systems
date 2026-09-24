@@ -1712,6 +1712,24 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_callback_synchronization_test)
     target_link_libraries(cpkt_sqlite_callback_synchronization_test PRIVATE
       cpkt_sqlite_static Threads::Threads)
+    add_executable(cpkt_sqlite_unlock_notify_groups_test
+      tests/sqlite_unlock_notify_groups_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_unlock_notify_groups_test)
+    cpkt_configure_c89_target(cpkt_sqlite_unlock_notify_groups_test)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_unlock_notify_groups_test)
+    target_link_libraries(cpkt_sqlite_unlock_notify_groups_test PRIVATE
+      cpkt_sqlite_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_sqlite_unlock_notify_race_test
+        tests/sqlite_unlock_notify_race_test.c)
+      cpkt_use_local_runtime(cpkt_sqlite_unlock_notify_race_test)
+      cpkt_configure_c89_target(cpkt_sqlite_unlock_notify_race_test)
+      cpkt_add_repo_warning_errors(cpkt_sqlite_unlock_notify_race_test)
+      target_link_options(cpkt_sqlite_unlock_notify_race_test PRIVATE
+        "-Wl,--wrap=sqlite3_unlock_notify")
+      target_link_libraries(cpkt_sqlite_unlock_notify_race_test PRIVATE
+        cpkt_sqlite_static Threads::Threads)
+    endif()
     add_executable(cpkt_sqlite_page_cache_lifetime_test
       tests/sqlite_page_cache_lifetime_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_page_cache_lifetime_test)
@@ -1958,6 +1976,13 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME sqlite_callback_synchronization
         COMMAND cpkt_sqlite_callback_synchronization_test)
       set_tests_properties(sqlite_callback_synchronization PROPERTIES TIMEOUT 15)
+      add_test(NAME sqlite_unlock_notify_groups
+        COMMAND cpkt_sqlite_unlock_notify_groups_test)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME sqlite_unlock_notify_race
+          COMMAND cpkt_sqlite_unlock_notify_race_test)
+        set_tests_properties(sqlite_unlock_notify_race PROPERTIES TIMEOUT 15)
+      endif()
       add_test(NAME sqlite_page_cache_lifetime
         COMMAND cpkt_sqlite_page_cache_lifetime_test)
       add_test(NAME sqlite_auto_extension_shutdown
@@ -2012,9 +2037,14 @@ if(CPKT_BUILD_TESTS)
         pdf_facade_static pdf_facade_shared
         sqlite_child_lifetime_concurrency sqlite_page_cache_lifetime
         sqlite_callback_synchronization
+        sqlite_unlock_notify_groups
         sqlite_auto_extension_shutdown sqlite_rtree_registration_failure
         sqlite_session_hook_guard sqlite_collation_failure
         gssapi_facade sasl_facade sasl_callback_retry)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        set_tests_properties(sqlite_unlock_notify_race PROPERTIES
+          LABELS "facade;memcheck")
+      endif()
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         list(APPEND _cpkt_memcheck_facade_tests
           libssh2_sftp_eof sqlite_page_cache_discard)

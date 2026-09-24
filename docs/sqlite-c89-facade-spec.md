@@ -47,6 +47,11 @@ in facade state hold the connection mutex while updating the pair and the
 native registration. The facade uses a private mutex for its own bookkeeping;
 SQLite's static APPLICATION mutexes remain available to callers.
 
+Unlock-notify batches contain contexts registered with the same public
+callback. Each registration receives a callback invocation with that callback's
+contexts, and the facade retains a replaced binding until SQLite finishes any
+concurrent delivery.
+
 Extended changeset apply operations collect rebase output only when
 `rebase_out` is provided. Passing `NULL` avoids the input-proportional native
 rebase allocation, including for streaming apply operations.

@@ -63,6 +63,8 @@ typedef struct cpkt_sqlite_unlock_notify_binding {
   cpkt_sqlite_state *state;
   cpkt_sqlite_unlock_notify_callback callback;
   void *context;
+  int delivered;
+  int release_on_delivery;
 } cpkt_sqlite_unlock_notify_binding;
 
 typedef struct cpkt_sqlite_rtree_geometry_binding {
@@ -1202,32 +1204,55 @@ static void cpkt_sqlite_unlock_notify_trampoline(void **arguments,
   cpkt_sqlite_unlock_notify_binding **bindings;
   void **contexts;
   cpkt_sqlite_unlock_notify_binding *binding;
+  pthread_mutex_t *mutex;
+  void *single_context;
+  int context_count;
   int index;
+  int group_index;
   if (arguments == NULL || argument_count <= 0)
     return;
   bindings = (cpkt_sqlite_unlock_notify_binding **)arguments;
-  contexts = (void **)malloc((size_t)argument_count * sizeof(*contexts));
+  mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(mutex);
+  /* A replacement owns the old binding until its native call returns.
+   * Otherwise delivery clears and releases the current registration. */
   for (index = 0; index < argument_count; ++index) {
     binding = bindings[index];
     if (binding != NULL) {
-      if (contexts != NULL)
-        contexts[index] = binding->context;
-      if (binding->state != NULL &&
-          binding->state->unlock_notify_binding == binding) {
+      binding->delivered = 1;
+      binding->release_on_delivery =
+          binding->state != NULL &&
+          binding->state->unlock_notify_binding == binding;
+      if (binding->release_on_delivery)
         binding->state->unlock_notify_binding = NULL;
-      }
     }
   }
+  cpkt_sqlite_global_unlock(mutex);
+  contexts = (void **)malloc((size_t)argument_count * sizeof(*contexts));
   for (index = 0; index < argument_count; ++index) {
     binding = bindings[index];
     if (binding != NULL && binding->callback != NULL) {
-      binding->callback(binding->context, contexts == NULL ? 0 : argument_count,
-                        contexts);
+      if (contexts == NULL) {
+        single_context = binding->context;
+        binding->callback(binding->context, 1, &single_context);
+      } else {
+        context_count = 0;
+        for (group_index = 0; group_index < argument_count; ++group_index) {
+          if (bindings[group_index] != NULL &&
+              bindings[group_index]->callback == binding->callback) {
+            contexts[context_count++] = bindings[group_index]->context;
+          }
+        }
+        binding->callback(binding->context, context_count, contexts);
+      }
     }
   }
   free(contexts);
-  for (index = 0; index < argument_count; ++index)
-    free(bindings[index]);
+  for (index = 0; index < argument_count; ++index) {
+    binding = bindings[index];
+    if (binding != NULL && binding->release_on_delivery)
+      free(binding);
+  }
 }
 
 static int cpkt_sqlite_rtree_geometry_trampoline(sqlite3_rtree_geometry *native,
@@ -2382,6 +2407,7 @@ int cpkt_sqlite_unlock_notify(cpkt_sqlite *self,
   cpkt_sqlite_unlock_notify_binding *binding;
   cpkt_sqlite_unlock_notify_binding *old_binding;
   sqlite3_mutex *mutex;
+  pthread_mutex_t *global_mutex;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return SQLITE_MISUSE;
@@ -2389,11 +2415,15 @@ int cpkt_sqlite_unlock_notify(cpkt_sqlite *self,
   if (state == NULL)
     return SQLITE_NOMEM;
   mutex = cpkt_sqlite_connection_lock(self);
+  global_mutex = cpkt_sqlite_global_mutex();
   if (callback == NULL) {
     status = sqlite3_unlock_notify(cpkt_sqlite_native(self), NULL, NULL);
     if (status == SQLITE_OK) {
-      free(state->unlock_notify_binding);
+      cpkt_sqlite_global_lock(global_mutex);
+      old_binding = state->unlock_notify_binding;
       state->unlock_notify_binding = NULL;
+      cpkt_sqlite_global_unlock(global_mutex);
+      free(old_binding);
     }
     cpkt_sqlite_connection_unlock(mutex);
     return status;
@@ -2406,12 +2436,22 @@ int cpkt_sqlite_unlock_notify(cpkt_sqlite *self,
   binding->state = state;
   binding->callback = callback;
   binding->context = context;
+  cpkt_sqlite_global_lock(global_mutex);
   old_binding = state->unlock_notify_binding;
   state->unlock_notify_binding = binding;
+  cpkt_sqlite_global_unlock(global_mutex);
+  /* SQLite serializes this call with delivery using its STATIC_MAIN mutex.
+   * Keep old_binding alive until the call returns. */
   status = sqlite3_unlock_notify(cpkt_sqlite_native(self),
                                  cpkt_sqlite_unlock_notify_trampoline, binding);
   if (status != SQLITE_OK) {
-    state->unlock_notify_binding = old_binding;
+    cpkt_sqlite_global_lock(global_mutex);
+    if (state->unlock_notify_binding == binding)
+      state->unlock_notify_binding =
+          old_binding != NULL && !old_binding->delivered ? old_binding : NULL;
+    cpkt_sqlite_global_unlock(global_mutex);
+    if (old_binding != NULL && old_binding->delivered)
+      free(old_binding);
     free(binding);
     cpkt_sqlite_connection_unlock(mutex);
     return status;

@@ -242,9 +242,10 @@ typedef void (*cpkt_sqlite_legacy_trace_callback)(void *context,
 typedef void (*cpkt_sqlite_legacy_profile_callback)(
     void *context, const char *sql, cpkt_sqlite_u64 elapsed_nanoseconds);
 /**
- * SQLite may coalesce registrations into one notification.  `contexts`
- * contains every registered facade context in that notification, including
- * `context`; it is valid only for the duration of this callback.
+ * SQLite may coalesce registrations into one notification. `contexts`
+ * contains the registered facade contexts for this public callback,
+ * including `context`; it is valid only during this callback. The facade
+ * invokes this callback for each registration in a coalesced notification.
  */
 typedef void (*cpkt_sqlite_unlock_notify_callback)(void *context,
                                                    int context_count,
