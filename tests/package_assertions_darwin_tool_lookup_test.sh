@@ -146,6 +146,61 @@ esac
 cat > "$osxcross_root/bin/$osxcross_host-otool" <<'SH'
 #!/usr/bin/env sh
 case "$1" in
+  -hv) printf 'Mach header\nmagic cputype filetype\nMH_MAGIC_64 ARM64 BUNDLE flags\n' ;;
+  -L)
+    printf '%s:\n' "$2"
+    printf '@rpath/libkrb5.3.3.dylib (compatibility version 3.0.0, current version 3.3.0)\n'
+    printf '@rpath/libssl.3.dylib (compatibility version 3.0.0, current version 3.0.0)\n'
+    ;;
+  -l)
+    printf 'Load command 0\n'
+    printf '          cmd LC_RPATH\n'
+    printf '         path %s (offset 12)\n' "$CPKT_TEST_TLS_RPATH"
+    ;;
+esac
+SH
+chmod +x "$osxcross_root/bin/$osxcross_host-otool"
+mkdir -p "$work_dir/lib/krb5/plugins/tls"
+touch "$work_dir/lib/krb5/plugins/tls/k5tls.so"
+
+if ! output=$(
+    CPKT_TEST_TLS_RPATH='@loader_path/../../..' \
+    OSXCROSS_ROOT="$osxcross_root" \
+    CPKT_OSXCROSS_HOST="$osxcross_host" \
+    cmake \
+      -DCPKT_TARGET_ID=arm64-apple-darwin \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE=ON \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/lib/krb5/plugins/tls/k5tls.so" \
+      -P "$repo_root/cmake/package_assertions.cmake"
+  ); then
+  printf 'package assertion rejected the bundled Kerberos TLS module\n%s\n' "$output" >&2
+  exit 1
+fi
+
+if output=$(
+    CPKT_TEST_TLS_RPATH='@loader_path' \
+    OSXCROSS_ROOT="$osxcross_root" \
+    CPKT_OSXCROSS_HOST="$osxcross_host" \
+    cmake \
+      -DCPKT_TARGET_ID=arm64-apple-darwin \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE=ON \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/lib/krb5/plugins/tls/k5tls.so" \
+      -P "$repo_root/cmake/package_assertions.cmake" 2>&1
+  ); then
+  printf 'package assertion accepted a Kerberos TLS module without its bundled library path\n%s\n' "$output" >&2
+  exit 1
+fi
+case "$output" in
+  *"cannot resolve bundled sibling libraries from"*"lib/krb5/plugins/tls"*) ;;
+  *)
+    printf 'Kerberos TLS module rpath failure was not actionable\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+
+cat > "$osxcross_root/bin/$osxcross_host-otool" <<'SH'
+#!/usr/bin/env sh
+case "$1" in
   -D)
     printf '%s:\n' "$2"
     printf '@rpath/libssl.3.dylib\n'

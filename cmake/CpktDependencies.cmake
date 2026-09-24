@@ -2180,6 +2180,8 @@ function(cpkt_add_krb5)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   set(gssapi_static_library "${install_dir}/lib/libgssapi_krb5${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(tls_static_library "${install_dir}/lib/libkrb5_k5tls${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(tls_module "${install_dir}/lib/krb5/plugins/tls/k5tls.so")
   set(krb5_static_library "${install_dir}/lib/libkrb5${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(k5crypto_static_library "${install_dir}/lib/libk5crypto${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(com_err_static_library "${install_dir}/lib/libcom_err${CMAKE_STATIC_LIBRARY_SUFFIX}")
@@ -2196,6 +2198,11 @@ function(cpkt_add_krb5)
   endif()
   cpkt_get_target_triple(target_triple)
   cpkt_get_external_c_flags(external_cflags)
+  # GCC 15 defaults to C23, where an empty parameter list means (void).
+  # Kerberos configure probes use K&R declarations to inspect libc prototypes.
+  # Their C23 interpretation incorrectly disables reentrant libc functions.
+  string(APPEND external_cflags " -std=gnu17")
+  set(krb5_openssl_prefix "${CPKT_OPENSSL_shared_PREFIX}")
   set(env_args "")
   cpkt_append_pinned_external_toolchain_env_args(env_args)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -2212,8 +2219,9 @@ function(cpkt_add_krb5)
   list(APPEND env_args
     # Kerberos static archives are part of the public GSSAPI closure.
     "CFLAGS=${external_cflags} -fPIC"
+    "CPPFLAGS=-I${krb5_openssl_prefix}/include"
     # The static build has no runtime loader path.
-    "LDFLAGS="
+    "LDFLAGS=-L${krb5_openssl_prefix}/lib"
     # Keep Kerberos defaults independent of the disposable build/install root.
     # Applications may override all three with the standard environment knobs.
     "DEFCCNAME=FILE:/tmp/krb5cc_%{uid}"
@@ -2235,11 +2243,17 @@ function(cpkt_add_krb5)
   endif()
   # Static GSSAPI consumers are permitted to link into shared libraries.
   set(static_env_args ${env_args})
+  list(REMOVE_ITEM static_env_args "CFLAGS=${external_cflags} -fPIC")
+  list(APPEND static_env_args "CFLAGS=${external_cflags} -fPIC -DCPKT_KRB5_STATIC_TLS")
   # --disable-rpath suppresses Kerberos' absolute install paths. Its shared
   # libraries still need a library-relative lookup for their bundled siblings.
   cpkt_get_autotools_link_flags(krb5_shared_link_flags)
-  list(REMOVE_ITEM env_args "LDFLAGS=")
-  list(APPEND env_args "LDFLAGS=${krb5_shared_link_flags}")
+  list(REMOVE_ITEM env_args "LDFLAGS=-L${krb5_openssl_prefix}/lib")
+  list(APPEND env_args "LDFLAGS=-L${krb5_openssl_prefix}/lib ${krb5_shared_link_flags}")
+  set(krb5_plugin_link_flags "${krb5_shared_link_flags}")
+  string(REPLACE "ORIGIN" "ORIGIN/../../.." krb5_plugin_link_flags "${krb5_plugin_link_flags}")
+  string(REPLACE "@loader_path" "@loader_path/../../.." krb5_plugin_link_flags "${krb5_plugin_link_flags}")
+  set(krb5_plugin_ldflags "LDFLAGS=-L${krb5_openssl_prefix}/lib ${krb5_plugin_link_flags}")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
   set(krb5_darwin_install_name_normalize_command ${CMAKE_COMMAND} -E true)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -2270,6 +2284,11 @@ function(cpkt_add_krb5)
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_openssl_project
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/krb5.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
         ${CMAKE_COMMAND} -E env ${static_env_args}
         "${source_dir}/src/configure"
@@ -2283,8 +2302,13 @@ function(cpkt_add_krb5)
         --disable-rpath
         --disable-nls
         --disable-pkinit
+        --with-tls-impl=openssl
         --without-ldap
         --without-readline
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_KRB5_BUILD_DIR=${static_build_dir}
+          -DCPKT_KRB5_REQUIRE_GLIBC_REENTRANT=${CPKT_TARGET_LIBC}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_krb5_features.cmake
       BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C util/support -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
@@ -2299,6 +2323,8 @@ function(cpkt_add_krb5)
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/krb5 -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/gssapi -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C plugins/tls/k5tls -j${CPKT_DEPENDENCY_BUILD_JOBS}
       INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
         COMMAND ${CMAKE_COMMAND} -E make_directory
           "${stage_dir}/usr/include"
@@ -2330,6 +2356,9 @@ function(cpkt_add_krb5)
           "${stage_dir}/usr/include/com_err.h"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${static_build_dir}/plugins/tls/k5tls/libkrb5_k5tls${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${install_dir}/lib/libkrb5_k5tls${CMAKE_STATIC_LIBRARY_SUFFIX}"
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS
         "${gssapi_static_library}"
@@ -2339,6 +2368,7 @@ function(cpkt_add_krb5)
         "${krb5support_static_library}"
         "${profile_static_library}"
         "${verto_static_library}"
+        "${tls_static_library}"
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 
     cpkt_cached_external_project_add(${project_name_shared}
@@ -2354,6 +2384,10 @@ function(cpkt_add_krb5)
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS ${project_name_static}
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/krb5.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args}
         "${source_dir}/src/configure"
@@ -2367,8 +2401,13 @@ function(cpkt_add_krb5)
         --disable-rpath
         --disable-nls
         --disable-pkinit
+        --with-tls-impl=openssl
         --without-ldap
         --without-readline
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_KRB5_BUILD_DIR=${shared_build_dir}
+          -DCPKT_KRB5_REQUIRE_GLIBC_REENTRANT=${CPKT_TARGET_LIBC}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_krb5_features.cmake
       BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C util/support -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
@@ -2383,6 +2422,9 @@ function(cpkt_add_krb5)
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib/krb5 -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib/gssapi -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins/tls/k5tls -j${CPKT_DEPENDENCY_BUILD_JOBS}
+          "${krb5_plugin_ldflags}"
       INSTALL_COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C include install DESTDIR=${stage_dir}
         COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
@@ -2404,9 +2446,14 @@ function(cpkt_add_krb5)
           "${stage_dir}/usr/include/com_err.h"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/lib/krb5/plugins/tls"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins/tls/k5tls install DESTDIR=${stage_dir}
+          "${krb5_plugin_ldflags}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib/krb5/plugins/tls" "${install_dir}/lib/krb5/plugins/tls"
         COMMAND ${krb5_darwin_install_name_normalize_command}
         COMMAND ${strip_install_command}
-      BUILD_BYPRODUCTS "${gssapi_shared_library}"
+      BUILD_BYPRODUCTS "${gssapi_shared_library}" "${tls_module}"
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   endif()
 
@@ -2414,7 +2461,7 @@ function(cpkt_add_krb5)
   set_target_properties(cpkt::gssapi_krb5_static PROPERTIES
     IMPORTED_LOCATION "${gssapi_static_library}"
     INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
-    INTERFACE_LINK_LIBRARIES "${krb5_static_library};${k5crypto_static_library};${com_err_static_library};${krb5support_static_library};${profile_static_library};${verto_static_library};${CMAKE_DL_LIBS};Threads::Threads;${krb5_static_platform_libraries}")
+    INTERFACE_LINK_LIBRARIES "${krb5_static_library};${k5crypto_static_library};${com_err_static_library};${krb5support_static_library};${profile_static_library};${verto_static_library};${tls_static_library};cpkt::openssl_ssl_static;cpkt::openssl_crypto_static;${CMAKE_DL_LIBS};Threads::Threads;${krb5_static_platform_libraries}")
   add_library(cpkt::gssapi_krb5_shared SHARED IMPORTED GLOBAL)
   set_target_properties(cpkt::gssapi_krb5_shared PROPERTIES
     IMPORTED_LOCATION "${gssapi_shared_library}"
@@ -2688,6 +2735,10 @@ function(cpkt_add_openldap)
       PATCH_COMMAND ${CMAKE_COMMAND}
         -DCPKT_OPENLDAP_SOURCE_DIR=${source_dir}
         -P ${CMAKE_SOURCE_DIR}/cmake/patch_openldap_lutil_link.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/openldap.series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args}
         "${source_dir}/configure"
@@ -3333,10 +3384,14 @@ function(cpkt_configure_dependencies)
     BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5"
     INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/krb5/install"
     VARIABLES CPKT_KRB5_VERSION CPKT_DARWIN_HOST_MIG_REVISION
+    DEPENDS openssl
     INPUT_FILES
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
-      "${CMAKE_SOURCE_DIR}/cmake/patch_krb5_macos_cross.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/assert_krb5_features.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_const_correctness.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_tls_bundle.patch"
     RECIPE_FUNCTIONS cpkt_add_krb5)
   cpkt_prepare_dependency_component(
     NAME cyrus-sasl
@@ -3349,6 +3404,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
       "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_relocatable_plugins.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_build_warnings.patch"
       "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl.series"
       "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_gssapi.cmake"
@@ -3366,6 +3422,8 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/build_openldap_libraries.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patch_openldap_lutil_link.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_client_const.patch"
     RECIPE_FUNCTIONS cpkt_add_openldap)
   cpkt_prepare_dependency_component(
     NAME postgresql

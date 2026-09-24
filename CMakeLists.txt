@@ -2094,6 +2094,15 @@ if(CPKT_BUILD_TESTS)
         TIMEOUT 30)
       if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu" AND CPKT_BUILD_DEPENDENCIES)
         add_test(
+          NAME krb5_tls_module_smoke
+          COMMAND bash "${CMAKE_SOURCE_DIR}/tests/krb5_tls_module_smoke.sh"
+            "${CMAKE_SOURCE_DIR}" "${CMAKE_C_COMPILER}"
+            "${CPKT_EXTERNAL_ROOT}/krb5/install/lib"
+            "${CPKT_EXTERNAL_ROOT}/openssl/install/lib")
+        set_tests_properties(krb5_tls_module_smoke PROPERTIES
+          LABELS "packaging;smoke"
+          TIMEOUT 30)
+        add_test(
           NAME dependency_reuse_configure
           COMMAND
             "${CMAKE_SOURCE_DIR}/tests/dependency_reuse_configure_test.sh"
@@ -2119,6 +2128,12 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/dependency_component_targets_test.sh"
           "${CMAKE_SOURCE_DIR}")
+      add_test(
+        NAME krb5_feature_contract
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/krb5_feature_contract_test.sh")
+      set_tests_properties(krb5_feature_contract PROPERTIES
+        LABELS "packaging;smoke"
+        TIMEOUT 30)
       add_test(
         NAME package_assertions_elf_runpath
         COMMAND

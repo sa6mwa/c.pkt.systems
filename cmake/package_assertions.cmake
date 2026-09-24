@@ -362,6 +362,7 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
   string(REPLACE "\r\n" "\n" _commands_output "${_commands_output}")
   string(REPLACE "\n" ";" _command_lines "${_commands_output}")
   set(_sasl_module_parent_rpath_found OFF)
+  set(_krb5_tls_module_parent_rpath_found OFF)
   foreach(_command_line IN LISTS _command_lines)
     string(STRIP "${_command_line}" _command_line)
     if(_command_line MATCHES "^path[ \t]+([^ \t]+)")
@@ -372,12 +373,18 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
       endif()
       if(_rpath STREQUAL "@loader_path/..")
         set(_sasl_module_parent_rpath_found ON)
+      elseif(_rpath STREQUAL "@loader_path/../../..")
+        set(_krb5_tls_module_parent_rpath_found ON)
       endif()
     endif()
   endforeach()
   if(file_path MATCHES "/lib/sasl2/[^/]+[.]so$" AND
       NOT _sasl_module_parent_rpath_found)
     message(FATAL_ERROR "${description} cannot resolve bundled sibling libraries from lib/sasl2")
+  endif()
+  if(file_path MATCHES "/lib/krb5/plugins/tls/k5tls[.]so$" AND
+      NOT _krb5_tls_module_parent_rpath_found)
+    message(FATAL_ERROR "${description} cannot resolve bundled sibling libraries from lib/krb5/plugins/tls")
   endif()
 
   set(_private_path_pattern "(/home/|/Users/|/tmp/|/var/tmp/|/usr/local/|\\.cache|deps-build|package-stage|CMakeFiles)")
@@ -1078,6 +1085,8 @@ foreach(_path
     "lib/liblutil.a"
     "lib/libsasl2.a"
     "lib/libgssapi_krb5.a"
+    "lib/libkrb5_k5tls.a"
+    "lib/krb5/plugins/tls/k5tls.so"
     "lib/cmake/Lua/LuaConfig.cmake"
     "lib/cmake/Lua/LuaConfigVersion.cmake"
     "lib/cmake/miniaudio/miniaudioConfig.cmake"
@@ -1572,7 +1581,8 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   endif()
   file(GLOB_RECURSE _packaged_darwin_dylibs
     "${_assert_extract_root}/${_archive_stem}/lib/*.dylib"
-    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so")
+    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so"
+    "${_assert_extract_root}/${_archive_stem}/lib/krb5/plugins/tls/*.so")
   foreach(_packaged_darwin_dylib IN LISTS _packaged_darwin_dylibs)
     if(IS_SYMLINK "${_packaged_darwin_dylib}")
       continue()
@@ -1796,6 +1806,10 @@ else()
       "\\$ORIGIN"
       "${_kerberos_library} bundled sibling lookup")
   endforeach()
+  cpkt_assert_elf_runpath(
+    "${_assert_extract_root}/${_archive_stem}/lib/krb5/plugins/tls/k5tls.so"
+    "\\$ORIGIN/../../.."
+    "Kerberos TLS module bundled sibling lookup")
   foreach(_sasl_plugin IN ITEMS libgssapiv2.so libgs2.so)
     cpkt_assert_elf_runpath(
       "${_assert_extract_root}/${_archive_stem}/lib/sasl2/${_sasl_plugin}"
