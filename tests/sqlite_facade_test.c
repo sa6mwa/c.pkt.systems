@@ -64,6 +64,7 @@ typedef struct auto_extension_state {
 typedef struct log_state {
   int call_count;
   int error_code;
+  char message[128];
 } log_state;
 
 typedef struct virtual_table_state {
@@ -691,6 +692,8 @@ static void record_log(void *context, int error_code, const char *message) {
     return;
   state->call_count += 1;
   state->error_code = error_code;
+  strncpy(state->message, message, sizeof(state->message) - 1);
+  state->message[sizeof(state->message) - 1] = '\0';
 }
 
 static void bound_argument(cpkt_sqlite_context *context, int argument_count,
@@ -991,6 +994,7 @@ int main(void) {
   unsigned char utf16be_result[6];
   char blob_buffer[3];
   char format_buffer[16];
+  char wide_format_buffer[32];
   char *formatted;
   int count;
   int configuration_result;
@@ -1034,11 +1038,22 @@ int main(void) {
     return 81;
   log.call_count = 0;
   log.error_code = 0;
+  log.message[0] = '\0';
   if (cpkt_sqlite_global_config_log(record_log, &log) != CPKT_SQLITE_OK)
     return 82;
   cpkt_sqlite_log(CPKT_SQLITE_NOTICE, "facade log %d", 7);
-  if (log.call_count != 1 || log.error_code != CPKT_SQLITE_NOTICE)
+  if (log.call_count != 1 || log.error_code != CPKT_SQLITE_NOTICE ||
+      strcmp(log.message, "facade log 7") != 0)
     return 83;
+  cpkt_sqlite_log_i64(CPKT_SQLITE_NOTICE, "signed %lld",
+                      cpkt_sqlite_i64_make(0xffffffffUL, 0xffffffd6UL));
+  if (log.call_count != 2 || strcmp(log.message, "signed -42") != 0)
+    return 88;
+  cpkt_sqlite_log_u64(CPKT_SQLITE_NOTICE, "unsigned %llu",
+                      cpkt_sqlite_u64_make(0xffffffffUL, 0xffffffffUL));
+  if (log.call_count != 3 ||
+      strcmp(log.message, "unsigned 18446744073709551615") != 0)
+    return 89;
   page_cache_state.initialize_count = 0;
   page_cache_state.shutdown_count = 0;
   page_cache_state.create_count = 0;
@@ -1097,6 +1112,25 @@ int main(void) {
       strcmp(format_buffer, "format") != 0)
     return 45;
   cpkt_sqlite_free(formatted);
+  formatted = cpkt_sqlite_format_i64("%lld%%", cpkt_sqlite_i64_make(0, 42));
+  if (formatted == 0 || strcmp(formatted, "42%") != 0)
+    return 90;
+  cpkt_sqlite_free(formatted);
+  formatted = cpkt_sqlite_format_u64(
+      "%llu", cpkt_sqlite_u64_make(0xffffffffUL, 0xffffffffUL));
+  if (formatted == 0 || strcmp(formatted, "18446744073709551615") != 0)
+    return 91;
+  cpkt_sqlite_free(formatted);
+  if (cpkt_sqlite_format_into_i64(
+          (int)sizeof(format_buffer), format_buffer, "%lld",
+          cpkt_sqlite_i64_make(0xffffffffUL, 0xffffffd6UL)) != format_buffer ||
+      strcmp(format_buffer, "-42") != 0 ||
+      cpkt_sqlite_format_into_u64(
+          (int)sizeof(wide_format_buffer), wide_format_buffer, "%016llx",
+          cpkt_sqlite_u64_make(0xffffffffUL, 0xffffffffUL)) !=
+          wide_format_buffer ||
+      strcmp(wide_format_buffer, "ffffffffffffffff") != 0)
+    return 92;
   vfs_probe.open_count = 0;
   vfs_probe.close_count = 0;
   memset(&vfs_methods, 0, sizeof(vfs_methods));
@@ -1145,6 +1179,12 @@ int main(void) {
       strcmp(string->value(string), "string:7") != 0 ||
       string->error_code(string) != CPKT_SQLITE_OK)
     return 87;
+  cpkt_sqlite_string_append_format_i64(
+      string, ":%lld", cpkt_sqlite_i64_make(0xffffffffUL, 0xffffffd6UL));
+  cpkt_sqlite_string_append_format_u64(
+      string, ":%llx", cpkt_sqlite_u64_make(0xffffffffUL, 0xffffffffUL));
+  if (strcmp(string->value(string), "string:7:-42:ffffffffffffffff") != 0)
+    return 93;
   string->close(string);
   statement = 0;
   if (auto_extension_registration.call_count != 1 ||

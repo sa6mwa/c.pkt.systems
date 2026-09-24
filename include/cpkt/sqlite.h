@@ -418,6 +418,8 @@ typedef int (*cpkt_sqlite_file_lock_callback)(cpkt_sqlite_file *file,
                                               int level);
 typedef int (*cpkt_sqlite_file_reserved_lock_callback)(cpkt_sqlite_file *file,
                                                        int *result_out);
+/** SIZE_HINT, MMAP_SIZE, and SIZE_LIMIT use cpkt_sqlite_i64 * payloads.
+ * Other operation payloads retain their SQLite-defined types. */
 typedef int (*cpkt_sqlite_file_control_callback)(cpkt_sqlite_file *file,
                                                  int operation, void *argument);
 typedef int (*cpkt_sqlite_file_sector_size_callback)(cpkt_sqlite_file *file);
@@ -1272,6 +1274,12 @@ int cpkt_sqlite_global_config_int_out(int operation, int *value_out);
 int cpkt_sqlite_global_config_log(cpkt_sqlite_log_callback callback,
                                   void *context);
 void cpkt_sqlite_log(int error_code, const char *format, ...);
+/** Formats one signed 64-bit conversion for SQLite's log callback. */
+void cpkt_sqlite_log_i64(int error_code, const char *format,
+                         cpkt_sqlite_i64 value);
+/** Formats one unsigned 64-bit conversion for SQLite's log callback. */
+void cpkt_sqlite_log_u64(int error_code, const char *format,
+                         cpkt_sqlite_u64 value);
 int cpkt_sqlite_global_config_memory_methods_set(
     const cpkt_sqlite_memory_methods *methods);
 int cpkt_sqlite_global_config_memory_methods_get(
@@ -1286,10 +1294,22 @@ int cpkt_sqlite_complete(const char *sql);
 int cpkt_sqlite_complete_utf16(const void *sql);
 char *cpkt_sqlite_format(const char *format, ...);
 char *cpkt_sqlite_format_v(const char *format, va_list arguments);
+/** Formats one %ll signed conversion; free the result with cpkt_sqlite_free().
+ */
+char *cpkt_sqlite_format_i64(const char *format, cpkt_sqlite_i64 value);
+/** Formats one %ll unsigned conversion; free the result with
+ * cpkt_sqlite_free(). */
+char *cpkt_sqlite_format_u64(const char *format, cpkt_sqlite_u64 value);
 char *cpkt_sqlite_format_into(int byte_count, char *buffer, const char *format,
                               ...);
 char *cpkt_sqlite_format_into_v(int byte_count, char *buffer,
                                 const char *format, va_list arguments);
+/** Writes one signed 64-bit conversion into a caller-owned buffer. */
+char *cpkt_sqlite_format_into_i64(int byte_count, char *buffer,
+                                  const char *format, cpkt_sqlite_i64 value);
+/** Writes one unsigned 64-bit conversion into a caller-owned buffer. */
+char *cpkt_sqlite_format_into_u64(int byte_count, char *buffer,
+                                  const char *format, cpkt_sqlite_u64 value);
 void *cpkt_sqlite_allocate(int byte_count);
 void *cpkt_sqlite_allocate_u64(cpkt_sqlite_u64 byte_count);
 void *cpkt_sqlite_reallocate(void *memory, int byte_count);
@@ -1319,6 +1339,14 @@ int cpkt_sqlite_status(int category, int *current, int *highwater, int reset);
 int cpkt_sqlite_status_i64(int category, cpkt_sqlite_i64 *current,
                            cpkt_sqlite_i64 *highwater, int reset);
 cpkt_sqlite_string *cpkt_sqlite_string_new(cpkt_sqlite *database);
+/** Appends one signed 64-bit conversion to an existing SQLite string. */
+void cpkt_sqlite_string_append_format_i64(cpkt_sqlite_string *self,
+                                          const char *format,
+                                          cpkt_sqlite_i64 value);
+/** Appends one unsigned 64-bit conversion to an existing SQLite string. */
+void cpkt_sqlite_string_append_format_u64(cpkt_sqlite_string *self,
+                                          const char *format,
+                                          cpkt_sqlite_u64 value);
 cpkt_sqlite *cpkt_sqlite_new(const char *filename);
 cpkt_sqlite *cpkt_sqlite_open(const char *filename, int flags, const char *vfs);
 cpkt_sqlite *cpkt_sqlite_open16(const void *filename);
@@ -1432,6 +1460,8 @@ int cpkt_sqlite_table_column_metadata(
     const char *column_name, cpkt_sqlite_column_metadata *metadata_out);
 int cpkt_sqlite_database_release_memory(cpkt_sqlite *self);
 int cpkt_sqlite_cache_flush(cpkt_sqlite *self);
+/** SIZE_HINT, MMAP_SIZE, and SIZE_LIMIT take cpkt_sqlite_i64 * arguments.
+ * Other operation payloads retain their SQLite-defined types. */
 int cpkt_sqlite_file_control(cpkt_sqlite *self, const char *database_name,
                              int operation, void *argument);
 int cpkt_sqlite_set_lock_timeout(cpkt_sqlite *self, int milliseconds,

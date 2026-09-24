@@ -8,14 +8,18 @@
 
 static sqlite3_vfs *base_vfs;
 static cpkt_sqlite_io_methods io_methods;
+static int mmap_control_calls;
+static int size_hint_control_calls;
+static int size_limit_control_calls;
 
 static sqlite3_file *native_file(cpkt_sqlite_file *file) {
   return (sqlite3_file *)file->state;
 }
 
 static sqlite3_int64 native_offset(cpkt_sqlite_i64 offset) {
-  return ((sqlite3_int64)(int32_t)offset.high << 32) |
-         (sqlite3_int64)(uint32_t)offset.low;
+  sqlite3_uint64 bits = ((sqlite3_uint64)(uint32_t)offset.high << 32) |
+                        (sqlite3_uint64)(uint32_t)offset.low;
+  return (sqlite3_int64)bits;
 }
 
 static int file_close(cpkt_sqlite_file *file) {
@@ -75,6 +79,31 @@ static int file_reserved_lock(cpkt_sqlite_file *file, int *result_out) {
 
 static int file_control(cpkt_sqlite_file *file, int operation, void *argument) {
   sqlite3_file *native = native_file(file);
+  if (argument != NULL && (operation == SQLITE_FCNTL_SIZE_HINT ||
+                           operation == SQLITE_FCNTL_MMAP_SIZE ||
+                           operation == SQLITE_FCNTL_SIZE_LIMIT)) {
+    cpkt_sqlite_i64 *public_value = (cpkt_sqlite_i64 *)argument;
+    sqlite3_int64 native_value = native_offset(*public_value);
+    int status;
+    if (operation == SQLITE_FCNTL_MMAP_SIZE)
+      ++mmap_control_calls;
+    if (operation == SQLITE_FCNTL_SIZE_HINT)
+      ++size_hint_control_calls;
+    if (operation == SQLITE_FCNTL_SIZE_LIMIT) {
+      ++size_limit_control_calls;
+      if (public_value->high != 1 || public_value->low != 2)
+        return SQLITE_MISUSE;
+      public_value->high = 3;
+      public_value->low = 4;
+      return SQLITE_OK;
+    }
+    status = native->pMethods->xFileControl(native, operation, &native_value);
+    if (status == SQLITE_OK) {
+      public_value->high = (unsigned long)((uint64_t)native_value >> 32);
+      public_value->low = (unsigned long)((uint64_t)native_value & UINT32_MAX);
+    }
+    return status;
+  }
   return native->pMethods->xFileControl(native, operation, argument);
 }
 
@@ -153,6 +182,7 @@ int main(int argc, char **argv) {
   cpkt_sqlite_vfs *vfs;
   cpkt_sqlite *database;
   char journal_mode[16] = {0};
+  cpkt_sqlite_i64 control_value;
   int status;
 
   if (argc != 2 || cpkt_sqlite_initialize() != CPKT_SQLITE_OK)
@@ -194,11 +224,39 @@ int main(int argc, char **argv) {
     return 4;
   status = database->tx(database, "PRAGMA journal_mode=WAL",
                         capture_journal_mode, journal_mode);
-  if (status != CPKT_SQLITE_OK || strcmp(journal_mode, "delete") != 0)
+  if (status != CPKT_SQLITE_OK || strcmp(journal_mode, "delete") != 0) {
+    fprintf(stderr, "journal_mode=WAL returned %d, mode '%s'\n", status,
+            journal_mode);
     return 5;
+  }
   status = database->tx(database, "CREATE TABLE t(value INTEGER)", NULL, NULL);
+  if (status != CPKT_SQLITE_OK)
+    return 6;
+  control_value = cpkt_sqlite_i64_make(0, 1048576);
+  status = cpkt_sqlite_file_control(database, "main", SQLITE_FCNTL_MMAP_SIZE,
+                                    &control_value);
+  if (status != CPKT_SQLITE_OK || mmap_control_calls == 0 ||
+      control_value.high != 0)
+    return 7;
+  control_value = cpkt_sqlite_i64_make(0xffffffffUL, 0xffffffffUL);
+  status = cpkt_sqlite_file_control(database, "main", SQLITE_FCNTL_MMAP_SIZE,
+                                    &control_value);
+  if (status != CPKT_SQLITE_OK || control_value.high != 0 ||
+      control_value.low != 1048576)
+    return 8;
+  control_value = cpkt_sqlite_i64_make(0, 4096);
+  status = cpkt_sqlite_file_control(database, "main", SQLITE_FCNTL_SIZE_HINT,
+                                    &control_value);
+  if (status != CPKT_SQLITE_OK || size_hint_control_calls == 0)
+    return 9;
+  control_value = cpkt_sqlite_i64_make(1, 2);
+  status = cpkt_sqlite_file_control(database, "main", SQLITE_FCNTL_SIZE_LIMIT,
+                                    &control_value);
+  if (status != CPKT_SQLITE_OK || size_limit_control_calls != 1 ||
+      control_value.high != 3 || control_value.low != 4)
+    return 10;
   database->close(database);
   vfs->close(vfs);
   (void)remove(argv[1]);
-  return status == CPKT_SQLITE_OK ? 0 : 6;
+  return 0;
 }

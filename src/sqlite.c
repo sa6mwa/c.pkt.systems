@@ -382,15 +382,30 @@ static int cpkt_sqlite_vfs_file_reserved_lock(sqlite3_file *file,
       &native_file->public_file, result_out);
 }
 
+static int cpkt_sqlite_file_control_has_i64(int operation) {
+  return operation == SQLITE_FCNTL_SIZE_HINT ||
+         operation == SQLITE_FCNTL_MMAP_SIZE ||
+         operation == SQLITE_FCNTL_SIZE_LIMIT;
+}
+
 static int cpkt_sqlite_vfs_file_control(sqlite3_file *file, int operation,
                                         void *argument) {
   cpkt_sqlite_vfs_file *native_file;
+  cpkt_sqlite_i64 public_value;
+  int status;
   native_file = cpkt_sqlite_vfs_file_from_native(file);
   if (native_file == NULL || native_file->public_file.methods == NULL ||
       native_file->public_file.methods->control == NULL)
     return SQLITE_NOTFOUND;
-  return native_file->public_file.methods->control(&native_file->public_file,
-                                                   operation, argument);
+  if (argument == NULL || !cpkt_sqlite_file_control_has_i64(operation))
+    return native_file->public_file.methods->control(&native_file->public_file,
+                                                     operation, argument);
+  public_value = cpkt_sqlite_public_i64(*(sqlite3_int64 *)argument);
+  status = native_file->public_file.methods->control(&native_file->public_file,
+                                                     operation, &public_value);
+  if (status == SQLITE_OK)
+    *(sqlite3_int64 *)argument = cpkt_sqlite_native_i64(public_value);
+  return status;
 }
 
 static int cpkt_sqlite_vfs_file_sector_size(sqlite3_file *file) {
@@ -3744,6 +3759,26 @@ void cpkt_sqlite_log(int error_code, const char *format, ...) {
   va_end(arguments);
   sqlite3_log(error_code, "%s", message);
 }
+
+void cpkt_sqlite_log_i64(int error_code, const char *format,
+                         cpkt_sqlite_i64 value) {
+  char message[1024];
+  if (format == NULL)
+    return;
+  (void)sqlite3_snprintf((int)sizeof(message), message, format,
+                         cpkt_sqlite_native_i64(value));
+  sqlite3_log(error_code, "%s", message);
+}
+
+void cpkt_sqlite_log_u64(int error_code, const char *format,
+                         cpkt_sqlite_u64 value) {
+  char message[1024];
+  if (format == NULL)
+    return;
+  (void)sqlite3_snprintf((int)sizeof(message), message, format,
+                         cpkt_sqlite_native_u64(value));
+  sqlite3_log(error_code, "%s", message);
+}
 int cpkt_sqlite_global_config_memory_methods_set(
     const cpkt_sqlite_memory_methods *methods) {
   sqlite3_mem_methods native_methods;
@@ -4106,6 +4141,18 @@ char *cpkt_sqlite_format(const char *format, ...) {
   return result;
 }
 
+char *cpkt_sqlite_format_i64(const char *format, cpkt_sqlite_i64 value) {
+  if (format == NULL)
+    return NULL;
+  return sqlite3_mprintf(format, cpkt_sqlite_native_i64(value));
+}
+
+char *cpkt_sqlite_format_u64(const char *format, cpkt_sqlite_u64 value) {
+  if (format == NULL)
+    return NULL;
+  return sqlite3_mprintf(format, cpkt_sqlite_native_u64(value));
+}
+
 char *cpkt_sqlite_format_into_v(int byte_count, char *buffer,
                                 const char *format, va_list arguments) {
   if (byte_count <= 0 || buffer == NULL || format == NULL)
@@ -4121,6 +4168,22 @@ char *cpkt_sqlite_format_into(int byte_count, char *buffer, const char *format,
   result = cpkt_sqlite_format_into_v(byte_count, buffer, format, arguments);
   va_end(arguments);
   return result;
+}
+
+char *cpkt_sqlite_format_into_i64(int byte_count, char *buffer,
+                                  const char *format, cpkt_sqlite_i64 value) {
+  if (byte_count <= 0 || buffer == NULL || format == NULL)
+    return buffer;
+  return sqlite3_snprintf(byte_count, buffer, format,
+                          cpkt_sqlite_native_i64(value));
+}
+
+char *cpkt_sqlite_format_into_u64(int byte_count, char *buffer,
+                                  const char *format, cpkt_sqlite_u64 value) {
+  if (byte_count <= 0 || buffer == NULL || format == NULL)
+    return buffer;
+  return sqlite3_snprintf(byte_count, buffer, format,
+                          cpkt_sqlite_native_u64(value));
 }
 
 void *cpkt_sqlite_allocate(int byte_count) {
@@ -5128,10 +5191,19 @@ int cpkt_sqlite_cache_flush(cpkt_sqlite *self) {
 
 int cpkt_sqlite_file_control(cpkt_sqlite *self, const char *database_name,
                              int operation, void *argument) {
+  sqlite3_int64 native_value;
+  int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return SQLITE_MISUSE;
-  return sqlite3_file_control(cpkt_sqlite_native(self), database_name,
-                              operation, argument);
+  if (argument == NULL || !cpkt_sqlite_file_control_has_i64(operation))
+    return sqlite3_file_control(cpkt_sqlite_native(self), database_name,
+                                operation, argument);
+  native_value = cpkt_sqlite_native_i64(*(cpkt_sqlite_i64 *)argument);
+  status = sqlite3_file_control(cpkt_sqlite_native(self), database_name,
+                                operation, &native_value);
+  if (status == SQLITE_OK)
+    *(cpkt_sqlite_i64 *)argument = cpkt_sqlite_public_i64(native_value);
+  return status;
 }
 
 int cpkt_sqlite_set_lock_timeout(cpkt_sqlite *self, int milliseconds,
@@ -7379,6 +7451,22 @@ static void cpkt_sqlite_string_append_format(cpkt_sqlite_string *self,
   va_start(arguments, format);
   cpkt_sqlite_string_append_format_v(self, format, arguments);
   va_end(arguments);
+}
+
+void cpkt_sqlite_string_append_format_i64(cpkt_sqlite_string *self,
+                                          const char *format,
+                                          cpkt_sqlite_i64 value) {
+  if (cpkt_sqlite_native_string(self) != NULL && format != NULL)
+    sqlite3_str_appendf(cpkt_sqlite_native_string(self), format,
+                        cpkt_sqlite_native_i64(value));
+}
+
+void cpkt_sqlite_string_append_format_u64(cpkt_sqlite_string *self,
+                                          const char *format,
+                                          cpkt_sqlite_u64 value) {
+  if (cpkt_sqlite_native_string(self) != NULL && format != NULL)
+    sqlite3_str_appendf(cpkt_sqlite_native_string(self), format,
+                        cpkt_sqlite_native_u64(value));
 }
 
 static void cpkt_sqlite_string_reset(cpkt_sqlite_string *self) {

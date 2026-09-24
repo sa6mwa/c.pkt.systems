@@ -57,6 +57,22 @@ leaves the receiver usable while any such child remains open.
 `cpkt_sqlite_i64_make(high, low)` for binding and compare `high` and `low`
 after `column_i64` or `last_insert_rowid`.
 
+SQLite's `%ll` formatting conversions require a native 64-bit scalar in a
+variadic call. In C89, use the typed `cpkt_sqlite_format_i64()` and
+`cpkt_sqlite_format_u64()` functions for one signed or unsigned conversion;
+the corresponding `format_into`, `log`, and `string_append_format` typed
+functions cover the same case. Their format string may include literal text
+and `%%`, but exactly one conversion requiring an argument, with matching
+signedness, is allowed. Combine multiple typed values through a
+`cpkt_sqlite_string` builder. The ordinary variadic formatting functions
+accept only C89-native argument types.
+
+For file controls `SQLITE_FCNTL_SIZE_HINT`, `SQLITE_FCNTL_MMAP_SIZE`, and
+`SQLITE_FCNTL_SIZE_LIMIT`, pass a `cpkt_sqlite_i64 *` to
+`cpkt_sqlite_file_control()`. The same payload type is passed to facade VFS
+file-control callbacks. Other file-control payloads keep their SQLite-defined
+types.
+
 FTS5 extension registration is also facade-owned. `cpkt_sqlite_fts5_api_open()`
 returns a receiver scoped to its database connection. It registers locale-aware
 custom tokenizers and auxiliary functions without exposing native FTS types.
