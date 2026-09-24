@@ -1547,7 +1547,7 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-openssl.pc"
   "Name: cpkt-openssl\n"
   "Description: C89 OpenSSL facade from c.pkt.systems\n"
   "Version: ${CPKT_OPENSSL_VERSION}\n"
-  "Requires.private: openssl\n"
+  "Requires: openssl\n"
   "Libs: -L\${libdir} -lcpkt_openssl\n"
   "Cflags: -I\${includedir}\n"
 )

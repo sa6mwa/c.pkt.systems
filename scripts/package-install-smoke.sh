@@ -518,8 +518,13 @@ cat > "$cmake_source_dir/cpkt_openssl_facade_strict.c" <<'EOF'
 
 int main(void) {
   cpkt_openssl_u64 value;
+  SSL_CTX *context;
 
   value = cpkt_openssl_u64_make(0UL, 1UL);
+  context = SSL_CTX_new(TLS_client_method());
+  if (context == 0)
+    return 1;
+  SSL_CTX_free(context);
   return cpkt_openssl_u64_low_word(value) == 1UL ? 0 : 1;
 }
 EOF
@@ -1968,6 +1973,7 @@ sasl_words=$(pkg_config_words cpkt-sasl)
 sqlite_words=$(pkg_config_words cpkt-sqlite)
 sus_words=$(pkg_config_words cpkt-sus)
 openssl_default_words=$(pkg_config_default_words openssl)
+cpkt_openssl_default_words=$(pkg_config_default_words cpkt-openssl)
 
 case "$target_id" in
   *-linux-gnu)
@@ -2015,6 +2021,8 @@ assert_words_contain "$cpkt_openssl_words" "-lssl" "cpkt-openssl.pc --static out
 assert_words_contain "$cpkt_openssl_words" "-lcrypto" "cpkt-openssl.pc --static output"
 assert_words_contain "$openssl_default_words" "-lssl" "openssl.pc output"
 assert_words_contain "$openssl_default_words" "-lcrypto" "openssl.pc output"
+assert_words_contain "$cpkt_openssl_default_words" "-lssl" "cpkt-openssl.pc output"
+assert_words_contain "$cpkt_openssl_default_words" "-lcrypto" "cpkt-openssl.pc output"
 assert_words_contain "$libssh2_words" "-lcrypto" "libssh2.pc --static output"
 assert_words_contain "$libssh2_words" "-lz" "libssh2.pc --static output"
 assert_words_contain "$libcurl_words" "-lssh2" "libcurl.pc --static output"
