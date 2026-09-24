@@ -1470,6 +1470,8 @@ int cpkt_sqlite_set_trace(cpkt_sqlite *self, unsigned long mask,
 void *cpkt_sqlite_set_legacy_trace(cpkt_sqlite *self,
                                    cpkt_sqlite_legacy_trace_callback callback,
                                    void *context);
+/** Changes the legacy profiler without disabling v2 tracing; returns the
+ * previous legacy profiler context. */
 void *
 cpkt_sqlite_set_legacy_profile(cpkt_sqlite *self,
                                cpkt_sqlite_legacy_profile_callback callback,

@@ -1770,13 +1770,11 @@ int cpkt_openssl_BIO_close(cpkt_openssl_bio *bio) {
   bio->native = NULL;
   bio->callback = NULL;
   bio->callback_ex = NULL;
-  /* BIO_free emits BIO_CB_FREE through a configured generic callback.  Detach
-   * it before releasing our callback-argument ownership pin: otherwise the
-   * trampoline correctly rejects its now-null facade context and can make the
-   * native BIO teardown fail. */
+  /* BIO_free emits BIO_CB_FREE through a configured generic callback. Detach
+   * generic callbacks before release. Keep the callback argument for batch
+   * methods until the last native BIO reference frees its ex-data shell. */
   BIO_set_callback(native_bio, NULL);
   BIO_set_callback_ex(native_bio, NULL);
-  BIO_set_callback_arg(native_bio, NULL);
   CRYPTO_THREAD_unlock(method->lock);
   return BIO_free(native_bio);
 }

@@ -1002,6 +1002,7 @@ int main(void) {
   collation_needed_state collation_state;
   autovacuum_state autovacuum;
   trace_state trace;
+  trace_state profile_trace;
   rtree_state rtree;
   unlock_notify_state unlock_notify;
   preupdate_blob_state preupdate_blob;
@@ -1429,12 +1430,25 @@ int main(void) {
       cpkt_sqlite_set_trace(db, 0, 0, 0) != CPKT_SQLITE_OK)
     return 48;
   trace.statement_count = 0;
+  memset(&profile_trace, 0, sizeof(profile_trace));
+  if (cpkt_sqlite_set_trace(db, CPKT_SQLITE_TRACE_STATEMENT, trace_callback,
+                            &trace) != CPKT_SQLITE_OK ||
+      cpkt_sqlite_set_legacy_profile(db, legacy_profile_callback,
+                                     &profile_trace) != 0 ||
+      db->tx(db, "select 'trace with profile'", 0, 0) != CPKT_SQLITE_OK ||
+      trace.statement_count == 0 || profile_trace.profile_count == 0 ||
+      cpkt_sqlite_set_legacy_profile(db, 0, 0) != &profile_trace ||
+      db->tx(db, "select 'trace after profile'", 0, 0) != CPKT_SQLITE_OK ||
+      trace.statement_count < 2 ||
+      cpkt_sqlite_set_trace(db, 0, 0, 0) != CPKT_SQLITE_OK)
+    return 85;
+  trace.statement_count = 0;
   trace.profile_count = 0;
   if (cpkt_sqlite_set_legacy_trace(db, legacy_trace_callback, &trace) != 0 ||
       db->tx(db, "select 'legacy trace'", 0, 0) != CPKT_SQLITE_OK ||
       trace.statement_count == 0 ||
       cpkt_sqlite_set_legacy_profile(db, legacy_profile_callback, &trace) !=
-          &trace ||
+          0 ||
       db->tx(db, "select 'legacy profile'", 0, 0) != CPKT_SQLITE_OK ||
       trace.profile_count == 0 ||
       cpkt_sqlite_set_legacy_profile(db, 0, 0) != &trace) {

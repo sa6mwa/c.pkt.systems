@@ -72,6 +72,23 @@ static int openssl_mmsg_test_destroy(BIO *bio) {
   return 1;
 }
 
+static int openssl_retained_mmsg_callback(void *context, BIO *bio,
+                                          cpkt_openssl_bio_message *messages,
+                                          size_t message_stride,
+                                          size_t message_count,
+                                          cpkt_openssl_u64 flags,
+                                          size_t *processed_out) {
+  int *calls;
+  calls = (int *)context;
+  if (calls == 0 || bio == 0 || messages == 0 ||
+      message_stride != sizeof(*messages) || message_count != 1U ||
+      !cpkt_openssl_u64_is_zero(flags) || processed_out == 0)
+    return 0;
+  ++*calls;
+  *processed_out = message_count;
+  return 1;
+}
+
 static long
 openssl_mmsg_test_regular_callback(void *context, BIO *bio, int operation,
                                    const void *argument, int argument_integer,
@@ -219,6 +236,7 @@ int main(void) {
   cpkt_openssl_u64 returned;
   openssl_padded_native_message padded_messages[2];
   size_t processed;
+  int retained_mmsg_calls;
   openssl_mmsg_test_context mmsg_context;
 
   options = cpkt_openssl_u64_make(0UL, 0x4000UL);
@@ -360,6 +378,8 @@ int main(void) {
       BIO_meth_set_ctrl(
           (BIO_METHOD *)cpkt_openssl_BIO_meth_native(plain_facade_method),
           openssl_mmsg_test_ctrl) != 1 ||
+      cpkt_openssl_BIO_meth_set_sendmmsg(plain_facade_method,
+                                         openssl_retained_mmsg_callback) != 1 ||
       cpkt_openssl_BIO_meth_set_sendmmsg(facade_method,
                                          openssl_mmsg_test_callback) != 1 ||
       cpkt_openssl_BIO_meth_set_recvmmsg(facade_method,
@@ -372,7 +392,9 @@ int main(void) {
     cpkt_openssl_BIO_meth_close(plain_facade_method);
     return 30;
   }
-  plain_facade_bio = cpkt_openssl_BIO_new(plain_facade_method, 0);
+  retained_mmsg_calls = 0;
+  plain_facade_bio =
+      cpkt_openssl_BIO_new(plain_facade_method, &retained_mmsg_calls);
   if (plain_facade_bio == 0 ||
       cpkt_openssl_BIO_meth_close(plain_facade_method) != 0) {
     cpkt_openssl_BIO_close(plain_facade_bio);
@@ -416,6 +438,10 @@ int main(void) {
   }
   plain_facade_bio = 0;
   if (cpkt_openssl_BIO_meth_close(plain_facade_method) != 0 ||
+      cpkt_openssl_BIO_sendmmsg(
+          retained_bio, &send_message, sizeof(send_message), 1U,
+          cpkt_openssl_u64_make(0UL, 0UL), &processed) != 1 ||
+      processed != 1U || retained_mmsg_calls != 1 ||
       BIO_write(retained_bio, "abc", 3) != 3 || BIO_free(retained_bio) != 1 ||
       openssl_mmsg_destroy_calls != 2 ||
       cpkt_openssl_BIO_meth_close(plain_facade_method) != 1) {

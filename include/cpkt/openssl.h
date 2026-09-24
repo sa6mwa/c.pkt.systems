@@ -648,12 +648,11 @@ cpkt_openssl_BIO_meth_set_recvmmsg(cpkt_openssl_bio_method *method,
 /** Returns the receive batch callback registered for a facade-owned method. */
 CPKT_OPENSSL_API cpkt_openssl_bio_mmsg_callback
 cpkt_openssl_BIO_meth_get_recvmmsg(const cpkt_openssl_bio_method *method);
-/** Creates a facade BIO and pins callback context until cpkt_openssl_BIO_close.
- */
+/** Creates a facade BIO. Keep callback context valid until the final native
+ * BIO reference is freed, which may follow cpkt_openssl_BIO_close. */
 CPKT_OPENSSL_API cpkt_openssl_bio *
 cpkt_openssl_BIO_new(cpkt_openssl_bio_method *method, void *callback_context);
-/** Creates a library-context facade BIO and pins callback context until close.
- */
+/** Creates a library-context facade BIO with the same callback lifetime. */
 CPKT_OPENSSL_API cpkt_openssl_bio *
 cpkt_openssl_BIO_new_ex(OSSL_LIB_CTX *library_context,
                         cpkt_openssl_bio_method *method,

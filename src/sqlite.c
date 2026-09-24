@@ -5351,13 +5351,7 @@ cpkt_sqlite_set_legacy_profile(cpkt_sqlite *self,
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return NULL;
-  previous = state->trace_callback != NULL
-                 ? state->trace_context
-                 : (state->legacy_trace_callback != NULL
-                        ? state->legacy_trace_context
-                        : state->legacy_profile_context);
-  state->trace_callback = NULL;
-  state->trace_context = NULL;
+  previous = state->legacy_profile_context;
   state->legacy_trace_callback = NULL;
   state->legacy_trace_context = NULL;
   state->legacy_profile_callback = callback;

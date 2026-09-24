@@ -36,7 +36,8 @@ The batch BIO method callbacks use facade-owned BIO method and BIO shells.
 in OpenSSL's dedicated callback-argument slot; applications must not overwrite
 that slot on a facade BIO. Close each facade BIO before its method. A native
 BIO reference acquired with `BIO_up_ref` may outlive the facade shell; the
-method remains pinned until the last native reference is freed. A close
+method and batch callback context remain pinned until the last native reference
+is freed. Keep application-owned callback context valid until then. A close
 attempt from a batch callback, or a method close while a native BIO or callback
 remains active, returns zero and leaves ownership unchanged.
 
