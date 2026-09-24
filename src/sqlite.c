@@ -1,6 +1,7 @@
 #include <cpkt/sqlite.h>
 
 #include <limits.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -163,6 +164,8 @@ struct cpkt_sqlite_vfs_file {
 typedef struct cpkt_sqlite_module_binding cpkt_sqlite_module_binding;
 
 static cpkt_sqlite_state *cpkt_sqlite_wrapper_head;
+static pthread_mutex_t cpkt_sqlite_bookkeeping_mutex =
+    PTHREAD_MUTEX_INITIALIZER;
 static const char cpkt_sqlite_open_clientdata_key[] =
     "cpkt_sqlite_open_wrapper";
 static cpkt_sqlite_auto_extension_binding *cpkt_sqlite_auto_extension_head;
@@ -793,16 +796,27 @@ static cpkt_sqlite_state *cpkt_sqlite_state_for(const cpkt_sqlite *self) {
   return self == NULL ? NULL : (cpkt_sqlite_state *)self->facade_state;
 }
 
-static sqlite3_mutex *cpkt_sqlite_global_mutex(void) {
-  return sqlite3_mutex_alloc(SQLITE_MUTEX_STATIC_APP1);
+static pthread_mutex_t *cpkt_sqlite_global_mutex(void) {
+  return &cpkt_sqlite_bookkeeping_mutex;
 }
 
-static void cpkt_sqlite_global_lock(sqlite3_mutex *mutex) {
+static void cpkt_sqlite_global_lock(pthread_mutex_t *mutex) {
+  (void)pthread_mutex_lock(mutex);
+}
+
+static void cpkt_sqlite_global_unlock(pthread_mutex_t *mutex) {
+  (void)pthread_mutex_unlock(mutex);
+}
+
+static sqlite3_mutex *cpkt_sqlite_connection_lock(cpkt_sqlite *self) {
+  sqlite3_mutex *mutex;
+  mutex = sqlite3_db_mutex(cpkt_sqlite_native(self));
   if (mutex != NULL)
     sqlite3_mutex_enter(mutex);
+  return mutex;
 }
 
-static void cpkt_sqlite_global_unlock(sqlite3_mutex *mutex) {
+static void cpkt_sqlite_connection_unlock(sqlite3_mutex *mutex) {
   if (mutex != NULL)
     sqlite3_mutex_leave(mutex);
 }
@@ -813,7 +827,7 @@ static void cpkt_sqlite_memory_alarm_trampoline(void *context,
   cpkt_sqlite_memory_alarm_binding *binding;
   cpkt_sqlite_memory_alarm_callback callback;
   void *callback_context;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   binding = (cpkt_sqlite_memory_alarm_binding *)context;
   if (binding == NULL)
     return;
@@ -843,7 +857,7 @@ cpkt_sqlite_auto_extension_trampoline(sqlite3 *native_database,
   cpkt_sqlite_auto_extension_binding *binding;
   cpkt_sqlite_auto_extension_binding **snapshot;
   cpkt_sqlite *database;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int count;
   int index;
   int status;
@@ -902,7 +916,7 @@ cpkt_sqlite_auto_extension_trampoline(sqlite3 *native_database,
 static int
 cpkt_sqlite_auto_extension_register(cpkt_sqlite_auto_extension *self) {
   cpkt_sqlite_auto_extension_binding *binding;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int status;
   if (self == NULL || self->internal == NULL)
     return SQLITE_MISUSE;
@@ -934,7 +948,7 @@ cpkt_sqlite_auto_extension_register(cpkt_sqlite_auto_extension *self) {
 static int cpkt_sqlite_auto_extension_cancel(cpkt_sqlite_auto_extension *self) {
   cpkt_sqlite_auto_extension_binding *binding;
   cpkt_sqlite_auto_extension_binding *current;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int any_registered;
   int was_registered;
   int status;
@@ -969,7 +983,7 @@ static int cpkt_sqlite_auto_extension_cancel(cpkt_sqlite_auto_extension *self) {
 static void cpkt_sqlite_auto_extension_close(cpkt_sqlite_auto_extension *self) {
   cpkt_sqlite_auto_extension_binding **link;
   cpkt_sqlite_auto_extension_binding *binding;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   if (self == NULL || self->internal == NULL)
     return;
   (void)cpkt_sqlite_auto_extension_cancel(self);
@@ -991,7 +1005,7 @@ static void cpkt_sqlite_auto_extension_close(cpkt_sqlite_auto_extension *self) {
 
 static void cpkt_sqlite_retain_child(cpkt_sqlite *database) {
   cpkt_sqlite_state *state;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   mutex = cpkt_sqlite_global_mutex();
   cpkt_sqlite_global_lock(mutex);
   state = cpkt_sqlite_state_for(database);
@@ -1002,7 +1016,7 @@ static void cpkt_sqlite_retain_child(cpkt_sqlite *database) {
 
 static void cpkt_sqlite_release_child(cpkt_sqlite *database) {
   cpkt_sqlite_state *state;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int finish;
   finish = 0;
   mutex = cpkt_sqlite_global_mutex();
@@ -2367,23 +2381,28 @@ int cpkt_sqlite_unlock_notify(cpkt_sqlite *self,
   cpkt_sqlite_state *state;
   cpkt_sqlite_unlock_notify_binding *binding;
   cpkt_sqlite_unlock_notify_binding *old_binding;
+  sqlite3_mutex *mutex;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return SQLITE_MISUSE;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return SQLITE_NOMEM;
+  mutex = cpkt_sqlite_connection_lock(self);
   if (callback == NULL) {
     status = sqlite3_unlock_notify(cpkt_sqlite_native(self), NULL, NULL);
     if (status == SQLITE_OK) {
       free(state->unlock_notify_binding);
       state->unlock_notify_binding = NULL;
     }
+    cpkt_sqlite_connection_unlock(mutex);
     return status;
   }
   binding = (cpkt_sqlite_unlock_notify_binding *)calloc(1, sizeof(*binding));
-  if (binding == NULL)
+  if (binding == NULL) {
+    cpkt_sqlite_connection_unlock(mutex);
     return SQLITE_NOMEM;
+  }
   binding->state = state;
   binding->callback = callback;
   binding->context = context;
@@ -2394,9 +2413,11 @@ int cpkt_sqlite_unlock_notify(cpkt_sqlite *self,
   if (status != SQLITE_OK) {
     state->unlock_notify_binding = old_binding;
     free(binding);
+    cpkt_sqlite_connection_unlock(mutex);
     return status;
   }
   free(old_binding);
+  cpkt_sqlite_connection_unlock(mutex);
   return status;
 }
 
@@ -3248,7 +3269,7 @@ static void cpkt_sqlite_destroy(cpkt_sqlite *self) {
   cpkt_sqlite_function_binding *function_binding;
   cpkt_sqlite_function_binding *function_next;
   cpkt_sqlite_state **state_link;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   if (self == NULL)
     return;
   state = cpkt_sqlite_state_for(self);
@@ -3302,7 +3323,7 @@ static void cpkt_sqlite_open_wrapper_cleanup(void *context) {
 
 void cpkt_sqlite_close(cpkt_sqlite *self) {
   cpkt_sqlite_state *state;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int finish;
   if (self == NULL)
     return;
@@ -3324,7 +3345,7 @@ void cpkt_sqlite_close(cpkt_sqlite *self) {
 
 int cpkt_sqlite_close_strict(cpkt_sqlite *self) {
   cpkt_sqlite_state *state;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return CPKT_SQLITE_MISUSE;
@@ -3375,7 +3396,7 @@ static cpkt_sqlite *cpkt_sqlite_wrap_database(sqlite3 *database,
                                               int close_on_failure) {
   cpkt_sqlite *self;
   cpkt_sqlite_state *state;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   if (database == NULL)
     return NULL;
   mutex = cpkt_sqlite_global_mutex();
@@ -3479,7 +3500,7 @@ cpkt_sqlite_auto_extension_new(cpkt_sqlite_auto_extension_callback callback,
                                void *context) {
   cpkt_sqlite_auto_extension *public_extension;
   cpkt_sqlite_auto_extension_binding *binding;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   if (callback == NULL)
     return NULL;
   public_extension =
@@ -3517,7 +3538,7 @@ static void cpkt_sqlite_auto_extension_registration_clear(void) {
 }
 
 void cpkt_sqlite_auto_extension_reset(void) {
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   sqlite3_reset_auto_extension();
   mutex = cpkt_sqlite_global_mutex();
   cpkt_sqlite_global_lock(mutex);
@@ -3587,7 +3608,7 @@ cpkt_sqlite_vfs *cpkt_sqlite_vfs_new(const char *name,
           ? cpkt_sqlite_vfs_next_system_call_native
           : NULL;
   {
-    sqlite3_mutex *mutex;
+    pthread_mutex_t *mutex;
     mutex = cpkt_sqlite_global_mutex();
     cpkt_sqlite_global_lock(mutex);
     binding->next = cpkt_sqlite_vfs_head;
@@ -3600,7 +3621,7 @@ cpkt_sqlite_vfs *cpkt_sqlite_vfs_new(const char *name,
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_find(const char *name) {
   cpkt_sqlite_vfs_binding *binding;
   sqlite3_vfs *native_vfs;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   native_vfs = sqlite3_vfs_find(name);
   if (native_vfs == NULL)
     return NULL;
@@ -3653,7 +3674,7 @@ int cpkt_sqlite_vfs_unregister(cpkt_sqlite_vfs *self) {
 void cpkt_sqlite_vfs_close(cpkt_sqlite_vfs *self) {
   cpkt_sqlite_vfs_binding *binding;
   cpkt_sqlite_vfs_binding **link;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   if (self == NULL)
     return;
   binding = (cpkt_sqlite_vfs_binding *)self->internal;
@@ -4245,7 +4266,7 @@ cpkt_sqlite_i64 cpkt_sqlite_memory_highwater(int reset) {
 }
 int cpkt_sqlite_memory_alarm(cpkt_sqlite_memory_alarm_callback callback,
                              void *context, cpkt_sqlite_i64 threshold_bytes) {
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int status;
   mutex = cpkt_sqlite_global_mutex();
   cpkt_sqlite_global_lock(mutex);
@@ -4879,7 +4900,7 @@ static void cpkt_sqlite_fts5_auxiliary_trampoline(const Fts5ExtensionApi *api,
   cpkt_sqlite_context public_sql_context;
   cpkt_sqlite_value *public_values;
   cpkt_sqlite_value **public_value_pointers;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   int index;
   binding =
       api == NULL || api->xUserData == NULL
@@ -5294,68 +5315,88 @@ int cpkt_sqlite_set_busy_handler(cpkt_sqlite *self,
                                  cpkt_sqlite_busy_callback callback,
                                  void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return CPKT_SQLITE_MISUSE;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return CPKT_SQLITE_NOMEM;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->busy_callback = callback;
   state->busy_context = context;
-  return sqlite3_busy_handler(cpkt_sqlite_native(self),
-                              callback == NULL ? NULL
-                                               : cpkt_sqlite_busy_trampoline,
-                              callback == NULL ? NULL : state);
+  status = sqlite3_busy_handler(cpkt_sqlite_native(self),
+                                callback == NULL ? NULL
+                                                 : cpkt_sqlite_busy_trampoline,
+                                callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
+  return status;
 }
 
 int cpkt_sqlite_set_authorizer(cpkt_sqlite *self,
                                cpkt_sqlite_authorizer_callback callback,
                                void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return CPKT_SQLITE_MISUSE;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return CPKT_SQLITE_NOMEM;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->authorizer_callback = callback;
   state->authorizer_context = context;
-  return sqlite3_set_authorizer(
+  status = sqlite3_set_authorizer(
       cpkt_sqlite_native(self),
       callback == NULL ? NULL : cpkt_sqlite_authorizer_trampoline,
       callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
+  return status;
 }
 
 int cpkt_sqlite_set_collation_needed(
     cpkt_sqlite *self, cpkt_sqlite_collation_needed_callback callback,
     void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return SQLITE_MISUSE;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return SQLITE_NOMEM;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->collation_needed_callback = callback;
   state->collation_needed16_callback = NULL;
   state->collation_needed_context = context;
-  return sqlite3_collation_needed(
+  status = sqlite3_collation_needed(
       cpkt_sqlite_native(self), callback == NULL ? NULL : state,
       callback == NULL ? NULL : cpkt_sqlite_collation_needed_trampoline);
+  cpkt_sqlite_connection_unlock(mutex);
+  return status;
 }
 
 int cpkt_sqlite_set_collation_needed16(
     cpkt_sqlite *self, cpkt_sqlite_collation_needed16_callback callback,
     void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return SQLITE_MISUSE;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return SQLITE_NOMEM;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->collation_needed_callback = NULL;
   state->collation_needed16_callback = callback;
   state->collation_needed_context = context;
-  return sqlite3_collation_needed16(
+  status = sqlite3_collation_needed16(
       cpkt_sqlite_native(self), callback == NULL ? NULL : state,
       callback == NULL ? NULL : cpkt_sqlite_collation_needed16_trampoline);
+  cpkt_sqlite_connection_unlock(mutex);
+  return status;
 }
 
 int cpkt_sqlite_set_autovacuum_callback(
@@ -5401,34 +5442,41 @@ int cpkt_sqlite_set_client_data(cpkt_sqlite *self, const char *name, void *data,
 int cpkt_sqlite_set_trace(cpkt_sqlite *self, unsigned long mask,
                           cpkt_sqlite_trace_callback callback, void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
+  int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL || mask > 0xffffffffUL) {
     return SQLITE_MISUSE;
   }
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return SQLITE_NOMEM;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->trace_callback = callback;
   state->trace_context = context;
   state->legacy_trace_callback = NULL;
   state->legacy_trace_context = NULL;
   state->legacy_profile_callback = NULL;
   state->legacy_profile_context = NULL;
-  return sqlite3_trace_v2(cpkt_sqlite_native(self), (unsigned int)mask,
-                          callback == NULL ? NULL
-                                           : cpkt_sqlite_trace_trampoline,
-                          callback == NULL ? NULL : state);
+  status =
+      sqlite3_trace_v2(cpkt_sqlite_native(self), (unsigned int)mask,
+                       callback == NULL ? NULL : cpkt_sqlite_trace_trampoline,
+                       callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
+  return status;
 }
 
 void *cpkt_sqlite_set_legacy_trace(cpkt_sqlite *self,
                                    cpkt_sqlite_legacy_trace_callback callback,
                                    void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   void *previous;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return NULL;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return NULL;
+  mutex = cpkt_sqlite_connection_lock(self);
   previous = state->trace_callback != NULL
                  ? state->trace_context
                  : (state->legacy_trace_callback != NULL
@@ -5444,6 +5492,7 @@ void *cpkt_sqlite_set_legacy_trace(cpkt_sqlite *self,
                       callback == NULL ? NULL
                                        : cpkt_sqlite_legacy_trace_trampoline,
                       callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
   return previous;
 }
 
@@ -5452,12 +5501,14 @@ cpkt_sqlite_set_legacy_profile(cpkt_sqlite *self,
                                cpkt_sqlite_legacy_profile_callback callback,
                                void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   void *previous;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return NULL;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return NULL;
+  mutex = cpkt_sqlite_connection_lock(self);
   previous = state->legacy_profile_context;
   state->legacy_trace_callback = NULL;
   state->legacy_trace_context = NULL;
@@ -5467,6 +5518,7 @@ cpkt_sqlite_set_legacy_profile(cpkt_sqlite *self,
       cpkt_sqlite_native(self),
       callback == NULL ? NULL : cpkt_sqlite_legacy_profile_trampoline,
       callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
   return previous;
 }
 
@@ -5525,101 +5577,121 @@ void cpkt_sqlite_set_progress_handler(cpkt_sqlite *self, int instruction_count,
                                       cpkt_sqlite_progress_callback callback,
                                       void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->progress_callback = callback;
   state->progress_context = context;
   sqlite3_progress_handler(cpkt_sqlite_native(self), instruction_count,
                            callback == NULL ? NULL
                                             : cpkt_sqlite_progress_trampoline,
                            callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
 }
 
 void cpkt_sqlite_set_commit_hook(cpkt_sqlite *self,
                                  cpkt_sqlite_commit_callback callback,
                                  void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->commit_callback = callback;
   state->commit_context = context;
   sqlite3_commit_hook(cpkt_sqlite_native(self),
                       callback == NULL ? NULL : cpkt_sqlite_commit_trampoline,
                       callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
 }
 
 void cpkt_sqlite_set_rollback_hook(cpkt_sqlite *self,
                                    cpkt_sqlite_rollback_callback callback,
                                    void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->rollback_callback = callback;
   state->rollback_context = context;
   sqlite3_rollback_hook(cpkt_sqlite_native(self),
                         callback == NULL ? NULL
                                          : cpkt_sqlite_rollback_trampoline,
                         callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
 }
 
 void cpkt_sqlite_set_update_hook(cpkt_sqlite *self,
                                  cpkt_sqlite_update_callback callback,
                                  void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->update_callback = callback;
   state->update_context = context;
   sqlite3_update_hook(cpkt_sqlite_native(self),
                       callback == NULL ? NULL : cpkt_sqlite_update_trampoline,
                       callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
 }
 
 void cpkt_sqlite_set_wal_hook(cpkt_sqlite *self,
                               cpkt_sqlite_wal_callback callback,
                               void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return;
+  mutex = cpkt_sqlite_connection_lock(self);
   state->wal_callback = callback;
   state->wal_context = context;
   sqlite3_wal_hook(cpkt_sqlite_native(self),
                    callback == NULL ? NULL : cpkt_sqlite_wal_trampoline,
                    callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
 }
 
 int cpkt_sqlite_set_preupdate_hook(cpkt_sqlite *self,
                                    cpkt_sqlite_preupdate_callback callback,
                                    void *context) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return CPKT_SQLITE_MISUSE;
   state = cpkt_sqlite_state_for(self);
   if (state == NULL)
     return CPKT_SQLITE_NOMEM;
-  if (state->session_count != 0)
+  mutex = cpkt_sqlite_connection_lock(self);
+  if (state->session_count != 0) {
+    cpkt_sqlite_connection_unlock(mutex);
     return CPKT_SQLITE_MISUSE;
+  }
   state->preupdate_callback = callback;
   state->preupdate_context = context;
   sqlite3_preupdate_hook(cpkt_sqlite_native(self),
                          callback == NULL ? NULL
                                           : cpkt_sqlite_preupdate_trampoline,
                          callback == NULL ? NULL : state);
+  cpkt_sqlite_connection_unlock(mutex);
   return CPKT_SQLITE_OK;
 }
 
@@ -6063,7 +6135,7 @@ int cpkt_sqlite_create_collation16(cpkt_sqlite *self, const void *name,
 void *cpkt_sqlite_context_user_data(cpkt_sqlite_context *context) {
   cpkt_sqlite_function_binding *binding;
   cpkt_sqlite_fts5_sql_context_scope *scope;
-  sqlite3_mutex *mutex;
+  pthread_mutex_t *mutex;
   void *user_data;
   if (cpkt_sqlite_native_context(context) == NULL)
     return NULL;
@@ -6620,13 +6692,16 @@ static int cpkt_sqlite_session_patchset(cpkt_sqlite_session *self,
 
 static void cpkt_sqlite_session_close(cpkt_sqlite_session *self) {
   cpkt_sqlite_state *state;
+  sqlite3_mutex *mutex;
   if (self == NULL)
     return;
+  mutex = cpkt_sqlite_connection_lock(self->database);
   if (cpkt_sqlite_native_session(self) != NULL)
     sqlite3session_delete(cpkt_sqlite_native_session(self));
   state = cpkt_sqlite_state_for(self->database);
   if (state != NULL && state->session_count > 0)
     --state->session_count;
+  cpkt_sqlite_connection_unlock(mutex);
   self->session = NULL;
   self->database = NULL;
   free(self);
@@ -6636,6 +6711,7 @@ int cpkt_sqlite_session_new(cpkt_sqlite *database, const char *schema,
                             cpkt_sqlite_session **out) {
   sqlite3_session *native_session;
   cpkt_sqlite_session *public_session;
+  sqlite3_mutex *mutex;
   int status;
   if (out != NULL)
     *out = NULL;
@@ -6644,17 +6720,22 @@ int cpkt_sqlite_session_new(cpkt_sqlite *database, const char *schema,
   }
   if (cpkt_sqlite_state_for(database) == NULL)
     return CPKT_SQLITE_NOMEM;
+  mutex = cpkt_sqlite_connection_lock(database);
   if (cpkt_sqlite_state_for(database)->preupdate_callback != NULL) {
+    cpkt_sqlite_connection_unlock(mutex);
     return CPKT_SQLITE_MISUSE;
   }
   native_session = NULL;
   status = sqlite3session_create(cpkt_sqlite_native(database), schema,
                                  &native_session);
-  if (status != SQLITE_OK)
+  if (status != SQLITE_OK) {
+    cpkt_sqlite_connection_unlock(mutex);
     return status;
+  }
   public_session = (cpkt_sqlite_session *)calloc(1, sizeof(*public_session));
   if (public_session == NULL) {
     sqlite3session_delete(native_session);
+    cpkt_sqlite_connection_unlock(mutex);
     return CPKT_SQLITE_NOMEM;
   }
   public_session->attach = cpkt_sqlite_session_attach;
@@ -6674,6 +6755,7 @@ int cpkt_sqlite_session_new(cpkt_sqlite *database, const char *schema,
   public_session->session = native_session;
   public_session->database = database;
   ++cpkt_sqlite_state_for(database)->session_count;
+  cpkt_sqlite_connection_unlock(mutex);
   *out = public_session;
   return CPKT_SQLITE_OK;
 }

@@ -1288,6 +1288,7 @@ int cpkt_sqlite_global_config_page_cache_methods_set(
     const cpkt_sqlite_page_cache_methods *methods);
 int cpkt_sqlite_global_config_page_cache_methods_get(
     cpkt_sqlite_page_cache_methods *methods_out);
+/** APPLICATION mutexes are not used by facade bookkeeping. */
 cpkt_sqlite_mutex *cpkt_sqlite_mutex_new(int mutex_type);
 cpkt_sqlite_mutex *cpkt_sqlite_database_mutex(const cpkt_sqlite *database);
 int cpkt_sqlite_complete(const char *sql);

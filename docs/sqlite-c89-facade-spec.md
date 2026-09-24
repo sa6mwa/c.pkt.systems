@@ -42,6 +42,11 @@ clearing the legacy profiler preserves the v2 trace registration and returns
 the previous legacy profiler context. Registering a new trace callback cancels
 the previous trace and legacy profiler, matching SQLite's trace behavior.
 
+On serialized connections, callback setters that keep a callback/context pair
+in facade state hold the connection mutex while updating the pair and the
+native registration. The facade uses a private mutex for its own bookkeeping;
+SQLite's static APPLICATION mutexes remain available to callers.
+
 Extended changeset apply operations collect rebase output only when
 `rebase_out` is provided. Passing `NULL` avoids the input-proportional native
 rebase allocation, including for streaming apply operations.

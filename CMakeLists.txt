@@ -1236,7 +1236,8 @@ cpkt_add_repo_warning_errors(cpkt_sqlite_static)
 target_include_directories(cpkt_sqlite_static
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
-target_link_libraries(cpkt_sqlite_static PUBLIC cpkt::sqlite_static)
+target_link_libraries(cpkt_sqlite_static PUBLIC
+  cpkt::sqlite_static Threads::Threads)
 target_compile_definitions(cpkt_sqlite_static PRIVATE
   CPKT_SQLITE_FACADE_VERSION="${CPKT_SQLITE_ABI_VERSION}"
   SQLITE_ENABLE_CARRAY=1
@@ -1253,7 +1254,8 @@ cpkt_add_repo_warning_errors(cpkt_sqlite_shared)
 target_include_directories(cpkt_sqlite_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
-target_link_libraries(cpkt_sqlite_shared PUBLIC cpkt::sqlite_shared)
+target_link_libraries(cpkt_sqlite_shared PUBLIC
+  cpkt::sqlite_shared Threads::Threads)
 target_compile_definitions(cpkt_sqlite_shared PRIVATE
   CPKT_SQLITE_FACADE_VERSION="${CPKT_SQLITE_ABI_VERSION}"
   SQLITE_ENABLE_CARRAY=1
@@ -1702,6 +1704,14 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_child_lifetime_concurrency_test)
     target_link_libraries(cpkt_sqlite_child_lifetime_concurrency_test PRIVATE
       cpkt_sqlite_static Threads::Threads)
+    add_executable(cpkt_sqlite_callback_synchronization_test
+      tests/sqlite_callback_synchronization_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_callback_synchronization_test)
+    target_compile_options(cpkt_sqlite_callback_synchronization_test
+      PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_callback_synchronization_test)
+    target_link_libraries(cpkt_sqlite_callback_synchronization_test PRIVATE
+      cpkt_sqlite_static Threads::Threads)
     add_executable(cpkt_sqlite_page_cache_lifetime_test
       tests/sqlite_page_cache_lifetime_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_page_cache_lifetime_test)
@@ -1945,6 +1955,9 @@ if(CPKT_BUILD_TESTS)
       endif()
       add_test(NAME sqlite_child_lifetime_concurrency
         COMMAND cpkt_sqlite_child_lifetime_concurrency_test)
+      add_test(NAME sqlite_callback_synchronization
+        COMMAND cpkt_sqlite_callback_synchronization_test)
+      set_tests_properties(sqlite_callback_synchronization PROPERTIES TIMEOUT 15)
       add_test(NAME sqlite_page_cache_lifetime
         COMMAND cpkt_sqlite_page_cache_lifetime_test)
       add_test(NAME sqlite_auto_extension_shutdown
@@ -1998,6 +2011,7 @@ if(CPKT_BUILD_TESTS)
         sqlite_facade sqlite_rebase_collection sqlite_vfs_wal_capability
         pdf_facade_static pdf_facade_shared
         sqlite_child_lifetime_concurrency sqlite_page_cache_lifetime
+        sqlite_callback_synchronization
         sqlite_auto_extension_shutdown sqlite_rtree_registration_failure
         sqlite_session_hook_guard sqlite_collation_failure
         gssapi_facade sasl_facade sasl_callback_retry)
