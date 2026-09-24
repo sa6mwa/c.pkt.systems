@@ -2,7 +2,83 @@
 
 #include <limits.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <string.h>
+
+static const char *cpkt_lua_facade_pushvfstring(cpkt_lua_state *state,
+                                                const char *format, ...);
+
+static int reject_allocations;
+
+static void *format_test_allocator(void *user, void *pointer, size_t old_size,
+                                   size_t new_size) {
+  (void)user;
+  if (new_size == 0U) {
+    free(pointer);
+    return NULL;
+  }
+  if (reject_allocations && new_size > old_size)
+    return NULL;
+  return realloc(pointer, new_size);
+}
+
+static int format_test_pushfstring(cpkt_lua_state *state) {
+  reject_allocations = 1;
+  (void)cpkt_lua_pushfstring(state, "value=%s", "allocation failure probe");
+  return 1;
+}
+
+static int format_test_pushfstring_integer(cpkt_lua_state *state) {
+  reject_allocations = 1;
+  (void)cpkt_lua_pushfstring(state, "value=%I",
+                             cpkt_lua_integer_make(0U, 12345U));
+  return 1;
+}
+
+static int format_test_error_contract(void) {
+  cpkt_lua_state *state;
+  const char *result;
+  int status;
+
+  state = cpkt_lua_newstate(format_test_allocator, NULL, 0U);
+  if (state == NULL)
+    return 1;
+  reject_allocations = 1;
+  result = cpkt_lua_facade_pushvfstring(state, "value=%I",
+                                        cpkt_lua_integer_make(0U, 12345U));
+  reject_allocations = 0;
+  if (result != NULL || cpkt_lua_gettop(state) != 1 ||
+      strcmp(cpkt_lua_tostring(state, -1), "not enough memory") != 0) {
+    cpkt_lua_close(state);
+    return 2;
+  }
+  cpkt_lua_pop(state, 1);
+
+  reject_allocations = 1;
+  result = cpkt_lua_facade_pushvfstring(state, "value=%U", 65UL);
+  reject_allocations = 0;
+  if (result != NULL || cpkt_lua_gettop(state) != 1 ||
+      strcmp(cpkt_lua_tostring(state, -1), "not enough memory") != 0) {
+    cpkt_lua_close(state);
+    return 5;
+  }
+  cpkt_lua_pop(state, 1);
+
+  cpkt_lua_pushcfunction(state, format_test_pushfstring);
+  status = cpkt_lua_pcall(state, 0, 1, 0);
+  reject_allocations = 0;
+  if (status != CPKT_LUA_ERRMEM) {
+    cpkt_lua_close(state);
+    return 3;
+  }
+  cpkt_lua_pop(state, 1);
+
+  cpkt_lua_pushcfunction(state, format_test_pushfstring_integer);
+  status = cpkt_lua_pcall(state, 0, 1, 0);
+  reject_allocations = 0;
+  cpkt_lua_close(state);
+  return status == CPKT_LUA_ERRMEM ? 0 : 4;
+}
 
 static int cpkt_lua_facade_check_integer(cpkt_lua_integer value,
                                          unsigned int high, unsigned int low) {
@@ -135,5 +211,5 @@ int main(void) {
 
   cpkt_lua_l_openlibs(state);
   cpkt_lua_close(state);
-  return 0;
+  return format_test_error_contract();
 }

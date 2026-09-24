@@ -607,9 +607,19 @@ CPKT_LUA_API const char *cpkt_lua_ident(void)
 
 static uint64_t cpkt_lua_integer_bits(cpkt_lua_integer value);
 static lua_Integer cpkt_lua_native_integer(cpkt_lua_integer value);
+typedef struct cpkt_lua_format_call {
+  const char *format;
+  va_list *arguments;
+} cpkt_lua_format_call;
+static const char *cpkt_lua_push_format_converted(lua_State *native_state,
+                                                  const char *format,
+                                                  va_list arguments);
+static int cpkt_lua_push_format_protected(lua_State *native_state);
 static const char *cpkt_lua_push_format(cpkt_lua_state *state,
                                          const char *format,
                                          va_list arguments);
+static const char *cpkt_lua_push_memory_message(lua_State *native_state,
+                                                 const char *format, ...);
 
 CPKT_LUA_API const char *
 cpkt_lua_pushfstring(cpkt_lua_state *state, const char *format, ...)
@@ -620,6 +630,10 @@ cpkt_lua_pushfstring(cpkt_lua_state *state, const char *format, ...)
   va_start(arguments, format);
   result = cpkt_lua_push_format(state, format, arguments);
   va_end(arguments);
+  if (result == NULL) {
+    lua_pushstring((lua_State *)state, "not enough memory");
+    lua_error((lua_State *)state);
+  }
   return result;
 }
 
@@ -635,12 +649,58 @@ cpkt_lua_push_format(cpkt_lua_state *state, const char *format,
                      va_list arguments)
 {
   lua_State *native_state;
-  luaL_Buffer buffer;
-  const char *cursor;
+  cpkt_lua_format_call call;
+  va_list copied_arguments;
+  int status;
 
   native_state = (lua_State *)state;
   if (strstr(format, "%I") == NULL && strstr(format, "%U") == NULL)
     return lua_pushvfstring(native_state, format, arguments);
+  if (!lua_checkstack(native_state, 2)) {
+    (void)cpkt_lua_push_memory_message(native_state, "%s", "not enough memory");
+    return NULL;
+  }
+  call.format = format;
+  __builtin_va_copy(copied_arguments, arguments);
+  call.arguments = &copied_arguments;
+  lua_pushcfunction(native_state, cpkt_lua_push_format_protected);
+  lua_pushlightuserdata(native_state, &call);
+  status = lua_pcall(native_state, 1, 1, 0);
+  va_end(copied_arguments);
+  if (status != LUA_OK)
+    return NULL;
+  return lua_tolstring(native_state, -1, NULL);
+}
+
+static const char *cpkt_lua_push_memory_message(lua_State *native_state,
+                                                 const char *format, ...)
+{
+  va_list arguments;
+  const char *message;
+
+  va_start(arguments, format);
+  message = lua_pushvfstring(native_state, format, arguments);
+  va_end(arguments);
+  return message;
+}
+
+static int cpkt_lua_push_format_protected(lua_State *native_state)
+{
+  cpkt_lua_format_call *call;
+
+  call = (cpkt_lua_format_call *)lua_touserdata(native_state, 1);
+  (void)cpkt_lua_push_format_converted(native_state, call->format,
+                                       *call->arguments);
+  return 1;
+}
+
+static const char *
+cpkt_lua_push_format_converted(lua_State *native_state, const char *format,
+                               va_list arguments)
+{
+  luaL_Buffer buffer;
+  const char *cursor;
+
   luaL_buffinit(native_state, &buffer);
   cursor = format;
   while (*cursor != '\\0') {
