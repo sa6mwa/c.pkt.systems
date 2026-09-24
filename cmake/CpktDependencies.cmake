@@ -606,6 +606,9 @@ function(cpkt_add_nghttp2)
       BUILD_BYPRODUCTS
         "${install_dir}/lib/libnghttp2${CMAKE_STATIC_LIBRARY_SUFFIX}"
         "${install_dir}/lib/libnghttp2${CMAKE_SHARED_LIBRARY_SUFFIX}"
+      INSTALL_BYPRODUCTS
+        "${install_dir}/include/nghttp2/nghttp2.h"
+        "${install_dir}/include/nghttp2/nghttp2ver.h"
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -838,6 +841,10 @@ function(cpkt_add_libssh2)
       BUILD_BYPRODUCTS
         "${libssh2_static_library}"
         "${libssh2_shared_library}"
+      INSTALL_BYPRODUCTS
+        "${install_dir}/include/libssh2.h"
+        "${install_dir}/include/libssh2_sftp.h"
+        "${install_dir}/include/libssh2_publickey.h"
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -1524,6 +1531,7 @@ function(cpkt_add_lua)
       BUILD_BYPRODUCTS
         "${lua_static_library}"
         "${lua_shared_library_path}"
+      INSTALL_BYPRODUCTS
         "${install_dir}/include/lua.h"
         "${install_dir}/include/luaconf.h"
         "${install_dir}/include/lauxlib.h"
@@ -1658,6 +1666,8 @@ function(cpkt_add_mqttc)
       BUILD_BYPRODUCTS
         "${mqttc_static_library}"
         "${mqttc_shared_library}"
+      INSTALL_BYPRODUCTS
+        "${install_dir}/include/mqtt.h"
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )

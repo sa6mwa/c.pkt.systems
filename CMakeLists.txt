@@ -451,6 +451,14 @@ set(CPKT_NGHTTP2_FACADE_HEADER
   "${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}/cpkt/nghttp2.h")
 set(CPKT_NGHTTP2_FACADE_SOURCE
   "${CPKT_NGHTTP2_FACADE_GENERATED_DIR}/src/nghttp2.c")
+get_target_property(CPKT_NGHTTP2_FACADE_NATIVE_INCLUDE_DIR
+  cpkt::nghttp2_static INTERFACE_INCLUDE_DIRECTORIES)
+if(NOT CPKT_NGHTTP2_FACADE_NATIVE_INCLUDE_DIR)
+  message(FATAL_ERROR "nghttp2 target does not expose public include directories")
+endif()
+set(CPKT_NGHTTP2_FACADE_NATIVE_HEADERS
+  "${CPKT_NGHTTP2_FACADE_NATIVE_INCLUDE_DIR}/nghttp2/nghttp2.h"
+  "${CPKT_NGHTTP2_FACADE_NATIVE_INCLUDE_DIR}/nghttp2/nghttp2ver.h")
 add_custom_command(
   OUTPUT "${CPKT_NGHTTP2_FACADE_HEADER}" "${CPKT_NGHTTP2_FACADE_SOURCE}"
   COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
@@ -460,6 +468,7 @@ add_custom_command(
     --source "${CPKT_NGHTTP2_FACADE_SOURCE}"
   DEPENDS
     "${CMAKE_SOURCE_DIR}/tools/generate_nghttp2_c89_facade.py"
+    ${CPKT_NGHTTP2_FACADE_NATIVE_HEADERS}
   VERBATIM)
 set_source_files_properties("${CPKT_NGHTTP2_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_nghttp2_facade_generated
@@ -515,6 +524,15 @@ set(CPKT_LIBSSH2_FACADE_HEADER
   "${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}/cpkt/libssh2.h")
 set(CPKT_LIBSSH2_FACADE_SOURCE
   "${CPKT_LIBSSH2_FACADE_GENERATED_DIR}/src/libssh2.c")
+get_target_property(CPKT_LIBSSH2_FACADE_NATIVE_INCLUDE_DIR
+  cpkt::libssh2_static INTERFACE_INCLUDE_DIRECTORIES)
+if(NOT CPKT_LIBSSH2_FACADE_NATIVE_INCLUDE_DIR)
+  message(FATAL_ERROR "libssh2 target does not expose public include directories")
+endif()
+set(CPKT_LIBSSH2_FACADE_NATIVE_HEADERS
+  "${CPKT_LIBSSH2_FACADE_NATIVE_INCLUDE_DIR}/libssh2.h"
+  "${CPKT_LIBSSH2_FACADE_NATIVE_INCLUDE_DIR}/libssh2_sftp.h"
+  "${CPKT_LIBSSH2_FACADE_NATIVE_INCLUDE_DIR}/libssh2_publickey.h")
 add_custom_command(
   OUTPUT "${CPKT_LIBSSH2_FACADE_HEADER}" "${CPKT_LIBSSH2_FACADE_SOURCE}"
   COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
@@ -524,6 +542,7 @@ add_custom_command(
     --source "${CPKT_LIBSSH2_FACADE_SOURCE}"
   DEPENDS
     "${CMAKE_SOURCE_DIR}/tools/generate_libssh2_c89_facade.py"
+    ${CPKT_LIBSSH2_FACADE_NATIVE_HEADERS}
   VERBATIM)
 set_source_files_properties("${CPKT_LIBSSH2_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_libssh2_facade_generated
@@ -590,6 +609,13 @@ set(CPKT_MQTTC_FACADE_HEADER
   "${CPKT_MQTTC_FACADE_INCLUDE_DIR}/cpkt/mqttc.h")
 set(CPKT_MQTTC_FACADE_SOURCE
   "${CPKT_MQTTC_FACADE_GENERATED_DIR}/src/mqttc.c")
+get_target_property(CPKT_MQTTC_FACADE_NATIVE_INCLUDE_DIR
+  cpkt::mqttc_static INTERFACE_INCLUDE_DIRECTORIES)
+if(NOT CPKT_MQTTC_FACADE_NATIVE_INCLUDE_DIR)
+  message(FATAL_ERROR "MQTT-C target does not expose public include directories")
+endif()
+set(CPKT_MQTTC_FACADE_NATIVE_HEADERS
+  "${CPKT_MQTTC_FACADE_NATIVE_INCLUDE_DIR}/mqtt.h")
 add_custom_command(
   OUTPUT "${CPKT_MQTTC_FACADE_HEADER}" "${CPKT_MQTTC_FACADE_SOURCE}"
   COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
@@ -599,6 +625,7 @@ add_custom_command(
     --source "${CPKT_MQTTC_FACADE_SOURCE}"
   DEPENDS
     "${CMAKE_SOURCE_DIR}/tools/generate_mqttc_c89_facade.py"
+    ${CPKT_MQTTC_FACADE_NATIVE_HEADERS}
   VERBATIM)
 set_source_files_properties("${CPKT_MQTTC_FACADE_SOURCE}" PROPERTIES GENERATED TRUE)
 add_custom_target(cpkt_mqttc_facade_generated

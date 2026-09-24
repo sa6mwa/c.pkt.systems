@@ -140,16 +140,33 @@ case "$lua_plan" in
     ;;
 esac
 
-lua_generator_inputs=$(ninja -C "$build_dir" -t query generated/lua/include/cpkt/lua.h)
-for lua_header in lua.h luaconf.h lauxlib.h lualib.h; do
-  case "$lua_generator_inputs" in
-    *"deps/lua/install/include/$lua_header"*) ;;
-    *)
-      printf 'Lua facade generator does not depend on %s\n' "$lua_header" >&2
-      exit 1
-      ;;
-  esac
-done
+require_generator_inputs() {
+  local component=$1
+  local generated_header=$2
+  shift 2
+  local generator_inputs
+  local native_header
+
+  generator_inputs=$(ninja -C "$build_dir" -t query "$generated_header")
+  for native_header in "$@"; do
+    case "$generator_inputs" in
+      *"deps/$component/install/include/$native_header"*) ;;
+      *)
+        printf '%s facade generator does not depend on %s\n' \
+          "$component" "$native_header" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+require_generator_inputs nghttp2 generated/nghttp2/include/cpkt/nghttp2.h \
+  nghttp2/nghttp2.h nghttp2/nghttp2ver.h
+require_generator_inputs libssh2 generated/libssh2/include/cpkt/libssh2.h \
+  libssh2.h libssh2_sftp.h libssh2_publickey.h
+require_generator_inputs mqtt-c generated/mqttc/include/cpkt/mqttc.h mqtt.h
+require_generator_inputs lua generated/lua/include/cpkt/lua.h \
+  lua.h luaconf.h lauxlib.h lualib.h
 
 postgres_plan=$(cmake --build "$build_dir" --target cpkt_postgres_static -- -n)
 case "$postgres_plan" in
