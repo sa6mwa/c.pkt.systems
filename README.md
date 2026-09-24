@@ -12,6 +12,11 @@ The project builds release artifacts for:
 - libssh2
 - curl
 - libxml2
+- MIT Kerberos, with the strict C89 `cpkt_gssapi` facade
+- Cyrus SASL, with the strict C89 `cpkt_sasl` facade
+- OpenLDAP
+- PostgreSQL/libpq, with the strict C89 `cpkt_postgres` facade
+- SQLite, with the strict C89 `cpkt_sqlite` facade
 - Lua, with the complete strict-C89 `cpkt_lua` facade and the higher-level
   strict-C89 `cpkt_lua_runtime` embedding facade
 - miniaudio, behind the strict C89 `cpkt_audio` facade
@@ -85,13 +90,13 @@ make prerelease
 make release
 ```
 
-`make prerelease` runs the complete release proof graph without first deleting
+`make prerelease` runs the binary release proof graph without first deleting
 generated state: formatting, deterministic debug and local Podman database e2e,
 clangd checks, native Valgrind and AFL++ smoke checks, then the release matrix.
-It therefore produces
-and verifies the same package set as the final gate. `make release` first runs
+It produces and verifies the binary SDK archives. `make release` first runs
 the release-version contract check, then removes repository-local generated
-state and invokes that same proof graph. It builds and verifies local artifacts;
+state and runs the same checks plus source archive creation and verification.
+It builds and verifies local artifacts;
 it does not publish a release, push commits, or create a release tag.
 
 ### Release diagnostics
@@ -140,10 +145,12 @@ configure, test, and package verification.
 
 The release matrix builds each dependency tree, runs the ABI/link smoke tests
 where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
-writes `dist/c.pkt.systems-<version>.tar.gz` for source builds, writes
-`dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
+writes `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
 It also packages the Darwin
 `dist/c.pkt.systems-<version>-arm64-apple-darwin-smoke-test.zip`.
+The final `make release` additionally writes and verifies
+`dist/c.pkt.systems-<version>.tar.gz` for source builds, then regenerates and
+verifies the checksum manifest for the complete artifact set.
 The c.pkt.systems bundle release requires all listed Linux targets and
 `arm64-apple-darwin`; a missing osxcross SDK is a release failure, never a skip.
 Package verification also extracts each binary tarball and builds downstream
