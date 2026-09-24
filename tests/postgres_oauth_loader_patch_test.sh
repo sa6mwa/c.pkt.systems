@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+mkdir -p "$repo_root/build"
 scratch=$(mktemp -d "$repo_root/build/postgres-oauth-loader.XXXXXX")
 trap 'cmake -E remove_directory "$scratch"' EXIT
 source_dir="$scratch/src/interfaces/libpq"

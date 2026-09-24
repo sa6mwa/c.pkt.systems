@@ -11,6 +11,7 @@ compiler=$2
 sysroot=$3
 facade_include_dir=$4
 header="$facade_include_dir/cpkt/nghttp2.h"
+mkdir -p "$repo_root/build"
 work_root=$(mktemp -d "$repo_root/build/nghttp2-header-facade.XXXXXX")
 
 cleanup() {

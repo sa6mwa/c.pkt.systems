@@ -32,6 +32,7 @@ if [[ "$actual" != "$expected" ]]; then
 fi
 
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
+mkdir -p "$repo_root/build"
 work_root=$(mktemp -d "$repo_root/build/lua-export-policy.XXXXXX")
 cleanup() {
   cmake -E remove_directory "$work_root"

@@ -8,6 +8,7 @@ fi
 
 source_dir=$1
 cmake_command=$2
+mkdir -p "$source_dir/build"
 work_dir=$(mktemp -d "$source_dir/build/darwin-install-name-normalization.XXXXXXXX")
 trap '"$cmake_command" -E remove_directory "$work_dir"' EXIT HUP INT TERM
 

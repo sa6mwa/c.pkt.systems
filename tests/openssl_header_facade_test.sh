@@ -11,6 +11,7 @@ compiler=$2
 sysroot=$3
 openssl_include_dir=$4
 header="$repo_root/include/cpkt/openssl.h"
+mkdir -p "$repo_root/build"
 work_root=$(mktemp -d "$repo_root/build/openssl-header-facade.XXXXXX")
 
 cleanup() {

@@ -33,6 +33,7 @@ if [[ "$actual" != "$expected" ]]; then
 fi
 
 repo_root=$(cd "$(dirname "$0")/.." && pwd)
+mkdir -p "$repo_root/build"
 work_root=$(mktemp -d "$repo_root/build/libssh2-export-policy.XXXXXX")
 
 cleanup() {

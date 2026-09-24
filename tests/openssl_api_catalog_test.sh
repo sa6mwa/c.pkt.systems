@@ -13,6 +13,7 @@ crypto_library=$4
 ssl_library=$5
 symbol_format=$6
 symbol_tool=$7
+mkdir -p "$repo_root/build"
 work_root=$(mktemp -d "$repo_root/build/openssl-api-catalog.XXXXXX")
 
 cleanup() {

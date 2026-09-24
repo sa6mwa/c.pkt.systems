@@ -9,6 +9,7 @@ fi
 source_dir=$1
 external_root=$2
 dependency_build_root=$3
+mkdir -p "$source_dir/build"
 work_dir=$(mktemp -d "$source_dir/build/dependency-cache-disabled.XXXXXXXXXX")
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 

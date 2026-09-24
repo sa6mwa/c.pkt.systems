@@ -1929,6 +1929,13 @@ if(CPKT_BUILD_TESTS)
       add_test(
         NAME postgres_oauth_loader_patch
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_oauth_loader_patch_test.sh")
+      add_test(
+        NAME clean_source_test_scratch
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/clean_source_test_scratch_test.sh"
+                "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(clean_source_test_scratch PROPERTIES
+        LABELS "packaging;smoke"
+        TIMEOUT 30)
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
       add_test(NAME sasl_facade COMMAND cpkt_sasl_facade_test)
       file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/sasl-empty-plugin-path")
@@ -2091,7 +2098,11 @@ if(CPKT_BUILD_TESTS)
           COMMAND
             "${CMAKE_SOURCE_DIR}/tests/dependency_reuse_configure_test.sh"
             "${CMAKE_SOURCE_DIR}"
-            "${CMAKE_COMMAND}")
+            "${CMAKE_COMMAND}"
+            "${CMAKE_GENERATOR}"
+            "${CMAKE_MAKE_PROGRAM}"
+            "${CMAKE_TOOLCHAIN_FILE}"
+            "${CMAKE_BUILD_TYPE}")
         set_tests_properties(dependency_reuse_configure PROPERTIES
           LABELS "packaging;smoke"
           TIMEOUT 60)
