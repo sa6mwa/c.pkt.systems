@@ -1158,7 +1158,7 @@ struct cpkt_sqlite_fts5_tokenizer {
   void *facade;
 };
 
-/* Valid only for the duration of an FTS5 auxiliary-function callback. */
+/* Valid only during an FTS5 auxiliary or query-phrase callback. */
 struct cpkt_sqlite_fts5_context {
   void *(*user_data)(const cpkt_sqlite_fts5_context *self);
   int (*column_count)(const cpkt_sqlite_fts5_context *self);

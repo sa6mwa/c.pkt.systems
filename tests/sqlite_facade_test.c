@@ -17,6 +17,7 @@ typedef struct fts5_state {
   int destroy_count;
   int binding_destroy_count;
   int auxiliary_count;
+  int phrase_callback_count;
 } fts5_state;
 
 typedef struct collation_needed_state {
@@ -902,6 +903,16 @@ static void fts5_binding_destroy(void *context) {
     state->binding_destroy_count += 1;
 }
 
+static int fts5_phrase_callback(cpkt_sqlite_fts5_context *context,
+                                void *user_data) {
+  fts5_state *state;
+  state = (fts5_state *)user_data;
+  if (state == NULL || context->user_data(context) != state)
+    return CPKT_SQLITE_MISUSE;
+  ++state->phrase_callback_count;
+  return CPKT_SQLITE_OK;
+}
+
 static void fts5_auxiliary(cpkt_sqlite_fts5_context *fts_context,
                            cpkt_sqlite_context *sql_context, int argument_count,
                            cpkt_sqlite_value *const *arguments,
@@ -934,7 +945,10 @@ static void fts5_auxiliary(cpkt_sqlite_fts5_context *fts_context,
       text == 0 || text_byte_count != 5 || memcmp(text, "alpha", 5) != 0 ||
       fts_context->query_token(fts_context, 0, 0, &text, &text_byte_count) !=
           CPKT_SQLITE_OK ||
-      text == 0 || text_byte_count != 5 || memcmp(text, "alpha", 5) != 0) {
+      text == 0 || text_byte_count != 5 || memcmp(text, "alpha", 5) != 0 ||
+      fts_context->query_phrase(fts_context, 0, state, fts5_phrase_callback) !=
+          CPKT_SQLITE_OK ||
+      state->phrase_callback_count != 1) {
     cpkt_sqlite_context_result_error_code(sql_context, CPKT_SQLITE_MISUSE);
     return;
   }
@@ -1583,6 +1597,7 @@ int main(void) {
   fts_state.destroy_count = 0;
   fts_state.binding_destroy_count = 0;
   fts_state.auxiliary_count = 0;
+  fts_state.phrase_callback_count = 0;
   fts_database = cpkt_sqlite_new(":memory:");
   fts_api = 0;
   if (fts_database == 0 ||

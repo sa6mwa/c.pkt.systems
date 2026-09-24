@@ -250,6 +250,11 @@ typedef struct cpkt_sqlite_fts5_query_phrase_context {
   cpkt_sqlite_fts5_query_phrase_callback callback;
 } cpkt_sqlite_fts5_query_phrase_context;
 
+typedef struct cpkt_sqlite_fts5_phrase_public_context {
+  cpkt_sqlite_fts5_context public_context;
+  void *user_data;
+} cpkt_sqlite_fts5_phrase_public_context;
+
 typedef struct cpkt_sqlite_page_cache_binding cpkt_sqlite_page_cache_binding;
 typedef struct cpkt_sqlite_page_binding cpkt_sqlite_page_binding;
 
@@ -4709,17 +4714,27 @@ cpkt_sqlite_fts5_context_column_size(const cpkt_sqlite_fts5_context *self,
                           token_count_out);
 }
 
+static void *
+cpkt_sqlite_fts5_phrase_user_data(const cpkt_sqlite_fts5_context *context) {
+  const cpkt_sqlite_fts5_phrase_public_context *scope;
+  scope = (const cpkt_sqlite_fts5_phrase_public_context *)context;
+  return scope->user_data;
+}
+
 static int cpkt_sqlite_fts5_query_phrase_trampoline(const Fts5ExtensionApi *api,
                                                     Fts5Context *context,
                                                     void *user_data) {
   cpkt_sqlite_fts5_query_phrase_context *query_context;
-  cpkt_sqlite_fts5_context public_context;
+  cpkt_sqlite_fts5_phrase_public_context scope;
   query_context = (cpkt_sqlite_fts5_query_phrase_context *)user_data;
   if (query_context == NULL || query_context->callback == NULL)
     return SQLITE_MISUSE;
-  cpkt_sqlite_fts5_context_initialize(&public_context, api, context,
+  cpkt_sqlite_fts5_context_initialize(&scope.public_context, api, context,
                                       query_context->database);
-  return query_context->callback(&public_context, query_context->user_data);
+  scope.public_context.user_data = cpkt_sqlite_fts5_phrase_user_data;
+  scope.user_data = query_context->user_data;
+  return query_context->callback(&scope.public_context,
+                                 query_context->user_data);
 }
 
 static int cpkt_sqlite_fts5_context_query_phrase(
@@ -5567,6 +5582,7 @@ int cpkt_sqlite_register_rtree_geometry(
     cpkt_sqlite_rtree_geometry_callback callback, void *context) {
   cpkt_sqlite_state *state;
   cpkt_sqlite_rtree_geometry_binding *binding;
+  sqlite3_mutex *mutex;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL || name == NULL ||
       callback == NULL)
@@ -5579,15 +5595,18 @@ int cpkt_sqlite_register_rtree_geometry(
     return SQLITE_NOMEM;
   binding->context = context;
   binding->callback = callback;
+  mutex = cpkt_sqlite_connection_lock(self);
   status = sqlite3_rtree_geometry_callback(
       cpkt_sqlite_native(self), name, cpkt_sqlite_rtree_geometry_trampoline,
       binding);
   if (status != SQLITE_OK) {
+    cpkt_sqlite_connection_unlock(mutex);
     free(binding);
     return status;
   }
   binding->next = state->rtree_geometry_bindings;
   state->rtree_geometry_bindings = binding;
+  cpkt_sqlite_connection_unlock(mutex);
   return SQLITE_OK;
 }
 
@@ -6073,6 +6092,7 @@ int cpkt_sqlite_create_function16(cpkt_sqlite *self, const void *name,
                                   cpkt_sqlite_scalar_callback step,
                                   cpkt_sqlite_scalar_callback final) {
   cpkt_sqlite_function_binding *binding;
+  sqlite3_mutex *mutex;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL || name == NULL) {
     return CPKT_SQLITE_MISUSE;
@@ -6085,17 +6105,20 @@ int cpkt_sqlite_create_function16(cpkt_sqlite *self, const void *name,
   binding->scalar = scalar;
   binding->step = step;
   binding->final = final;
+  mutex = cpkt_sqlite_connection_lock(self);
   status = sqlite3_create_function16(
       cpkt_sqlite_native(self), name, argument_count, (int)text_representation,
       binding, scalar == NULL ? NULL : cpkt_sqlite_function_scalar_trampoline,
       step == NULL ? NULL : cpkt_sqlite_function_step_trampoline,
       final == NULL ? NULL : cpkt_sqlite_function_final_trampoline);
   if (status != SQLITE_OK) {
+    cpkt_sqlite_connection_unlock(mutex);
     free(binding);
     return status;
   }
   binding->next = cpkt_sqlite_state_for(self)->function16_bindings;
   cpkt_sqlite_state_for(self)->function16_bindings = binding;
+  cpkt_sqlite_connection_unlock(mutex);
   return CPKT_SQLITE_OK;
 }
 

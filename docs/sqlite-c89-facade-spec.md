@@ -92,6 +92,8 @@ auxiliary-data operations. Do not retain that context, its phrase iterator, or
 its text/token views after the callback returns. Closing the database releases
 registered tokenizer and auxiliary bindings and invokes their supplied
 destructors exactly once.
+The query-phrase callback receives its own callback-local context; its
+`user_data` receiver returns the pointer passed to `query_phrase`.
 
 Static consumers use `find_package(CpktSqlite CONFIG REQUIRED)` and
 `cpkt::sqlite`, or `pkg-config --static --libs cpkt-sqlite`. Shared consumers
