@@ -20,24 +20,13 @@ to a caller-selected path.
 
 ## SVG artwork
 
-libHaru has no public SVG loader. The facade exposes its drawing primitives,
-including paths, cubic curves, transforms, clipping, fills, and strokes, but it
-does not parse or render SVG. For SVG artwork in a libHaru document today,
-render it to PNG at the size and resolution needed for the PDF, then load it
-with `cpkt_pdf_load_png_image_from_mem()` or
-`cpkt_pdf_load_png_image_from_file()` and place it with
-`cpkt_pdf_page_draw_image()`. This embeds pixels, so enlarging the image later
-cannot recover vector detail.
-
-A vector converter could map a deliberately limited SVG subset to the page
-path API. It would need to define supported path commands, coordinate and
-`viewBox` transforms, units, paint, clipping, and error behavior. libxml2 can
-parse the XML, but does not implement SVG rendering semantics. We should not
-advertise arbitrary SVG support through that route without implementing and
-testing the remaining SVG behavior. An external SVG renderer can produce a PDF
-with vector output, but libHaru has no API to import that PDF page into its own
-document. Adding a renderer to the shipped SDK would require a separate
-dependency, license, and target-matrix decision.
+SVG conversion is outside this SDK. libHaru has no public SVG loader or PDF-page
+importer, and the facade does not parse or render SVG. It exposes vector drawing
+primitives, including paths, cubic curves, transforms, clipping, fills, and
+strokes, for callers that already have their own drawing instructions. A
+separate project will own SVG parsing and vector PDF composition. Consumers
+must not expect `cpkt_pdf` to accept SVG input or to import the PDF output of
+that external converter.
 
 For CMake, use `find_package(CpktPdf CONFIG REQUIRED)` and link `cpkt::pdf` for static or `cpkt::pdf_shared` for shared. `find_package(CpktPng CONFIG REQUIRED)` provides `cpkt::png`, `cpkt::png_static`, and `cpkt::png_shared`. `find_package(CpktHaru CONFIG REQUIRED)` provides `cpkt::haru`, `cpkt::haru_static`, and `cpkt::haru_shared` for native-header consumers. Static imported targets include the transitive libpng, zlib, and platform math dependencies.
 
