@@ -50,8 +50,11 @@ load it at runtime; it has no public shared-library ABI or link target.
 ## Live protocol compatibility gate
 
 `make e2e-postgres` exercises the receiver shell against both PostgreSQL and
-CockroachDB. It requires `CPKT_POSTGRES_E2E_CONNINFO` and
-`CPKT_COCKROACH_E2E_CONNINFO`, both standard libpq connection strings. The
-gate covers receiver queries, parameters, asynchronous send/receive, prepared
-statements, transaction state, and an exact 64-bit `INT8` result. Connection
-strings are never printed by the harness.
+CockroachDB. The target starts both services from the rootless Podman Kube
+manifest generated from `devenv.yaml.in`, provides their libpq connection
+strings to the test runner, and stops the services when the run finishes. To run
+`scripts/e2e-postgres.sh` directly against existing servers, set
+`CPKT_POSTGRES_E2E_CONNINFO` and `CPKT_COCKROACH_E2E_CONNINFO` to standard libpq
+connection strings. The gate covers receiver queries, parameters, asynchronous
+send/receive, prepared statements, transaction state, and an exact 64-bit
+`INT8` result. Connection strings are never printed by the harness.

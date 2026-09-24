@@ -88,12 +88,12 @@ sources or a C++ compiler requirement into this project.
 
 ## Planned database and messaging clients
 
-The order below reflects current priority. PostgreSQL support is first.
+The first two entries are implemented; later entries remain proposals.
 
 | Priority | Component | Capability and boundary | License conclusion | Status / implementation gate |
 | ---: | --- | --- | --- | --- |
-| 1 | [libpq](https://www.postgresql.org/docs/current/libpq.html) | PostgreSQL C client; validate against PostgreSQL and CockroachDB in the facade e2e suite. | PostgreSQL License, a permissive BSD/MIT-like license. | First implementation slice. Build with the selected TLS/authentication configuration and prove shared/static facade consumers. |
-| 2 | [SQLite](https://www.sqlite.org/about.html) | Embedded SQL database. | Public domain for the delivered SQLite library. | Implementation active. Pin the official amalgamation, enable the audited public feature set, and expose its complete public capability through the C89 facade. SQLite 3 database files remain readable and writable by later SQLite 3 releases; the test suite must cover current file-format and WAL behavior. |
+| 1 | [libpq](https://www.postgresql.org/docs/current/libpq.html) | PostgreSQL C client; validate against PostgreSQL and CockroachDB in the facade e2e suite. | PostgreSQL License, a permissive BSD/MIT-like license. | Implemented: strict C89 facade, shared/static consumers, and local PostgreSQL/CockroachDB e2e gate. |
+| 2 | [SQLite](https://www.sqlite.org/about.html) | Embedded SQL database. | Public domain for the delivered SQLite library. | Implemented: pinned amalgamation and C89 facade with local file-format and WAL tests. |
 | 3 | [librdkafka](https://github.com/confluentinc/librdkafka) | Kafka producer, consumer, and administration client. | BSD-2-Clause. | Third implementation slice. Start with a minimal feature set; explicitly select TLS, SASL, and compression dependencies and audit their licenses and static link closure. |
 | 4 | [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) | RabbitMQ/AMQP 0-9-1 C client. | MIT. | Fourth implementation slice. Use the bundled OpenSSL only through the facade and test broker e2e behavior. |
 | 5 | [tdslite](https://github.com/tdslite/tdslite) | Direct Microsoft SQL Server TDS client. It is not a Sybase client commitment. | MIT. | Investigation candidate, not a committed dependency. It is header-only C++11 with a pluggable network layer; prove TLS, SQL Server authentication modes, server-feature coverage, and all-target transport integration before adoption. It must sit behind a C89 facade. |

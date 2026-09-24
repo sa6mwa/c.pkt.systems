@@ -17,6 +17,7 @@ extern "C" {
 /** @defgroup cpkt_pdf libHaru C89 PDF facade
  * Documents own their pages, fonts, and images. PDF stream output is
  * buffered in memory; read_from_stream consumes that saved buffer.
+ * SVG input is not supported; see docs/pdf-c89-facade.md for options.
  * See docs/pdf-c89-facade.md for ownership and output behavior.
  * @{ */
 
@@ -1475,7 +1476,8 @@ CPKT_PDF_API CPKT_PDF_Image cpkt_pdf_load_png_image_from_mem(
 /** Loads a PNG file as a document-owned image. */
 CPKT_PDF_API CPKT_PDF_Image
 cpkt_pdf_load_png_image_from_file(CPKT_PDF_Doc pdf, const char *filename);
-/** Calls libHaru's HPDF_LoadPngImageFromFile2 with C89 facade types. */
+/** Loads a PNG file as a document-owned image with delayed image-data loading.
+ */
 CPKT_PDF_API CPKT_PDF_Image
 cpkt_pdf_load_png_image_from_file2(CPKT_PDF_Doc pdf, const char *filename);
 /** Calls libHaru's HPDF_LoadJpegImageFromFile with C89 facade types. */
@@ -1725,54 +1727,57 @@ CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_ext_g_state(
 /** Calls libHaru's HPDF_Page_SetShading with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS
 cpkt_pdf_page_set_shading(CPKT_PDF_Page page, CPKT_PDF_Shading shading);
-/** Calls libHaru's HPDF_Page_GSave with C89 facade types. */
+/** Saves the page graphics state, including its transform and paint settings;
+ * restore it with cpkt_pdf_page_g_restore(). */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_g_save(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_GRestore with C89 facade types. */
+/** Restores the most recently saved page graphics state. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_g_restore(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_Concat with C89 facade types. */
+/** Concatenates an affine transform with the page's current transform; use
+ * g_save/g_restore to limit its scope. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_concat(
     CPKT_PDF_Page page, CPKT_PDF_REAL a, CPKT_PDF_REAL b, CPKT_PDF_REAL c,
     CPKT_PDF_REAL d, CPKT_PDF_REAL x, CPKT_PDF_REAL y);
-/** Calls libHaru's HPDF_Page_MoveTo with C89 facade types. */
+/** Starts a new path subpath at the given page coordinates. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_move_to(CPKT_PDF_Page page,
                                                    CPKT_PDF_REAL x,
                                                    CPKT_PDF_REAL y);
-/** Calls libHaru's HPDF_Page_LineTo with C89 facade types. */
+/** Adds a straight path segment from the current point. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_line_to(CPKT_PDF_Page page,
                                                    CPKT_PDF_REAL x,
                                                    CPKT_PDF_REAL y);
-/** Calls libHaru's HPDF_Page_CurveTo with C89 facade types. */
+/** Adds a cubic Bezier segment with two control points and an end point. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_curve_to(
     CPKT_PDF_Page page, CPKT_PDF_REAL x1, CPKT_PDF_REAL y1, CPKT_PDF_REAL x2,
     CPKT_PDF_REAL y2, CPKT_PDF_REAL x3, CPKT_PDF_REAL y3);
-/** Calls libHaru's HPDF_Page_CurveTo2 with C89 facade types. */
+/** Adds a cubic Bezier segment whose first control point is the current point.
+ */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_curve_to2(CPKT_PDF_Page page,
                                                      CPKT_PDF_REAL x2,
                                                      CPKT_PDF_REAL y2,
                                                      CPKT_PDF_REAL x3,
                                                      CPKT_PDF_REAL y3);
-/** Calls libHaru's HPDF_Page_CurveTo3 with C89 facade types. */
+/** Adds a cubic Bezier segment whose second control point is the end point. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_curve_to3(CPKT_PDF_Page page,
                                                      CPKT_PDF_REAL x1,
                                                      CPKT_PDF_REAL y1,
                                                      CPKT_PDF_REAL x3,
                                                      CPKT_PDF_REAL y3);
-/** Calls libHaru's HPDF_Page_ClosePath with C89 facade types. */
+/** Closes the current path subpath. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_close_path(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_Rectangle with C89 facade types. */
+/** Adds a rectangle to the current path. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_rectangle(CPKT_PDF_Page page,
                                                      CPKT_PDF_REAL x,
                                                      CPKT_PDF_REAL y,
                                                      CPKT_PDF_REAL width,
                                                      CPKT_PDF_REAL height);
-/** Calls libHaru's HPDF_Page_Stroke with C89 facade types. */
+/** Strokes the current path with the page's stroke settings. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_ClosePathStroke with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS
 cpkt_pdf_page_close_path_stroke(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_Fill with C89 facade types. */
+/** Fills the current path with the nonzero winding rule. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_fill(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_Eofill with C89 facade types. */
+/** Fills the current path with the even-odd rule. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_eofill(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_FillStroke with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_fill_stroke(CPKT_PDF_Page page);
@@ -1784,11 +1789,12 @@ cpkt_pdf_page_close_path_fill_stroke(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_ClosePathEofillStroke with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS
 cpkt_pdf_page_close_path_eofill_stroke(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_EndPath with C89 facade types. */
+/** Ends the current path without painting it; use after clip/eoclip. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_end_path(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_Clip with C89 facade types. */
+/** Sets a clipping path using the nonzero winding rule; call end_path
+ * afterward. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_clip(CPKT_PDF_Page page);
-/** Calls libHaru's HPDF_Page_Eoclip with C89 facade types. */
+/** Sets a clipping path using the even-odd rule; call end_path afterward. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_eoclip(CPKT_PDF_Page page);
 /** Calls libHaru's HPDF_Page_BeginText with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_begin_text(CPKT_PDF_Page page);
@@ -1849,12 +1855,12 @@ CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_gray_fill(CPKT_PDF_Page page,
 /** Calls libHaru's HPDF_Page_SetGrayStroke with C89 facade types. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_gray_stroke(CPKT_PDF_Page page,
                                                            CPKT_PDF_REAL gray);
-/** Calls libHaru's HPDF_Page_SetRGBFill with C89 facade types. */
+/** Sets the page's RGB fill color; each component is in the range 0 to 1. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_rgb_fill(CPKT_PDF_Page page,
                                                         CPKT_PDF_REAL r,
                                                         CPKT_PDF_REAL g,
                                                         CPKT_PDF_REAL b);
-/** Calls libHaru's HPDF_Page_SetRGBStroke with C89 facade types. */
+/** Sets the page's RGB stroke color; each component is in the range 0 to 1. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_set_rgb_stroke(CPKT_PDF_Page page,
                                                           CPKT_PDF_REAL r,
                                                           CPKT_PDF_REAL g,
@@ -1891,7 +1897,7 @@ cpkt_pdf_page_new_content_stream(CPKT_PDF_Page page, CPKT_PDF_Dict *new_stream);
  * types. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_insert_shared_content_stream(
     CPKT_PDF_Page page, CPKT_PDF_Dict shared_stream);
-/** Calls libHaru's HPDF_Page_DrawImage with C89 facade types. */
+/** Draws a document-owned image at the given page position and dimensions. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_draw_image(
     CPKT_PDF_Page page, CPKT_PDF_Image image, CPKT_PDF_REAL x, CPKT_PDF_REAL y,
     CPKT_PDF_REAL width, CPKT_PDF_REAL height);
@@ -1900,13 +1906,13 @@ CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_circle(CPKT_PDF_Page page,
                                                   CPKT_PDF_REAL x,
                                                   CPKT_PDF_REAL y,
                                                   CPKT_PDF_REAL ray);
-/** Calls libHaru's HPDF_Page_Ellipse with C89 facade types. */
+/** Adds an ellipse path centered at the given page coordinates. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_ellipse(CPKT_PDF_Page page,
                                                    CPKT_PDF_REAL x,
                                                    CPKT_PDF_REAL y,
                                                    CPKT_PDF_REAL xray,
                                                    CPKT_PDF_REAL yray);
-/** Calls libHaru's HPDF_Page_Arc with C89 facade types. */
+/** Adds an arc path centered at the given page coordinates. */
 CPKT_PDF_API CPKT_PDF_STATUS cpkt_pdf_page_arc(CPKT_PDF_Page page,
                                                CPKT_PDF_REAL x, CPKT_PDF_REAL y,
                                                CPKT_PDF_REAL ray,

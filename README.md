@@ -596,11 +596,11 @@ out of scope; supported downstream speech use goes through `cpkt_sus`.
 [latest stable host LLVM installation](skills/pkt-systems-cmake-lifecycle/references/toolchains.md#host-llvm-and-clang),
 which also supplies Clang for osxcross. c.pkt.systems does not download, cache,
 or ship LLVM/Clang. `make clangd-surface` configures
-the native debug compile database, verifies that every public facade header
-declaration and non-static facade implementation has adjacent Doxygen
-documentation for LSP hover text, and checks that the shipped examples are
-present in `compile_commands.json`. The same target also runs
-`clangd --check` against the examples using that compile database. Cross-target
+the native debug compile database and checks declaration-local Doxygen comments
+for most public facades and non-static implementations. SQLite uses group-level
+documentation for its broad header surface. The target checks that the shipped
+examples and the PDF facade test are present in `compile_commands.json`, then
+runs `clangd --check` on those translation units. Cross-target
 CTest and package configurations do not invoke host `clangd`; their compiler,
 target-runner, and package verification gates remain authoritative.
 

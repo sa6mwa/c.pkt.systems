@@ -12,7 +12,7 @@ trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 source_dir="$work_dir/source"
 build_dir="$work_dir/build"
-mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" \
+mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" "$source_dir/tests" \
   "$build_dir/generated/lua/include/cpkt" "$work_dir/bin"
 
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/bin/clangd"
@@ -45,7 +45,8 @@ for source_file in \
   examples/sus-vox-intro-c89/main.c \
   examples/lua-runtime-c89/main.c \
   examples/lua-runtime-c89/host_module.c \
-  examples/opcua-c89/main.c; do
+  examples/opcua-c89/main.c \
+  tests/pdf_facade_test.c; do
   mkdir -p "$(dirname "$source_dir/$source_file")"
   : > "$source_dir/$source_file"
   printf '"%s/%s"\n' "$source_dir" "$source_file" >> "$build_dir/compile_commands.json"
