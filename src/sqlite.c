@@ -6925,7 +6925,8 @@ int cpkt_sqlite_changeset_apply_ex(
       (void *)changeset->data,
       filter == NULL ? NULL : cpkt_sqlite_changeset_filter_trampoline,
       conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, &rebase_data, &rebase_size, flags);
+      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
       sqlite3_free(rebase_data);
@@ -6964,7 +6965,8 @@ int cpkt_sqlite_changeset_apply_stream_ex(
       &stream_context,
       filter == NULL ? NULL : cpkt_sqlite_changeset_filter_trampoline,
       conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, &rebase_data, &rebase_size, flags);
+      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
       sqlite3_free(rebase_data);
@@ -6999,7 +7001,8 @@ int cpkt_sqlite_changeset_apply_v3(
       (void *)changeset->data,
       filter == NULL ? NULL : cpkt_sqlite_changeset_iterator_filter_trampoline,
       conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, &rebase_data, &rebase_size, flags);
+      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
       sqlite3_free(rebase_data);
@@ -7038,7 +7041,8 @@ int cpkt_sqlite_changeset_apply_v3_stream(
       &stream_context,
       filter == NULL ? NULL : cpkt_sqlite_changeset_iterator_filter_trampoline,
       conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, &rebase_data, &rebase_size, flags);
+      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
       sqlite3_free(rebase_data);

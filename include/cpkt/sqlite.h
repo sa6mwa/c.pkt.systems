@@ -1634,7 +1634,8 @@ void cpkt_sqlite_value_free(cpkt_sqlite_value *value);
  *
  * Changesets are owned facade buffers.  The `_stream` operations preserve
  * producer-to-consumer flow through their callbacks and never materialize a
- * whole changeset in the facade.  Callback and iterator views are valid only
+ * whole changeset in the facade. A NULL rebase_out on extended apply operations
+ * disables native rebase collection. Callback and iterator views are valid only
  * for their documented call or receiver lifetime.
  * @{
  */

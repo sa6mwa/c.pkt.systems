@@ -42,6 +42,10 @@ clearing the legacy profiler preserves the v2 trace registration and returns
 the previous legacy profiler context. Registering a new trace callback cancels
 the previous trace and legacy profiler, matching SQLite's trace behavior.
 
+Extended changeset apply operations collect rebase output only when
+`rebase_out` is provided. Passing `NULL` avoids the input-proportional native
+rebase allocation, including for streaming apply operations.
+
 `db->close(db)` is the convenience destructor: it defers native teardown until
 facade-owned statements, blobs, and backups have been finalized or closed, so
 callback state never outlives its facade owner. Use `cpkt_sqlite_close_strict()`
