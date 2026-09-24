@@ -13,6 +13,41 @@ static int facade_secret(cpkt_sasl *connection, void *context, int id,
   return CPKT_SASL_OK;
 }
 
+static int facade_global_simple(void *context, int id, const char **result,
+                                unsigned long *result_byte_count) {
+  int *calls;
+  (void)id;
+  calls = (int *)context;
+  ++*calls;
+  *result = "facade-user";
+  if (result_byte_count != 0)
+    *result_byte_count = 11;
+  return CPKT_SASL_OK;
+}
+
+static int start_external_client(void) {
+  cpkt_sasl *client;
+  cpkt_sasl_interaction *interactions;
+  const char *output;
+  const char *mechanism;
+  unsigned long output_length;
+  int status;
+  status = CPKT_SASL_FAIL;
+  client = cpkt_sasl_client_new("test", "localhost", 0, 0, 0, 0, &status);
+  if (client == 0 || status != CPKT_SASL_OK)
+    return 0;
+  interactions = 0;
+  output = 0;
+  mechanism = 0;
+  output_length = 0;
+  status = client->set_external_authentication(client, "facade-user");
+  if (status == CPKT_SASL_OK)
+    status = client->start(client, "EXTERNAL", &interactions, &output,
+                           &output_length, &mechanism);
+  client->close(client);
+  return status == CPKT_SASL_OK;
+}
+
 int main(void) {
   const char *implementation;
   const char *version;
@@ -28,6 +63,7 @@ int main(void) {
   int step;
   int patch;
   int status;
+  int global_calls;
 
   implementation = 0;
   version = 0;
@@ -86,5 +122,21 @@ int main(void) {
   client->close(client);
   if (cpkt_sasl_client_finish() != CPKT_SASL_OK)
     return 9;
+  memset(&callbacks, 0, sizeof(callbacks));
+  global_calls = 0;
+  callbacks.context = &global_calls;
+  callbacks.simple = facade_global_simple;
+  if (cpkt_sasl_client_initialize(&callbacks) != CPKT_SASL_OK ||
+      !start_external_client() || global_calls == 0 ||
+      cpkt_sasl_client_initialize(0) != CPKT_SASL_OK)
+    return 12;
+  global_calls = 0;
+  if (!start_external_client() || global_calls == 0 ||
+      cpkt_sasl_client_finish() != CPKT_SASL_CONTINUE)
+    return 13;
+  global_calls = 0;
+  if (!start_external_client() || global_calls == 0 ||
+      cpkt_sasl_client_finish() != CPKT_SASL_OK)
+    return 14;
   return 0;
 }

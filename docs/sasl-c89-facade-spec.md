@@ -23,6 +23,10 @@ Callbacks must not close their receiver while Cyrus SASL is invoking them.
 Global initialization accepts only process callbacks; callbacks that receive a
 connection must be supplied at receiver creation so the facade can preserve
 receiver identity and lifetime.
+Repeated client or server initialization increments the corresponding global
+reference count and keeps the callbacks from the first successful
+initialization. Each matching finish call releases one reference. A fresh
+global lifetime may install new callbacks after the final finish call.
 
 The `secret` callback returns a borrowed `cpkt_sasl_secret` containing password
 bytes and their exact length. The facade copies those bytes into native storage

@@ -214,7 +214,9 @@ const char *cpkt_sasl_error_string(int status, const char *languages,
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 int cpkt_sasl_set_path(int type, const char *path);
 /* Global initialization accepts process callbacks only. Receiver callbacks
- * (secret, authorize, password, and canonicalize) belong on a new receiver. */
+ * (secret, authorize, password, and canonicalize) belong on a new receiver.
+ * Repeated initialization retains the first successful callback record until
+ * its matching final finish call. */
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
 int cpkt_sasl_client_initialize(const cpkt_sasl_callbacks *callbacks);
 /** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */

@@ -6,6 +6,10 @@
 
 static int mock_connection;
 static const sasl_callback_t *mock_callbacks;
+static const sasl_callback_t *mock_client_global_callbacks;
+static const sasl_callback_t *mock_server_global_callbacks;
+static int mock_client_initializations;
+static int mock_server_initializations;
 static int mock_start_calls;
 static int mock_step_calls;
 static int mock_secret_mode;
@@ -20,15 +24,20 @@ typedef union mock_callback_bridge {
   sasl_getsecret_t *secret;
 } mock_callback_bridge;
 
-static const sasl_callback_t *mock_callback(unsigned long identifier) {
+static const sasl_callback_t *
+mock_find_callback(const sasl_callback_t *callbacks, unsigned long identifier) {
   const sasl_callback_t *callback;
-  callback = mock_callbacks;
+  callback = callbacks;
   while (callback != 0 && callback->id != SASL_CB_LIST_END) {
     if (callback->id == identifier)
       return callback;
     ++callback;
   }
   return 0;
+}
+
+static const sasl_callback_t *mock_callback(unsigned long identifier) {
+  return mock_find_callback(mock_callbacks, identifier);
 }
 
 static int mock_simple(void *context, int identifier, const char **result,
@@ -63,19 +72,35 @@ static int mock_secret(cpkt_sasl *connection, void *context, int identifier,
 }
 
 int sasl_client_init(const sasl_callback_t *callbacks) {
-  (void)callbacks;
+  if (mock_client_initializations++ == 0)
+    mock_client_global_callbacks = callbacks;
   return SASL_OK;
 }
 
 int sasl_server_init(const sasl_callback_t *callbacks,
                      const char *application_name) {
-  (void)callbacks;
   (void)application_name;
+  if (mock_server_initializations++ == 0)
+    mock_server_global_callbacks = callbacks;
   return SASL_OK;
 }
 
-int sasl_client_done(void) { return SASL_OK; }
-int sasl_server_done(void) { return SASL_OK; }
+int sasl_client_done(void) {
+  if (mock_client_initializations == 0)
+    return SASL_NOTINIT;
+  if (--mock_client_initializations != 0)
+    return SASL_CONTINUE;
+  mock_client_global_callbacks = 0;
+  return SASL_OK;
+}
+int sasl_server_done(void) {
+  if (mock_server_initializations == 0)
+    return SASL_NOTINIT;
+  if (--mock_server_initializations != 0)
+    return SASL_CONTINUE;
+  mock_server_global_callbacks = 0;
+  return SASL_OK;
+}
 
 int sasl_client_new(const char *service, const char *server_name,
                     const char *local_endpoint, const char *remote_endpoint,
@@ -381,5 +406,50 @@ int main(void) {
       mock_step_calls != 2)
     return 7;
   client->close(client);
+  callbacks.secret = 0;
+  callback_calls = 0;
+  if (cpkt_sasl_client_initialize(&callbacks) != CPKT_SASL_OK ||
+      cpkt_sasl_client_initialize(0) != CPKT_SASL_OK)
+    return 14;
+  callback = mock_find_callback(mock_client_global_callbacks, SASL_CB_AUTHNAME);
+  if (callback == 0 || callback->proc == 0)
+    return 15;
+  callback_bridge.generic = callback->proc;
+  result = 0;
+  length = 0;
+  if (callback_bridge.simple(callback->context, SASL_CB_AUTHNAME, &result,
+                             &length) != SASL_OK ||
+      callback_calls != 1 || result == 0 ||
+      strcmp(result, "facade-authentication-user") != 0)
+    return 16;
+  if (cpkt_sasl_client_finish() != CPKT_SASL_CONTINUE)
+    return 17;
+  callback_calls = 0;
+  if (callback_bridge.simple(callback->context, SASL_CB_AUTHNAME, &result,
+                             &length) != SASL_OK ||
+      callback_calls != 1 || cpkt_sasl_client_finish() != CPKT_SASL_OK)
+    return 22;
+  callback_calls = 0;
+  if (cpkt_sasl_server_initialize(&callbacks, "test") != CPKT_SASL_OK ||
+      cpkt_sasl_server_initialize(0, "test") != CPKT_SASL_OK)
+    return 18;
+  callback = mock_find_callback(mock_server_global_callbacks, SASL_CB_AUTHNAME);
+  if (callback == 0 || callback->proc == 0)
+    return 19;
+  callback_bridge.generic = callback->proc;
+  result = 0;
+  length = 0;
+  if (callback_bridge.simple(callback->context, SASL_CB_AUTHNAME, &result,
+                             &length) != SASL_OK ||
+      callback_calls != 1 || result == 0 ||
+      strcmp(result, "facade-authentication-user") != 0)
+    return 20;
+  if (cpkt_sasl_server_finish() != CPKT_SASL_CONTINUE)
+    return 21;
+  callback_calls = 0;
+  if (callback_bridge.simple(callback->context, SASL_CB_AUTHNAME, &result,
+                             &length) != SASL_OK ||
+      callback_calls != 1 || cpkt_sasl_server_finish() != CPKT_SASL_OK)
+    return 23;
   return 0;
 }

@@ -29,6 +29,7 @@ typedef struct cpkt_sasl_state {
 typedef struct cpkt_sasl_global_callbacks {
   cpkt_sasl_callback_owner callback_owner;
   sasl_callback_t native[15];
+  unsigned long references;
 } cpkt_sasl_global_callbacks;
 
 /* Cyrus SASL intentionally stores heterogeneous callback signatures in one
@@ -678,45 +679,77 @@ int cpkt_sasl_set_path(int type, const char *path) {
 /** Implements the documented public C89 SASL facade operation
  * cpkt_sasl_client_initialize. */
 int cpkt_sasl_client_initialize(const cpkt_sasl_callbacks *callbacks) {
+  int status;
   if (callbacks != NULL &&
       (callbacks->secret != NULL || callbacks->authorize != NULL ||
        callbacks->check_password != NULL || callbacks->set_password != NULL ||
        callbacks->canonicalize != NULL)) {
     return SASL_BADPARAM;
   }
-  cpkt_sasl_callbacks_build(
-      cpkt_sasl_client_callbacks.native,
-      &cpkt_sasl_client_callbacks.callback_owner.callbacks, callbacks,
-      &cpkt_sasl_client_callbacks.callback_owner);
-  return sasl_client_init(
-      callbacks == NULL ? NULL : cpkt_sasl_client_callbacks.native);
+  if (cpkt_sasl_client_callbacks.references == ULONG_MAX)
+    return SASL_FAIL;
+  if (cpkt_sasl_client_callbacks.references == 0)
+    cpkt_sasl_callbacks_build(
+        cpkt_sasl_client_callbacks.native,
+        &cpkt_sasl_client_callbacks.callback_owner.callbacks, callbacks,
+        &cpkt_sasl_client_callbacks.callback_owner);
+  status = sasl_client_init(callbacks == NULL ||
+                                    cpkt_sasl_client_callbacks.references != 0
+                                ? NULL
+                                : cpkt_sasl_client_callbacks.native);
+  if (status == SASL_OK)
+    ++cpkt_sasl_client_callbacks.references;
+  return status;
 }
 
 /** Implements the documented public C89 SASL facade operation
  * cpkt_sasl_server_initialize. */
 int cpkt_sasl_server_initialize(const cpkt_sasl_callbacks *callbacks,
                                 const char *application_name) {
+  int status;
   if (callbacks != NULL &&
       (callbacks->secret != NULL || callbacks->authorize != NULL ||
        callbacks->check_password != NULL || callbacks->set_password != NULL ||
        callbacks->canonicalize != NULL)) {
     return SASL_BADPARAM;
   }
-  cpkt_sasl_callbacks_build(
-      cpkt_sasl_server_callbacks.native,
-      &cpkt_sasl_server_callbacks.callback_owner.callbacks, callbacks,
-      &cpkt_sasl_server_callbacks.callback_owner);
-  return sasl_server_init(callbacks == NULL ? NULL
-                                            : cpkt_sasl_server_callbacks.native,
-                          application_name);
+  if (cpkt_sasl_server_callbacks.references == ULONG_MAX)
+    return SASL_FAIL;
+  if (cpkt_sasl_server_callbacks.references == 0)
+    cpkt_sasl_callbacks_build(
+        cpkt_sasl_server_callbacks.native,
+        &cpkt_sasl_server_callbacks.callback_owner.callbacks, callbacks,
+        &cpkt_sasl_server_callbacks.callback_owner);
+  status = sasl_server_init(callbacks == NULL ||
+                                    cpkt_sasl_server_callbacks.references != 0
+                                ? NULL
+                                : cpkt_sasl_server_callbacks.native,
+                            application_name);
+  if (status == SASL_OK)
+    ++cpkt_sasl_server_callbacks.references;
+  return status;
 }
 
 /** Implements the documented public C89 SASL facade operation
  * cpkt_sasl_client_finish. */
-int cpkt_sasl_client_finish(void) { return sasl_client_done(); }
+int cpkt_sasl_client_finish(void) {
+  int status;
+  status = sasl_client_done();
+  if ((status == SASL_OK || status == SASL_CONTINUE) &&
+      cpkt_sasl_client_callbacks.references != 0)
+    --cpkt_sasl_client_callbacks.references;
+  return status;
+}
 /** Implements the documented public C89 SASL facade operation
  * cpkt_sasl_server_finish. */
-int cpkt_sasl_server_finish(void) { return sasl_server_done(); }
+int cpkt_sasl_server_finish(void) {
+  int status;
+  status = sasl_server_done();
+  if ((status == SASL_OK || status == SASL_CONTINUE) &&
+      cpkt_sasl_server_callbacks.references != 0)
+    --cpkt_sasl_server_callbacks.references;
+  return status;
+}
 
 static cpkt_sasl *cpkt_sasl_new(int is_server, const char *service,
                                 const char *server_name, const char *realm,
