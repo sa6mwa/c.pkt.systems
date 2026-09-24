@@ -17,7 +17,6 @@ extern "C" {
 /** @defgroup cpkt_pdf libHaru C89 PDF facade
  * Documents own their pages, fonts, and images. PDF stream output is
  * buffered in memory; read_from_stream consumes that saved buffer.
- * SVG input is not supported; see docs/pdf-c89-facade.md for options.
  * See docs/pdf-c89-facade.md for ownership and output behavior.
  * @{ */
 

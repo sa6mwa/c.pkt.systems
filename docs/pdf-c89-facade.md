@@ -18,16 +18,6 @@ the caller's buffer. These functions are unsuitable when the document must be
 streamed end to end with bounded memory use. `cpkt_pdf_save_to_file()` writes
 to a caller-selected path.
 
-## SVG artwork
-
-SVG conversion is outside this SDK. libHaru has no public SVG loader or PDF-page
-importer, and the facade does not parse or render SVG. It exposes vector drawing
-primitives, including paths, cubic curves, transforms, clipping, fills, and
-strokes, for callers that already have their own drawing instructions. A
-separate project will own SVG parsing and vector PDF composition. Consumers
-must not expect `cpkt_pdf` to accept SVG input or to import the PDF output of
-that external converter.
-
 For CMake, use `find_package(CpktPdf CONFIG REQUIRED)` and link `cpkt::pdf` for static or `cpkt::pdf_shared` for shared. `find_package(CpktPng CONFIG REQUIRED)` provides `cpkt::png`, `cpkt::png_static`, and `cpkt::png_shared`. `find_package(CpktHaru CONFIG REQUIRED)` provides `cpkt::haru`, `cpkt::haru_static`, and `cpkt::haru_shared` for native-header consumers. Static imported targets include the transitive libpng, zlib, and platform math dependencies.
 
 For pkg-config, use `cpkt-pdf`, `cpkt-png`, or `cpkt-haru`. Use `pkg-config --static --cflags --libs cpkt-pdf` for static consumers. The SDK includes complete licenses under `share/doc/c.pkt.systems/third_party/` and an aggregate `THIRD_PARTY_NOTICES.md`.
