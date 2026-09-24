@@ -1,6 +1,7 @@
 #include <cpkt/postgres.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int require_value(const cpkt_postgres_result *result,
@@ -104,9 +105,24 @@ static int run_integration(const char *server_name,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    fprintf(stderr, "usage: %s SERVER-NAME CONNECTION-INFO\n", argv[0]);
+  const char *connection_variable;
+  const char *connection_info;
+  if (argc != 2) {
+    fprintf(stderr, "usage: %s {postgresql|cockroachdb}\n", argv[0]);
     return 2;
   }
-  return run_integration(argv[1], argv[2]) ? 0 : 1;
+  if (strcmp(argv[1], "postgresql") == 0)
+    connection_variable = "CPKT_POSTGRES_E2E_CONNINFO";
+  else if (strcmp(argv[1], "cockroachdb") == 0)
+    connection_variable = "CPKT_COCKROACH_E2E_CONNINFO";
+  else {
+    fprintf(stderr, "unknown database server: %s\n", argv[1]);
+    return 2;
+  }
+  connection_info = getenv(connection_variable);
+  if (connection_info == NULL || connection_info[0] == '\0') {
+    fprintf(stderr, "%s is required\n", connection_variable);
+    return 2;
+  }
+  return run_integration(argv[1], connection_info) ? 0 : 1;
 }

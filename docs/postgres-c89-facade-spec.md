@@ -57,4 +57,6 @@ strings to the test runner, and stops the services when the run finishes. To run
 `CPKT_POSTGRES_E2E_CONNINFO` and `CPKT_COCKROACH_E2E_CONNINFO` to standard libpq
 connection strings. The gate covers receiver queries, parameters, asynchronous
 send/receive, prepared statements, transaction state, and an exact 64-bit
-`INT8` result. Connection strings are never printed by the harness.
+`INT8` result. The integration executable reads connection strings directly
+from those environment variables; the harness never prints them or passes them
+as command-line arguments.
