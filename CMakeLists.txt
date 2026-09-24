@@ -2362,6 +2362,7 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/nghttp2_header_facade_test.sh"
           "${CMAKE_SOURCE_DIR}"
           "${CMAKE_C_COMPILER}"
+          "${CMAKE_CXX_COMPILER}"
           "${CMAKE_SYSROOT}"
           "${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}")
       add_test(

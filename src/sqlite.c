@@ -53,6 +53,7 @@ typedef struct cpkt_sqlite_state {
   int closing;
   int finish_started;
   int listed_wrapper;
+  int open_pending;
   struct cpkt_sqlite_state *next_wrapper;
   cpkt_sqlite *database;
 } cpkt_sqlite_state;
@@ -162,6 +163,8 @@ struct cpkt_sqlite_vfs_file {
 typedef struct cpkt_sqlite_module_binding cpkt_sqlite_module_binding;
 
 static cpkt_sqlite_state *cpkt_sqlite_wrapper_head;
+static const char cpkt_sqlite_open_clientdata_key[] =
+    "cpkt_sqlite_open_wrapper";
 static cpkt_sqlite_auto_extension_binding *cpkt_sqlite_auto_extension_head;
 static cpkt_sqlite_vfs_binding *cpkt_sqlite_vfs_head;
 static int cpkt_sqlite_auto_extension_trampoline_registered;
@@ -3288,6 +3291,15 @@ static void cpkt_sqlite_destroy(cpkt_sqlite *self) {
   free(self);
 }
 
+static void cpkt_sqlite_open_wrapper_cleanup(void *context) {
+  cpkt_sqlite *self;
+  cpkt_sqlite_state *state;
+  self = (cpkt_sqlite *)context;
+  state = cpkt_sqlite_state_for(self);
+  if (state != NULL && state->open_pending)
+    cpkt_sqlite_destroy(self);
+}
+
 void cpkt_sqlite_close(cpkt_sqlite *self) {
   cpkt_sqlite_state *state;
   sqlite3_mutex *mutex;
@@ -3417,6 +3429,29 @@ static cpkt_sqlite *cpkt_sqlite_wrap_database(sqlite3 *database,
   cpkt_sqlite_wrapper_head = state;
   state->listed_wrapper = 1;
   cpkt_sqlite_global_unlock(mutex);
+  if (!close_on_failure) {
+    /* SQLite destroys the native handle before returning NULL on some open
+     * failures. Its client-data destructor then releases this receiver. */
+    state->open_pending = 1;
+    if (sqlite3_set_clientdata(database, cpkt_sqlite_open_clientdata_key, self,
+                               cpkt_sqlite_open_wrapper_cleanup) != SQLITE_OK)
+      return NULL;
+  }
+  return self;
+}
+
+static cpkt_sqlite *cpkt_sqlite_complete_open(sqlite3 *database) {
+  cpkt_sqlite *self;
+  cpkt_sqlite_state *state;
+  self = cpkt_sqlite_wrap_database(database, 1);
+  if (self == NULL)
+    return NULL;
+  state = cpkt_sqlite_state_for(self);
+  if (state != NULL && state->open_pending) {
+    state->open_pending = 0;
+    (void)sqlite3_set_clientdata(database, cpkt_sqlite_open_clientdata_key,
+                                 NULL, NULL);
+  }
   return self;
 }
 
@@ -3427,7 +3462,7 @@ cpkt_sqlite *cpkt_sqlite_open(const char *filename, int flags,
     return NULL;
   database = NULL;
   (void)sqlite3_open_v2(filename, &database, flags, vfs);
-  return cpkt_sqlite_wrap_database(database, 1);
+  return cpkt_sqlite_complete_open(database);
 }
 
 cpkt_sqlite *cpkt_sqlite_open16(const void *filename) {
@@ -3436,7 +3471,7 @@ cpkt_sqlite *cpkt_sqlite_open16(const void *filename) {
     return NULL;
   database = NULL;
   (void)sqlite3_open16(filename, &database);
-  return cpkt_sqlite_wrap_database(database, 1);
+  return cpkt_sqlite_complete_open(database);
 }
 
 cpkt_sqlite_auto_extension *
