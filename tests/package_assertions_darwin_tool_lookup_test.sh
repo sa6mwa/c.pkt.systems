@@ -97,6 +97,37 @@ output=$(
   OSXCROSS_ROOT="$osxcross_root" \
   CPKT_OSXCROSS_HOST="$osxcross_host" \
   cmake \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION=ON \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libmqttc.1.1.2.dylib" \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_INSTALL_NAME='@rpath/libmqttc.1.dylib' \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_COMPATIBILITY=1.0.0 \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_CURRENT=1.1.2 \
+    -P "$repo_root/cmake/package_assertions.cmake"
+)
+case "$output" in
+  *"CPKT_TEST_DARWIN_VERSION=ok"*) ;;
+  *)
+    printf 'package assertion rejected valid Darwin dylib versions\n%s\n' "$output" >&2
+    exit 1
+    ;;
+esac
+if OSXCROSS_ROOT="$osxcross_root" \
+    CPKT_OSXCROSS_HOST="$osxcross_host" \
+    cmake \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION=ON \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libmqttc.1.1.2.dylib" \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_INSTALL_NAME='@rpath/libmqttc.1.dylib' \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_COMPATIBILITY=9.0.0 \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_CURRENT=9.6.0 \
+      -P "$repo_root/cmake/package_assertions.cmake" >/dev/null 2>&1; then
+  printf 'package assertion accepted incompatible Darwin dylib versions\n' >&2
+  exit 1
+fi
+
+output=$(
+  OSXCROSS_ROOT="$osxcross_root" \
+  CPKT_OSXCROSS_HOST="$osxcross_host" \
+  cmake \
     -DCPKT_TARGET_ID=arm64-apple-darwin \
     -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE=ON \
     -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libmqttc.1.1.2.dylib" \

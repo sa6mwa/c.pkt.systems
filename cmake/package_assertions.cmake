@@ -277,6 +277,27 @@ function(cpkt_assert_darwin_install_name file_path expected_install_name descrip
   endif()
 endfunction()
 
+function(cpkt_assert_darwin_dylib_versions file_path expected_install_name
+    expected_compatibility expected_current description)
+  cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+  execute_process(
+    COMMAND "${CPKT_OTOOL_BIN}" -L "${file_path}"
+    RESULT_VARIABLE _otool_result
+    OUTPUT_VARIABLE _otool_output
+    ERROR_VARIABLE _otool_error)
+  if(NOT _otool_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_otool_error}")
+  endif()
+  set(_expected "${expected_install_name} (compatibility version ${expected_compatibility}, current version ${expected_current})")
+  string(FIND "${_otool_output}" "${_expected}" _version_position)
+  if(_version_position EQUAL -1)
+    message(FATAL_ERROR "${description} must advertise [${_expected}]")
+  endif()
+endfunction()
+
 function(cpkt_assert_darwin_dylib_relocatable file_path description)
   cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
   if(NOT EXISTS "${file_path}")
@@ -511,6 +532,15 @@ if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASS
     "test Darwin install name")
   message(STATUS "CPKT_TEST_DARWIN_INSTALL_NAME=ok")
 endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION)
+  cpkt_assert_darwin_dylib_versions(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_INSTALL_NAME}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_COMPATIBILITY}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_CURRENT}"
+    "test Darwin dylib versions")
+  message(STATUS "CPKT_TEST_DARWIN_VERSION=ok")
+endif()
 if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE)
   cpkt_assert_darwin_dylib_relocatable(
     "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
@@ -534,6 +564,7 @@ if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_AS
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA))
@@ -1536,6 +1567,14 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib"
     "@rpath/libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib"
     "libcpkt_openssl Darwin install name")
+  cpkt_assert_darwin_dylib_versions(
+    "${_assert_extract_root}/${_archive_stem}/lib/libsqlite3.0.dylib"
+    "@rpath/libsqlite3.0.dylib" "9.0.0" "9.6.0"
+    "SQLite Darwin dylib versions")
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libsqlite3.0.dylib"
+    "@rpath/libsqlite3.0.dylib"
+    "SQLite Darwin install name")
   cpkt_assert_darwin_install_name(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_nghttp2.${CPKT_BUNDLE_VERSION}.dylib"
     "@rpath/libcpkt_nghttp2.${CPKT_NGHTTP2_ABI_VERSION}.dylib"

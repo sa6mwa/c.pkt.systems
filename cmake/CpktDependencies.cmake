@@ -3070,11 +3070,13 @@ function(cpkt_add_sqlite)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(sqlite_shared_real_library "libsqlite3.0.dylib")
     set(sqlite_shared_abi_library "libsqlite3.0.dylib")
+    # SQLite's autosetup/sqlite-config.tcl retains these historical libtool
+    # dylib versions independently of the SQLite release version.
     list(APPEND sqlite_shared_link_flags
       -dynamiclib
       "-Wl,-install_name,@rpath/${sqlite_shared_abi_library}"
-      -Wl,-compatibility_version,0.0.0
-      -Wl,-current_version,${CPKT_SQLITE_VERSION})
+      -Wl,-compatibility_version,9.0.0
+      -Wl,-current_version,9.6.0)
   else()
     message(FATAL_ERROR "SQLite has no shared-library recipe for ${CMAKE_SYSTEM_NAME}")
   endif()
