@@ -456,6 +456,8 @@ static int cpkt_postgres_native_auth_data_hook(PGauthData kind,
     if (status > 0) {
       state = (cpkt_postgres_oauth_request_state *)calloc(1, sizeof(*state));
       if (state == NULL) {
+        if (request.cleanup != NULL)
+          request.cleanup((cpkt_postgres_connection *)connection, &request);
         return -1;
       }
       cpkt_postgres_copy_oauth_request_to_native(native_request, &request,
@@ -464,6 +466,8 @@ static int cpkt_postgres_native_auth_data_hook(PGauthData kind,
           request.async == NULL ? NULL : cpkt_postgres_native_oauth_async;
       native_request->cleanup = cpkt_postgres_native_oauth_cleanup;
       native_request->user = state;
+    } else if (status < 0 && request.cleanup != NULL) {
+      request.cleanup((cpkt_postgres_connection *)connection, &request);
     }
   } else {
     return PQdefaultAuthDataHook(kind, connection, data);

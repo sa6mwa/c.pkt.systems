@@ -1548,6 +1548,17 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_postgres_receiver_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_postgres_receiver_test)
     target_link_libraries(cpkt_postgres_receiver_test PRIVATE cpkt_postgres_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_postgres_oauth_cleanup_test
+        tests/postgres_oauth_cleanup_test.c)
+      cpkt_use_local_runtime(cpkt_postgres_oauth_cleanup_test)
+      cpkt_configure_c89_target(cpkt_postgres_oauth_cleanup_test)
+      cpkt_add_repo_warning_errors(cpkt_postgres_oauth_cleanup_test)
+      target_link_options(cpkt_postgres_oauth_cleanup_test PRIVATE
+        "-Wl,--wrap=calloc")
+      target_link_libraries(cpkt_postgres_oauth_cleanup_test PRIVATE
+        cpkt_postgres_static cpkt::postgresql_static)
+    endif()
     add_executable(cpkt_postgres_integration_test tests/postgres_integration_test.c)
     cpkt_use_local_runtime(cpkt_postgres_integration_test)
     target_compile_options(cpkt_postgres_integration_test PRIVATE -std=c89)
@@ -1735,6 +1746,16 @@ if(CPKT_BUILD_TESTS)
       target_link_options(cpkt_sqlite_unlock_notify_race_test PRIVATE
         "-Wl,--wrap=sqlite3_unlock_notify")
       target_link_libraries(cpkt_sqlite_unlock_notify_race_test PRIVATE
+        cpkt_sqlite_static Threads::Threads)
+      add_executable(cpkt_sqlite_auto_extension_lock_order_test
+        tests/sqlite_auto_extension_lock_order_test.c)
+      cpkt_use_local_runtime(cpkt_sqlite_auto_extension_lock_order_test)
+      cpkt_configure_c89_target(cpkt_sqlite_auto_extension_lock_order_test)
+      cpkt_add_repo_warning_errors(cpkt_sqlite_auto_extension_lock_order_test)
+      target_link_options(cpkt_sqlite_auto_extension_lock_order_test PRIVATE
+        "-Wl,--wrap=sqlite3_auto_extension"
+        "-Wl,--wrap=sqlite3_cancel_auto_extension")
+      target_link_libraries(cpkt_sqlite_auto_extension_lock_order_test PRIVATE
         cpkt_sqlite_static Threads::Threads)
     endif()
     add_executable(cpkt_sqlite_page_cache_lifetime_test
@@ -1943,6 +1964,10 @@ if(CPKT_BUILD_TESTS)
         COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME postgres_oauth_cleanup
+          COMMAND cpkt_postgres_oauth_cleanup_test)
+      endif()
       string(REGEX MATCH "^[0-9]+" _cpkt_postgresql_oauth_major
         "${CPKT_POSTGRESQL_VERSION}")
       get_target_property(_cpkt_postgresql_shared_location
@@ -1997,6 +2022,12 @@ if(CPKT_BUILD_TESTS)
         COMMAND cpkt_sqlite_page_cache_lifetime_test)
       add_test(NAME sqlite_auto_extension_shutdown
         COMMAND cpkt_sqlite_auto_extension_shutdown_test)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME sqlite_auto_extension_lock_order
+          COMMAND cpkt_sqlite_auto_extension_lock_order_test)
+        set_tests_properties(sqlite_auto_extension_lock_order PROPERTIES
+          TIMEOUT 15)
+      endif()
       add_test(NAME sqlite_rtree_registration_failure
         COMMAND cpkt_sqlite_rtree_registration_failure_test)
       add_test(NAME sqlite_session_hook_guard
@@ -2054,6 +2085,8 @@ if(CPKT_BUILD_TESTS)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set_tests_properties(sqlite_unlock_notify_race PROPERTIES
           LABELS "facade;memcheck")
+        set_tests_properties(sqlite_auto_extension_lock_order
+          postgres_oauth_cleanup PROPERTIES LABELS "facade;memcheck")
       endif()
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         list(APPEND _cpkt_memcheck_facade_tests

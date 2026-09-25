@@ -168,6 +168,8 @@ typedef struct cpkt_sqlite_module_binding cpkt_sqlite_module_binding;
 static cpkt_sqlite_state *cpkt_sqlite_wrapper_head;
 static pthread_mutex_t cpkt_sqlite_bookkeeping_mutex =
     PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t cpkt_sqlite_auto_extension_transition_mutex =
+    PTHREAD_MUTEX_INITIALIZER;
 static const char cpkt_sqlite_open_clientdata_key[] =
     "cpkt_sqlite_open_wrapper";
 static cpkt_sqlite_auto_extension_binding *cpkt_sqlite_auto_extension_head;
@@ -924,31 +926,40 @@ static int
 cpkt_sqlite_auto_extension_register(cpkt_sqlite_auto_extension *self) {
   cpkt_sqlite_auto_extension_binding *binding;
   pthread_mutex_t *mutex;
+  int needs_native_registration;
   int status;
   if (self == NULL || self->internal == NULL)
     return SQLITE_MISUSE;
   binding = (cpkt_sqlite_auto_extension_binding *)self->internal;
   mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(&cpkt_sqlite_auto_extension_transition_mutex);
   cpkt_sqlite_global_lock(mutex);
   if (binding->close_requested) {
     cpkt_sqlite_global_unlock(mutex);
+    cpkt_sqlite_global_unlock(&cpkt_sqlite_auto_extension_transition_mutex);
     return SQLITE_MISUSE;
   }
   if (binding->registered) {
     cpkt_sqlite_global_unlock(mutex);
+    cpkt_sqlite_global_unlock(&cpkt_sqlite_auto_extension_transition_mutex);
     return SQLITE_OK;
   }
-  if (!cpkt_sqlite_auto_extension_trampoline_registered) {
+  needs_native_registration = !cpkt_sqlite_auto_extension_trampoline_registered;
+  cpkt_sqlite_global_unlock(mutex);
+  if (needs_native_registration) {
     status = sqlite3_auto_extension(
         (void (*)(void))cpkt_sqlite_auto_extension_trampoline);
     if (status != SQLITE_OK) {
-      cpkt_sqlite_global_unlock(mutex);
+      cpkt_sqlite_global_unlock(&cpkt_sqlite_auto_extension_transition_mutex);
       return status;
     }
-    cpkt_sqlite_auto_extension_trampoline_registered = 1;
   }
+  cpkt_sqlite_global_lock(mutex);
+  if (needs_native_registration)
+    cpkt_sqlite_auto_extension_trampoline_registered = 1;
   binding->registered = 1;
   cpkt_sqlite_global_unlock(mutex);
+  cpkt_sqlite_global_unlock(&cpkt_sqlite_auto_extension_transition_mutex);
   return SQLITE_OK;
 }
 
@@ -963,10 +974,12 @@ static int cpkt_sqlite_auto_extension_cancel(cpkt_sqlite_auto_extension *self) {
     return SQLITE_MISUSE;
   binding = (cpkt_sqlite_auto_extension_binding *)self->internal;
   mutex = cpkt_sqlite_global_mutex();
+  cpkt_sqlite_global_lock(&cpkt_sqlite_auto_extension_transition_mutex);
   cpkt_sqlite_global_lock(mutex);
   was_registered = binding->registered;
   if (!was_registered) {
     cpkt_sqlite_global_unlock(mutex);
+    cpkt_sqlite_global_unlock(&cpkt_sqlite_auto_extension_transition_mutex);
     return 0;
   }
   binding->registered = 0;
@@ -979,11 +992,14 @@ static int cpkt_sqlite_auto_extension_cancel(cpkt_sqlite_auto_extension *self) {
   }
   status = SQLITE_OK;
   if (!any_registered && cpkt_sqlite_auto_extension_trampoline_registered) {
+    cpkt_sqlite_global_unlock(mutex);
     status = sqlite3_cancel_auto_extension(
         (void (*)(void))cpkt_sqlite_auto_extension_trampoline);
+    cpkt_sqlite_global_lock(mutex);
     cpkt_sqlite_auto_extension_trampoline_registered = 0;
   }
   cpkt_sqlite_global_unlock(mutex);
+  cpkt_sqlite_global_unlock(&cpkt_sqlite_auto_extension_transition_mutex);
   return status == SQLITE_OK ? 1 : status;
 }
 
@@ -3584,11 +3600,13 @@ static void cpkt_sqlite_auto_extension_registration_clear(void) {
 
 void cpkt_sqlite_auto_extension_reset(void) {
   pthread_mutex_t *mutex;
+  cpkt_sqlite_global_lock(&cpkt_sqlite_auto_extension_transition_mutex);
   sqlite3_reset_auto_extension();
   mutex = cpkt_sqlite_global_mutex();
   cpkt_sqlite_global_lock(mutex);
   cpkt_sqlite_auto_extension_registration_clear();
   cpkt_sqlite_global_unlock(mutex);
+  cpkt_sqlite_global_unlock(&cpkt_sqlite_auto_extension_transition_mutex);
 }
 
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_new(const char *name,
