@@ -55,6 +55,8 @@ concurrent delivery.
 Extended changeset apply operations collect rebase output only when
 `rebase_out` is provided. Passing `NULL` avoids the input-proportional native
 rebase allocation, including for `_strm` apply operations.
+An apply without a conflict callback aborts with `CPKT_SQLITE_ABORT` when a
+changeset conflicts with existing data.
 
 `db->close(db)` is the convenience destructor: it defers native teardown until
 facade-owned statements, blobs, and backups have been finalized or closed, so

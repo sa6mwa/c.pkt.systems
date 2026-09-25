@@ -124,6 +124,18 @@
       }
     },
     {
+      "name": "arm64-apple-darwin-native",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "CPKT_MACOS_DEPLOYMENT_TARGET": "15.0",
+        "CPKT_TARGET_ARCH": "arm64",
+        "CPKT_TARGET_OS": "darwin",
+        "CPKT_TARGET_LIBC": ""
+      }
+    },
+    {
       "name": "arm64-apple-darwin-release",
       "inherits": "x86_64-linux-gnu-release",
       "toolchainFile": "${sourceDir}/cmake/toolchains/arm64-apple-darwin.cmake",
@@ -135,6 +147,10 @@
     }
   ],
   "buildPresets": [
+    {
+      "name": "arm64-apple-darwin-native",
+      "configurePreset": "arm64-apple-darwin-native"
+    },
     {
       "name": "x86_64-linux-gnu-release",
       "configurePreset": "x86_64-linux-gnu-release"

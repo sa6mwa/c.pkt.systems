@@ -1672,6 +1672,7 @@ void cpkt_sqlite_value_free(cpkt_sqlite_value *value);
  * and output callbacks to SQLite without materializing a whole changeset in
  * the facade; SQLite controls its own buffering and callback order. A NULL
  * rebase_out on extended apply operations disables native rebase collection.
+ * A NULL conflict callback aborts an apply on conflict with CPKT_SQLITE_ABORT.
  * Callback and iterator views are valid only for their documented call or
  * receiver lifetime.
  * @{

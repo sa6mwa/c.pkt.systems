@@ -1281,6 +1281,16 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
 if(CPKT_BUILD_TESTS)
+  foreach(_cpkt_curl_linkage IN ITEMS static shared)
+    add_executable(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test
+      tests/curl_async_dns_test.c)
+    cpkt_use_local_runtime(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test)
+    target_compile_options(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test
+      PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test)
+    target_link_libraries(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test PRIVATE
+      cpkt::curl_${_cpkt_curl_linkage})
+  endforeach()
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"
     "local host = require('example_host')\n"
@@ -1713,6 +1723,13 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_rebase_collection_test)
     target_link_libraries(cpkt_sqlite_rebase_collection_test PRIVATE
       cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_changeset_null_conflict_test
+      tests/sqlite_changeset_null_conflict_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_changeset_null_conflict_test)
+    cpkt_configure_c89_target(cpkt_sqlite_changeset_null_conflict_test)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_changeset_null_conflict_test)
+    target_link_libraries(cpkt_sqlite_changeset_null_conflict_test PRIVATE
+      cpkt_sqlite_static)
     add_executable(cpkt_sqlite_vfs_wal_capability_test
       tests/sqlite_vfs_wal_capability_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_vfs_wal_capability_test)
@@ -1859,6 +1876,17 @@ if(CPKT_BUILD_TESTS)
   endif()
 
   if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+    foreach(_cpkt_curl_linkage IN ITEMS static shared)
+      add_test(NAME curl_async_dns_${_cpkt_curl_linkage}
+        COMMAND cpkt_curl_async_dns_${_cpkt_curl_linkage}_test)
+      add_test(NAME curl_multi_socket_${_cpkt_curl_linkage}
+        COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tests/curl_async_dns_server.py"
+          "$<TARGET_FILE:cpkt_curl_async_dns_${_cpkt_curl_linkage}_test>")
+      set_tests_properties(curl_async_dns_${_cpkt_curl_linkage}
+        curl_multi_socket_${_cpkt_curl_linkage} PROPERTIES
+        LABELS "integration;smoke" TIMEOUT 30)
+    endforeach()
     add_test(NAME lua_facade_unit COMMAND cpkt_lua_facade_test)
     add_test(
       NAME lua_runtime_c89_example
@@ -2015,6 +2043,8 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
       add_test(NAME sqlite_rebase_collection
         COMMAND cpkt_sqlite_rebase_collection_test)
+      add_test(NAME sqlite_changeset_null_conflict
+        COMMAND cpkt_sqlite_changeset_null_conflict_test)
       add_test(NAME sqlite_vfs_wal_capability
         COMMAND cpkt_sqlite_vfs_wal_capability_test
           "${CMAKE_CURRENT_BINARY_DIR}/sqlite-vfs-no-shm.db")
@@ -2113,7 +2143,8 @@ if(CPKT_BUILD_TESTS)
         postgres_receiver_shell
         openssl_facade nghttp2_facade libssh2_header_facade libssh2_facade
         mqttc_header_facade mqttc_facade
-        sqlite_facade sqlite_rebase_collection sqlite_vfs_wal_capability
+        sqlite_facade sqlite_rebase_collection sqlite_changeset_null_conflict
+        sqlite_vfs_wal_capability
         pdf_facade_static pdf_facade_shared
         sqlite_child_lifetime_concurrency sqlite_page_cache_lifetime
         sqlite_callback_synchronization sqlite_registration_concurrency

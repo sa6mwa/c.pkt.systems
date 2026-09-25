@@ -228,8 +228,6 @@ function(cpkt_append_darwin_external_env_args out_var)
       endif()
     endforeach()
     list(APPEND _args
-      PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
-      LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}
       CC=${CMAKE_C_COMPILER}
       CXX=${CMAKE_CXX_COMPILER}
       AR=${CMAKE_AR}
@@ -237,7 +235,12 @@ function(cpkt_append_darwin_external_env_args out_var)
       STRIP=${CMAKE_STRIP}
       NM=${CMAKE_NM}
     )
-    if(CMAKE_LINKER)
+    if(CPKT_OSXCROSS_ROOT)
+      list(APPEND _args
+        PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
+        LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH})
+    endif()
+    if(CPKT_OSXCROSS_ROOT AND CMAKE_LINKER)
       list(APPEND _args LDFLAGS=--ld-path=${CMAKE_LINKER})
     endif()
   endif()
@@ -899,7 +902,6 @@ function(cpkt_get_curl_platform_cmake_args out_var)
   set(_args "")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _args
-      -DENABLE_THREADED_RESOLVER=OFF
       -DUSE_APPLE_SECTRUST=ON)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Cross-compiling disables curl's CA bundle/path auto-detection.  Ask its
@@ -2236,8 +2238,13 @@ function(cpkt_add_krb5)
       message(FATAL_ERROR "Darwin Kerberos requires the ready pinned host MIG toolchain")
     endif()
     get_filename_component(darwin_host_mig_bin_dir "${CPKT_DARWIN_HOST_MIG}" DIRECTORY)
+    if(CPKT_OSXCROSS_ROOT)
+      set(darwin_mig_path "${darwin_host_mig_bin_dir}:${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}")
+    else()
+      set(darwin_mig_path "${darwin_host_mig_bin_dir}:$ENV{PATH}")
+    endif()
     list(APPEND env_args
-      "PATH=${darwin_host_mig_bin_dir}:${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}"
+      "PATH=${darwin_mig_path}"
       "MIGCC=${CMAKE_C_COMPILER}"
       "MIGCOM=${CPKT_DARWIN_HOST_MIGCOM}"
       "SDKROOT=${CMAKE_OSX_SYSROOT}")

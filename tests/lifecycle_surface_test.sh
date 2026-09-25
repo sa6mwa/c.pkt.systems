@@ -353,5 +353,5 @@ require_file_contains \
   'miniaudio manual compiler and linker commands run with osxcross environment'
 require_file_contains \
   cmake/CpktDependencies.cmake \
-  '-DENABLE_THREADED_RESOLVER=OFF' \
-  'Darwin curl cross builds avoid threaded resolver target-thread probes'
+  '-DENABLE_THREADED_RESOLVER=ON' \
+  'curl builds enable threaded asynchronous DNS'

@@ -1,0 +1,45 @@
+name: Native Darwin bundle verification
+
+on:
+  push:
+    branches: [feat/postgres-client, trunk]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arm64:
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: brew install cmake ninja coreutils gnu-sed gnu-tar util-linux pkg-config
+      - name: Configure native arm64 bundle
+        run: |
+          cmake --preset arm64-apple-darwin-native \
+            -DCPKT_DEPENDENCY_BUILD_JOBS=2 \
+            -DCPKT_DARWIN_HOST_MIG:FILEPATH="$(xcrun --find mig)" \
+            -DCPKT_DARWIN_HOST_MIGCOM:FILEPATH="$(xcrun --find migcom)" \
+            -DCPKT_OTOOL:FILEPATH="$(xcrun --find otool)" \
+            -DCMAKE_OTOOL:FILEPATH="$(xcrun --find otool)"
+      - name: Build curl test binaries
+        run: |
+          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
+            --target cpkt_curl_async_dns_static_test cpkt_curl_async_dns_shared_test
+      - name: Run native curl tests
+        run: |
+          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
+            -R '^curl_(async_dns|multi_socket)_(static|shared)$'
+      - name: Package SDK
+        run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
+      - name: Test packaged libcurl static and shared
+        run: bash tests/darwin_curl_package_test.sh dist/*-arm64-apple-darwin.tar.gz
+      - name: Preserve diagnostic SDK archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpkt-native-arm64-apple-darwin
+          path: dist/*-arm64-apple-darwin.tar.gz
+          if-no-files-found: error

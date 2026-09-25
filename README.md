@@ -161,7 +161,13 @@ CMake and pkg-config consumers for every shipped dependency package, asserting
 that static link requirements propagate through the shipped metadata. Linux
 consumers are run when executable locally or through the configured emulator;
 Darwin consumers are configure/link checked with the required local osxcross
-toolchain. Source
+toolchain. The `Native Darwin bundle verification` GitHub Actions workflow
+builds and tests on an arm64 macOS runner, then extracts its SDK archive and
+checks that packaged static and shared libcurl provide asynchronous DNS. The
+workflow also exercises a hostname through libcurl's multi socket API while a
+second transfer remains active. Check this workflow before a Darwin release;
+the release's Darwin archive is still built from this repository with the
+local osxcross release preset. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,
 verifies that non-git version resolution uses the injected `VERSION` file, and
 builds/runs the facade-only local tests from the extracted tree.
@@ -345,7 +351,8 @@ without duplicate `mqtt_*` symbols from open62541.
 The bundled libcurl uses each target platform's system trust store by default
 when the consumer has not set an explicit CA bundle or CA path. Linux targets
 use OpenSSL with libcurl's CA fallback enabled; Darwin targets use curl's
-OpenSSL-backed Apple SecTrust integration.
+OpenSSL-backed Apple SecTrust integration. All targets enable libcurl's
+threaded resolver and advertise `CURL_VERSION_ASYNCHDNS`.
 
 Direct package-directory lookup is also supported for packages with bundled
 dependencies:

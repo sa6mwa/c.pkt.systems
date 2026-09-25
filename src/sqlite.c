@@ -7158,8 +7158,7 @@ int cpkt_sqlite_changeset_apply(
       cpkt_sqlite_native(database), changeset->byte_count,
       (void *)changeset->data,
       filter == NULL ? NULL : cpkt_sqlite_changeset_filter_trampoline,
-      conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context);
+      cpkt_sqlite_changeset_conflict_trampoline, &apply_context);
 }
 
 int cpkt_sqlite_changeset_apply_strm(
@@ -7182,8 +7181,7 @@ int cpkt_sqlite_changeset_apply_strm(
       cpkt_sqlite_native(database), cpkt_sqlite_stream_input_trampoline,
       &stream_context,
       filter == NULL ? NULL : cpkt_sqlite_changeset_filter_trampoline,
-      conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context);
+      cpkt_sqlite_changeset_conflict_trampoline, &apply_context);
 }
 
 static int
@@ -7225,8 +7223,8 @@ int cpkt_sqlite_changeset_apply_ex(
       cpkt_sqlite_native(database), changeset->byte_count,
       (void *)changeset->data,
       filter == NULL ? NULL : cpkt_sqlite_changeset_filter_trampoline,
-      conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      cpkt_sqlite_changeset_conflict_trampoline, &apply_context,
+      rebase_out == NULL ? NULL : &rebase_data,
       rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
@@ -7265,8 +7263,8 @@ int cpkt_sqlite_changeset_apply_ex_strm(
       cpkt_sqlite_native(database), cpkt_sqlite_stream_input_trampoline,
       &stream_context,
       filter == NULL ? NULL : cpkt_sqlite_changeset_filter_trampoline,
-      conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      cpkt_sqlite_changeset_conflict_trampoline, &apply_context,
+      rebase_out == NULL ? NULL : &rebase_data,
       rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
@@ -7301,8 +7299,8 @@ int cpkt_sqlite_changeset_apply_v3(
       cpkt_sqlite_native(database), changeset->byte_count,
       (void *)changeset->data,
       filter == NULL ? NULL : cpkt_sqlite_changeset_iterator_filter_trampoline,
-      conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      cpkt_sqlite_changeset_conflict_trampoline, &apply_context,
+      rebase_out == NULL ? NULL : &rebase_data,
       rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
@@ -7341,8 +7339,8 @@ int cpkt_sqlite_changeset_apply_v3_strm(
       cpkt_sqlite_native(database), cpkt_sqlite_stream_input_trampoline,
       &stream_context,
       filter == NULL ? NULL : cpkt_sqlite_changeset_iterator_filter_trampoline,
-      conflict == NULL ? NULL : cpkt_sqlite_changeset_conflict_trampoline,
-      &apply_context, rebase_out == NULL ? NULL : &rebase_data,
+      cpkt_sqlite_changeset_conflict_trampoline, &apply_context,
+      rebase_out == NULL ? NULL : &rebase_data,
       rebase_out == NULL ? NULL : &rebase_size, flags);
   if (status != SQLITE_OK) {
     if (rebase_data != NULL)
