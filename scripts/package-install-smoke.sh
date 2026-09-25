@@ -400,6 +400,11 @@ assert_package_file "share/doc/c.pkt.systems/THIRD_PARTY_NOTICES.md"
 assert_package_file "share/doc/c.pkt.systems/docs/pdf-c89-facade.md"
 assert_package_file "share/doc/c.pkt.systems/third_party/libpng/LICENSE"
 assert_package_file "share/doc/c.pkt.systems/third_party/libharu/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/third_party/iodbc/LICENSE"
+assert_package_file "lib/cmake/CpktIodbc/CpktIodbcConfig.cmake"
+assert_package_file "lib/pkgconfig/cpkt-iodbc.pc"
+assert_package_file "include/sql.h"
+assert_package_file "include/odbcinst.h"
 assert_package_file "share/doc/c.pkt.systems/README.md"
 assert_package_file "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
@@ -479,6 +484,7 @@ cmake_build_dir="$work_root/cmake-consumer-build"
 mkdir -p "$cmake_source_dir" "$cmake_build_dir"
 cp "$source_file" "$cmake_source_dir/cpkt_all.c"
 cp "$repo_root/tests/pdf_facade_test.c" "$cmake_source_dir/cpkt_pdf_facade_strict.c"
+cp "$repo_root/tests/iodbc_driver_manager_test.c" "$cmake_source_dir/cpkt_iodbc_strict.c"
 cat > "$cmake_source_dir/cpkt_zlib.c" <<'EOF'
 #include <zlib.h>
 
@@ -1509,6 +1515,7 @@ find_package(CpktSasl CONFIG REQUIRED)
 find_package(CpktSqlite CONFIG REQUIRED)
 find_package(CpktPng CONFIG REQUIRED)
 find_package(CpktHaru CONFIG REQUIRED)
+find_package(CpktIodbc CONFIG REQUIRED)
 find_package(CpktPdf CONFIG REQUIRED)
 find_package(open62541 CONFIG REQUIRED)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -1560,6 +1567,9 @@ cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c c
 cpkt_add_static_smoke(cpkt_cmake_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
 cpkt_add_shared_smoke(cpkt_cmake_sasl_facade_shared cpkt_sasl_facade_strict.c cpkt::sasl_shared)
 cpkt_add_static_smoke(cpkt_cmake_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
+cpkt_add_static_smoke(cpkt_cmake_iodbc cpkt_iodbc_strict.c cpkt::iodbc)
+cpkt_add_shared_smoke(cpkt_cmake_iodbc_shared cpkt_iodbc_strict.c cpkt::iodbc_shared)
+target_link_libraries(cpkt_cmake_iodbc_shared PRIVATE cpkt::iodbcinst_shared)
 cpkt_add_static_smoke(cpkt_cmake_pdf_facade cpkt_pdf_facade_strict.c cpkt::pdf)
 cpkt_add_shared_smoke(cpkt_cmake_pdf_facade_shared cpkt_pdf_facade_strict.c cpkt::pdf_shared)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_pdf_facade cpkt_pdf_facade_strict.c cpkt::pdf)
@@ -1602,6 +1612,8 @@ set_source_files_properties(cpkt_sqlite_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_pdf_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_iodbc_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-pedantic-errors;-Wall;-Wextra;-Wpedantic;-Werror")
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   cpkt_add_static_smoke(cpkt_cmake_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
   add_executable(cpkt_cmake_audio_sus_facade cpkt_audio_sus_facade_strict.c)
@@ -1672,6 +1684,7 @@ cmake_args=(
   -DCpktSqlite_DIR="$prefix/lib/cmake/CpktSqlite" \
   -DCpktPng_DIR="$prefix/lib/cmake/CpktPng" \
   -DCpktHaru_DIR="$prefix/lib/cmake/CpktHaru" \
+  -DCpktIodbc_DIR="$prefix/lib/cmake/CpktIodbc" \
   -DCpktPdf_DIR="$prefix/lib/cmake/CpktPdf" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
@@ -1971,6 +1984,7 @@ gssapi_words=$(pkg_config_words cpkt-gssapi)
 postgres_words=$(pkg_config_words cpkt-postgres)
 sasl_words=$(pkg_config_words cpkt-sasl)
 sqlite_words=$(pkg_config_words cpkt-sqlite)
+iodbc_words=$(pkg_config_words cpkt-iodbc)
 sus_words=$(pkg_config_words cpkt-sus)
 openssl_default_words=$(pkg_config_default_words openssl)
 cpkt_openssl_default_words=$(pkg_config_default_words cpkt-openssl)
@@ -2074,6 +2088,8 @@ assert_words_contain "$sasl_words" "-lcpkt_sasl" "cpkt-sasl.pc --static output"
 assert_words_contain "$sasl_words" "-lsasl2" "cpkt-sasl.pc --static output"
 assert_words_contain "$sqlite_words" "-lcpkt_sqlite" "cpkt-sqlite.pc --static output"
 assert_words_contain "$sqlite_words" "-lsqlite3" "cpkt-sqlite.pc --static output"
+assert_words_contain "$iodbc_words" "-liodbc" "cpkt-iodbc.pc --static output"
+assert_words_contain "$iodbc_words" "-liodbcinst" "cpkt-iodbc.pc --static output"
 assert_words_contain "$sus_words" "-lcpktsus" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lwhisper" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lggml" "cpkt-sus.pc --static output"
@@ -2097,7 +2113,7 @@ cpkt_pkg_config_static_smoke() {
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
   source_flags=$common_flags
   case "$source_name" in
-    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_openssl_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sasl_facade_strict.c|cpkt_sqlite_facade_strict.c|cpkt_pdf_facade_strict.c|cpkt_sus_facade_strict.c)
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_openssl_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sasl_facade_strict.c|cpkt_sqlite_facade_strict.c|cpkt_pdf_facade_strict.c|cpkt_iodbc_strict.c|cpkt_sus_facade_strict.c)
       source_flags=$common_c89_flags
       ;;
   esac
@@ -2142,6 +2158,8 @@ cpkt_pkg_config_static_smoke() {
           bundled["-llber"] = 1
           bundled["-lsasl2"] = 1
           bundled["-lsqlite3"] = 1
+          bundled["-liodbc"] = 1
+          bundled["-liodbcinst"] = 1
           bundled["-lpng16"] = 1
           bundled["-lhpdf"] = 1
           bundled["-lcpkt_pdf"] = 1
@@ -2317,6 +2335,7 @@ cpkt_pkg_config_static_smoke cpkt-gssapi cpkt_gssapi_facade_strict.c
 cpkt_pkg_config_static_smoke cpkt-postgres cpkt_postgres_facade_strict.c
 cpkt_pkg_config_static_smoke cpkt-sasl cpkt_sasl_facade_strict.c
 cpkt_pkg_config_static_smoke cpkt-sqlite cpkt_sqlite_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-iodbc cpkt_iodbc_strict.c
 cpkt_pkg_config_static_smoke cpkt-pdf cpkt_pdf_facade_strict.c
 case "$target_id" in
   *-linux-*)

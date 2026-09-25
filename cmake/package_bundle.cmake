@@ -12,6 +12,7 @@ foreach(_required
     CPKT_ZLIB_VERSION
     CPKT_LIBPNG_VERSION
     CPKT_LIBHARU_VERSION
+    CPKT_IODBC_VERSION
     CPKT_CURL_VERSION
     CPKT_NGHTTP2_VERSION
     CPKT_LIBSSH2_VERSION
@@ -219,7 +220,7 @@ function(cpkt_stage_dependency_install dependency_name)
   endforeach()
 endfunction()
 
-foreach(_dependency openssl zlib libpng libharu nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541 krb5 cyrus-sasl openldap postgresql sqlite)
+foreach(_dependency openssl zlib libpng libharu iodbc nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541 krb5 cyrus-sasl openldap postgresql sqlite)
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
 
@@ -1131,6 +1132,37 @@ file(WRITE "${_stage_root}/lib/cmake/CpktHaru/CpktHaruConfig.cmake"
   "if(NOT TARGET cpkt::haru)\n  add_library(cpkt::haru ALIAS cpkt::haru_static)\nendif()\n")
 cpkt_write_config_version("CpktHaru" "CpktHaru" "${CPKT_LIBHARU_VERSION}")
 
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktIodbc")
+file(WRITE "${_stage_root}/lib/cmake/CpktIodbc/CpktIodbcConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_iodbc_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktIodbc_FOUND TRUE)\n"
+  "set(CpktIodbc_VERSION \"${CPKT_IODBC_VERSION}\")\n"
+  "set(_cpkt_iodbc_static_system_libraries Threads::Threads)\n"
+  "if(CMAKE_SYSTEM_NAME STREQUAL \"Linux\")\n"
+  "  list(APPEND _cpkt_iodbc_static_system_libraries dl)\n"
+  "endif()\n"
+  "foreach(_cpkt_iodbc_component iodbc iodbcinst)\n"
+  "  set(_cpkt_iodbc_component_system_libraries \"\${_cpkt_iodbc_static_system_libraries}\")\n"
+  "  if(_cpkt_iodbc_component STREQUAL \"iodbc\" AND CMAKE_SYSTEM_NAME STREQUAL \"Darwin\")\n"
+  "    list(APPEND _cpkt_iodbc_component_system_libraries \"-Wl,-framework,Carbon\")\n"
+  "  endif()\n"
+  "  if(NOT TARGET cpkt::\${_cpkt_iodbc_component}_static)\n"
+  "    add_library(cpkt::\${_cpkt_iodbc_component}_static STATIC IMPORTED)\n"
+  "    set_target_properties(cpkt::\${_cpkt_iodbc_component}_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_iodbc_prefix}/lib/lib\${_cpkt_iodbc_component}${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_iodbc_prefix}/include\" INTERFACE_LINK_LIBRARIES \"\${_cpkt_iodbc_component_system_libraries}\")\n"
+  "  endif()\n"
+  "  if(NOT TARGET cpkt::\${_cpkt_iodbc_component}_shared)\n"
+  "    add_library(cpkt::\${_cpkt_iodbc_component}_shared SHARED IMPORTED)\n"
+  "    set_target_properties(cpkt::\${_cpkt_iodbc_component}_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_iodbc_prefix}/lib/lib\${_cpkt_iodbc_component}${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_iodbc_prefix}/include\")\n"
+  "  endif()\n"
+  "endforeach()\n"
+  "if(NOT TARGET cpkt::iodbc)\n"
+  "  add_library(cpkt::iodbc INTERFACE IMPORTED)\n"
+  "  set_target_properties(cpkt::iodbc PROPERTIES INTERFACE_LINK_LIBRARIES \"cpkt::iodbc_static;cpkt::iodbcinst_static\")\n"
+  "endif()\n")
+cpkt_write_config_version("CpktIodbc" "CpktIodbc" "${CPKT_IODBC_VERSION}")
+
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktPdf")
 file(WRITE "${_stage_root}/lib/cmake/CpktPdf/CpktPdfConfig.cmake"
   "include(CMakeFindDependencyMacro)\n"
@@ -1813,6 +1845,20 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-haru.pc"
   "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
   "Name: cpkt-haru\nDescription: libHaru PDF library from c.pkt.systems\nVersion: ${CPKT_LIBHARU_VERSION}\n"
   "Requires.private: cpkt-png zlib\nLibs: -L\${libdir} -lhpdf\nLibs.private: ${_cpkt_pdf_private_math}\nCflags: -I\${includedir}\n")
+set(_cpkt_iodbc_static_pc_libraries "-pthread")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  string(APPEND _cpkt_iodbc_static_pc_libraries " -ldl")
+elseif(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  string(APPEND _cpkt_iodbc_static_pc_libraries " -Wl,-framework,Carbon")
+endif()
+file(WRITE "${_stage_root}/lib/pkgconfig/libiodbc.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: iODBC\nDescription: iODBC driver manager and installer from c.pkt.systems\nVersion: ${CPKT_IODBC_VERSION}\n"
+  "Libs: -L\${libdir} -liodbc -liodbcinst\nLibs.private: ${_cpkt_iodbc_static_pc_libraries}\nCflags: -I\${includedir}\n")
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-iodbc.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-iodbc\nDescription: Full C89 iODBC API from c.pkt.systems\nVersion: ${CPKT_IODBC_VERSION}\n"
+  "Libs: -L\${libdir} -liodbc -liodbcinst\nLibs.private: ${_cpkt_iodbc_static_pc_libraries}\nCflags: -I\${includedir}\n")
 file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-pdf.pc"
   "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
   "Name: cpkt-pdf\nDescription: Complete C89 libHaru PDF facade from c.pkt.systems\nVersion: ${CPKT_LIBHARU_VERSION}\n"
@@ -1933,6 +1979,7 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "zlib_version=${CPKT_ZLIB_VERSION}\n"
   "libpng_version=${CPKT_LIBPNG_VERSION}\n"
   "libharu_version=${CPKT_LIBHARU_VERSION}\n"
+  "iodbc_version=${CPKT_IODBC_VERSION}\n"
   "curl_version=${CPKT_CURL_VERSION}\n"
   "nghttp2_version=${CPKT_NGHTTP2_VERSION}\n"
   "nghttp2_abi_version=${CPKT_NGHTTP2_ABI_VERSION}\n"
@@ -2029,6 +2076,7 @@ cpkt_stage_license("libssh2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libssh2/src/COPYING"
 cpkt_stage_license("zlib" "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib/src/LICENSE")
 cpkt_stage_license("libpng" "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng/src/LICENSE")
 cpkt_stage_license("libharu" "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu/src/LICENSE")
+cpkt_stage_license("iodbc" "${CPKT_DEPENDENCY_BUILD_ROOT}/iodbc/src/LICENSE.BSD")
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/third_party/THIRD_PARTY_NOTICES.md"
   "${_stage_root}/share/doc/c.pkt.systems/THIRD_PARTY_NOTICES.md")

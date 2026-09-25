@@ -249,6 +249,7 @@ set(CPKT_OPENSSL_BUILD_CONFIG_REVISION "origin-runpath-1" CACHE INTERNAL
 set(CPKT_ZLIB_VERSION "1.3.2" CACHE STRING "Pinned zlib release.")
 set(CPKT_LIBPNG_VERSION "1.6.58" CACHE STRING "Pinned libpng release.")
 set(CPKT_LIBHARU_VERSION "2.4.6" CACHE STRING "Pinned libHaru release.")
+set(CPKT_IODBC_VERSION "3.52.16" CACHE STRING "Pinned iODBC release.")
 set(CPKT_CURL_VERSION "8.22.0" CACHE STRING "Pinned curl release.")
 set(CPKT_NGHTTP2_VERSION "1.70.0" CACHE STRING "Pinned nghttp2 release.")
 set(CPKT_LIBSSH2_VERSION "1.11.1" CACHE STRING "Pinned libssh2 release.")
@@ -1679,6 +1680,17 @@ if(CPKT_BUILD_TESTS)
       "${cpkt_sasl_native_include_dir}")
     target_compile_options(cpkt_sasl_callback_retry_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sasl_callback_retry_test)
+    add_executable(cpkt_iodbc_static_test tests/iodbc_driver_manager_test.c)
+    cpkt_use_local_runtime(cpkt_iodbc_static_test)
+    cpkt_configure_c89_target(cpkt_iodbc_static_test)
+    cpkt_add_repo_warning_errors(cpkt_iodbc_static_test)
+    target_link_libraries(cpkt_iodbc_static_test PRIVATE cpkt::iodbc)
+    add_executable(cpkt_iodbc_shared_test tests/iodbc_driver_manager_test.c)
+    cpkt_use_local_runtime(cpkt_iodbc_shared_test)
+    cpkt_configure_c89_target(cpkt_iodbc_shared_test)
+    cpkt_add_repo_warning_errors(cpkt_iodbc_shared_test)
+    target_link_libraries(cpkt_iodbc_shared_test PRIVATE
+      cpkt::iodbc_shared cpkt::iodbcinst_shared)
     add_executable(cpkt_pdf_facade_static_test tests/pdf_facade_test.c)
     cpkt_use_local_runtime(cpkt_pdf_facade_static_test)
     target_compile_options(cpkt_pdf_facade_static_test PRIVATE -std=c89)
@@ -2006,6 +2018,10 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME sqlite_vfs_wal_capability
         COMMAND cpkt_sqlite_vfs_wal_capability_test
           "${CMAKE_CURRENT_BINARY_DIR}/sqlite-vfs-no-shm.db")
+      add_test(NAME iodbc_static COMMAND cpkt_iodbc_static_test)
+      add_test(NAME iodbc_shared COMMAND cpkt_iodbc_shared_test)
+      set_tests_properties(iodbc_static iodbc_shared PROPERTIES
+        LABELS "integration;memcheck")
       add_test(NAME pdf_facade_static COMMAND cpkt_pdf_facade_static_test)
       add_test(NAME pdf_facade_shared COMMAND cpkt_pdf_facade_shared_test)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -2651,6 +2667,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_ZLIB_VERSION=${CPKT_ZLIB_VERSION}
         -DCPKT_LIBPNG_VERSION=${CPKT_LIBPNG_VERSION}
         -DCPKT_LIBHARU_VERSION=${CPKT_LIBHARU_VERSION}
+        -DCPKT_IODBC_VERSION=${CPKT_IODBC_VERSION}
         -DCPKT_CURL_VERSION=${CPKT_CURL_VERSION}
         -DCPKT_NGHTTP2_VERSION=${CPKT_NGHTTP2_VERSION}
         -DCPKT_NGHTTP2_ABI_VERSION=${CPKT_NGHTTP2_ABI_VERSION}

@@ -678,6 +678,10 @@ foreach(_pdf_manifest_key libpng_version libharu_version pdf_abi_version)
   endif()
   set(_manifest_${_pdf_manifest_key} "${CMAKE_MATCH_2}")
 endforeach()
+if(NOT _manifest_text MATCHES "(^|\n)iodbc_version=([0-9]+[.][0-9]+[.][0-9]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing iodbc_version")
+endif()
+set(_manifest_iodbc_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)nghttp2_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing nghttp2_abi_version")
 endif()
@@ -1086,6 +1090,17 @@ foreach(_path
     "lib/libopen62541.a"
     "lib/libpng16.a"
     "lib/libhpdf.a"
+    "lib/libiodbc.a"
+    "lib/libiodbcinst.a"
+    "include/sql.h"
+    "include/sqlext.h"
+    "include/sqltypes.h"
+    "include/odbcinst.h"
+    "include/iodbcinst.h"
+    "lib/cmake/CpktIodbc/CpktIodbcConfig.cmake"
+    "lib/cmake/CpktIodbc/CpktIodbcConfigVersion.cmake"
+    "lib/pkgconfig/libiodbc.pc"
+    "lib/pkgconfig/cpkt-iodbc.pc"
     "lib/libcpkt_pdf.a"
     "include/png.h"
     "include/pngconf.h"
@@ -1196,6 +1211,7 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/zlib/LICENSE"
     "share/doc/c.pkt.systems/third_party/libpng/LICENSE"
     "share/doc/c.pkt.systems/third_party/libharu/LICENSE"
+    "share/doc/c.pkt.systems/third_party/iodbc/LICENSE"
     "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE"
     "share/doc/c.pkt.systems/third_party/libxml2/LICENSE"
     "share/doc/c.pkt.systems/third_party/lua/LICENSE"
@@ -1213,6 +1229,17 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
     "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
+endforeach()
+
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_iodbc_shared_suffix ".dylib")
+else()
+  set(_cpkt_iodbc_shared_suffix ".so")
+endif()
+foreach(_cpkt_iodbc_component iodbc iodbcinst)
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/lib/lib${_cpkt_iodbc_component}${_cpkt_iodbc_shared_suffix}(\n|$)"
+    "iODBC shared ${_cpkt_iodbc_component}")
 endforeach()
 
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")

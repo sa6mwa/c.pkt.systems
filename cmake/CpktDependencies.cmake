@@ -3031,6 +3031,142 @@ function(cpkt_add_postgresql)
   set(CPKT_POSTGRESQL_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_add_iodbc)
+  set(project_name cpkt_iodbc_project)
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/iodbc")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(stage_dir "${prefix_dir}/stage")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/iodbc/install")
+  set(iodbc_static_library "${install_dir}/lib/libiodbc${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(iodbc_shared_library "${install_dir}/lib/libiodbc${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(inst_static_library "${install_dir}/lib/libiodbcinst${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(inst_shared_library "${install_dir}/lib/libiodbcinst${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  cpkt_get_target_triple(target_triple)
+  cpkt_get_external_c_flags(external_cflags)
+  cpkt_get_autotools_link_flags(external_ldflags)
+  set(env_args "")
+  cpkt_append_pinned_external_toolchain_env_args(env_args)
+  set(iodbc_cflags "${external_cflags} -fPIC -std=gnu89")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # iODBC dispatches driver entry points through intentionally unprototyped
+    # C89 function pointers. Clang's C23 migration warning does not apply.
+    # Its installer passes byte and 16-bit ODBC buffers through equivalent
+    # signed/unsigned pointer types; the public layout is unchanged.
+    string(APPEND iodbc_cflags
+      " -Wno-deprecated-non-prototype -Wno-pointer-sign")
+  endif()
+  list(APPEND env_args
+    "CFLAGS=${iodbc_cflags}"
+    "LDFLAGS=${external_ldflags}")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # Autotools otherwise finds the Linux host linker and emits ELF flags.
+    list(APPEND env_args
+      "LD=${CMAKE_LINKER}"
+      "STRIP=true")
+  endif()
+  set(darwin_normalize_command ${CMAKE_COMMAND} -E true)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(darwin_normalize_command
+      ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
+        -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+        -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
+        -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
+  endif()
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://github.com/openlink/iODBC/releases/download/v${CPKT_IODBC_VERSION}/libiodbc-${CPKT_IODBC_VERSION}.tar.gz"
+      URL_HASH "SHA256=3898b32d07961360f6f2cf36db36036b719a230e476469258a80f32243e845fa"
+      DOWNLOAD_NAME "libiodbc-${CPKT_IODBC_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${prefix_dir}/stamp"
+      TMP_DIR "${prefix_dir}/tmp"
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/iodbc.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args}
+        "${source_dir}/configure"
+        --host=${target_triple}
+        --prefix=/usr
+        --libdir=/usr/lib
+        --includedir=/usr/include
+        --sysconfdir=/etc
+        --enable-static
+        --enable-shared
+        --disable-gui
+        --disable-libodbc
+      BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbcinst -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbc -j${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C include install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbcinst install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbc install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${darwin_normalize_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${iodbc_static_library}" "${iodbc_shared_library}"
+        "${inst_static_library}" "${inst_shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::iodbc_static STATIC IMPORTED GLOBAL)
+  set(iodbc_static_system_libraries "${CMAKE_DL_LIBS};Threads::Threads")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND iodbc_static_system_libraries "-Wl,-framework,Carbon")
+  endif()
+  set_target_properties(cpkt::iodbc_static PROPERTIES
+    IMPORTED_LOCATION "${iodbc_static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${iodbc_static_system_libraries}")
+  add_library(cpkt::iodbc_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbc_shared PROPERTIES
+    IMPORTED_LOCATION "${iodbc_shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
+  add_library(cpkt::iodbcinst_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbcinst_static PROPERTIES
+    IMPORTED_LOCATION "${inst_static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads")
+  add_library(cpkt::iodbcinst_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbcinst_shared PROPERTIES
+    IMPORTED_LOCATION "${inst_shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
+  add_library(cpkt::iodbc INTERFACE IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbc PROPERTIES
+    INTERFACE_LINK_LIBRARIES "cpkt::iodbc_static;cpkt::iodbcinst_static")
+  if(CPKT_BUILD_DEPENDENCIES)
+    foreach(target_name cpkt::iodbc_static cpkt::iodbc_shared
+        cpkt::iodbcinst_static cpkt::iodbcinst_shared)
+      add_dependencies(${target_name} ${project_name})
+    endforeach()
+    cpkt_record_dependency_target(${project_name})
+  else()
+    foreach(required_file "${iodbc_static_library}" "${iodbc_shared_library}"
+        "${inst_static_library}" "${inst_shared_library}"
+        "${install_dir}/include/sql.h" "${install_dir}/include/odbcinst.h")
+      cpkt_require_dependency_file("${required_file}" "iODBC artifact")
+    endforeach()
+  endif()
+  set(CPKT_IODBC_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_add_sqlite)
   set(project_name "cpkt_sqlite_project")
   set(headers_project_name "cpkt_sqlite_headers_project")
@@ -3467,6 +3603,18 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake"
     RECIPE_FUNCTIONS cpkt_add_postgresql)
   cpkt_prepare_dependency_component(
+    NAME iodbc
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/iodbc"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/iodbc/install"
+    VARIABLES CPKT_IODBC_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc_c89_sqlbigint.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
+    RECIPE_FUNCTIONS cpkt_add_iodbc)
+  cpkt_prepare_dependency_component(
     NAME sqlite
     BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/sqlite"
     INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/sqlite/install"
@@ -3493,6 +3641,7 @@ function(cpkt_configure_dependencies)
   cpkt_add_cyrus_sasl()
   cpkt_add_openldap()
   cpkt_add_postgresql()
+  cpkt_add_iodbc()
   cpkt_add_sqlite()
 
   if(CPKT_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -3520,6 +3669,7 @@ function(cpkt_configure_dependencies)
       add_custom_target(cpkt_deps_curl DEPENDS cpkt_curl_project)
       add_custom_target(cpkt_deps_libpng DEPENDS cpkt_libpng_project)
       add_custom_target(cpkt_deps_libharu DEPENDS cpkt_libharu_static_project)
+      add_custom_target(cpkt_deps_iodbc DEPENDS cpkt_iodbc_project)
       add_custom_target(cpkt_deps_libxml2 DEPENDS cpkt_libxml2_static_project)
       add_custom_target(cpkt_deps_lua DEPENDS cpkt_lua_project)
       add_custom_target(cpkt_deps_miniaudio DEPENDS cpkt_miniaudio_project)
