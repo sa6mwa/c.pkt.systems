@@ -1730,6 +1730,13 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_registration_concurrency_test)
     target_link_libraries(cpkt_sqlite_registration_concurrency_test PRIVATE
       cpkt_sqlite_static Threads::Threads)
+    add_executable(cpkt_sqlite_fts5_registration_concurrency_test
+      tests/sqlite_fts5_registration_concurrency_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_fts5_registration_concurrency_test)
+    cpkt_configure_c89_target(cpkt_sqlite_fts5_registration_concurrency_test)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_fts5_registration_concurrency_test)
+    target_link_libraries(cpkt_sqlite_fts5_registration_concurrency_test PRIVATE
+      cpkt_sqlite_static Threads::Threads)
     add_executable(cpkt_sqlite_unlock_notify_groups_test
       tests/sqlite_unlock_notify_groups_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_unlock_notify_groups_test)
@@ -2011,6 +2018,10 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME sqlite_registration_concurrency
         COMMAND cpkt_sqlite_registration_concurrency_test)
       set_tests_properties(sqlite_registration_concurrency PROPERTIES TIMEOUT 15)
+      add_test(NAME sqlite_fts5_registration_concurrency
+        COMMAND cpkt_sqlite_fts5_registration_concurrency_test)
+      set_tests_properties(sqlite_fts5_registration_concurrency PROPERTIES
+        TIMEOUT 30)
       add_test(NAME sqlite_unlock_notify_groups
         COMMAND cpkt_sqlite_unlock_notify_groups_test)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -2041,6 +2052,9 @@ if(CPKT_BUILD_TESTS)
       add_test(
         NAME postgres_e2e_harness
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_e2e_harness_test.sh")
+      add_test(NAME devenv_lifecycle
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/devenv_lifecycle_test.sh"
+          "${CMAKE_SOURCE_DIR}")
       add_test(
         NAME postgres_oauth_loader_patch
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_oauth_loader_patch_test.sh")
@@ -2078,6 +2092,7 @@ if(CPKT_BUILD_TESTS)
         pdf_facade_static pdf_facade_shared
         sqlite_child_lifetime_concurrency sqlite_page_cache_lifetime
         sqlite_callback_synchronization sqlite_registration_concurrency
+        sqlite_fts5_registration_concurrency
         sqlite_unlock_notify_groups
         sqlite_auto_extension_shutdown sqlite_rtree_registration_failure
         sqlite_session_hook_guard sqlite_collation_failure

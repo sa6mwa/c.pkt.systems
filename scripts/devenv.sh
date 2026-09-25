@@ -23,23 +23,14 @@ require_podman() {
   }
 }
 
-render() {
-  local port
-  for port in "$postgres_port" "$cockroach_port"; do
-    [[ $port =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )) || {
-      printf 'local database ports must be numeric and between 1024 and 65535\n' >&2
-      exit 2
-    }
-  done
-  [[ $postgres_port != "$cockroach_port" ]] || { printf 'database ports must differ\n' >&2; exit 2; }
-  mkdir -p "$state_root/state/postgres" "$state_root/state/cockroach" "$state_root/tmp" "$state_root/logs"
-  python3 - "$repo_root/devenv.yaml.in" "$manifest" \
+render_manifest() {
+  python3 - "$1" "$repo_root/devenv.yaml.in" "$manifest" \
     "$postgres_pod" "$cockroach_pod" "$postgres_port" "$cockroach_port" \
     "$state_root/state/postgres" "$state_root/state/cockroach" <<'PY'
 import pathlib
 import sys
 
-source, destination, pg_pod, crdb_pod, pg_port, crdb_port, pg_state, crdb_state = sys.argv[1:]
+mode, source, destination, pg_pod, crdb_pod, pg_port, crdb_port, pg_state, crdb_state = sys.argv[1:]
 content = pathlib.Path(source).read_text()
 for key, value in {
     'CPKT_POSTGRES_POD': pg_pod,
@@ -51,9 +42,24 @@ for key, value in {
 }.items():
     content = content.replace(key, value)
 path = pathlib.Path(destination)
+if mode == 'matches':
+    sys.exit(0 if path.is_file() and path.read_text() == content else 1)
 path.write_text(content)
 path.chmod(0o600)
 PY
+}
+
+render() {
+  local port
+  for port in "$postgres_port" "$cockroach_port"; do
+    [[ $port =~ ^[0-9]+$ ]] && (( port >= 1024 && port <= 65535 )) || {
+      printf 'local database ports must be numeric and between 1024 and 65535\n' >&2
+      exit 2
+    }
+  done
+  [[ $postgres_port != "$cockroach_port" ]] || { printf 'database ports must differ\n' >&2; exit 2; }
+  mkdir -p "$state_root/state/postgres" "$state_root/state/cockroach" "$state_root/tmp" "$state_root/logs"
+  render_manifest write
   printf '%s\n' "$manifest"
 }
 
@@ -73,9 +79,7 @@ readiness() {
 }
 
 is_up() {
-  [[ -f $manifest ]] &&
-      grep -Fq "hostPort: $postgres_port" "$manifest" &&
-      grep -Fq "hostPort: $cockroach_port" "$manifest" &&
+  render_manifest matches &&
       podman pod exists "$postgres_pod" && podman pod exists "$cockroach_pod" &&
       [[ $(podman pod inspect "$postgres_pod" --format '{{.State}}') == Running ]] &&
       [[ $(podman pod inspect "$cockroach_pod" --format '{{.State}}') == Running ]]
@@ -86,9 +90,7 @@ up() {
   if is_up; then
     printf '[devenv] existing pods %s and %s\n' "$postgres_pod" "$cockroach_pod"
   else
-    if [[ -f $manifest ]]; then
-      podman kube down "$manifest" >/dev/null
-    fi
+    down
     render
     podman kube play --userns=keep-id:uid=70,gid=70 "$manifest"
   fi
@@ -99,10 +101,16 @@ up() {
 }
 
 down() {
+  local pod
   require_podman
   if [[ -f $manifest ]]; then
-    podman kube down "$manifest"
+    podman kube down "$manifest" || true
   fi
+  for pod in "$postgres_pod" "$cockroach_pod"; do
+    if podman pod exists "$pod"; then
+      podman pod rm --force "$pod"
+    fi
+  done
   if podman pod exists "$postgres_pod" || podman pod exists "$cockroach_pod"; then
     printf '[devenv] database pods remain after shutdown\n' >&2
     return 1

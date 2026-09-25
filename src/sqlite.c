@@ -5041,6 +5041,7 @@ static int cpkt_sqlite_fts5_api_create_tokenizer(
     cpkt_sqlite_destroy_callback binding_destroy) {
   fts5_api *api;
   cpkt_sqlite_fts5_tokenizer_binding *binding;
+  sqlite3_mutex *mutex;
   int status;
   api = cpkt_sqlite_native_fts5_api(self);
   if (api == NULL || name == NULL || create == NULL || destroy == NULL ||
@@ -5063,9 +5064,11 @@ static int cpkt_sqlite_fts5_api_create_tokenizer(
       cpkt_sqlite_fts5_tokenizer_delete_trampoline;
   binding->native_tokenizer.xTokenize =
       cpkt_sqlite_fts5_tokenizer_tokenize_trampoline;
+  mutex = cpkt_sqlite_connection_lock(self->database);
   status =
       api->xCreateTokenizer_v2(api, name, binding, &binding->native_tokenizer,
                                cpkt_sqlite_fts5_tokenizer_binding_destroy);
+  cpkt_sqlite_connection_unlock(mutex);
   if (status != SQLITE_OK) {
     cpkt_sqlite_fts5_tokenizer_binding_destroy(binding);
     return status;
@@ -5079,6 +5082,7 @@ static int cpkt_sqlite_fts5_api_create_auxiliary(
     cpkt_sqlite_destroy_callback destroy) {
   fts5_api *api;
   cpkt_sqlite_fts5_auxiliary_binding *binding;
+  sqlite3_mutex *mutex;
   int status;
   api = cpkt_sqlite_native_fts5_api(self);
   if (api == NULL || name == NULL || callback == NULL ||
@@ -5092,9 +5096,11 @@ static int cpkt_sqlite_fts5_api_create_auxiliary(
   binding->user_data = user_data;
   binding->callback = callback;
   binding->destroy = destroy;
+  mutex = cpkt_sqlite_connection_lock(self->database);
   status = api->xCreateFunction(api, name, binding,
                                 cpkt_sqlite_fts5_auxiliary_trampoline,
                                 cpkt_sqlite_fts5_auxiliary_destroy);
+  cpkt_sqlite_connection_unlock(mutex);
   if (status != SQLITE_OK) {
     cpkt_sqlite_fts5_auxiliary_destroy(binding);
     return status;
