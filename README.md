@@ -8,7 +8,7 @@ The project builds release artifacts for:
 - zlib
 - libpng, with its complete public C API
 - libHaru, with a complete strict C89 `cpkt_pdf` facade
-- iODBC driver manager and installer, with the full C89-compatible ODBC API
+- iODBC driver manager and configuration API, with the full C89-compatible ODBC API
 - nghttp2
 - libssh2
 - curl
@@ -316,7 +316,7 @@ available through `find_package(CpktPng CONFIG REQUIRED)` and `cpkt::png`.
 The C89 facade API and its transitive dependencies are described in
 [`docs/pdf-c89-facade.md`](docs/pdf-c89-facade.md).
 For ODBC applications, use `find_package(CpktIodbc CONFIG REQUIRED)` and link
-`cpkt::iodbc` for the static driver manager and installer, or link
+`cpkt::iodbc` for the static driver manager and configuration API, or link
 `cpkt::iodbc_shared` and `cpkt::iodbcinst_shared` for shared libraries. The
 standard `sql.h`, `sqlext.h`, and `odbcinst.h` headers provide the complete
 public API under the supported strict-C89 toolchains. `pkg-config libiodbc`

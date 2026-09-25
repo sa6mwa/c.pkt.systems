@@ -15,7 +15,8 @@ Licenses and required notices are shipped under
 `share/doc/c.pkt.systems/third_party/`, with the aggregate notice source at
 [THIRD_PARTY_NOTICES.md](third_party/THIRD_PARTY_NOTICES.md).
 
-iODBC 3.52.16 supplies the ODBC driver manager and installer libraries, not a
+iODBC 3.52.16 supplies the ODBC driver manager (`libiodbc`) and configuration
+API (`libiodbcinst`), not a
 database-specific ODBC driver. It is built from source under the upstream
 three-clause BSD license. The full public ODBC headers and both static and
 shared libraries are shipped; the 32-bit `SQLBIGINT` declaration is patched to
