@@ -53,6 +53,17 @@ require_plan_target() {
   esac
 }
 
+for target in cpkt_deps_all cpkt_deps_whisper; do
+  plan=$(cmake --build "$build_dir" --target "$target" -- -n)
+  require_plan_target "$plan" cpkt_whisper_static_project "$target build plan"
+  require_plan_target "$plan" cpkt_whisper_shared_project "$target build plan"
+done
+for target in cpkt_deps_all cpkt_deps_open62541; do
+  plan=$(cmake --build "$build_dir" --target "$target" -- -n)
+  require_plan_target "$plan" cpkt_open62541_static_project "$target build plan"
+  require_plan_target "$plan" cpkt_open62541_shared_project "$target build plan"
+done
+
 forbid_plan_targets() {
   local plan=$1
   local label=$2
