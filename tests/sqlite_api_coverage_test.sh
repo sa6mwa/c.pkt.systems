@@ -54,11 +54,11 @@ while IFS= read -r api; do
     *) needle=$api ;;
   esac
   if ! grep -Eq "${needle}[[:space:]]*\\(" "$facade_source"; then
-    missing+="${api} (expected adapter using ${needle})"$'\n'
+    missing+="${api} (expected facade using ${needle})"$'\n'
   fi
 done <<< "$native_apis"
 
 if [[ -n "$missing" ]]; then
-  printf 'SQLite C89 facade lacks adapters for published enabled APIs:\n%s' "$missing" >&2
+  printf 'SQLite C89 facade lacks published enabled APIs:\n%s' "$missing" >&2
   exit 1
 fi

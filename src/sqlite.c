@@ -6665,16 +6665,16 @@ static int cpkt_sqlite_session_stream(cpkt_sqlite_session *self,
 }
 
 static int
-cpkt_sqlite_session_changeset_stream(cpkt_sqlite_session *self,
-                                     cpkt_sqlite_stream_output_callback output,
-                                     void *context) {
+cpkt_sqlite_session_changeset_strm(cpkt_sqlite_session *self,
+                                   cpkt_sqlite_stream_output_callback output,
+                                   void *context) {
   return cpkt_sqlite_session_stream(self, output, context, 0);
 }
 
 static int
-cpkt_sqlite_session_patchset_stream(cpkt_sqlite_session *self,
-                                    cpkt_sqlite_stream_output_callback output,
-                                    void *context) {
+cpkt_sqlite_session_patchset_strm(cpkt_sqlite_session *self,
+                                  cpkt_sqlite_stream_output_callback output,
+                                  void *context) {
   return cpkt_sqlite_session_stream(self, output, context, 1);
 }
 
@@ -6812,8 +6812,8 @@ int cpkt_sqlite_session_new(cpkt_sqlite *database, const char *schema,
   public_session->changeset_size = cpkt_sqlite_session_changeset_size;
   public_session->memory_used = cpkt_sqlite_session_memory_used;
   public_session->diff = cpkt_sqlite_session_diff;
-  public_session->changeset_stream = cpkt_sqlite_session_changeset_stream;
-  public_session->patchset_stream = cpkt_sqlite_session_patchset_stream;
+  public_session->changeset_strm = cpkt_sqlite_session_changeset_strm;
+  public_session->patchset_strm = cpkt_sqlite_session_patchset_strm;
   public_session->close = cpkt_sqlite_session_close;
   public_session->session = native_session;
   public_session->database = database;
@@ -6987,9 +6987,9 @@ int cpkt_sqlite_changeset_start_ex(const cpkt_sqlite_changeset *changeset,
   return CPKT_SQLITE_OK;
 }
 
-int cpkt_sqlite_changeset_start_stream(cpkt_sqlite_stream_input_callback input,
-                                       void *context, int flags,
-                                       cpkt_sqlite_changeset_iterator **out) {
+int cpkt_sqlite_changeset_start_strm(cpkt_sqlite_stream_input_callback input,
+                                     void *context, int flags,
+                                     cpkt_sqlite_changeset_iterator **out) {
   sqlite3_changeset_iter *native_iterator;
   cpkt_sqlite_changeset_iterator *public_iterator;
   int status;
@@ -7055,9 +7055,10 @@ int cpkt_sqlite_changeset_concat(const cpkt_sqlite_changeset *left,
   return cpkt_sqlite_changeset_new_owned(data, byte_count, out);
 }
 
-int cpkt_sqlite_changeset_invert_stream(
-    cpkt_sqlite_stream_input_callback input, void *input_context,
-    cpkt_sqlite_stream_output_callback output, void *output_context) {
+int cpkt_sqlite_changeset_invert_strm(cpkt_sqlite_stream_input_callback input,
+                                      void *input_context,
+                                      cpkt_sqlite_stream_output_callback output,
+                                      void *output_context) {
   cpkt_sqlite_stream_input_context public_input;
   cpkt_sqlite_stream_output_context public_output;
   if (input == NULL || output == NULL)
@@ -7071,7 +7072,7 @@ int cpkt_sqlite_changeset_invert_stream(
       cpkt_sqlite_stream_output_trampoline, &public_output);
 }
 
-int cpkt_sqlite_changeset_concat_stream(
+int cpkt_sqlite_changeset_concat_strm(
     cpkt_sqlite_stream_input_callback left_input, void *left_context,
     cpkt_sqlite_stream_input_callback right_input, void *right_context,
     cpkt_sqlite_stream_output_callback output, void *output_context) {
@@ -7113,7 +7114,7 @@ int cpkt_sqlite_changeset_apply(
       &apply_context);
 }
 
-int cpkt_sqlite_changeset_apply_stream(
+int cpkt_sqlite_changeset_apply_strm(
     cpkt_sqlite *database, cpkt_sqlite_stream_input_callback input,
     void *input_context, cpkt_sqlite_changeset_filter_callback filter,
     cpkt_sqlite_changeset_conflict_callback conflict, void *context) {
@@ -7188,7 +7189,7 @@ int cpkt_sqlite_changeset_apply_ex(
                                              rebase_out);
 }
 
-int cpkt_sqlite_changeset_apply_stream_ex(
+int cpkt_sqlite_changeset_apply_ex_strm(
     cpkt_sqlite *database, cpkt_sqlite_stream_input_callback input,
     void *input_context, cpkt_sqlite_changeset_filter_callback filter,
     cpkt_sqlite_changeset_conflict_callback conflict, void *context, int flags,
@@ -7264,7 +7265,7 @@ int cpkt_sqlite_changeset_apply_v3(
                                              rebase_out);
 }
 
-int cpkt_sqlite_changeset_apply_v3_stream(
+int cpkt_sqlite_changeset_apply_v3_strm(
     cpkt_sqlite *database, cpkt_sqlite_stream_input_callback input,
     void *input_context, cpkt_sqlite_changeset_iterator_filter_callback filter,
     cpkt_sqlite_changeset_conflict_callback conflict, void *context, int flags,
@@ -7332,7 +7333,7 @@ static int cpkt_sqlite_rebaser_rebase(cpkt_sqlite_rebaser *self,
   return cpkt_sqlite_changeset_new_owned(result, result_size, out);
 }
 
-static int cpkt_sqlite_rebaser_rebase_stream(
+static int cpkt_sqlite_rebaser_rebase_strm(
     cpkt_sqlite_rebaser *self, cpkt_sqlite_stream_input_callback input,
     void *input_context, cpkt_sqlite_stream_output_callback output,
     void *output_context) {
@@ -7379,7 +7380,7 @@ int cpkt_sqlite_rebaser_new(cpkt_sqlite_rebaser **out) {
   }
   public_rebaser->configure = cpkt_sqlite_rebaser_configure;
   public_rebaser->rebase = cpkt_sqlite_rebaser_rebase;
-  public_rebaser->rebase_stream = cpkt_sqlite_rebaser_rebase_stream;
+  public_rebaser->rebase_strm = cpkt_sqlite_rebaser_rebase_strm;
   public_rebaser->close = cpkt_sqlite_rebaser_close;
   public_rebaser->rebaser = native_rebaser;
   *out = public_rebaser;
@@ -7416,9 +7417,9 @@ static int cpkt_sqlite_changegroup_add(cpkt_sqlite_changegroup *self,
 }
 
 static int
-cpkt_sqlite_changegroup_add_stream(cpkt_sqlite_changegroup *self,
-                                   cpkt_sqlite_stream_input_callback input,
-                                   void *context) {
+cpkt_sqlite_changegroup_add_strm(cpkt_sqlite_changegroup *self,
+                                 cpkt_sqlite_stream_input_callback input,
+                                 void *context) {
   cpkt_sqlite_stream_input_context input_context;
   if (cpkt_sqlite_native_changegroup(self) == NULL || input == NULL) {
     return CPKT_SQLITE_MISUSE;
@@ -7460,9 +7461,9 @@ static int cpkt_sqlite_changegroup_output(cpkt_sqlite_changegroup *self,
 }
 
 static int
-cpkt_sqlite_changegroup_output_stream(cpkt_sqlite_changegroup *self,
-                                      cpkt_sqlite_stream_output_callback output,
-                                      void *context) {
+cpkt_sqlite_changegroup_output_strm(cpkt_sqlite_changegroup *self,
+                                    cpkt_sqlite_stream_output_callback output,
+                                    void *context) {
   cpkt_sqlite_stream_output_context output_context;
   if (cpkt_sqlite_native_changegroup(self) == NULL || output == NULL) {
     return CPKT_SQLITE_MISUSE;
@@ -7580,10 +7581,10 @@ int cpkt_sqlite_changegroup_new(cpkt_sqlite_changegroup **out) {
   public_changegroup->config = cpkt_sqlite_changegroup_config;
   public_changegroup->schema = cpkt_sqlite_changegroup_schema;
   public_changegroup->add = cpkt_sqlite_changegroup_add;
-  public_changegroup->add_stream = cpkt_sqlite_changegroup_add_stream;
+  public_changegroup->add_strm = cpkt_sqlite_changegroup_add_strm;
   public_changegroup->add_change = cpkt_sqlite_changegroup_add_change;
   public_changegroup->output = cpkt_sqlite_changegroup_output;
-  public_changegroup->output_stream = cpkt_sqlite_changegroup_output_stream;
+  public_changegroup->output_strm = cpkt_sqlite_changegroup_output_strm;
   public_changegroup->change_begin = cpkt_sqlite_changegroup_change_begin;
   public_changegroup->change_i64 = cpkt_sqlite_changegroup_change_i64;
   public_changegroup->change_null = cpkt_sqlite_changegroup_change_null;

@@ -85,7 +85,7 @@ static int cpkt_rebase_apply(int mode, const cpkt_sqlite_changeset *changeset,
                                             collect ? &rebase : NULL);
     break;
   case 1:
-    status = cpkt_sqlite_changeset_apply_stream_ex(
+    status = cpkt_sqlite_changeset_apply_ex_strm(
         database, cpkt_rebase_input, &stream, NULL, cpkt_rebase_omit,
         &conflicts, 0, collect ? &rebase : NULL);
     break;
@@ -95,7 +95,7 @@ static int cpkt_rebase_apply(int mode, const cpkt_sqlite_changeset *changeset,
                                             collect ? &rebase : NULL);
     break;
   default:
-    status = cpkt_sqlite_changeset_apply_v3_stream(
+    status = cpkt_sqlite_changeset_apply_v3_strm(
         database, cpkt_rebase_input, &stream, NULL, cpkt_rebase_omit,
         &conflicts, 0, collect ? &rebase : NULL);
     break;

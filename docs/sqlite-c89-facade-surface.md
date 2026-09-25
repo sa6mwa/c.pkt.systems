@@ -27,7 +27,7 @@ The required surface is:
 - keyword/string/formatting helpers, `sqlite3_str`, table helpers, and
   statement scan status;
 - session, changeset, changegroup, rebaser, conflict/filter callbacks, and all
-  streaming changeset APIs enabled by the bundled SQLite build.
+  SQLite `_strm` callback APIs enabled by the bundled SQLite build.
 
 The bundled source enables the corresponding SQLite optional core features:
 FTS3/4/5, RTree/Geopoly, session/changesets, preupdate hooks, snapshots,

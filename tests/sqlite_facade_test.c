@@ -1031,6 +1031,9 @@ int main(void) {
   cpkt_sqlite_mutex *mutex;
   page_cache_test_state page_cache_state;
   stream_state stream;
+  stream_state left_stream;
+  stream_state right_stream;
+  stream_state result_stream;
   fts5_state fts_state;
   vfs_probe_state vfs_probe;
   cpkt_sqlite_vfs_methods vfs_methods;
@@ -1939,7 +1942,7 @@ int main(void) {
   stream.input_size = 0;
   stream.input_offset = 0;
   stream.output_size = 0;
-  if (session->changeset_stream(session, stream_output, &stream) !=
+  if (session->changeset_strm(session, stream_output, &stream) !=
           CPKT_SQLITE_OK ||
       stream.output_size != changeset->byte_count)
     return 22;
@@ -1978,7 +1981,7 @@ int main(void) {
   stream.input_offset = 0;
   stream.output_size = 0;
   iterator = 0;
-  if (cpkt_sqlite_changeset_start_stream(stream_input, &stream, 0, &iterator) !=
+  if (cpkt_sqlite_changeset_start_strm(stream_input, &stream, 0, &iterator) !=
           CPKT_SQLITE_OK ||
       iterator == 0 || iterator->next(iterator) != CPKT_SQLITE_ROW ||
       iterator->close(iterator) != CPKT_SQLITE_OK ||
@@ -1995,6 +1998,33 @@ int main(void) {
     return 40 + status;
   if (combined == 0)
     return 28;
+  left_stream.input = changeset->data;
+  left_stream.input_size = changeset->byte_count;
+  left_stream.input_offset = 0;
+  left_stream.output_size = 0;
+  right_stream.input = inverted->data;
+  right_stream.input_size = inverted->byte_count;
+  right_stream.input_offset = 0;
+  right_stream.output_size = 0;
+  result_stream.input = NULL;
+  result_stream.input_size = 0;
+  result_stream.input_offset = 0;
+  result_stream.output_size = 0;
+  if (cpkt_sqlite_changeset_concat_strm(
+          stream_input, &left_stream, stream_input, &right_stream,
+          stream_output, &result_stream) != CPKT_SQLITE_OK ||
+      left_stream.input_offset != left_stream.input_size ||
+      right_stream.input_offset != right_stream.input_size ||
+      result_stream.output_size != combined->byte_count)
+    return 90;
+  left_stream.input_offset = 0;
+  result_stream.output_size = 0;
+  if (cpkt_sqlite_changeset_invert_strm(stream_input, &left_stream,
+                                        stream_output,
+                                        &result_stream) != CPKT_SQLITE_OK ||
+      left_stream.input_offset != left_stream.input_size ||
+      result_stream.output_size != inverted->byte_count)
+    return 91;
   changegroup = 0;
   grouped = 0;
   if (cpkt_sqlite_changegroup_new(&changegroup) != CPKT_SQLITE_OK ||

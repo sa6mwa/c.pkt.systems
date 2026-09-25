@@ -54,7 +54,7 @@ concurrent delivery.
 
 Extended changeset apply operations collect rebase output only when
 `rebase_out` is provided. Passing `NULL` avoids the input-proportional native
-rebase allocation, including for streaming apply operations.
+rebase allocation, including for `_strm` apply operations.
 
 `db->close(db)` is the convenience destructor: it defers native teardown until
 facade-owned statements, blobs, and backups have been finalized or closed, so
@@ -99,7 +99,7 @@ Static consumers use `find_package(CpktSqlite CONFIG REQUIRED)` and
 `cpkt::sqlite`, or `pkg-config --static --libs cpkt-sqlite`. Shared consumers
 link `cpkt::sqlite_shared`.
 
-The V0 delivery contract is a complete adapter for the published SQLite 3.53.4
+The V0 delivery contract is a complete facade for the published SQLite 3.53.4
 public surface, not only the receiver convenience layer shown above. Its
 required feature families and coverage rule are recorded in
 `docs/sqlite-c89-facade-surface.md`.
