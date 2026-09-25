@@ -962,7 +962,6 @@ function(cpkt_add_curl)
   set(curl_cmake_args
     -DCMAKE_INSTALL_PREFIX=${install_dir}
     -DCMAKE_INSTALL_LIBDIR=lib
-    -DCMAKE_DEBUG_POSTFIX=
     -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     -DCMAKE_INSTALL_RPATH=${curl_install_rpath}
@@ -994,7 +993,6 @@ function(cpkt_add_curl)
     -DCURL_BROTLI=OFF
     -DCURL_ZSTD=OFF
     -DCURL_USE_LIBPSL=OFF
-    -DUSE_LIBRTMP=OFF
     -DUSE_LIBIDN2=OFF
     -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
     -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
