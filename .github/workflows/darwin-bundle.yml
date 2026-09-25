@@ -13,6 +13,8 @@ jobs:
   arm64:
     runs-on: macos-26
     timeout-minutes: 120
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
       - uses: actions/checkout@v4
       - name: Install build tools

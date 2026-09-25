@@ -144,6 +144,10 @@ function(cpkt_get_external_c_flags out_var)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     string(APPEND _flags " -include stdint.h -include sys/types.h")
+    if(CPKT_MACOS_DEPLOYMENT_TARGET)
+      string(APPEND _flags
+        " -mmacosx-version-min=${CPKT_MACOS_DEPLOYMENT_TARGET}")
+    endif()
   endif()
   if(NOT "${CMAKE_C_FLAGS}" STREQUAL "")
     set(_flags "${CMAKE_C_FLAGS} ${_flags}")
@@ -162,6 +166,10 @@ function(cpkt_get_external_cxx_flags out_var)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     string(APPEND _flags " -include stdint.h -include sys/types.h")
+    if(CPKT_MACOS_DEPLOYMENT_TARGET)
+      string(APPEND _flags
+        " -mmacosx-version-min=${CPKT_MACOS_DEPLOYMENT_TARGET}")
+    endif()
   endif()
   if(NOT "${CMAKE_CXX_FLAGS}" STREQUAL "")
     set(_flags "${CMAKE_CXX_FLAGS} ${_flags}")
@@ -235,6 +243,10 @@ function(cpkt_append_darwin_external_env_args out_var)
       STRIP=${CMAKE_STRIP}
       NM=${CMAKE_NM}
     )
+    if(CPKT_MACOS_DEPLOYMENT_TARGET)
+      list(APPEND _args
+        MACOSX_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET})
+    endif()
     if(CPKT_OSXCROSS_ROOT)
       list(APPEND _args
         PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
@@ -383,6 +395,7 @@ function(cpkt_append_common_external_cmake_args out_var)
     list(APPEND _args
       -DCPKT_OSXCROSS_HOST=${CPKT_OSXCROSS_HOST}
       -DCPKT_MACOS_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET}
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET}
       -DCMAKE_INSTALL_NAME_DIR=@rpath
       -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
       -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
