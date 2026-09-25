@@ -6155,7 +6155,7 @@ int cpkt_sqlite_create_window_function(
   cpkt_sqlite_function_binding *binding;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL || name == NULL ||
-      step == NULL || final == NULL || value == NULL || inverse == NULL) {
+      step == NULL || final == NULL || (value == NULL) != (inverse == NULL)) {
     return CPKT_SQLITE_MISUSE;
   }
   binding = (cpkt_sqlite_function_binding *)calloc(1, sizeof(*binding));
@@ -6172,8 +6172,9 @@ int cpkt_sqlite_create_window_function(
       cpkt_sqlite_native(self), name, argument_count, (int)text_representation,
       binding, cpkt_sqlite_function_step_trampoline,
       cpkt_sqlite_function_final_trampoline,
-      cpkt_sqlite_function_value_trampoline,
-      cpkt_sqlite_function_inverse_trampoline, cpkt_sqlite_function_destroy);
+      value == NULL ? NULL : cpkt_sqlite_function_value_trampoline,
+      inverse == NULL ? NULL : cpkt_sqlite_function_inverse_trampoline,
+      cpkt_sqlite_function_destroy);
   if (status != SQLITE_OK)
     return status;
   return CPKT_SQLITE_OK;

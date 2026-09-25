@@ -1571,6 +1571,7 @@ int cpkt_sqlite_create_function16(cpkt_sqlite *self, const void *name,
                                   cpkt_sqlite_scalar_callback scalar,
                                   cpkt_sqlite_scalar_callback step,
                                   cpkt_sqlite_scalar_callback final);
+/** NULL value and inverse callbacks together register an aggregate. */
 int cpkt_sqlite_create_window_function(
     cpkt_sqlite *self, const char *name, int argument_count,
     unsigned long text_representation, void *user_data,
