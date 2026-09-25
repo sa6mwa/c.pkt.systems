@@ -2,10 +2,12 @@ include(ExternalProject)
 include("${CMAKE_CURRENT_LIST_DIR}/CpktDependencyArchiveCache.cmake")
 
 function(cpkt_external_install_byproducts out_var)
-  # ExternalProject_Add gained INSTALL_BYPRODUCTS in CMake 3.26. Older
-  # versions still order consumers through the external project target.
+  # ExternalProject_Add gained INSTALL_BYPRODUCTS in CMake 3.26. On older
+  # versions, append these paths to the preceding BUILD_BYPRODUCTS list so
+  # Ninja has file rules for generated facade header dependencies. The
+  # external project target still orders the native install before consumers.
   if(CMAKE_VERSION VERSION_LESS 3.26)
-    set(${out_var} "" PARENT_SCOPE)
+    set(${out_var} ${ARGN} PARENT_SCOPE)
   else()
     set(${out_var} INSTALL_BYPRODUCTS ${ARGN} PARENT_SCOPE)
   endif()
