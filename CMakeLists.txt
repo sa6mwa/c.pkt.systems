@@ -1290,6 +1290,12 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test)
     target_link_libraries(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test PRIVATE
       cpkt::curl_${_cpkt_curl_linkage})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND
+        _cpkt_curl_linkage STREQUAL "shared")
+      set_target_properties(cpkt_curl_async_dns_shared_test PROPERTIES
+        BUILD_RPATH
+          "${CPKT_EXTERNAL_ROOT}/curl/install/lib;${CPKT_EXTERNAL_ROOT}/openssl/install/lib;${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib;${CPKT_EXTERNAL_ROOT}/libssh2/install/lib;${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
+    endif()
   endforeach()
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"

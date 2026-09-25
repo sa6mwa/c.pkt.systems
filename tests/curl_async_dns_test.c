@@ -125,6 +125,7 @@ static int cpkt_multi_test(const char *port) {
   memset(&state, 0, sizeof(state));
   memset(&slow_body, 0, sizeof(slow_body));
   memset(&fast_body, 0, sizeof(fast_body));
+  fprintf(stderr, "multi socket: initializing hostname transfers\n");
   if (snprintf(slow_url, sizeof(slow_url), "http://localhost:%s/slow", port) <
           0 ||
       snprintf(fast_url, sizeof(fast_url), "http://localhost:%s/fast", port) <
@@ -140,17 +141,24 @@ static int cpkt_multi_test(const char *port) {
   curl_easy_setopt(slow, CURLOPT_URL, slow_url);
   curl_easy_setopt(slow, CURLOPT_PROXY, "");
   curl_easy_setopt(slow, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(slow, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+  curl_easy_setopt(slow, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+  curl_easy_setopt(slow, CURLOPT_TIMEOUT_MS, 10000L);
   curl_easy_setopt(slow, CURLOPT_WRITEFUNCTION, cpkt_write_callback);
   curl_easy_setopt(slow, CURLOPT_WRITEDATA, &slow_body);
   curl_easy_setopt(fast, CURLOPT_URL, fast_url);
   curl_easy_setopt(fast, CURLOPT_PROXY, "");
   curl_easy_setopt(fast, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(fast, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+  curl_easy_setopt(fast, CURLOPT_CONNECTTIMEOUT_MS, 5000L);
+  curl_easy_setopt(fast, CURLOPT_TIMEOUT_MS, 10000L);
   curl_easy_setopt(fast, CURLOPT_WRITEFUNCTION, cpkt_write_callback);
   curl_easy_setopt(fast, CURLOPT_WRITEDATA, &fast_body);
   if (curl_multi_add_handle(multi, slow) != CURLM_OK ||
       curl_multi_socket_action(multi, CURL_SOCKET_TIMEOUT, 0, &running) !=
           CURLM_OK)
     goto done;
+  fprintf(stderr, "multi socket: slow hostname transfer started\n");
   deadline = time(NULL) + 12;
   while (time(NULL) < deadline && (!slow_done || !fast_done)) {
     if (slow_body.bytes > 0 && !fast_added) {
@@ -159,6 +167,7 @@ static int cpkt_multi_test(const char *port) {
               CURLM_OK)
         goto done;
       fast_added = 1;
+      fprintf(stderr, "multi socket: slow transfer progressed; fast started\n");
     }
     if (!cpkt_drive(multi, &state, &running))
       goto done;
@@ -168,8 +177,10 @@ static int cpkt_multi_test(const char *port) {
       if (message->easy_handle == fast) {
         fast_done = 1;
         fast_before_slow = !slow_done;
+        fprintf(stderr, "multi socket: fast transfer completed\n");
       } else if (message->easy_handle == slow) {
         slow_done = 1;
+        fprintf(stderr, "multi socket: slow transfer completed\n");
       }
     }
   }

@@ -43,7 +43,7 @@ def main():
     try:
         port = str(server.server_address[1])
         for client in sys.argv[1:]:
-            subprocess.run([client, "--multi", port], check=True, timeout=20)
+            subprocess.run([client, "--multi", port], check=True, timeout=15)
     finally:
         server.shutdown()
         server.server_close()
