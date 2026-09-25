@@ -53,6 +53,56 @@ int main(void) {
       statement->step(statement) != CPKT_SQLITE_DONE ||
       statement->finalize(statement) != CPKT_SQLITE_OK)
     return 5;
+  status = cpkt_sqlite_create_window_function(database, "cpkt_aggregate", 1,
+                                              CPKT_SQLITE_UTF8, NULL, NULL,
+                                              NULL, NULL, NULL, NULL);
+  if (status != CPKT_SQLITE_OK || destroyed != 1)
+    return 6;
+  statement = NULL;
+  status = database->prepare(database, "select cpkt_aggregate(1)", -1, 0,
+                             &statement, NULL);
+  if (status == CPKT_SQLITE_OK || statement != NULL)
+    return 7;
+  status = cpkt_sqlite_create_window_function(
+      database, "cpkt_aggregate", 1, CPKT_SQLITE_UTF8, &destroyed, NULL, NULL,
+      NULL, NULL, destroy_binding);
+  if (status != CPKT_SQLITE_OK || destroyed != 2)
+    return 8;
+  status = cpkt_sqlite_create_function(
+      database, "scalar_to_delete", 0, CPKT_SQLITE_UTF8, &destroyed,
+      aggregate_final, NULL, NULL, destroy_binding);
+  if (status != CPKT_SQLITE_OK || destroyed != 2)
+    return 9;
+  status = cpkt_sqlite_create_function(database, "scalar_to_delete", 0,
+                                       CPKT_SQLITE_UTF8, NULL, NULL, NULL, NULL,
+                                       NULL);
+  if (status != CPKT_SQLITE_OK || destroyed != 3)
+    return 10;
+  status = cpkt_sqlite_create_function(database, NULL, 0, CPKT_SQLITE_UTF8,
+                                       &destroyed, aggregate_final, NULL, NULL,
+                                       destroy_binding);
+  if (status != CPKT_SQLITE_MISUSE || destroyed != 4)
+    return 11;
+  status = cpkt_sqlite_create_window_function(
+      database, NULL, 0, CPKT_SQLITE_UTF8, &destroyed, aggregate_step,
+      aggregate_final, NULL, NULL, destroy_binding);
+  if (status != CPKT_SQLITE_MISUSE || destroyed != 5)
+    return 12;
+  status = cpkt_sqlite_create_window_function(
+      database, "invalid_window", 1, CPKT_SQLITE_UTF8, &destroyed,
+      aggregate_step, aggregate_final, aggregate_final, NULL, destroy_binding);
+  if (status != CPKT_SQLITE_MISUSE || destroyed != 6)
+    return 13;
+  status = cpkt_sqlite_create_function(
+      database, "bad_arg_count", -2, CPKT_SQLITE_UTF8, &destroyed,
+      aggregate_final, NULL, NULL, destroy_binding);
+  if (status != CPKT_SQLITE_MISUSE || destroyed != 7)
+    return 14;
+  status = cpkt_sqlite_create_window_function(
+      database, "bad_arg_count", -2, CPKT_SQLITE_UTF8, &destroyed,
+      aggregate_step, aggregate_final, NULL, NULL, destroy_binding);
+  if (status != CPKT_SQLITE_MISUSE || destroyed != 8)
+    return 15;
   database->close(database);
-  return destroyed == 1 ? 0 : 6;
+  return destroyed == 8 ? 0 : 16;
 }

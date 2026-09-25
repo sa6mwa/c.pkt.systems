@@ -6084,11 +6084,20 @@ int cpkt_sqlite_create_function(
   cpkt_sqlite_function_binding *binding;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL || name == NULL) {
+    if (destroy != NULL)
+      destroy(user_data);
     return CPKT_SQLITE_MISUSE;
   }
+  if (scalar == NULL && step == NULL && final == NULL)
+    return sqlite3_create_function_v2(cpkt_sqlite_native(self), name,
+                                      argument_count, (int)text_representation,
+                                      user_data, NULL, NULL, NULL, destroy);
   binding = (cpkt_sqlite_function_binding *)calloc(1, sizeof(*binding));
-  if (binding == NULL)
+  if (binding == NULL) {
+    if (destroy != NULL)
+      destroy(user_data);
     return CPKT_SQLITE_NOMEM;
+  }
   binding->database = self;
   binding->user_data = user_data;
   binding->scalar = scalar;
@@ -6155,12 +6164,22 @@ int cpkt_sqlite_create_window_function(
   cpkt_sqlite_function_binding *binding;
   int status;
   if (self == NULL || cpkt_sqlite_native(self) == NULL || name == NULL ||
-      step == NULL || final == NULL || (value == NULL) != (inverse == NULL)) {
+      (step == NULL) != (final == NULL) ||
+      (value == NULL) != (inverse == NULL) || (step == NULL && value != NULL)) {
+    if (destroy != NULL)
+      destroy(user_data);
     return CPKT_SQLITE_MISUSE;
   }
+  if (step == NULL)
+    return sqlite3_create_window_function(
+        cpkt_sqlite_native(self), name, argument_count,
+        (int)text_representation, user_data, NULL, NULL, NULL, NULL, destroy);
   binding = (cpkt_sqlite_function_binding *)calloc(1, sizeof(*binding));
-  if (binding == NULL)
+  if (binding == NULL) {
+    if (destroy != NULL)
+      destroy(user_data);
     return CPKT_SQLITE_NOMEM;
+  }
   binding->database = self;
   binding->user_data = user_data;
   binding->step = step;
