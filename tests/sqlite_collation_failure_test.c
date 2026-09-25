@@ -20,6 +20,7 @@ static void destroy(void *context) {
 int main(void) {
   cpkt_sqlite *database;
   int destroy_count;
+  int index;
   int status;
 
   destroy_count = 0;
@@ -32,6 +33,22 @@ int main(void) {
     database->close(database);
     return 2;
   }
+  for (index = 0; index < 10; ++index) {
+    status = cpkt_sqlite_create_collation(database, "cycle-collation",
+                                          CPKT_SQLITE_UTF8, &destroy_count,
+                                          compare, destroy);
+    if (status != CPKT_SQLITE_OK) {
+      database->close(database);
+      return 3;
+    }
+    status = cpkt_sqlite_create_collation(database, "cycle-collation",
+                                          CPKT_SQLITE_UTF8, &destroy_count, 0,
+                                          destroy);
+    if (status != CPKT_SQLITE_OK || destroy_count != index + 1) {
+      database->close(database);
+      return 4;
+    }
+  }
   database->close(database);
-  return 0;
+  return destroy_count == 10 ? 0 : 5;
 }

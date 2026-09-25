@@ -6190,6 +6190,11 @@ int cpkt_sqlite_create_collation(cpkt_sqlite *self, const char *name,
   if (self == NULL || cpkt_sqlite_native(self) == NULL || name == NULL) {
     return CPKT_SQLITE_MISUSE;
   }
+  if (compare == NULL) {
+    return sqlite3_create_collation_v2(cpkt_sqlite_native(self), name,
+                                       (int)text_representation, NULL, NULL,
+                                       NULL);
+  }
   binding = (cpkt_sqlite_collation_binding *)calloc(1, sizeof(*binding));
   if (binding == NULL)
     return CPKT_SQLITE_NOMEM;
@@ -6198,8 +6203,7 @@ int cpkt_sqlite_create_collation(cpkt_sqlite *self, const char *name,
   binding->destroy = destroy;
   status = sqlite3_create_collation_v2(
       cpkt_sqlite_native(self), name, (int)text_representation, binding,
-      compare == NULL ? NULL : cpkt_sqlite_collation_trampoline,
-      cpkt_sqlite_collation_destroy);
+      cpkt_sqlite_collation_trampoline, cpkt_sqlite_collation_destroy);
   if (status != SQLITE_OK) {
     /* SQLite deliberately does not call xDestroy on this failure path. The
      * binding is facade-owned, while context remains caller-owned. */
