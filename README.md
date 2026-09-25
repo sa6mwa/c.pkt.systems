@@ -23,12 +23,14 @@ The project builds release artifacts for:
 - whisper.cpp/ggml, behind the strict C89 `cpkt_sus` facade
 - MQTT-C
 - open62541
-- cmocka, for test builds on Linux targets
 
 Release tarballs always contain the complete installable SDK surface: headers,
 static archives, shared libraries, CMake package metadata, and pkg-config
 metadata. Partial static-only or shared-only dependency bundles are not
 supported.
+
+cmocka is built for Linux tests when tests are enabled. It is not shipped in
+release tarballs.
 
 It does not build or package project-level pkt.systems libraries such as
 `lonejson` or `libpslog`; those are released and consumed independently.
