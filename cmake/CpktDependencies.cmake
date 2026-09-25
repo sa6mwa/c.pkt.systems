@@ -1,6 +1,16 @@
 include(ExternalProject)
 include("${CMAKE_CURRENT_LIST_DIR}/CpktDependencyArchiveCache.cmake")
 
+function(cpkt_external_install_byproducts out_var)
+  # ExternalProject_Add gained INSTALL_BYPRODUCTS in CMake 3.26. Older
+  # versions still order consumers through the external project target.
+  if(CMAKE_VERSION VERSION_LESS 3.26)
+    set(${out_var} "" PARENT_SCOPE)
+  else()
+    set(${out_var} INSTALL_BYPRODUCTS ${ARGN} PARENT_SCOPE)
+  endif()
+endfunction()
+
 macro(cpkt_cached_external_project_add)
   set(_cpkt_ep_args ${ARGV})
   list(FIND _cpkt_ep_args "URL" _cpkt_ep_url_index)
@@ -577,6 +587,9 @@ function(cpkt_add_nghttp2)
   cpkt_append_pinned_external_toolchain_env_args(nghttp2_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(nghttp2_install_byproducts
+      "${install_dir}/include/nghttp2/nghttp2.h"
+      "${install_dir}/include/nghttp2/nghttp2ver.h")
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/nghttp2/nghttp2/releases/download/v${CPKT_NGHTTP2_VERSION}/nghttp2-${CPKT_NGHTTP2_VERSION}.tar.gz"
       URL_HASH "SHA256=aa317e2cf9dca6afa0aed68f8fad6ff303ec6982e25a78c75c0b65e2b9b3ded5"
@@ -606,9 +619,7 @@ function(cpkt_add_nghttp2)
       BUILD_BYPRODUCTS
         "${install_dir}/lib/libnghttp2${CMAKE_STATIC_LIBRARY_SUFFIX}"
         "${install_dir}/lib/libnghttp2${CMAKE_SHARED_LIBRARY_SUFFIX}"
-      INSTALL_BYPRODUCTS
-        "${install_dir}/include/nghttp2/nghttp2.h"
-        "${install_dir}/include/nghttp2/nghttp2ver.h"
+      ${nghttp2_install_byproducts}
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -794,6 +805,10 @@ function(cpkt_add_libssh2)
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(libssh2_install_byproducts
+      "${install_dir}/include/libssh2.h"
+      "${install_dir}/include/libssh2_sftp.h"
+      "${install_dir}/include/libssh2_publickey.h")
     cpkt_cached_external_project_add(${project_name}
       URL "https://libssh2.org/download/libssh2-${CPKT_LIBSSH2_VERSION}.tar.gz"
       URL_HASH "SHA256=d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
@@ -841,10 +856,7 @@ function(cpkt_add_libssh2)
       BUILD_BYPRODUCTS
         "${libssh2_static_library}"
         "${libssh2_shared_library}"
-      INSTALL_BYPRODUCTS
-        "${install_dir}/include/libssh2.h"
-        "${install_dir}/include/libssh2_sftp.h"
-        "${install_dir}/include/libssh2_publickey.h"
+      ${libssh2_install_byproducts}
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -1490,6 +1502,12 @@ function(cpkt_add_lua)
   )
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(lua_install_byproducts
+      "${install_dir}/include/lua.h"
+      "${install_dir}/include/luaconf.h"
+      "${install_dir}/include/lauxlib.h"
+      "${install_dir}/include/lualib.h"
+      "${install_dir}/include/lua.hpp")
     cpkt_cached_external_project_add(${project_name}
       URL "https://lua.org/ftp/lua-${CPKT_LUA_VERSION}.tar.gz"
       URL_HASH "SHA256=1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce"
@@ -1531,12 +1549,7 @@ function(cpkt_add_lua)
       BUILD_BYPRODUCTS
         "${lua_static_library}"
         "${lua_shared_library_path}"
-      INSTALL_BYPRODUCTS
-        "${install_dir}/include/lua.h"
-        "${install_dir}/include/luaconf.h"
-        "${install_dir}/include/lauxlib.h"
-        "${install_dir}/include/lualib.h"
-        "${install_dir}/include/lua.hpp"
+      ${lua_install_byproducts}
       BUILD_IN_SOURCE 1
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -1631,6 +1644,8 @@ function(cpkt_add_mqttc)
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(mqttc_install_byproducts
+      "${install_dir}/include/mqtt.h")
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/LiamBindle/MQTT-C/archive/${CPKT_MQTTC_COMMIT}.tar.gz"
       URL_HASH "SHA256=985898405912dbddf50d8b446226763696e6390fbd6f38b66cede6f38e703086"
@@ -1666,8 +1681,7 @@ function(cpkt_add_mqttc)
       BUILD_BYPRODUCTS
         "${mqttc_static_library}"
         "${mqttc_shared_library}"
-      INSTALL_BYPRODUCTS
-        "${install_dir}/include/mqtt.h"
+      ${mqttc_install_byproducts}
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
