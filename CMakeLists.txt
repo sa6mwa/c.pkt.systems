@@ -2286,6 +2286,15 @@ if(CPKT_BUILD_TESTS)
           "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
           "-DCPKT_PATCH_TEST_ROOT=${CMAKE_BINARY_DIR}"
           -P "${CMAKE_SOURCE_DIR}/tests/patch_series_portability_test.cmake")
+      add_test(
+        NAME static_archive_member_cleanup
+        COMMAND "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}"
+          "-DCPKT_TEST_CC=${CMAKE_C_COMPILER}"
+          "-DCPKT_TEST_AR=${CMAKE_AR}"
+          "-DCPKT_TEST_RANLIB=${CMAKE_RANLIB}"
+          -P "${CMAKE_SOURCE_DIR}/tests/static_archive_member_cleanup_test.cmake")
       if(CPKT_BUILD_DEPENDENCIES)
         add_test(
           NAME open62541_openssl_provenance

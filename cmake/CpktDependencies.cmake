@@ -2834,9 +2834,9 @@ function(cpkt_add_openldap)
           -DCPKT_AUTOTOOLS_LIBRARY_DESTINATION_DIR=${stage_dir}/usr/lib
           -DCPKT_AUTOTOOLS_LIBRARY_BASENAME=libldap
           -P ${CMAKE_SOURCE_DIR}/cmake/copy_autotools_library_artifacts.cmake
-        # OpenLDAP's Darwin libtool archive embeds liblutil.a as a nested
-        # member.  Darwin's linker rejects that archive; liblutil.a is staged
-        # and exported separately in the supported static closure.
+        # OpenLDAP's libtool archive can embed liblutil.a as a nested member.
+        # Darwin's linker rejects that archive; liblutil.a is staged and
+        # exported separately in the supported static closure.
         COMMAND ${CMAKE_COMMAND}
           -DCPKT_STATIC_ARCHIVE=${stage_dir}/usr/lib/libldap${CMAKE_STATIC_LIBRARY_SUFFIX}
           -DCPKT_STATIC_ARCHIVE_MEMBER=liblutil${CMAKE_STATIC_LIBRARY_SUFFIX}
