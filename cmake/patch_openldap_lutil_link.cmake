@@ -12,7 +12,10 @@ file(READ "${_cpkt_openldap_makefile}" _cpkt_openldap_contents)
 set(_cpkt_openldap_old
   "UNIX_LINK_LIBS = $(LDAP_LIBLBER_LA) $(AC_LIBS) $(SECURITY_LIBS) $(LTHREAD_LIBS)")
 set(_cpkt_openldap_new
-  "UNIX_LINK_LIBS = $(LDAP_LIBLBER_LA) $(LDAP_LIBLUTIL_A) $(AC_LIBS) $(SECURITY_LIBS) $(LTHREAD_LIBS)")
+  "UNIX_LINK_LIBS = $(LDAP_LIBLBER_LA) -Wl,$(LDAP_LIBLUTIL_A) $(AC_LIBS) $(SECURITY_LIBS) $(LTHREAD_LIBS)")
+# liblutil is needed by the shared linker. Pass it as a linker argument so
+# GNU libtool does not also embed the archive as a non-object static member.
+# Static consumers already link the separately exported liblutil archive.
 string(FIND "${_cpkt_openldap_contents}" "${_cpkt_openldap_old}" _cpkt_openldap_match)
 if(_cpkt_openldap_match EQUAL -1)
   string(FIND "${_cpkt_openldap_contents}" "${_cpkt_openldap_new}"
