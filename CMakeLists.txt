@@ -2286,6 +2286,15 @@ if(CPKT_BUILD_TESTS)
           "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
           "-DCPKT_PATCH_TEST_ROOT=${CMAKE_BINARY_DIR}"
           -P "${CMAKE_SOURCE_DIR}/tests/patch_series_portability_test.cmake")
+      if(CPKT_BUILD_DEPENDENCIES)
+        add_test(
+          NAME open62541_openssl_provenance
+          COMMAND "${CMAKE_COMMAND}"
+            "-DCPKT_OPEN62541_BUILD_ROOT=${CPKT_DEPENDENCY_BUILD_ROOT}/open62541"
+            "-DCPKT_OPENSSL_PREFIX=${CPKT_EXTERNAL_ROOT}/openssl/install"
+            "-DCPKT_SHARED_LIBRARY_SUFFIX=${CMAKE_SHARED_LIBRARY_SUFFIX}"
+            -P "${CMAKE_SOURCE_DIR}/tests/open62541_openssl_provenance_test.cmake")
+      endif()
       add_test(
         NAME dependency_cache_disabled
         COMMAND

@@ -37,6 +37,8 @@ jobs:
             -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$|^patch_series_portability$'
       - name: Package SDK
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
+      - name: Verify bundled OpenSSL provenance
+        run: ctest --test-dir build/arm64-apple-darwin-native --output-on-failure -R '^open62541_openssl_provenance$'
       - name: Test packaged libcurl static and shared
         run: bash tests/darwin_curl_package_test.sh dist/*-arm64-apple-darwin.tar.gz
       - name: Preserve diagnostic SDK archive

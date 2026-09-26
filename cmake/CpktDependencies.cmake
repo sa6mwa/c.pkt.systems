@@ -2101,8 +2101,7 @@ function(cpkt_add_open62541)
     -DUA_BUILD_EXAMPLES=OFF
     -DUA_BUILD_TOOLS=OFF
     -DUA_BUILD_UNIT_TESTS=OFF
-    -DOPENSSL_ROOT_DIR=${CPKT_OPENSSL_static_PREFIX}
-    -DOPENSSL_INCLUDE_DIR=${CPKT_OPENSSL_static_PREFIX}/include
+    -DOpenSSL_DIR=${CPKT_OPENSSL_static_PREFIX}/lib/cmake/OpenSSL
     ${common_cmake_args}
   )
 
@@ -2130,8 +2129,7 @@ function(cpkt_add_open62541)
           -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=ON
-        -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libssl${CMAKE_SHARED_LIBRARY_SUFFIX}
-        -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libcrypto${CMAKE_SHARED_LIBRARY_SUFFIX}
+        -DOPENSSL_USE_STATIC_LIBS:BOOL=OFF
         -DUA_FILE_MQTT=${source_dir_shared}/deps/mqtt-c/src/mqtt.c
         ${open62541_common_cmake_args}
       BUILD_COMMAND ${cmake_build_command}
@@ -2165,8 +2163,7 @@ function(cpkt_add_open62541)
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=OFF
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF
-        -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libssl${CMAKE_STATIC_LIBRARY_SUFFIX}
-        -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libcrypto${CMAKE_STATIC_LIBRARY_SUFFIX}
+        -DOPENSSL_USE_STATIC_LIBS:BOOL=ON
         -DUA_FILE_MQTT=${source_dir_static}/deps/mqtt-c/src/mqtt.c
         ${open62541_common_cmake_args}
       BUILD_COMMAND ${cmake_build_command}
