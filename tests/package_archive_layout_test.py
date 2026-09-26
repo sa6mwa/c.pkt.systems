@@ -29,6 +29,20 @@ with tempfile.TemporaryDirectory(prefix="package-layout-", dir=source / "build")
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         assert result.returncode != 0, result.stdout
         assert "package archive contains entry outside its root" in result.stdout, result.stdout
+    for entry in ["include/pslog.h", "lib/libpslog.a", "lib/libpslog.so.0",
+                  "lib/cmake/pslog/pslogConfig.cmake", "lib/pkgconfig/pslog.pc"]:
+        with tarfile.open(archive, "w:gz") as output:
+            info = tarfile.TarInfo(stem + "/")
+            info.type = tarfile.DIRTYPE
+            output.addfile(info)
+            output.addfile(tarfile.TarInfo(stem + "/" + entry))
+        result = subprocess.run([
+            "bash", str(source / "scripts/run-package-assertions.sh"),
+            "-DCPKT_ARCHIVE=" + str(archive), "-DCPKT_TARGET_ID=x86_64-linux-gnu",
+            "-DCPKT_BUNDLE_VERSION=1.2.3"], text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
+        assert result.returncode != 0, result.stdout
+        assert "release archive must not contain test-only libpslog" in result.stdout, result.stdout
     archive = root / "c.pkt.systems-1.2.3.tar.gz"
     for entry in ["..", "../escape.txt", "c.pkt.systems-1.2.3/../escape.txt"]:
         with tarfile.open(archive, "w:gz") as output:

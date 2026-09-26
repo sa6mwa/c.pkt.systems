@@ -208,6 +208,7 @@ require_compile_command "examples/sus-vox-intro-c89/main.c"
 require_compile_command "examples/lua-runtime-c89/main.c"
 require_compile_command "examples/lua-runtime-c89/host_module.c"
 require_compile_command "examples/opcua-c89/main.c"
+require_compile_command "tests/opcua_logging_test.c"
 require_compile_command "tests/pdf_facade_test.c"
 
 if ! command -v clangd >/dev/null 2>&1; then
@@ -223,3 +224,4 @@ clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/main.c" --compile-command
 clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/host_module.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/examples/opcua-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/tests/pdf_facade_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
+clangd --check="${SOURCE_DIR}/tests/opcua_logging_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null

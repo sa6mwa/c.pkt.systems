@@ -46,6 +46,7 @@ for source_file in \
   examples/lua-runtime-c89/main.c \
   examples/lua-runtime-c89/host_module.c \
   examples/opcua-c89/main.c \
+  tests/opcua_logging_test.c \
   tests/pdf_facade_test.c; do
   mkdir -p "$(dirname "$source_dir/$source_file")"
   : > "$source_dir/$source_file"

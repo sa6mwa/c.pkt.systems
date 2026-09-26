@@ -41,6 +41,12 @@ jobs:
         run: |
           ctest --test-dir build/arm64-apple-darwin-native --verbose \
             --no-tests=error -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
+      - name: Verify native OPC UA logging
+        run: |
+          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
+            --target cpkt_opcua_logging_static_test cpkt_opcua_logging_shared_test
+          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
+            --no-tests=error -R '^opcua_logging_'
       - name: Package SDK
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Verify bundled OpenSSL provenance

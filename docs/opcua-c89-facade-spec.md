@@ -138,9 +138,64 @@ typed convenience wrapper.
 | PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Native-first plus common MQTT connection, publisher, subscriber, and config byte-string wrappers | PubSub is extensive and config-heavy. open62541 owns the MQTT integration; the facade should avoid duplicating generated config structures. |
 | Async services | `client_highlevel_async.h`, `server.h` async operations | Native-first, with selected callbacks only when a concrete workflow needs them | Async callbacks can be C89, but full async service mirroring is large. |
 | File/json server config | `server_config_file_based.h` | Explicit JSON bytes/file constructors plus native config callback | Useful, but file I/O must stay explicit at the application boundary. |
-| Logging and event loop plugins | `plugin/log*.h`, `plugin/eventloop.h` | Native config callback initially | These are integration hooks, not OPC UA domain APIs. |
+| Logging | `plugin/log.h` | First-class C89 callback with every upstream level/category, constructor configuration, and destination replacement | Capture initialization, runtime, security, event-loop, and destruction messages without depending on a logging library. |
+| Event loop plugins | `plugin/eventloop.h` | Native config callback | Upstream event-loop customization remains available through native configuration. Its logs use the same configured logger. |
 
 ## Facade API Tiers
+
+### Logging plugin
+
+`cpkt_opcua_log_config` carries a callback, borrowed user data, and a minimum
+level. Zero means TRACE; a NULL callback explicitly silences output. Passing a
+NULL configuration to a logger-aware constructor retains upstream's default
+stdout logger. Existing constructors preserve that default as well.
+
+Use `cpkt_opcua_server_new_with_logger`,
+`cpkt_opcua_server_new_from_json_with_logger`,
+`cpkt_opcua_server_new_from_json_file_with_logger`, or
+`cpkt_opcua_client_new_with_logger` to capture configuration and initialization
+logs. `cpkt_opcua_server_set_logger` and `cpkt_opcua_client_set_logger` replace
+the callback/filter in place, preserving the plugin address borrowed by
+upstream event-loop and security plugins. Configuration is copied. User data
+and cleanup belonging to an existing native logger are preserved until upstream
+clears that plugin; the original context is restored for its cleanup callback.
+The chosen facade destination is retained if a failed security setup clears the
+upstream server configuration, so another configuration attempt uses the hook.
+Callback user data must remain valid through destruction and failed construction;
+it is never freed by the facade. Configure while no other thread operates on that handle.
+Native extensions must not replace or free the configured logging plugin.
+
+Callbacks run synchronously on the emitting thread and receive one borrowed
+record with the original level/category and an explicitly sized, NUL-terminated
+message. Formatting uses `UA_String_vformat`, including upstream `%S`, `%N`,
+and `%Q` conversions, without a fixed-size truncation buffer. Empty messages
+and embedded NUL bytes are preserved. Each formatted message is freed after
+the callback returns; no message sequence is buffered or spooled. A formatting
+or allocation failure produces a diagnostic record with nonzero
+`format_status`. The facade does not add timestamps, prefixes, or newlines.
+
+Callbacks must not reenter, reconfigure, or destroy the emitting handle. They
+may overlap under concurrent upstream use, so applications must synchronize
+their own destination state. FATAL identifies severity; an application decides
+whether to terminate. The SDK is built with upstream `UA_LOGLEVEL=100`, allowing
+every level; a callback cannot recover events compiled out by another upstream
+build. Explicit application output and upstream interactive key-password
+prompts are not log-plugin events.
+
+The bundle patches one upstream bypass: ECC/XDHE OpenSSL key-derivation errors
+are dispatched through the owning security policy's logger instead of dumping
+the error queue directly to stdout. Queue entries are delivered individually;
+existing upstream function signatures and ABI identities are preserved. Disabled
+packet/parser debug dump facilities are not enabled by this bundle.
+
+Static/shared C89 consumers test every level/category and event-loop/security
+plugin reference, constructor/JSON failure logs, filters, destination changes,
+shutdown, special formatting, and messages larger than upstream stdout's fixed
+buffer, plus injected message-allocation failure in Linux static consumers.
+Test-only libpslog integration forwards records directly to `log_view`
+and consumes its output chunks with bounded state. It does not call libpslog's
+terminating `fatal_view` method. No libpslog dependency is added to SDK headers,
+libraries, CMake/pkg-config metadata, or installed files.
 
 ### Tier 0: Baseline Already Present
 

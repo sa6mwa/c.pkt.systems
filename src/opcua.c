@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -82,14 +83,83 @@ struct cpkt_opcua_method_context {
   int *output_types;
 };
 
+struct cpkt_opcua_logger {
+  UA_Logger native;
+  UA_Logger original;
+  cpkt_opcua_log_config config;
+  int configured;
+};
+
+static int cpkt_logger_valid(const cpkt_opcua_log_config *config) {
+  return config == NULL || config->min_level == 0 ||
+         (config->min_level >= CPKT_OPCUA_LOG_TRACE &&
+          config->min_level <= CPKT_OPCUA_LOG_FATAL &&
+          config->min_level % 100 == 0);
+}
+
+static void cpkt_logger_log(void *context, UA_LogLevel level,
+                            UA_LogCategory category, const char *format,
+                            va_list args) {
+  struct cpkt_opcua_logger *logger;
+  cpkt_opcua_log_record record;
+  UA_String message;
+  UA_StatusCode status;
+  static const char failure[] = "OPC UA log message formatting failed";
+
+  logger = (struct cpkt_opcua_logger *)context;
+  if (logger->config.fn == NULL || (int)level < (int)logger->config.min_level) {
+    return;
+  }
+  message = UA_STRING_NULL;
+  status = UA_String_vformat(&message, format, args);
+  record.level = (cpkt_opcua_log_level)level;
+  record.category = (cpkt_opcua_log_category)category;
+  record.format_status = (cpkt_opcua_status)status;
+  if (status == UA_STATUSCODE_GOOD) {
+    record.message = message.length == 0 ? "" : (const char *)message.data;
+    record.message_length = message.length;
+  } else {
+    record.message = failure;
+    record.message_length = sizeof(failure) - 1;
+  }
+  logger->config.fn(&record, logger->config.user);
+  UA_String_clear(&message);
+}
+
+static void cpkt_logger_clear(UA_Logger *native) {
+  struct cpkt_opcua_logger *logger;
+  logger = (struct cpkt_opcua_logger *)native->context;
+  /* An upstream plugin may own context as well as the logger allocation.
+   * Restore its complete object before calling its original destructor. */
+  *native = logger->original;
+  if (native->clear != NULL) {
+    native->clear(native);
+  }
+}
+
+static void cpkt_logger_set(struct cpkt_opcua_logger *logger, UA_Logger *native,
+                            const cpkt_opcua_log_config *config) {
+  if (native->log != cpkt_logger_log || native->context != logger) {
+    logger->original = *native;
+  }
+  logger->config = *config;
+  logger->configured = 1;
+  native->log = cpkt_logger_log;
+  native->context = logger;
+  native->clear = cpkt_logger_clear;
+  /* Keep the plugin address borrowed by event-loop/security plugins. */
+}
+
 struct cpkt_opcua_client {
   UA_Client *client;
+  struct cpkt_opcua_logger logger;
   struct cpkt_opcua_monitor_context *monitors;
   struct cpkt_opcua_async_context *asyncs;
 };
 
 struct cpkt_opcua_server {
   UA_Server *server;
+  struct cpkt_opcua_logger logger;
   unsigned short port;
   int started;
   struct cpkt_opcua_method_context *methods;
@@ -4635,18 +4705,40 @@ void cpkt_opcua_pubsub_data_set_reader_options_default(
 /** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_server_new(cpkt_opcua_server **out,
                                         unsigned short port) {
+  return cpkt_opcua_server_new_with_logger(out, port, NULL);
+}
+
+/** Install the logger before upstream defaults and server initialization. */
+cpkt_opcua_result
+cpkt_opcua_server_new_with_logger(cpkt_opcua_server **out, unsigned short port,
+                                  const cpkt_opcua_log_config *logger) {
   cpkt_opcua_server *server;
   UA_StatusCode status;
+  UA_ServerConfig config;
 
   if (out == NULL) {
     return CPKT_OPCUA_ERR_ARG;
   }
   *out = NULL;
+  if (!cpkt_logger_valid(logger)) {
+    return CPKT_OPCUA_ERR_ARG;
+  }
   server = (cpkt_opcua_server *)calloc(1, sizeof(*server));
   if (server == NULL) {
     return CPKT_OPCUA_ERR_ALLOC;
   }
-  server->server = UA_Server_new();
+  memset(&config, 0, sizeof(config));
+  if (logger != NULL) {
+    cpkt_logger_set(&server->logger, &server->logger.native, logger);
+    config.logging = &server->logger.native;
+  }
+  status = UA_ServerConfig_setDefault(&config);
+  if (status != UA_STATUSCODE_GOOD) {
+    UA_ServerConfig_clear(&config);
+    free(server);
+    return CPKT_OPCUA_ERR_UPSTREAM;
+  }
+  server->server = UA_Server_newWithConfig(&config);
   if (server->server == NULL) {
     free(server);
     return CPKT_OPCUA_ERR_ALLOC;
@@ -4663,39 +4755,23 @@ cpkt_opcua_result cpkt_opcua_server_new(cpkt_opcua_server **out,
   return CPKT_OPCUA_OK;
 }
 
-static cpkt_opcua_result
-cpkt_opcua_server_wrap_native(cpkt_opcua_server **out,
-                              UA_Server *native_server) {
-  cpkt_opcua_server *server;
-
-  if (out == NULL) {
-    if (native_server != NULL) {
-      UA_Server_delete(native_server);
-    }
-    return CPKT_OPCUA_ERR_ARG;
-  }
-  *out = NULL;
-  if (native_server == NULL) {
-    return CPKT_OPCUA_ERR_UPSTREAM;
-  }
-  server = (cpkt_opcua_server *)calloc(1, sizeof(*server));
-  if (server == NULL) {
-    UA_Server_delete(native_server);
-    return CPKT_OPCUA_ERR_ALLOC;
-  }
-  server->server = native_server;
-  *out = server;
-  return CPKT_OPCUA_OK;
-}
-
 /** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result
 cpkt_opcua_server_new_from_json(cpkt_opcua_server **out,
                                 const unsigned char *json, size_t json_length,
                                 cpkt_opcua_status *status_out) {
+  return cpkt_opcua_server_new_from_json_with_logger(out, json, json_length,
+                                                     NULL, status_out);
+}
+
+/** Preserve upstream's JSON construction sequence with an early logger. */
+cpkt_opcua_result cpkt_opcua_server_new_from_json_with_logger(
+    cpkt_opcua_server **out, const unsigned char *json, size_t json_length,
+    const cpkt_opcua_log_config *logger, cpkt_opcua_status *status_out) {
   UA_ByteString json_config;
-  UA_Server *native_server;
-  cpkt_opcua_result result;
+  UA_ServerConfig config;
+  cpkt_opcua_server *server;
+  UA_StatusCode status;
 
   if (status_out != NULL) {
     *status_out = 0;
@@ -4704,30 +4780,57 @@ cpkt_opcua_server_new_from_json(cpkt_opcua_server **out,
     return CPKT_OPCUA_ERR_ARG;
   }
   *out = NULL;
-  if (json == NULL || json_length == 0) {
+  if (json == NULL || json_length == 0 || !cpkt_logger_valid(logger)) {
     return CPKT_OPCUA_ERR_ARG;
+  }
+  server = (cpkt_opcua_server *)calloc(1, sizeof(*server));
+  if (server == NULL) {
+    if (status_out != NULL) {
+      *status_out = (cpkt_opcua_status)UA_STATUSCODE_BADOUTOFMEMORY;
+    }
+    return CPKT_OPCUA_ERR_ALLOC;
+  }
+  memset(&config, 0, sizeof(config));
+  if (logger != NULL) {
+    cpkt_logger_set(&server->logger, &server->logger.native, logger);
+    config.logging = &server->logger.native;
   }
   json_config.length = json_length;
   json_config.data = (UA_Byte *)(const void *)json;
-  native_server = UA_Server_newFromFile(json_config);
-  if (native_server == NULL) {
+  status = UA_ServerConfig_setDefault(&config);
+  status |= UA_ServerConfig_updateFromFile(&config, json_config);
+  if (status != UA_STATUSCODE_GOOD) {
+    UA_ServerConfig_clear(&config);
+    free(server);
     if (status_out != NULL) {
       *status_out = cpkt_status(UA_STATUSCODE_BADCONFIGURATIONERROR);
     }
     return CPKT_OPCUA_ERR_UPSTREAM;
   }
-  result = cpkt_opcua_server_wrap_native(out, native_server);
-  if (result != CPKT_OPCUA_OK && status_out != NULL &&
-      result == CPKT_OPCUA_ERR_ALLOC) {
-    *status_out = cpkt_status(UA_STATUSCODE_BADOUTOFMEMORY);
+  server->server = UA_Server_newWithConfig(&config);
+  if (server->server == NULL) {
+    free(server);
+    if (status_out != NULL) {
+      *status_out = cpkt_status(UA_STATUSCODE_BADCONFIGURATIONERROR);
+    }
+    return CPKT_OPCUA_ERR_UPSTREAM;
   }
-  return result;
+  *out = server;
+  return CPKT_OPCUA_OK;
 }
 
 /** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result
 cpkt_opcua_server_new_from_json_file(cpkt_opcua_server **out, const char *path,
                                      cpkt_opcua_status *status_out) {
+  return cpkt_opcua_server_new_from_json_file_with_logger(out, path, NULL,
+                                                          status_out);
+}
+
+/** Read the named JSON file and use the logger-aware bytes constructor. */
+cpkt_opcua_result cpkt_opcua_server_new_from_json_file_with_logger(
+    cpkt_opcua_server **out, const char *path,
+    const cpkt_opcua_log_config *logger, cpkt_opcua_status *status_out) {
   UA_ByteString json_config;
   cpkt_opcua_result result;
 
@@ -4739,10 +4842,28 @@ cpkt_opcua_server_new_from_json_file(cpkt_opcua_server **out, const char *path,
   if (result != CPKT_OPCUA_OK) {
     return result;
   }
-  result = cpkt_opcua_server_new_from_json(out, json_config.data,
-                                           json_config.length, status_out);
+  result = cpkt_opcua_server_new_from_json_with_logger(
+      out, json_config.data, json_config.length, logger, status_out);
   cpkt_byte_string_clear_malloc(&json_config);
   return result;
+}
+
+/** Update the existing plugin in place so every upstream reference follows it.
+ */
+cpkt_opcua_result
+cpkt_opcua_server_set_logger(cpkt_opcua_server *server,
+                             const cpkt_opcua_log_config *logger) {
+  UA_Logger *native;
+  if (server == NULL || logger == NULL || !cpkt_logger_valid(logger)) {
+    return CPKT_OPCUA_ERR_ARG;
+  }
+  native = UA_Server_getConfig(server->server)->logging;
+  if (native == NULL) {
+    native = &server->logger.native;
+    UA_Server_getConfig(server->server)->logging = native;
+  }
+  cpkt_logger_set(&server->logger, native, logger);
+  return CPKT_OPCUA_OK;
 }
 
 /** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
@@ -5077,6 +5198,14 @@ cpkt_opcua_result cpkt_opcua_server_set_default_security(
   free(native_trust_list);
   free(native_issuer_list);
   free(native_revocation_list);
+  /* Upstream clears its configuration on some failures. Keep the selected
+   * destination available for cleanup and the next configuration attempt. */
+  if (server->logger.configured &&
+      UA_Server_getConfig(server->server)->logging == NULL) {
+    cpkt_logger_set(&server->logger, &server->logger.native,
+                    &server->logger.config);
+    UA_Server_getConfig(server->server)->logging = &server->logger.native;
+  }
 #endif
   if (status_out != NULL) {
     *status_out = cpkt_status(status);
@@ -8718,19 +8847,42 @@ cpkt_opcua_server_history_native(cpkt_opcua_server *server,
 
 /** Implements the public OPC UA facade function declared in <cpkt/opcua.h>. */
 cpkt_opcua_result cpkt_opcua_client_new(cpkt_opcua_client **out) {
+  return cpkt_opcua_client_new_with_logger(out, NULL);
+}
+
+/** Install logging before upstream defaults create dependent plugins. */
+cpkt_opcua_result
+cpkt_opcua_client_new_with_logger(cpkt_opcua_client **out,
+                                  const cpkt_opcua_log_config *logger) {
   cpkt_opcua_client *client;
   UA_StatusCode status;
+  UA_ClientConfig config;
 
   if (out == NULL) {
     return CPKT_OPCUA_ERR_ARG;
   }
   *out = NULL;
+  if (!cpkt_logger_valid(logger)) {
+    return CPKT_OPCUA_ERR_ARG;
+  }
   client = (cpkt_opcua_client *)calloc(1, sizeof(*client));
   if (client == NULL) {
     return CPKT_OPCUA_ERR_ALLOC;
   }
-  client->client = UA_Client_new();
+  memset(&config, 0, sizeof(config));
+  if (logger != NULL) {
+    cpkt_logger_set(&client->logger, &client->logger.native, logger);
+    config.logging = &client->logger.native;
+  }
+  status = UA_ClientConfig_setDefault(&config);
+  if (status != UA_STATUSCODE_GOOD) {
+    UA_ClientConfig_clear(&config);
+    free(client);
+    return CPKT_OPCUA_ERR_UPSTREAM;
+  }
+  client->client = UA_Client_newWithConfig(&config);
   if (client->client == NULL) {
+    UA_ClientConfig_clear(&config);
     free(client);
     return CPKT_OPCUA_ERR_ALLOC;
   }
@@ -8741,6 +8893,24 @@ cpkt_opcua_result cpkt_opcua_client_new(cpkt_opcua_client **out) {
     return CPKT_OPCUA_ERR_UPSTREAM;
   }
   *out = client;
+  return CPKT_OPCUA_OK;
+}
+
+/** Retain the logger address shared with upstream event-loop/security plugins.
+ */
+cpkt_opcua_result
+cpkt_opcua_client_set_logger(cpkt_opcua_client *client,
+                             const cpkt_opcua_log_config *logger) {
+  UA_Logger *native;
+  if (client == NULL || logger == NULL || !cpkt_logger_valid(logger)) {
+    return CPKT_OPCUA_ERR_ARG;
+  }
+  native = UA_Client_getConfig(client->client)->logging;
+  if (native == NULL) {
+    native = &client->logger.native;
+    UA_Client_getConfig(client->client)->logging = native;
+  }
+  cpkt_logger_set(&client->logger, native, logger);
   return CPKT_OPCUA_OK;
 }
 

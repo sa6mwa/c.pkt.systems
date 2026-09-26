@@ -501,7 +501,7 @@ facade instead:
 
 The facade header does not include open62541 headers or expose `UA_Client`,
 `UA_Server`, `UA_StatusCode`, `UA_NodeId`, `UA_Variant`, fixed-width C99 integer
-types, `long long`, or inline functions. Its implementation is compiled as C99
+types, `long long`, or inline functions. Its implementation is compiled as C89
 inside the SDK and links the bundled open62541 library.
 
 The OPC UA facade provides opaque client and server handles, C89-safe node-id
@@ -512,6 +512,15 @@ browse callbacks, scalar method registration and calls, client subscriptions,
 monitored value callbacks, status-name helpers, and native callback escape hatches
 for C99 translation units that need direct access to the underlying open62541
 `UA_Client *` or `UA_Server *`.
+
+Logging is available to strict C89 consumers through `cpkt_opcua_log_config`.
+Use the `*_new_with_logger` constructors (or JSON/file logger variants) to
+capture initialization too, and `*_set_logger` to replace an existing handle's
+destination. The callback receives one formatted, borrowed message with its
+upstream level/category and byte length. Security and event-loop plugins share
+that destination. libpslog is used only to test this integration; applications
+may choose any logger. See the [logging contract](docs/opcua-c89-facade-spec.md#logging-plugin)
+and the [SDK logging audit TODO](TODO.md).
 
 Use `find_package(CpktOpcUa CONFIG REQUIRED)` and link `cpkt::opcua`, or use
 `pkg-config --static --libs cpkt-opcua`.

@@ -266,7 +266,7 @@ set(CPKT_CYRUS_SASL_VERSION "2.1.28" CACHE STRING "Pinned Cyrus SASL release.")
 set(CPKT_OPENLDAP_VERSION "2.6.15" CACHE STRING "Pinned OpenLDAP LTS release.")
 set(CPKT_POSTGRESQL_VERSION "18.6" CACHE STRING "Pinned PostgreSQL/libpq release.")
 set(CPKT_SQLITE_VERSION "3.53.4" CACHE STRING "Pinned SQLite release.")
-set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-crypto-3" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
+set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-crypto-logging-4" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_ABI_VERSION "0" CACHE STRING "Lua C89 facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
@@ -1281,6 +1281,55 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
 if(CPKT_BUILD_TESTS)
+  include(cmake/CpktTestPslog.cmake)
+  cpkt_add_test_pslog()
+  foreach(_cpkt_opcua_logging_linkage IN ITEMS static shared)
+    add_executable(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test
+      tests/opcua_logging_test.c tests/opcua_logging_native_peer.c)
+    cpkt_use_local_runtime(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test)
+    set_source_files_properties(tests/opcua_logging_test.c PROPERTIES
+      COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+    set_source_files_properties(tests/opcua_logging_native_peer.c PROPERTIES
+      COMPILE_OPTIONS "-std=c99")
+    cpkt_add_repo_warning_errors(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test)
+    target_link_libraries(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test
+      PRIVATE cpkt_opcua_${_cpkt_opcua_logging_linkage} cpkt_test_pslog)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND _cpkt_opcua_logging_linkage STREQUAL "static")
+      target_sources(cpkt_opcua_logging_static_test PRIVATE
+        tests/opcua_logging_alloc_failure.c)
+      target_compile_definitions(cpkt_opcua_logging_static_test PRIVATE
+        CPKT_LOGGING_ALLOC_FAILURE_TEST=1)
+      target_link_options(cpkt_opcua_logging_static_test PRIVATE
+        -Wl,--wrap=calloc -Wl,--wrap=EVP_KDF_derive)
+    endif()
+    if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+      add_test(NAME opcua_logging_${_cpkt_opcua_logging_linkage}
+        COMMAND cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test
+          "${CMAKE_BINARY_DIR}/opcua-logging-${_cpkt_opcua_logging_linkage}.json5")
+      set_tests_properties(opcua_logging_${_cpkt_opcua_logging_linkage} PROPERTIES
+        LABELS "facade;memcheck;integration;offline;opcua" TIMEOUT 90)
+      add_test(NAME opcua_logging_${_cpkt_opcua_logging_linkage}_late_attach
+        COMMAND cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test
+          "${CMAKE_BINARY_DIR}/opcua-logging-${_cpkt_opcua_logging_linkage}-late.json5"
+          legacy)
+      set_tests_properties(opcua_logging_${_cpkt_opcua_logging_linkage}_late_attach PROPERTIES
+        LABELS "facade;memcheck;integration;offline;opcua" TIMEOUT 90)
+      add_test(NAME opcua_logging_${_cpkt_opcua_logging_linkage}_output
+        COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tests/opcua_logging_output_test.py"
+          ${CPKT_TEST_EXECUTABLE_PREFIX}
+          "$<TARGET_FILE:cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test>"
+          "${CMAKE_BINARY_DIR}/opcua-logging-${_cpkt_opcua_logging_linkage}-output.json5")
+      set_tests_properties(opcua_logging_${_cpkt_opcua_logging_linkage}_output PROPERTIES
+        LABELS "integration;offline;opcua" TIMEOUT 30)
+    endif()
+  endforeach()
+  add_test(NAME opcua_logging_sdk_isolation
+    COMMAND "${CMAKE_COMMAND}" "-DCPKT_NM=${CMAKE_NM}"
+      "-DCPKT_STATIC=$<TARGET_FILE:cpkt_opcua_static>"
+      "-DCPKT_SHARED=$<TARGET_FILE:cpkt_opcua_shared>"
+      -P "${CMAKE_SOURCE_DIR}/tests/opcua_logging_sdk_isolation_test.cmake")
+  set_tests_properties(opcua_logging_sdk_isolation PROPERTIES LABELS "packaging;opcua")
   foreach(_cpkt_curl_linkage IN ITEMS static shared)
     add_executable(cpkt_curl_async_dns_${_cpkt_curl_linkage}_test
       tests/curl_async_dns_test.c)

@@ -82,6 +82,13 @@ scripts/package-verify.sh
 scripts/release-version.sh
 scripts/source-archive-verify.sh
 cmake/CpktDependencies.cmake
+cmake/CpktTestPslog.cmake
+tests/opcua_logging_test.c
+tests/opcua_logging_native_peer.c
+tests/opcua_logging_peer.h
+tests/opcua_logging_alloc_failure.c
+tests/opcua_logging_output_test.py
+tests/opcua_logging_sdk_isolation_test.cmake
 cmake/build_openldap_libraries.cmake
 cmake/cyrus_sasl_md5global.h.in
 cmake/patch_openldap_lutil_link.cmake
@@ -90,6 +97,7 @@ vendor/open62541/patches/series
 vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch
 vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch
 vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch
+vendor/open62541/patches/0005-route-key-derivation-errors-through-logger.patch
 '
 
 make_archive() {
