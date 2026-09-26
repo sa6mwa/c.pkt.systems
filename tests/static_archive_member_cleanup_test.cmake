@@ -64,10 +64,20 @@ file(WRITE "${_work_dir}/consumer.c"
   "int cpkt_archive_fixture(void);\nint main(void) { return cpkt_archive_fixture() != 7; }\n")
 execute_process(
   COMMAND "${CPKT_TEST_CC}" "${_work_dir}/consumer.c" "${_work_dir}/libouter.a"
+    ${CPKT_TEST_RUNTIME_LINK_OPTIONS}
     -o "${_work_dir}/consumer"
   RESULT_VARIABLE _result ERROR_VARIABLE _error)
 if(NOT _result EQUAL 0)
   message(FATAL_ERROR "cleaned archive consumer failed to link: ${_error}")
+endif()
+if(CPKT_TEST_RUNTIME_LOADER)
+  execute_process(
+    COMMAND bash "${CPKT_SOURCE_DIR}/tests/local_executable_runtime_policy_test.sh"
+      "${CPKT_TEST_RUNTIME_LOADER}" "${_work_dir}/consumer"
+    RESULT_VARIABLE _result ERROR_VARIABLE _error)
+  if(NOT _result EQUAL 0)
+    message(FATAL_ERROR "cleaned archive consumer runtime policy failed: ${_error}")
+  endif()
 endif()
 execute_process(COMMAND ${CPKT_TEST_EXECUTABLE_PREFIX} "${_work_dir}/consumer"
   RESULT_VARIABLE _result)

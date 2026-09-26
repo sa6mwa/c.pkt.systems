@@ -1933,6 +1933,8 @@ if(CPKT_BUILD_TESTS)
         "-DCPKT_TEST_AR=${CMAKE_AR}"
         "-DCPKT_TEST_RANLIB=${CMAKE_RANLIB}"
         "-DCPKT_TEST_EXECUTABLE_PREFIX=${CPKT_TEST_EXECUTABLE_PREFIX}"
+        "-DCPKT_TEST_RUNTIME_LINK_OPTIONS=${CPKT_LOCAL_RUNTIME_LINK_OPTIONS}"
+        "-DCPKT_TEST_RUNTIME_LOADER=${CPKT_RUNTIME_LOADER}"
         -P "${CMAKE_SOURCE_DIR}/tests/static_archive_member_cleanup_test.cmake")
     add_test(
       NAME postgresql_probe_rpaths
