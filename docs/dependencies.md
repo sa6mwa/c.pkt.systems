@@ -73,3 +73,15 @@ contract; native Darwin runtime checks run in the macOS workflow.
 - libtool reports ignored version metadata for convenience libraries and
   relocation/finish messages for staged SASL installs. The SDK's package and
   plugin relocation gates check installed paths and runtime discovery.
+
+## Default OPC UA history allocation safety
+
+The bundled open62541 patch `0006-check-default-history-allocations.patch` checks
+default history gathering/database constructor allocations, guards gathering
+capacity multiplication, preserves the original store on realloc failure, and
+propagates NodeId-copy failure. It also releases parsed numeric ranges after
+both backend read paths, including failed callbacks; the native range tests run
+under Valgrind to catch regressions. The C89 default-history binding maps empty
+constructor records to BADOUTOFMEMORY without replacing the installed plugin.
+Its registration is closed after polling first starts so native monitored-item
+contexts are never moved by later gathering growth.

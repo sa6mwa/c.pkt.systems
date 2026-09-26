@@ -14,5 +14,7 @@ unsigned int cpkt_types_peer_history(void *native_server);
 unsigned int cpkt_types_peer_history_failure(void *native_server);
 unsigned int cpkt_types_peer_close_session_failure(void *native_server,
                                                    void *context);
+unsigned int cpkt_types_peer_history_backend(void *native_server, int mode);
+unsigned int cpkt_types_peer_history_poll_node(void *native_server);
 void cpkt_types_peer_stop(void *peer);
 #endif

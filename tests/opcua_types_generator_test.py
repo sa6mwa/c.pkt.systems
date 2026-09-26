@@ -19,6 +19,7 @@ emitter = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(emitter)
 import plugin_emitter
 import server_emitter
+import history_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -76,6 +77,31 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         pass
     else:
         raise AssertionError('Unsupported public callback context was accepted')
+    history_header = changed_headers / 'plugin/historydata/history_data_backend.h'
+    original_history = history_header.read_text()
+    history_header.chmod(0o644)
+    for broken in (
+        original_history.replace('void *context;', 'void *context; UA_UInt32 unexpected;', 1),
+        original_history.replace('const MatchStrategy strategy', 'const UA_UnknownType strategy', 1),
+        original_history.replace('const UA_DataValue*', 'UA_DataValue**', 1),
+    ):
+        history_header.write_text(broken)
+        try:
+            history_emitter.emit_backend(index, changed_headers, (changed_headers / 'config.h').read_text())
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Unsupported history backend signature was accepted')
+    history_header.write_text(original_history)
+    history_public, history_private = history_emitter.emit_backend(index, changed_headers, (changed_headers / 'config.h').read_text())
+    assert 'const cpkt_opcua_history_value*' in '\n'.join(history_public)
+    assert re.match(r'/\*.*?\*/', (native_headers / 'types.h').read_text(), re.S)[0] in '\n'.join(history_public)
+    assert any('return stored ? &stored->native : NULL;' in line for line in history_private)
+    assert {name for _, name, _ in plugin_emitter.callbacks(plugin_emitter.public_body(history_header, 'HistoryDataBackend', (changed_headers / 'config.h').read_text()))} == {
+        'deleteMembers', 'serverSetHistoryData', 'getHistoryData', 'getDateTimeMatch', 'getEnd', 'lastIndex', 'firstIndex',
+        'resultSize', 'copyDataValues', 'getDataValue', 'boundSupported', 'timestampsToReturnSupported',
+        'insertDataValue', 'replaceDataValue', 'updateDataValue', 'removeDataValue',
+    }
     server = changed_headers / 'server.h'
     server.chmod(0o644)
     server.write_text(server.read_text().replace('UA_NodeId *out);', 'UA_NodeId **out);', 1))

@@ -99,7 +99,8 @@ The existing facade already covers a useful core workflow:
   File-based certificate loading and custom security plugins remain available
   through native config callbacks.
 - C89 username/password access-control callbacks for common login decisions,
-  plus generated full C89 access-control and history-database plugin records.
+  plus generated full C89 access-control, history-database and history-backend
+  plugin records with persistent borrowed-value storage.
 - Native callbacks for client and server escape hatches.
 - Explicit advanced native pass-through entry points for PubSub/MQTT, history,
   file/json server configuration, and security plugin configuration, plus
@@ -133,7 +134,7 @@ does not imply that every such function is already wrapped.
 | Generated request/response services | `client.h`, `types_generated.h` | Generated C89 types, 14 synchronous/asynchronous public services and specialized subscription service bindings | Reuse upstream parsing and declarations; convert recursively without changing the upstream ABI. |
 | Security and certificates | `server_config_default.h`, `client_config_default.h`, plugin security headers | First-class buffer configuration wrappers plus native config callback | Common secure setup needs DX; file loading and custom policies/stores are application-specific and can be handled explicitly in native callbacks. |
 | Access control | `plugin/accesscontrol*.h` | Complete generated C89 access-control callback record plus common login wrappers | Native authorization semantics are retained; schema arguments are converted at the callback boundary. |
-| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Full generated C89 HistoryDatabase callback record plus typed client history services | Lower-level HistoryDataBackend/Gathering extension interfaces remain separate coverage work. |
+| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Full generated C89 HistoryDatabase callback record plus typed client history services | Full HistoryDataBackend, persistent borrowed values and default gathering/database bindings; custom gathering callbacks remain separate coverage work. |
 | Events and alarms/conditions | `server.h`, `client_subscriptions.h` | First-class event creation/trigger and event monitored items; alarms/conditions native-first | Events are common; alarms/conditions are broad generated models. |
 | PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Native-first plus common MQTT connection, publisher, subscriber, and config byte-string wrappers | PubSub is extensive and config-heavy. open62541 owns the MQTT integration; the facade should avoid duplicating generated config structures. |
 | Async services | `client_highlevel_async.h`, `server.h` async operations | Generated typed async client services and full subscription/event callback records | Server-local async operations and other callback/configuration boundaries remain separate coverage work. |
@@ -210,7 +211,7 @@ The standard graph and its indices are part of the new public facade surface.
 Dependency upgrade review must compare generated layouts, indices and semantics
 against the last released bundle alongside the existing ABI checks. Generated
 model coverage does not imply that every handwritten public interface has a C89
-binding. PubSub component configuration, low-level history backends, custom
+binding. PubSub component configuration, custom history gathering, custom
 security/event-loop/nodestore plugins, full server method/value-source/lifecycle
 callbacks and server-local asynchronous operations remain distinct coverage work.
 
@@ -289,6 +290,102 @@ caller. Static/shared C89 tests invoke every enabled callback slot across the
 native boundary. Allocation-failure tests cover staging, partial nested arrays,
 closeSession cleanup and history-result conversion. Generated plugin records,
 constants and all generator inputs are included in package/source checks.
+
+## History storage and borrowed values
+
+The generated `cpkt_opcua_HistoryDataBackend` exposes every public upstream
+storage callback. The authoritative inputs are upstream's handwritten public
+history headers; upstream has no generator for those records. Their callback
+signatures, timestamp match enum, collection strategy, per-node settings and
+numeric-range declarations are derived and checked during generation. Unknown
+fields or unsupported signatures fail generation.
+
+A backend is the application's historical-value storage provider. It is separate
+from the higher-level `HistoryDatabase` plugin that handles history services.
+Use `cpkt_opcua_server_set_default_history_database(server, initial_capacity)`
+to install upstream's default gathering/database, then
+`cpkt_opcua_server_register_history_backend(server, &node, &settings)` for each
+historized node. Set the node's Historizing and HistoryRead/HistoryWrite access
+attributes as needed; registration does not change them. Capacity and maximum
+response size must be nonzero. The default gathering can grow during registration.
+
+The settings/backend records are copied. On successful registration, backend
+context ownership transfers to its `deleteMembers` callback. Failed or duplicate
+registration leaves context ownership with the caller and preserves existing
+registrations. Each successful registration has its own cleanup callback; shared
+contexts need application-managed reference counting. `userContext` is borrowed.
+Replacement of the database or server destruction stops polling, destroys native
+gathering state, then invokes each backend's `deleteMembers` once. That callback
+can free its persistent values. No callback inputs may be retained without an
+explicit copy.
+
+Choose the native `getHistoryData` high-level callback or the complete low-level
+read interface. Both preserve the upstream mechanism. History callbacks use C89
+schema records, including two-word Int64/DateTime on 32-bit targets. Mutable
+outputs own C89 allocations and are converted into staged native outputs, then
+cleared by the facade. `copyDataValues` receives an empty array of `valueSize`
+records and must report no more than that many values. Excess counts are rejected
+before native output is changed. Numeric-range dimensions borrow until return.
+These are upstream's materialized history service outputs, with no facade queue,
+file spool, or change to the storage mechanism.
+
+### Persistent values for `getDataValue`
+
+Native `getDataValue` returns a **borrowed native DataValue pointer**. A converted
+stack record, temporary allocation freed at callback return, or one shared slot
+replaced by the next callback cannot meet that contract. The C89 callback instead
+returns a backend-owned `const cpkt_opcua_history_value *`. The facade forwards
+the stable native address embedded in that object directly to open62541. It does
+not convert/cache the returned value per call or release it after the callback.
+The input NodeIds borrow their byte payloads, so this pointer-return trampoline
+performs no allocation.
+
+Create stored objects with `cpkt_opcua_history_value_new(&value, &stored)`.
+Creation deep-copies the ordinary C89 DataValue; the original can be cleared or
+changed immediately. Distinct retained values need distinct objects. Returning
+another object must leave earlier borrowed values valid. For a valid index,
+return a valid stored value as required by the native default history engine;
+the facade preserves NULL, but upstream may dereference it.
+
+`cpkt_opcua_history_value_set(stored, &value)` stages a deep copy and preserves
+the old value on failure. The object address remains stable, but **all borrowers
+must finish before set or free**: replacing it invalidates the old nested data.
+There is no automatic reference counting, locking or detection of outstanding
+native borrowers. Follow the upstream server synchronization rules and keep
+storage unchanged throughout a history operation. `history_value_get` produces
+an independent owned C89 copy into an empty output; clear it with
+`cpkt_opcua_DataValue_clear`. Neither get nor set exposes a native pointer.
+`history_value_free(NULL)` is safe. Ownership comments accompany these APIs and
+`getDataValue` in the generated public header for clangd.
+
+The storage object and borrowed-pointer bridge require no upstream ABI change.
+The bundle includes a small upstream allocation-safety patch: default history
+constructors report empty records on allocation failure, gathering growth keeps
+existing storage on realloc failure, and NodeId-copy failures are propagated. Parsed numeric ranges are released
+after either backend read path, including failure.
+The facade turns empty constructors into BADOUTOFMEMORY and retains the prior
+installed database. These guards do not change native history behavior on success.
+
+### Collection policy and polling
+
+USER leaves value insertion to the application. VALUESET forwards native write
+notifications to `serverSetHistoryData`. POLL uses native local monitored items;
+start/stop with `cpkt_opcua_server_history_start_poll` and `_stop_poll`.
+Register all nodes **before starting any polling**. Later registration is rejected
+because growing upstream's gathering array would move monitored-item contexts.
+Database replacement/destruction stops polling automatically. Application code
+must still obey upstream restrictions on destruction/reconfiguration from inside
+callbacks. Custom `HistoryDataGathering` vtables and bindings for the stock memory/circular
+backend factories remain separate coverage work.
+
+Static/shared C89 tests exercise low-level reads, bounds, numeric ranges, Int64
+values, high-level continuation points, all write/update/delete hooks, duplicate
+registration and cleanup through the native default history engine. Allocation
+failure tests cover constructors, registration/growth, persistent new/get/set,
+old-value preservation and old-database preservation. Polling tests cover
+start/stop, registration closure, replacement and server destruction with active
+polling. Native attribute-read allocation failures retain upstream
+fail-closed access/history checks. Valgrind verifies range cleanup.
 
 ## Facade API Tiers
 

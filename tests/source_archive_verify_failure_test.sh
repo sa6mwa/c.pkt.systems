@@ -60,15 +60,18 @@ include/cpkt/opcua_callbacks.h
 src/opcua_internal.h
 src/opcua_callbacks_impl.h
 src/opcua_plugins_impl.h
+src/opcua_history_impl.h
 src/opcua_types.c
 src/opcua_types_internal.h
 tools/opcua/generate.py
 tools/opcua/c89_emitter.py
 tools/opcua/plugin_emitter.py
+tools/opcua/history_emitter.py
 tools/opcua/server_emitter.py
 tests/opcua_types_test.c
 tests/opcua_callbacks_test.c
 tests/opcua_plugins_test.c
+tests/opcua_history_backend_test.c
 tests/opcua_server_types_test.c
 tests/opcua_callbacks_test.h
 tests/opcua_types_native_peer.c
@@ -123,6 +126,7 @@ vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch
 vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch
 vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch
 vendor/open62541/patches/0005-route-key-derivation-errors-through-logger.patch
+vendor/open62541/patches/0006-check-default-history-allocations.patch
 '
 
 make_archive() {

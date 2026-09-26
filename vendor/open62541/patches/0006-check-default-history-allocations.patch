@@ -1,0 +1,81 @@
+--- a/plugins/historydata/ua_history_data_gathering_default.c
++++ b/plugins/historydata/ua_history_data_gathering_default.c
+@@ -125,16 +125,21 @@
+         return UA_STATUSCODE_BADNODEIDEXISTS;
+     }
+     if (ctx->storeEnd >= ctx->storeSize) {
+-        size_t newStoreSize = ctx->storeSize * 2;
+-        ctx->dataStore = (UA_NodeIdStoreContextItem_gathering_default*)UA_realloc(ctx->dataStore,  (newStoreSize * sizeof(UA_NodeIdStoreContextItem_gathering_default)));
+-        if (!ctx->dataStore) {
+-            ctx->storeSize = 0;
++        if(ctx->storeSize > (size_t)-1 / 2 / sizeof(*ctx->dataStore))
+             return UA_STATUSCODE_BADOUTOFMEMORY;
+-        }
++        size_t newStoreSize = ctx->storeSize ? ctx->storeSize * 2 : 1;
++        UA_NodeIdStoreContextItem_gathering_default *grown =
++            (UA_NodeIdStoreContextItem_gathering_default*)
++            UA_realloc(ctx->dataStore, newStoreSize * sizeof(*ctx->dataStore));
++        if(!grown)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        ctx->dataStore = grown;
+         memset(&ctx->dataStore[ctx->storeSize], 0, (newStoreSize - ctx->storeSize) * sizeof(UA_NodeIdStoreContextItem_gathering_default));
+         ctx->storeSize = newStoreSize;
+     }
+-    UA_NodeId_copy(nodeId, &ctx->dataStore[ctx->storeEnd].nodeId);
++    UA_StatusCode copyStatus = UA_NodeId_copy(nodeId, &ctx->dataStore[ctx->storeEnd].nodeId);
++    if(copyStatus != UA_STATUSCODE_GOOD)
++        return copyStatus;
+     size_t current = ctx->storeEnd;
+     ctx->dataStore[current].setting = setting;
+     ++ctx->storeEnd;
+@@ -226,9 +231,19 @@
+     gathering.deleteMembers = &deleteMembers_gathering_default;
+     gathering.updateNodeIdSetting = &updateNodeIdSetting_gathering_default;
+     UA_NodeIdStoreContext *context = (UA_NodeIdStoreContext*)UA_calloc(1, sizeof(UA_NodeIdStoreContext));
++    if(!context)
++        return (UA_HistoryDataGathering){0};
++    if(initialNodeIdStoreSize > (size_t)-1 / sizeof(*context->dataStore)) {
++        UA_free(context);
++        return (UA_HistoryDataGathering){0};
++    }
+     context->storeEnd = 0;
+     context->storeSize = initialNodeIdStoreSize;
+     context->dataStore = (UA_NodeIdStoreContextItem_gathering_default*)UA_calloc(initialNodeIdStoreSize, sizeof(UA_NodeIdStoreContextItem_gathering_default));
++    if(initialNodeIdStoreSize && !context->dataStore) {
++        UA_free(context);
++        return (UA_HistoryDataGathering){0};
++    }
+     gathering.context = context;
+     return gathering;
+ }
+@@ -246,7 +261,9 @@
+     if(ctx->storeEnd >= ctx->storeSize || !ctx->dataStore) {
+         return UA_STATUSCODE_BADOUTOFMEMORY;
+     }
+-    UA_NodeId_copy(nodeId, &ctx->dataStore[ctx->storeEnd].nodeId);
++    UA_StatusCode copyStatus = UA_NodeId_copy(nodeId, &ctx->dataStore[ctx->storeEnd].nodeId);
++    if(copyStatus != UA_STATUSCODE_GOOD)
++        return copyStatus;
+     size_t current = ctx->storeEnd;
+     ctx->dataStore[current].setting = setting;
+     ++ctx->storeEnd;
+--- a/plugins/historydata/ua_history_database_default.c
++++ b/plugins/historydata/ua_history_database_default.c
+@@ -580,6 +580,8 @@
+                         &historyData[i]->dataValuesSize,
+                         &historyData[i]->dataValues);
+         }
++        /* Numeric range is borrowed by either backend only until return. */
++        UA_free(range.dimensions);
+         if (getHistoryDataStatusCode != UA_STATUSCODE_GOOD) {
+             response->results[i].statusCode = getHistoryDataStatusCode;
+             continue;
+@@ -627,6 +629,8 @@
+     UA_HistoryDatabaseContext_default *context =
+             (UA_HistoryDatabaseContext_default*)
+             UA_calloc(1, sizeof(UA_HistoryDatabaseContext_default));
++    if(!context)
++        return hdb;
+     context->gathering = gathering;
+     hdb.context = context;
+     hdb.readRaw = &readRaw_service_default;

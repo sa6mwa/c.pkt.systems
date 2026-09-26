@@ -39,8 +39,11 @@ behind a callback interface.
 - [x] Generate schema-only server operations and native attribute defaults.
 - [x] Generate full AccessControl and HistoryDatabase callback records, including
   staged replacement, nested conversions and allocation-failure coverage.
+- [x] Generate the full HistoryDataBackend callback record, persistent borrowed
+  DataValue storage, and native default gathering/database installation with
+  allocation-failure and cleanup tests.
 - [ ] Use generated typed records at remaining PubSub component configuration,
-  low-level history backend/gathering, server method/value-source/lifecycle
+  custom history gathering and stock memory/circular backend factories, server method/value-source/lifecycle
   callbacks, server-local async, and custom
   security/event-loop/nodestore plugin boundaries. Preserve the upstream
   behavior and ownership rules; no C99-only native callback substitutes for

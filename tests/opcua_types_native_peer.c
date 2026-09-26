@@ -595,3 +595,154 @@ unsigned int cpkt_types_native_populated(size_t index, unsigned char **bytes,
     UA_ByteString_clear(&encoded);
   return status;
 }
+
+/* Exercise the actual default history engine with application C89 backends. */
+unsigned int cpkt_types_peer_history_backend(void *arg, int mode) {
+  UA_Server *server = (UA_Server *)arg;
+  UA_HistoryDatabase *database = &UA_Server_getConfig(server)->historyDatabase;
+  UA_NodeId node = UA_NODEID_NUMERIC(1, 6100);
+  UA_RequestHeader header;
+  UA_HistoryReadValueId read;
+  UA_ReadRawModifiedDetails details;
+  UA_HistoryReadResponse response;
+  UA_HistoryData data, *data_pointer = &data;
+  UA_HistoryUpdateResult result;
+  UA_UpdateDataDetails update;
+  UA_DeleteRawModifiedDetails deletion;
+  UA_DataValue value;
+  UA_Int64 number = INT64_MIN;
+  size_t i;
+  UA_StatusCode status = 0;
+  for (i = 0; !mode && i < 2; ++i) {
+    UA_VariableAttributes attributes = UA_VariableAttributes_default;
+    attributes.historizing = true;
+    attributes.accessLevel =
+        UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE |
+        UA_ACCESSLEVELMASK_HISTORYREAD | UA_ACCESSLEVELMASK_HISTORYWRITE;
+    attributes.dataType = UA_TYPES[UA_TYPES_INT64].typeId;
+    UA_Variant_setScalar(&attributes.value, &number, &UA_TYPES[UA_TYPES_INT64]);
+    status = UA_Server_addVariableNode(
+        server, UA_NODEID_NUMERIC(1, 6100 + (UA_UInt32)i),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+        UA_QUALIFIEDNAME(1, "history"),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), attributes, NULL,
+        NULL);
+    if (status)
+      return status;
+  }
+  UA_RequestHeader_init(&header);
+  UA_HistoryReadValueId_init(&read);
+  read.nodeId = node;
+  read.indexRange = UA_STRING("0:1");
+  UA_ReadRawModifiedDetails_init(&details);
+  details.startTime = INT64_MIN;
+  details.endTime = 200;
+  details.returnBounds = true;
+  UA_HistoryReadResponse_init(&response);
+  response.results = (UA_HistoryReadResult *)UA_Array_new(
+      1, &UA_TYPES[UA_TYPES_HISTORYREADRESULT]);
+  if (!response.results)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  response.resultsSize = 1;
+  UA_HistoryData_init(&data);
+  database->readRaw(server, database->context, NULL, NULL, &header, &details,
+                    UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
+                    &data_pointer);
+  if (mode == 1) {
+    status =
+        response.results[0].statusCode == UA_STATUSCODE_BADINVALIDARGUMENT &&
+                !data.dataValues
+            ? 0
+            : UA_STATUSCODE_BADUNEXPECTEDERROR;
+    UA_HistoryData_clear(&data);
+    UA_HistoryReadResponse_clear(&response);
+    return status;
+  }
+  if (mode == 2 && response.results[0].statusCode) {
+    status = response.results[0].statusCode;
+    UA_HistoryData_clear(&data);
+    UA_HistoryReadResponse_clear(&response);
+    return status;
+  }
+  if (response.results[0].statusCode || data.dataValuesSize != 3 ||
+      !UA_Variant_hasScalarType(&data.dataValues[0].value,
+                                &UA_TYPES[UA_TYPES_INT64]) ||
+      *(UA_Int64 *)data.dataValues[0].value.data != INT64_MAX ||
+      *(UA_Int64 *)data.dataValues[1].value.data != INT64_MIN ||
+      data.dataValues[2].sourceTimestamp != 100 - UA_DATETIME_SEC)
+    status = UA_STATUSCODE_BADUNEXPECTEDERROR;
+  UA_HistoryData_clear(&data);
+  UA_HistoryReadResponse_clear(&response);
+  if (status || mode == 2)
+    return status;
+  read.nodeId = UA_NODEID_NUMERIC(1, 6101);
+  read.continuationPoint = UA_BYTESTRING("token");
+  UA_HistoryReadResponse_init(&response);
+  response.results = (UA_HistoryReadResult *)UA_Array_new(
+      1, &UA_TYPES[UA_TYPES_HISTORYREADRESULT]);
+  if (!response.results)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  response.resultsSize = 1;
+  UA_HistoryData_init(&data);
+  database->readRaw(server, database->context, NULL, NULL, &header, &details,
+                    UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
+                    &data_pointer);
+  if (response.results[0].statusCode || data.dataValuesSize != 2 ||
+      *(UA_Int64 *)data.dataValues[0].value.data != INT64_MIN ||
+      *(UA_Int64 *)data.dataValues[1].value.data != INT64_MAX ||
+      response.results[0].continuationPoint.length != 4 ||
+      memcmp(response.results[0].continuationPoint.data, "next", 4))
+    status = UA_STATUSCODE_BADUNEXPECTEDERROR;
+  UA_HistoryData_clear(&data);
+  UA_HistoryReadResponse_clear(&response);
+  if (status)
+    return status;
+  UA_DataValue_init(&value);
+  value.hasValue = true;
+  UA_Variant_setScalar(&value.value, &number, &UA_TYPES[UA_TYPES_INT64]);
+  value.value.storageType = UA_VARIANT_DATA_NODELETE;
+  database->setValue(server, database->context, NULL, NULL, &node, true,
+                     &value);
+  UA_UpdateDataDetails_init(&update);
+  update.nodeId = node;
+  update.updateValuesSize = 1;
+  update.updateValues = &value;
+  for (i = 1; i <= 3; ++i) {
+    UA_HistoryUpdateResult_init(&result);
+    update.performInsertReplace = (UA_PerformUpdateType)i;
+    database->updateData(server, database->context, NULL, NULL, &header,
+                         &update, &result);
+    if (result.statusCode || result.operationResultsSize != 1 ||
+        result.operationResults[0])
+      status = UA_STATUSCODE_BADUNEXPECTEDERROR;
+    UA_HistoryUpdateResult_clear(&result);
+    if (status)
+      return status;
+  }
+  UA_DeleteRawModifiedDetails_init(&deletion);
+  deletion.nodeId = node;
+  deletion.startTime = INT64_MIN;
+  deletion.endTime = INT64_MAX;
+  UA_HistoryUpdateResult_init(&result);
+  database->deleteRawModified(server, database->context, NULL, NULL, &header,
+                              &deletion, &result);
+  status = result.statusCode;
+  UA_HistoryUpdateResult_clear(&result);
+  return status;
+}
+
+unsigned int cpkt_types_peer_history_poll_node(void *arg) {
+  UA_Server *server = (UA_Server *)arg;
+  UA_VariableAttributes attributes = UA_VariableAttributes_default;
+  UA_Int64 value = INT64_MIN;
+  attributes.historizing = true;
+  attributes.dataType = UA_TYPES[UA_TYPES_INT64].typeId;
+  UA_Variant_setScalar(&attributes.value, &value, &UA_TYPES[UA_TYPES_INT64]);
+  return UA_Server_addVariableNode(
+      server, UA_NODEID_NUMERIC(1, 6102),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES), UA_QUALIFIEDNAME(1, "poll"),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), attributes, NULL,
+      NULL);
+}

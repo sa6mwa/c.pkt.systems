@@ -9,6 +9,53 @@ typedef struct {
   cpkt_opcua_server *owner;
   cpkt_opcua_HistoryDatabase plugin;
 } cpkt_hdb_bridge;
+#include <open62541/plugin/historydata/history_data_backend.h>
+#include <open62541/plugin/historydata/history_data_gathering_default.h>
+#include <open62541/plugin/historydata/history_database_default.h>
+struct cpkt_opcua_history_value {
+  UA_DataValue native;
+};
+typedef struct cpkt_hb_bridge cpkt_hb_bridge;
+struct cpkt_hb_bridge {
+  cpkt_opcua_server *owner;
+  cpkt_opcua_HistoryDataBackend plugin;
+  UA_NodeId node;
+  cpkt_hb_bridge *next;
+};
+typedef struct cpkt_gather_bridge cpkt_gather_bridge;
+struct cpkt_gather_bridge {
+  cpkt_opcua_server *owner;
+  UA_HistoryDataGathering native;
+  cpkt_hb_bridge *backends;
+  int polling_started;
+  int prepared_delete;
+};
+/* NodeIds have no 64-bit members. Borrow bytes instead of allocating in the
+ * pointer-return hook, where there is no status channel for allocation failure.
+ */
+static void cpkt_hb_borrow_node(const UA_NodeId *native,
+                                cpkt_opcua_NodeId *value) {
+  memset(value, 0, sizeof(*value));
+  value->namespaceIndex = native->namespaceIndex;
+  value->identifierType = (cpkt_opcua_NodeIdType)native->identifierType;
+  switch (native->identifierType) {
+  case UA_NODEIDTYPE_NUMERIC:
+    value->identifier.numeric = native->identifier.numeric;
+    break;
+  case UA_NODEIDTYPE_GUID:
+    memcpy(&value->identifier.guid, &native->identifier.guid,
+           sizeof(value->identifier.guid));
+    break;
+  case UA_NODEIDTYPE_STRING:
+    value->identifier.string.length = native->identifier.string.length;
+    value->identifier.string.data = native->identifier.string.data;
+    break;
+  case UA_NODEIDTYPE_BYTESTRING:
+    value->identifier.byteString.length = native->identifier.byteString.length;
+    value->identifier.byteString.data = native->identifier.byteString.data;
+    break;
+  }
+}
 #include "opcua_plugins_metadata.inc"
 static void cpkt_ac_clear(UA_AccessControl *native) {
   cpkt_ac_bridge *bridge = (cpkt_ac_bridge *)native->context;
@@ -98,3 +145,5 @@ cpkt_opcua_StatusCode cpkt_opcua_server_set_history_database_plugin(
   configuration->historyDatabase = native;
   return 0;
 }
+
+#include "opcua_history_impl.h"

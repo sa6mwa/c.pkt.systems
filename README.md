@@ -506,9 +506,12 @@ subscription notifications, and typed server node/attribute/browse operations. T
 `cpkt_opcua_` prefix. Generation reuses upstream's schema parser and C generator;
 it preserves the native ABI. See the [generated model contract](docs/opcua-c89-facade-spec.md#generated-c89-public-model)
 for ownership and error handling. Generated access-control and history-database
-plugin records expose every enabled native callback slot to C89. PubSub component
-configuration, lower-level history storage and other custom plugins remain
-separate coverage work.
+plugin records expose every enabled native callback slot to C89. The full
+history storage backend is also available, with default gathering/database
+installation and backend-owned persistent values for borrowed-pointer callbacks.
+See [history storage ownership](docs/opcua-c89-facade-spec.md#history-storage-and-borrowed-values).
+Custom gathering callbacks, PubSub component configuration and other custom
+plugins remain separate coverage work.
 
 The facade header does not include open62541 headers or expose `UA_Client`,
 `UA_Server`, `UA_StatusCode`, `UA_NodeId`, `UA_Variant`, fixed-width C99 integer

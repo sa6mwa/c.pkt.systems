@@ -4,4 +4,5 @@
 void cpkt_types_test_callbacks(cpkt_opcua_client *client, void *peer);
 void cpkt_types_test_plugins(void);
 void cpkt_types_test_server(void);
+void cpkt_types_test_history_backend(void);
 #endif

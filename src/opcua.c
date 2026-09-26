@@ -4852,6 +4852,8 @@ void cpkt_opcua_server_free(cpkt_opcua_server *server) {
     if (server->started) {
       (void)UA_Server_run_shutdown(server->server);
     }
+    if (server->history_prepare_delete)
+      server->history_prepare_delete(server);
     UA_Server_delete(server->server);
   }
   method = server->methods;
