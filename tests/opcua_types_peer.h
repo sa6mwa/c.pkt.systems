@@ -16,5 +16,14 @@ unsigned int cpkt_types_peer_close_session_failure(void *native_server,
                                                    void *context);
 unsigned int cpkt_types_peer_history_backend(void *native_server, int mode);
 unsigned int cpkt_types_peer_history_poll_node(void *native_server);
+struct cpkt_async_peer {
+  int deferred;
+  int cancelled;
+  void *read_result;
+  const void *write_result;
+  void *call_result;
+};
+unsigned int cpkt_types_peer_async_install(void *server, void *state);
+unsigned int cpkt_types_peer_async_complete(void *server, void *state);
 void cpkt_types_peer_stop(void *peer);
 #endif

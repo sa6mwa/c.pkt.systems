@@ -1,4 +1,5 @@
 #include "opcua_callbacks_test.h"
+#include "opcua_types_peer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +57,7 @@ static cpkt_opcua_result method(const cpkt_opcua_value *inputs, size_t count,
   return CPKT_OPCUA_OK;
 }
 static void test_server_timers_and_iterator(void);
+static void test_server_local_async(void);
 void cpkt_types_test_server(void) {
   cpkt_opcua_server *server;
   cpkt_opcua_NodeId object, variable, variable_type, object_type,
@@ -370,6 +372,7 @@ void cpkt_types_test_server(void) {
   CHECK(cpkt_opcua_server_deleteNode_typed(server, variable, 1) == 0);
   cpkt_opcua_server_free(server);
   test_server_timers_and_iterator();
+  test_server_local_async();
 }
 
 struct timer_state {
@@ -528,4 +531,303 @@ static void test_server_timers_and_iterator(void) {
   CHECK(cpkt_opcua_server_shutdown(server, NULL) == CPKT_OPCUA_OK);
   cpkt_opcua_server_free(server);
   CHECK(victim.calls == 0);
+}
+
+struct async_results {
+  int reads, writes, calls, reject_shutdown;
+  void *cancel_context;
+  void *resubmit_context;
+  cpkt_opcua_StatusCode status, conversion;
+};
+static cpkt_opcua_status async_install(void *native, void *state) {
+  return cpkt_types_peer_async_install(native, state);
+}
+static cpkt_opcua_status async_complete(void *native, void *state) {
+  return cpkt_types_peer_async_complete(native, state);
+}
+static void async_read(cpkt_opcua_server *server, void *context,
+                       cpkt_opcua_StatusCode conversion,
+                       const cpkt_opcua_DataValue *value) {
+  struct async_results *results = context;
+  cpkt_opcua_ReadValueId request;
+  ++results->reads;
+  results->conversion = conversion;
+  CHECK((conversion != 0) == (value == NULL));
+  if (value) {
+    results->status = value->hasStatus ? value->status : 0;
+    if (!results->status) {
+      CHECK(value->hasValue &&
+            value->value.type == cpkt_opcua_type_at(CPKT_OPCUA_TYPES_INT64));
+      CHECK(((cpkt_opcua_Int64 *)value->value.data)->high32 == 0x80000000U);
+      CHECK(((cpkt_opcua_Int64 *)value->value.data)->low32 == 0);
+      if (value->hasSourceTimestamp)
+        CHECK(value->sourceTimestamp.high32 == 0x7fffffffU &&
+              value->sourceTimestamp.low32 == 0xffffffffU);
+    }
+  }
+  if (results->cancel_context) {
+    void *target = results->cancel_context;
+    results->cancel_context = NULL;
+    cpkt_opcua_server_cancelAsync_typed(server, target,
+                                        CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+  }
+  if (results->resubmit_context) {
+    void *target = results->resubmit_context;
+    results->resubmit_context = NULL;
+    cpkt_opcua_ReadValueId_init(&request);
+    request.nodeId = number(1, 6200);
+    request.attributeId = 13;
+    CHECK(cpkt_opcua_server_read_async_typed(server, &request,
+                                             cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                             async_read, target, 0) == 0);
+  }
+  if (results->reject_shutdown) {
+    cpkt_opcua_ReadValueId_init(&request);
+    request.nodeId = number(1, 6200);
+    request.attributeId = 13;
+    CHECK(cpkt_opcua_server_read_async_typed(
+              server, &request, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, async_read,
+              context, 0) == CPKT_OPCUA_STATUSCODE_BADSHUTDOWN);
+  }
+}
+static void async_write(cpkt_opcua_server *server, void *context,
+                        cpkt_opcua_StatusCode status) {
+  struct async_results *results = context;
+  (void)server;
+  ++results->writes;
+  results->status = status;
+}
+static void async_call(cpkt_opcua_server *server, void *context,
+                       cpkt_opcua_StatusCode conversion,
+                       const cpkt_opcua_CallMethodResult *value) {
+  struct async_results *results = context;
+  (void)server;
+  ++results->calls;
+  results->conversion = conversion;
+  CHECK((conversion != 0) == (value == NULL));
+  if (value) {
+    results->status = value->statusCode;
+    if (!value->statusCode) {
+      CHECK(value->outputArgumentsSize == 2);
+      CHECK(((cpkt_opcua_Int64 *)value->outputArguments[0].data)->high32 ==
+            0x80000000U);
+      CHECK(((cpkt_opcua_Int64 *)value->outputArguments[1].data)->high32 ==
+            0x7fffffffU);
+      CHECK(((cpkt_opcua_Int64 *)value->outputArguments[1].data)->low32 ==
+            0xffffffffU);
+    }
+  }
+}
+static int async_null_calls;
+static void async_null_write(cpkt_opcua_server *server, void *context,
+                             cpkt_opcua_StatusCode status) {
+  (void)server;
+  CHECK(context == NULL && status == CPKT_OPCUA_STATUSCODE_BADTIMEOUT);
+  ++async_null_calls;
+}
+static void async_drive(cpkt_opcua_server *server,
+                        struct async_results *results, int count) {
+  unsigned int i;
+  for (i = 0;
+       i < 128 && results->reads + results->writes + results->calls < count;
+       ++i)
+    CHECK(cpkt_opcua_server_iterate(server, 1, NULL) == CPKT_OPCUA_OK);
+  CHECK(results->reads + results->writes + results->calls == count);
+}
+static void test_server_local_async(void) {
+  cpkt_opcua_server *server;
+  struct cpkt_async_peer peer;
+  struct async_results results, other;
+  cpkt_opcua_ReadValueId read;
+  cpkt_opcua_WriteValue write;
+  cpkt_opcua_CallMethodRequest call;
+  cpkt_opcua_Int64 number64;
+  int round;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  int kind;
+#endif
+  memset(&peer, 0, sizeof(peer));
+  memset(&results, 0, sizeof(results));
+  memset(&other, 0, sizeof(other));
+  CHECK(cpkt_opcua_server_new(&server, 0) == CPKT_OPCUA_OK);
+  CHECK(cpkt_opcua_server_native(server, async_install, &peer) ==
+        CPKT_OPCUA_OK);
+  CHECK(cpkt_opcua_server_startup(server, NULL) == CPKT_OPCUA_OK);
+  cpkt_opcua_ReadValueId_init(&read);
+  read.nodeId = number(1, 6200);
+  read.attributeId = 13;
+  cpkt_opcua_WriteValue_init(&write);
+  write.nodeId = read.nodeId;
+  write.attributeId = read.attributeId;
+  number64.high32 = 0x80000000U;
+  number64.low32 = 0;
+  write.value.hasValue = 1;
+  write.value.value.type = cpkt_opcua_type_at(CPKT_OPCUA_TYPES_INT64);
+  write.value.value.storageType = CPKT_OPCUA_VARIANT_DATA_NODELETE;
+  write.value.value.data = &number64;
+  cpkt_opcua_CallMethodRequest_init(&call);
+  call.objectId = number(0, CPKT_OPCUA_NS0ID_OBJECTSFOLDER);
+  call.methodId = number(1, 6201);
+  for (round = 0; round < 3; ++round) {
+    peer.deferred = round != 0;
+    memset(&results, 0, sizeof(results));
+    CHECK(cpkt_opcua_server_read_async_typed(server, &read,
+                                             cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                             async_read, &results, 0) == 0);
+    CHECK(cpkt_opcua_server_write_async_typed(server, &write, async_write,
+                                              &results, 0) == 0);
+    CHECK(cpkt_opcua_server_call_async_typed(server, &call, async_call,
+                                             &results, 0) == 0);
+    if (round) {
+      CHECK(!results.reads && !results.writes && !results.calls);
+      if (round == 1) {
+        CHECK(cpkt_opcua_server_native(server, async_complete, &peer) ==
+              CPKT_OPCUA_OK);
+        /* A ready native result retains success during synchronous cancel. */
+        cpkt_opcua_server_cancelAsync_typed(
+            server, &results, CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+      } else {
+        cpkt_opcua_server_cancelAsync_typed(
+            server, &results, CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 0);
+        CHECK(!results.reads && !results.writes && !results.calls);
+        async_drive(server, &results, 3);
+      }
+    }
+    CHECK(results.reads == 1 && results.writes == 1 && results.calls == 1);
+    CHECK(results.status ==
+          (round == 2 ? CPKT_OPCUA_STATUSCODE_BADTIMEOUT : 0));
+    CHECK(!results.conversion);
+  }
+  CHECK(peer.cancelled == 3);
+  memset(&results, 0, sizeof(results));
+  CHECK(cpkt_opcua_server_read_async_typed(server, &read,
+                                           cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                           async_read, &results, 1) == 0);
+  async_drive(server, &results, 1);
+  CHECK(results.status == CPKT_OPCUA_STATUSCODE_BADTIMEOUT);
+  memset(&results, 0, sizeof(results));
+  CHECK(cpkt_opcua_server_read_async_typed(server, &read,
+                                           cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                           async_read, &results, 0) == 0);
+  CHECK(cpkt_opcua_server_write_async_typed(server, &write, async_write, &other,
+                                            0) == 0);
+  cpkt_opcua_server_cancelAsync_typed(server, &results,
+                                      CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+  CHECK(results.reads == 1 && !other.writes);
+  cpkt_opcua_server_cancelAsync_typed(server, &other,
+                                      CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+  CHECK(other.writes == 1);
+  memset(&results, 0, sizeof(results));
+  memset(&other, 0, sizeof(other));
+  results.cancel_context = &other;
+  CHECK(cpkt_opcua_server_read_async_typed(server, &read,
+                                           cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                           async_read, &results, 0) == 0);
+  CHECK(cpkt_opcua_server_write_async_typed(server, &write, async_write, &other,
+                                            0) == 0);
+  cpkt_opcua_server_cancelAsync_typed(server, &results,
+                                      CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+  CHECK(results.reads == 1 && other.writes == 1);
+  /* The same reentrancy is safe for already-ready results and EventLoop
+   * dispatch, not only for cancellation of still-pending operations. */
+  for (round = 0; round < 2; ++round) {
+    memset(&results, 0, sizeof(results));
+    memset(&other, 0, sizeof(other));
+    results.cancel_context = &other;
+    CHECK(cpkt_opcua_server_read_async_typed(server, &read,
+                                             cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                             async_read, &results, 0) == 0);
+    CHECK(cpkt_opcua_server_write_async_typed(server, &write, async_write,
+                                              &other, 0) == 0);
+    CHECK(cpkt_opcua_server_native(server, async_complete, &peer) ==
+          CPKT_OPCUA_OK);
+    if (round)
+      async_drive(server, &results, 1);
+    else
+      cpkt_opcua_server_cancelAsync_typed(server, &results,
+                                          CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+    CHECK(results.reads == 1 && other.writes == 1 && !results.status &&
+          !other.status);
+  }
+  memset(&results, 0, sizeof(results));
+  memset(&other, 0, sizeof(other));
+  results.resubmit_context = &results;
+  CHECK(cpkt_opcua_server_read_async_typed(server, &read,
+                                           cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                           async_read, &results, 0) == 0);
+  cpkt_opcua_server_cancelAsync_typed(server, &results,
+                                      CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+  CHECK(results.reads == 1);
+  cpkt_opcua_server_cancelAsync_typed(server, &results,
+                                      CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+  CHECK(results.reads == 2);
+  CHECK(cpkt_opcua_server_write_async_typed(server, &write, async_null_write,
+                                            NULL, 0) == 0);
+  cpkt_opcua_server_cancelAsync_typed(server, NULL,
+                                      CPKT_OPCUA_STATUSCODE_BADTIMEOUT, 1);
+  CHECK(async_null_calls == 1);
+
+  CHECK(cpkt_opcua_server_read_async_typed(
+            NULL, &read, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, async_read,
+            &results, 0) == CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  peer.deferred = 0;
+  for (round = 0; round < 16; ++round) {
+    cpkt_opcua_StatusCode status;
+    int injected;
+    memset(&results, 0, sizeof(results));
+    cpkt_types_fail_after(round);
+    status = cpkt_opcua_server_read_async_typed(
+        server, &read, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, async_read, &results,
+        0);
+    injected = cpkt_types_fail_stop();
+    if (!injected) {
+      CHECK(!status && results.reads == 1 && !results.conversion);
+      break;
+    }
+    if (status)
+      CHECK(!results.reads && status == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY);
+    else
+      CHECK(results.reads == 1 && (results.conversion || results.status));
+  }
+  CHECK(round < 16);
+  for (kind = 0; kind < 2; ++kind) {
+    for (round = 0; round < 32; ++round) {
+      cpkt_opcua_StatusCode status;
+      int injected, count;
+      memset(&results, 0, sizeof(results));
+      cpkt_types_fail_after(round);
+      if (kind)
+        status = cpkt_opcua_server_call_async_typed(server, &call, async_call,
+                                                    &results, 0);
+      else
+        status = cpkt_opcua_server_write_async_typed(server, &write,
+                                                     async_write, &results, 0);
+      injected = cpkt_types_fail_stop();
+      count = results.writes + results.calls;
+      if (!injected) {
+        CHECK(!status && count == 1 && !results.conversion && !results.status);
+        break;
+      }
+      if (status)
+        CHECK(!count && status == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY);
+      else
+        CHECK(count == 1 && (results.conversion || results.status));
+    }
+    CHECK(round < 32);
+  }
+#endif
+  peer.deferred = 1;
+  memset(&results, 0, sizeof(results));
+  results.reject_shutdown = 1;
+  CHECK(cpkt_opcua_server_read_async_typed(server, &read,
+                                           cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+                                           async_read, &results, 0) == 0);
+  CHECK(cpkt_opcua_server_write_async_typed(server, &write, async_write,
+                                            &results, 0) == 0);
+  CHECK(cpkt_opcua_server_call_async_typed(server, &call, async_call, &results,
+                                           0) == 0);
+  cpkt_opcua_server_free(server);
+  CHECK(results.reads == 1 && results.writes == 1 && results.calls == 1);
+  CHECK(results.status == CPKT_OPCUA_STATUSCODE_BADSHUTDOWN);
 }

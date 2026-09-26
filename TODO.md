@@ -48,9 +48,13 @@ behind a callback interface.
 - [x] Generate the full HistoryDataBackend callback record, persistent borrowed
   DataValue storage, and native default gathering/database installation with
   allocation-failure and cleanup tests.
+- [x] Expose typed server-local async read/write/call submissions and context
+  cancellation with synchronous completion, native pending results, timeout,
+  shutdown, and conversion/allocation error coverage. Producer-side async
+  completion tokens remain part of the value-source/method callback work.
 - [ ] Use generated typed records at remaining PubSub component configuration,
   custom history gathering and stock memory/circular backend factories, server method/value-source/lifecycle
-  callbacks, server-local async, and custom
+  callbacks, producer-side async completion tokens, and custom
   security/event-loop/nodestore plugin boundaries. Preserve the upstream
   behavior and ownership rules; no C99-only native callback substitutes for
   a promised C89 binding. Custom native datatype registration is still separate.

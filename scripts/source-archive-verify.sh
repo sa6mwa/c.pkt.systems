@@ -234,7 +234,8 @@ for required in \
   vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch \
   vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch \
   vendor/open62541/patches/0005-route-key-derivation-errors-through-logger.patch \
-  vendor/open62541/patches/0006-check-default-history-allocations.patch
+  vendor/open62541/patches/0006-check-default-history-allocations.patch \
+  vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch
 do
   if [ ! -f "$source_root/$required" ]; then
     printf 'source archive is missing required payload: %s\n' "$required" >&2

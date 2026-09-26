@@ -3595,6 +3595,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0005-route-key-derivation-errors-through-logger.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0006-check-default-history-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch"
     RECIPE_FUNCTIONS cpkt_add_open62541)
   cpkt_prepare_dependency_component(
     NAME krb5

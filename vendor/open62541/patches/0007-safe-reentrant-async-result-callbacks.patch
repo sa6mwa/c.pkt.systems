@@ -1,0 +1,33 @@
+--- a/src/server/ua_server_async.c
++++ b/src/server/ua_server_async.c
+@@ -255,8 +255,10 @@
+     UA_atomic_xchg((void**)&am->dc.callback, NULL);
+ 
+     /* Process ready direct operations and free them */
+-    UA_AsyncOperation *op = NULL, *op_tmp = NULL;
+-    TAILQ_FOREACH_SAFE(op, &am->readyOps, pointers, op_tmp) {
++    UA_AsyncOperation *op = NULL;
++    /* A result callback may synchronously cancel another ready operation.
++     * Never retain the next operation across user code. */
++    while((op = TAILQ_FIRST(&am->readyOps))) {
+         TAILQ_REMOVE(&am->readyOps, op, pointers);
+         am->opsCount--;
+         directOpCallback(server, op);
+@@ -529,6 +531,9 @@
+             am->opsCount--;
+             directOpCallback(server, op);
+             UA_AsyncOperation_delete(op);
++            /* A result callback may cancel and delete op_tmp. Restart from
++             * live queue links rather than following a stale saved pointer. */
++            op_tmp = TAILQ_FIRST(&am->waitingOps);
+         } else {
+             processOperationResult(server, op);
+         }
+@@ -546,6 +551,7 @@
+         am->opsCount--;
+         directOpCallback(server, op);
+         UA_AsyncOperation_delete(op);
++        op_tmp = TAILQ_FIRST(&am->readyOps);
+     }
+ }
+ 

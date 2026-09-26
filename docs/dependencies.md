@@ -85,3 +85,14 @@ under Valgrind to catch regressions. The C89 default-history binding maps empty
 constructor records to BADOUTOFMEMORY without replacing the installed plugin.
 Its registration is closed after polling first starts so native monitored-item
 contexts are never moved by later gathering growth.
+
+## OPC UA reentrant async result callbacks
+
+`0007-safe-reentrant-async-result-callbacks.patch` prevents the native async
+manager from retaining a next-operation pointer across local result callbacks.
+A callback can synchronously cancel another pending or ready operation, freeing
+that operation before an outer traversal resumes. Cancellation restarts from
+live queue links; normal ready processing takes the current queue head each
+time. This preserves native result dispatch and introduces no response queue,
+public type layout, symbol, or ABI change. C89 local-operation regression tests
+exercise nested cancellation under Valgrind.

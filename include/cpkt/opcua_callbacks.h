@@ -176,6 +176,60 @@ cpkt_opcua_StatusCode cpkt_opcua_server_forEachChildNodeCall_typed(
     cpkt_opcua_server *server, cpkt_opcua_NodeId parent,
     cpkt_opcua_NodeIteratorCallback callback, void *handle);
 
+/** Native local read completion. Context is the original caller pointer.
+ * A nonzero conversion_status yields NULL result; otherwise all DataValue
+ * fields are borrowed until return. Native operation errors remain in result.
+ * Copy the result to retain it. The callback may run during submission, an
+ * EventLoop iteration, cancellation, or server destruction, exactly once for
+ * an accepted operation. Do not destroy the server from a callback. */
+typedef void (*cpkt_opcua_ServerAsyncReadResultCallback)(
+    cpkt_opcua_server *server, void *context,
+    cpkt_opcua_StatusCode conversion_status,
+    const cpkt_opcua_DataValue *result);
+/** Native local write completion; result is the native operation status. */
+typedef void (*cpkt_opcua_ServerAsyncWriteResultCallback)(
+    cpkt_opcua_server *server, void *context, cpkt_opcua_StatusCode result);
+/** Native local method completion. The complete result is borrowed until
+ * return. Nonzero conversion_status yields NULL result; native method errors
+ * remain in result->statusCode. The caller retains ownership of context. */
+typedef void (*cpkt_opcua_ServerAsyncMethodResultCallback)(
+    cpkt_opcua_server *server, void *context,
+    cpkt_opcua_StatusCode conversion_status,
+    const cpkt_opcua_CallMethodResult *result);
+/** Submit directly to UA_Server_read_async. Operation storage is borrowed
+ * during submission only. Context must survive completion, which can run
+ * before this function returns. Submission failure invokes no completion.
+ * timeout_ms is native milliseconds; zero is infinite. Serialize calls on
+ * one server handle, including EventLoop iterations. Submitting during server
+ * destruction returns BadShutdown without invoking a callback. */
+cpkt_opcua_StatusCode cpkt_opcua_server_read_async_typed(
+    cpkt_opcua_server *server, const cpkt_opcua_ReadValueId *operation,
+    cpkt_opcua_TimestampsToReturn timestamps,
+    cpkt_opcua_ServerAsyncReadResultCallback callback, void *context,
+    cpkt_opcua_UInt32 timeout_ms);
+/** Local write with the same submission/context contract as read_async_typed.
+ * Open62541 owns asynchronous bookkeeping; the facade adds no result queue. */
+cpkt_opcua_StatusCode cpkt_opcua_server_write_async_typed(
+    cpkt_opcua_server *server, const cpkt_opcua_WriteValue *operation,
+    cpkt_opcua_ServerAsyncWriteResultCallback callback, void *context,
+    cpkt_opcua_UInt32 timeout_ms);
+/** Local method call with full Variant inputs and output arguments. Request
+ * storage is borrowed during submission only; completion borrows its result. */
+cpkt_opcua_StatusCode cpkt_opcua_server_call_async_typed(
+    cpkt_opcua_server *server, const cpkt_opcua_CallMethodRequest *operation,
+    cpkt_opcua_ServerAsyncMethodResultCallback callback, void *context,
+    cpkt_opcua_UInt32 timeout_ms);
+/** Cancel operations using the original caller context, not bridge pointers.
+ * Cancels the matching operations registered when cancellation begins and
+ * also forwards to native operations installed outside the typed facade.
+ * synchronous_result_callback requests immediate native result callbacks;
+ * otherwise drive the EventLoop until completion before releasing context.
+ * Already-ready results retain their native status. NULL server is harmless.
+ * Callbacks may submit new operations; those require their own cancellation. */
+void cpkt_opcua_server_cancelAsync_typed(
+    cpkt_opcua_server *server, void *context, cpkt_opcua_StatusCode status,
+    cpkt_opcua_Boolean synchronous_result_callback);
+
 #ifdef __cplusplus
 }
 #endif

@@ -4848,6 +4848,7 @@ void cpkt_opcua_server_free(cpkt_opcua_server *server) {
   if (server == NULL) {
     return;
   }
+  server->destroying = 1;
   if (server->server != NULL) {
     if (server->started) {
       (void)UA_Server_run_shutdown(server->server);

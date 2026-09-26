@@ -137,7 +137,7 @@ does not imply that every such function is already wrapped.
 | History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Full generated C89 HistoryDatabase callback record plus typed client history services | Full HistoryDataBackend, persistent borrowed values and default gathering/database bindings; custom gathering callbacks remain separate coverage work. |
 | Events and alarms/conditions | `server.h`, `client_subscriptions.h` | First-class event creation/trigger and event monitored items; alarms/conditions native-first | Events are common; alarms/conditions are broad generated models. |
 | PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Native-first plus common MQTT connection, publisher, subscriber, and config byte-string wrappers | PubSub is extensive and config-heavy. open62541 owns the MQTT integration; the facade should avoid duplicating generated config structures. |
-| Async services | `client_highlevel_async.h`, `server.h` async operations | Generated typed async client services and full subscription/event callback records | Server-local async operations and other callback/configuration boundaries remain separate coverage work. |
+| Async services | `client_highlevel_async.h`, `server.h` async operations | Generated typed async client services and full subscription/event callback records | Typed local read/write/call submissions and cancellation preserve native completion; value-source completion tokens and other callback/configuration boundaries remain separate coverage work. |
 | File/json server config | `server_config_file_based.h` | Explicit JSON bytes/file constructors plus native config callback | Useful, but file I/O must stay explicit at the application boundary. |
 | Logging | `plugin/log.h` | First-class C89 callback with every upstream level/category, constructor configuration, and destination replacement | Capture initialization, runtime, security, event-loop, and destruction messages without depending on a logging library. |
 | Event loop plugins | `plugin/eventloop.h` | Native config callback | Upstream event-loop customization remains available through native configuration. Its logs use the same configured logger. |
@@ -213,7 +213,7 @@ against the last released bundle alongside the existing ABI checks. Generated
 model coverage does not imply that every handwritten public interface has a C89
 binding. PubSub component configuration, custom history gathering, custom
 security/event-loop/nodestore plugins, full server method/value-source/lifecycle
-callbacks and server-local asynchronous operations remain distinct coverage work.
+callbacks and asynchronous value-source completion tokens remain distinct coverage work.
 
 ### Typed services and subscriptions
 
@@ -623,12 +623,14 @@ boundaries, not maintaining hand-written copies of the structures.
 - History:
   - client history-read wrappers for common raw value reads;
   - full generated C89 HistoryDatabase callbacks;
-  - lower-level backend/gathering registration remains a native extension.
+  - full generated C89 HistoryDataBackend callbacks and native default gathering;
+  - custom gathering callbacks and stock backend factories remain pending.
 - Async services:
   - selected async read, write, browse, call, and add-node wrappers with C89
     callbacks;
   - generic and generated typed async client service bindings;
-  - native hooks remain for server-local asynchronous operations.
+  - typed server-local read/write/call submissions and cancellation;
+  - native hooks remain for asynchronous value-source completion tokens.
 - File/json server config:
   - create server from explicit JSON bytes or explicit file path;
   - no implicit config-file discovery.
@@ -728,3 +730,34 @@ implemented. Future additions must preserve the C89 boundary, name native
 escape hatches explicitly, document ownership and asynchronous callback
 lifetimes in `include/cpkt/opcua.h`, and land with focused observable tests plus
 installed-package coverage where the new surface is shipped.
+
+### Server-local asynchronous operation ownership
+
+`cpkt_opcua_server_read_async_typed`, `write_async_typed`, and
+`call_async_typed` submit complete C89 records to the native server. Requests
+are borrowed only during submission. The caller retains its callback context
+until completion, which can occur before submission returns, during an EventLoop
+iteration, cancellation, or server deletion. Accepted operations complete once;
+failed submissions invoke no completion. Native timeouts use milliseconds,
+with zero meaning infinite. Serialize operations on one server handle.
+
+Read and method callbacks receive a separately reported conversion status;
+conversion failure produces a NULL result. Successful conversion preserves
+native operation errors in the DataValue or CallMethodResult. Callback records
+are borrowed until return; use the generated copy helpers to retain them.
+The facade owns only callback dispatch metadata, and adds no response queue.
+
+`cpkt_opcua_server_cancelAsync_typed` matches the original caller context,
+including NULL, and forwards cancellation to native operations using that
+context outside the typed facade. It pins the existing dispatch records before
+calling upstream, allowing reentrant callbacks without invalidating traversal.
+Operations submitted by a callback require their own cancellation. Immediate
+cancellation completes matching callbacks before return; otherwise drive the
+EventLoop before freeing their context. Already-ready results retain their
+native status. Server deletion completes pending operations with BadShutdown
+and rejects new typed submissions with BadShutdown. Do not destroy the server
+from one of its callbacks.
+
+These submissions do not yet expose the producer-side value-source and method
+completion tokens. Those require a distinct lifetime binding for upstream's
+stable callback output addresses and remain tracked as pending public API.

@@ -766,3 +766,224 @@ cpkt_opcua_StatusCode cpkt_opcua_server_forEachChildNodeCall_typed(
   UA_NodeId_clear(&native_parent);
   return status;
 }
+
+/* Local operations persist their outputs in the native AsyncManager. This
+ * registry owns only callback dispatch/context identities, never a response
+ * queue. Two references protect a completion that runs inside submission. */
+struct cpkt_server_async {
+  struct cpkt_server_async *next;
+  cpkt_opcua_server *owner;
+  void *context;
+  unsigned int references;
+  int completed;
+  union {
+    cpkt_opcua_ServerAsyncReadResultCallback read;
+    cpkt_opcua_ServerAsyncWriteResultCallback write;
+    cpkt_opcua_ServerAsyncMethodResultCallback call;
+  } callback;
+};
+static void cpkt_server_async_unref(struct cpkt_server_async *operation) {
+  struct cpkt_server_async **slot;
+  if (--operation->references)
+    return;
+  for (slot = &operation->owner->typed_asyncs; *slot; slot = &(*slot)->next) {
+    if (*slot == operation) {
+      *slot = operation->next;
+      break;
+    }
+  }
+  UA_free(operation);
+}
+static struct cpkt_server_async *
+cpkt_server_async_new(cpkt_opcua_server *server, void *context) {
+  struct cpkt_server_async *operation;
+  operation = (struct cpkt_server_async *)UA_calloc(1, sizeof(*operation));
+  if (operation) {
+    operation->owner = server;
+    operation->context = context;
+    operation->references = 2;
+  }
+  return operation;
+}
+static void cpkt_server_async_submitted(struct cpkt_server_async *operation,
+                                        UA_StatusCode status) {
+  struct cpkt_server_async **slot;
+  if (!operation->completed) {
+    if (status) {
+      cpkt_server_async_unref(operation);
+    } else {
+      /* Append after native persistence, matching the order of accepted
+       * operations even when a value-source callback submits another call. */
+      for (slot = &operation->owner->typed_asyncs; *slot; slot = &(*slot)->next)
+        ;
+      *slot = operation;
+    }
+  }
+  cpkt_server_async_unref(operation);
+}
+static void cpkt_server_read_completed(UA_Server *server, void *context,
+                                       const UA_DataValue *result) {
+  struct cpkt_server_async *operation = (struct cpkt_server_async *)context;
+  cpkt_opcua_DataValue value;
+  UA_StatusCode status;
+  (void)server;
+  memset(&value, 0, sizeof(value));
+  status = cpkt_convert(result, &value, &cpkt_types[CPKT_OPCUA_TYPES_DATAVALUE],
+                        0, 0);
+  operation->completed = 1;
+  operation->callback.read(operation->owner, operation->context, status,
+                           status ? NULL : &value);
+  cpkt_opcua_DataValue_clear(&value);
+  cpkt_server_async_unref(operation);
+}
+static void cpkt_server_write_completed(UA_Server *server, void *context,
+                                        UA_StatusCode result) {
+  struct cpkt_server_async *operation = (struct cpkt_server_async *)context;
+  (void)server;
+  operation->completed = 1;
+  operation->callback.write(operation->owner, operation->context, result);
+  cpkt_server_async_unref(operation);
+}
+static void cpkt_server_call_completed(UA_Server *server, void *context,
+                                       const UA_CallMethodResult *result) {
+  struct cpkt_server_async *operation = (struct cpkt_server_async *)context;
+  cpkt_opcua_CallMethodResult value;
+  UA_StatusCode status;
+  (void)server;
+  memset(&value, 0, sizeof(value));
+  status = cpkt_convert(result, &value,
+                        &cpkt_types[CPKT_OPCUA_TYPES_CALLMETHODRESULT], 0, 0);
+  operation->completed = 1;
+  operation->callback.call(operation->owner, operation->context, status,
+                           status ? NULL : &value);
+  cpkt_opcua_CallMethodResult_clear(&value);
+  cpkt_server_async_unref(operation);
+}
+/** Implements native local asynchronous read with complete C89 records. */
+cpkt_opcua_StatusCode cpkt_opcua_server_read_async_typed(
+    cpkt_opcua_server *server, const cpkt_opcua_ReadValueId *operation,
+    cpkt_opcua_TimestampsToReturn timestamps,
+    cpkt_opcua_ServerAsyncReadResultCallback callback, void *context,
+    cpkt_opcua_UInt32 timeout_ms) {
+  struct cpkt_server_async *bridge;
+  UA_ReadValueId request;
+  UA_StatusCode status;
+  if (!server || !operation || !callback)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  if (server->destroying)
+    return UA_STATUSCODE_BADSHUTDOWN;
+  memset(&request, 0, sizeof(request));
+  status = cpkt_convert(operation, &request,
+                        &cpkt_types[CPKT_OPCUA_TYPES_READVALUEID], 1, 0);
+  if (status) {
+    UA_ReadValueId_clear(&request);
+    return status;
+  }
+  bridge = cpkt_server_async_new(server, context);
+  if (!bridge) {
+    UA_ReadValueId_clear(&request);
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  }
+  bridge->callback.read = callback;
+  status = UA_Server_read_async(server->server, &request,
+                                (UA_TimestampsToReturn)timestamps,
+                                cpkt_server_read_completed, bridge, timeout_ms);
+  UA_ReadValueId_clear(&request);
+  cpkt_server_async_submitted(bridge, status);
+  return status;
+}
+/** Implements native local asynchronous write with no facade result queue. */
+cpkt_opcua_StatusCode cpkt_opcua_server_write_async_typed(
+    cpkt_opcua_server *server, const cpkt_opcua_WriteValue *operation,
+    cpkt_opcua_ServerAsyncWriteResultCallback callback, void *context,
+    cpkt_opcua_UInt32 timeout_ms) {
+  struct cpkt_server_async *bridge;
+  UA_WriteValue request;
+  UA_StatusCode status;
+  if (!server || !operation || !callback)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  if (server->destroying)
+    return UA_STATUSCODE_BADSHUTDOWN;
+  memset(&request, 0, sizeof(request));
+  status = cpkt_convert(operation, &request,
+                        &cpkt_types[CPKT_OPCUA_TYPES_WRITEVALUE], 1, 0);
+  if (status) {
+    UA_WriteValue_clear(&request);
+    return status;
+  }
+  bridge = cpkt_server_async_new(server, context);
+  if (!bridge) {
+    UA_WriteValue_clear(&request);
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  }
+  bridge->callback.write = callback;
+  status =
+      UA_Server_write_async(server->server, &request,
+                            cpkt_server_write_completed, bridge, timeout_ms);
+  UA_WriteValue_clear(&request);
+  cpkt_server_async_submitted(bridge, status);
+  return status;
+}
+/** Implements native local asynchronous method calls with C89 Variants. */
+cpkt_opcua_StatusCode cpkt_opcua_server_call_async_typed(
+    cpkt_opcua_server *server, const cpkt_opcua_CallMethodRequest *operation,
+    cpkt_opcua_ServerAsyncMethodResultCallback callback, void *context,
+    cpkt_opcua_UInt32 timeout_ms) {
+  struct cpkt_server_async *bridge;
+  UA_CallMethodRequest request;
+  UA_StatusCode status;
+  if (!server || !operation || !callback)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  if (server->destroying)
+    return UA_STATUSCODE_BADSHUTDOWN;
+  memset(&request, 0, sizeof(request));
+  status = cpkt_convert(operation, &request,
+                        &cpkt_types[CPKT_OPCUA_TYPES_CALLMETHODREQUEST], 1, 0);
+  if (status) {
+    UA_CallMethodRequest_clear(&request);
+    return status;
+  }
+  bridge = cpkt_server_async_new(server, context);
+  if (!bridge) {
+    UA_CallMethodRequest_clear(&request);
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  }
+  bridge->callback.call = callback;
+  status = UA_Server_call_async(server->server, &request,
+                                cpkt_server_call_completed, bridge, timeout_ms);
+  UA_CallMethodRequest_clear(&request);
+  cpkt_server_async_submitted(bridge, status);
+  return status;
+}
+/** Implements native cancellation using caller-visible context identity. */
+void cpkt_opcua_server_cancelAsync_typed(
+    cpkt_opcua_server *server, void *context, cpkt_opcua_StatusCode status,
+    cpkt_opcua_Boolean synchronous_result_callback) {
+  struct cpkt_server_async *operation, *last, *next;
+  if (!server)
+    return;
+  /* Pin the existing registry before invoking callbacks. Completed entries
+   * cannot disappear underneath a reentrant cancellation, and operations
+   * submitted by a completion callback are outside this cancellation pass. */
+  last = NULL;
+  for (operation = server->typed_asyncs; operation;
+       operation = operation->next) {
+    ++operation->references;
+    last = operation;
+  }
+  operation = server->typed_asyncs;
+  UA_Server_cancelAsync(server->server, context, status,
+                        synchronous_result_callback != 0);
+  while (operation) {
+    next = operation->next;
+    if (!operation->completed && operation->context == context)
+      UA_Server_cancelAsync(server->server, operation, status,
+                            synchronous_result_callback != 0);
+    if (operation == last) {
+      cpkt_server_async_unref(operation);
+      break;
+    }
+    cpkt_server_async_unref(operation);
+    operation = next;
+  }
+}

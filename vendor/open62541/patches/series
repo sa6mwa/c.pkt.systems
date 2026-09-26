@@ -3,3 +3,4 @@
 0004-link-bundled-openssl-crypto.patch
 0005-route-key-derivation-errors-through-logger.patch
 0006-check-default-history-allocations.patch
+0007-safe-reentrant-async-result-callbacks.patch

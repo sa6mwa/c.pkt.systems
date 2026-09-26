@@ -746,3 +746,160 @@ unsigned int cpkt_types_peer_history_poll_node(void *arg) {
       UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), attributes, NULL,
       NULL);
 }
+
+/* Exercise the actual native pending-operation identities, independently of
+ * the facade representation. No test callback includes a facade header. */
+static UA_StatusCode
+peer_async_read(UA_Server *server, const UA_NodeId *session,
+                void *session_context, const UA_NodeId *node, void *context,
+                UA_Boolean timestamp, const UA_NumericRange *range,
+                UA_DataValue *value) {
+  struct cpkt_async_peer *state = context;
+  UA_Int64 number = INT64_MIN;
+  (void)server;
+  (void)session;
+  (void)session_context;
+  (void)node;
+  (void)timestamp;
+  (void)range;
+  if (state->deferred) {
+    state->read_result = value;
+    return UA_STATUSCODE_GOODCOMPLETESASYNCHRONOUSLY;
+  }
+  value->hasValue = true;
+  value->hasSourceTimestamp = true;
+  value->sourceTimestamp = INT64_MAX;
+  return UA_Variant_setScalarCopy(&value->value, &number,
+                                  &UA_TYPES[UA_TYPES_INT64]);
+}
+static UA_StatusCode
+peer_async_write(UA_Server *server, const UA_NodeId *session,
+                 void *session_context, const UA_NodeId *node, void *context,
+                 const UA_NumericRange *range, const UA_DataValue *value) {
+  struct cpkt_async_peer *state = context;
+  (void)server;
+  (void)session;
+  (void)session_context;
+  (void)node;
+  (void)range;
+  if (!value->hasValue ||
+      !UA_Variant_hasScalarType(&value->value, &UA_TYPES[UA_TYPES_INT64]) ||
+      *(UA_Int64 *)value->value.data != INT64_MIN)
+    return UA_STATUSCODE_BADTYPEMISMATCH;
+  if (!state->deferred)
+    return UA_STATUSCODE_GOOD;
+  state->write_result = value;
+  return UA_STATUSCODE_GOODCOMPLETESASYNCHRONOUSLY;
+}
+static void peer_async_cancel(UA_Server *server, const void *operation) {
+  struct cpkt_async_peer *state = NULL;
+  UA_Server_getNodeContext(server, UA_NODEID_NUMERIC(1, 6200), (void **)&state);
+  if (!state)
+    abort();
+  ++state->cancelled;
+  if (state->read_result == operation)
+    state->read_result = NULL;
+  if (state->write_result == operation)
+    state->write_result = NULL;
+  if (state->call_result == operation)
+    state->call_result = NULL;
+}
+static UA_StatusCode peer_async_method(
+    UA_Server *server, const UA_NodeId *session, void *session_context,
+    const UA_NodeId *method, void *method_context, const UA_NodeId *object,
+    void *object_context, size_t input_size, const UA_Variant *input,
+    size_t output_size, UA_Variant *output) {
+  struct cpkt_async_peer *state = method_context;
+  UA_Int64 number = INT64_MIN;
+  UA_StatusCode status;
+  (void)server;
+  (void)session;
+  (void)session_context;
+  (void)method;
+  (void)object;
+  (void)object_context;
+  (void)input;
+  if (input_size || output_size != 2)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  if (state->deferred) {
+    state->call_result = output;
+    return UA_STATUSCODE_GOODCOMPLETESASYNCHRONOUSLY;
+  }
+  status =
+      UA_Variant_setScalarCopy(&output[0], &number, &UA_TYPES[UA_TYPES_INT64]);
+  number = INT64_MAX;
+  if (!status)
+    status = UA_Variant_setScalarCopy(&output[1], &number,
+                                      &UA_TYPES[UA_TYPES_INT64]);
+  return status;
+}
+unsigned int cpkt_types_peer_async_install(void *native, void *context) {
+  UA_Server *server = native;
+  UA_VariableAttributes attributes = UA_VariableAttributes_default;
+  UA_CallbackValueSource source = {peer_async_read, peer_async_write};
+  UA_StatusCode status;
+  UA_Argument outputs[2];
+  UA_MethodAttributes method_attributes = UA_MethodAttributes_default;
+  attributes.dataType = UA_TYPES[UA_TYPES_INT64].typeId;
+  attributes.valueRank = UA_VALUERANK_SCALAR;
+  attributes.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+  status = UA_Server_addVariableNode(
+      server, UA_NODEID_NUMERIC(1, 6200),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES), UA_QUALIFIEDNAME(1, "async"),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), attributes, context,
+      NULL);
+  if (!status)
+    status = UA_Server_setVariableNode_callbackValueSource(
+        server, UA_NODEID_NUMERIC(1, 6200), source);
+  memset(outputs, 0, sizeof(outputs));
+  outputs[0].dataType = outputs[1].dataType = UA_TYPES[UA_TYPES_INT64].typeId;
+  outputs[0].valueRank = outputs[1].valueRank = UA_VALUERANK_SCALAR;
+  method_attributes.executable = method_attributes.userExecutable = true;
+  if (!status)
+    status = UA_Server_addMethodNode(
+        server, UA_NODEID_NUMERIC(1, 6201),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
+        UA_QUALIFIEDNAME(1, "asyncMethod"), method_attributes,
+        peer_async_method, 0, NULL, 2, outputs, context, NULL);
+  UA_Server_getConfig(server)->asyncOperationCancelCallback = peer_async_cancel;
+  return status;
+}
+unsigned int cpkt_types_peer_async_complete(void *native, void *context) {
+  struct cpkt_async_peer *state = context;
+  UA_Server *server = native;
+  UA_StatusCode status = UA_STATUSCODE_GOOD;
+  if (state->read_result) {
+    UA_DataValue *value = state->read_result;
+    UA_Int64 number = INT64_MIN;
+    value->hasValue = true;
+    value->hasSourceTimestamp = true;
+    value->sourceTimestamp = INT64_MAX;
+    status = UA_Variant_setScalarCopy(&value->value, &number,
+                                      &UA_TYPES[UA_TYPES_INT64]);
+    if (!status)
+      status = UA_Server_setAsyncReadResult(server, value);
+    state->read_result = NULL;
+  }
+  if (!status && state->write_result) {
+    status = UA_Server_setAsyncWriteResult(server, state->write_result,
+                                           UA_STATUSCODE_GOOD);
+    state->write_result = NULL;
+  }
+  if (!status && state->call_result) {
+    UA_Variant *outputs = state->call_result;
+    UA_Int64 number = INT64_MIN;
+    status = UA_Variant_setScalarCopy(&outputs[0], &number,
+                                      &UA_TYPES[UA_TYPES_INT64]);
+    number = INT64_MAX;
+    if (!status)
+      status = UA_Variant_setScalarCopy(&outputs[1], &number,
+                                        &UA_TYPES[UA_TYPES_INT64]);
+    if (!status)
+      status = UA_Server_setAsyncCallMethodResult(server, outputs,
+                                                  UA_STATUSCODE_GOOD);
+    state->call_result = NULL;
+  }
+  return status;
+}
