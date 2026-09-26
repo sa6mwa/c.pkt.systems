@@ -69,7 +69,8 @@ execute_process(
 if(NOT _result EQUAL 0)
   message(FATAL_ERROR "cleaned archive consumer failed to link: ${_error}")
 endif()
-execute_process(COMMAND "${_work_dir}/consumer" RESULT_VARIABLE _result)
+execute_process(COMMAND ${CPKT_TEST_EXECUTABLE_PREFIX} "${_work_dir}/consumer"
+  RESULT_VARIABLE _result)
 if(NOT _result EQUAL 0)
   message(FATAL_ERROR "cleaned archive consumer failed: ${_result}")
 endif()
