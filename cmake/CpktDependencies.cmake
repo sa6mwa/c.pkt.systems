@@ -2944,11 +2944,34 @@ function(cpkt_add_postgresql)
     # search path into the installed artifacts.
     list(APPEND postgresql_configure_env_args
       "LD_LIBRARY_PATH=${CPKT_CURL_PREFIX}/lib:${CPKT_ZLIB_PREFIX}/lib:${CPKT_OPENSSL_shared_PREFIX}/lib:${CPKT_LIBSSH2_PREFIX}/lib:${CPKT_NGHTTP2_shared_PREFIX}/lib:${CPKT_KRB5_PREFIX}/lib:${CPKT_OPENLDAP_PREFIX}/lib:${CPKT_CYRUS_SASL_PREFIX}/lib")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_CROSSCOMPILING)
+    # PostgreSQL executes libcurl capability probes during configure. The
+    # probes live outside the bundled libraries' @loader_path closure. Embed
+    # temporary rpaths for those executables, then remove them from the
+    # generated build flags before any libraries are linked.
+    set(postgresql_probe_ldflags "${postgresql_ldflags}")
+    foreach(probe_prefix IN ITEMS
+        "${CPKT_CURL_PREFIX}" "${CPKT_ZLIB_PREFIX}"
+        "${CPKT_OPENSSL_shared_PREFIX}" "${CPKT_LIBSSH2_PREFIX}"
+        "${CPKT_NGHTTP2_shared_PREFIX}" "${CPKT_KRB5_PREFIX}"
+        "${CPKT_OPENLDAP_PREFIX}" "${CPKT_CYRUS_SASL_PREFIX}")
+      string(APPEND postgresql_probe_ldflags " -Wl,-rpath,${probe_prefix}/lib")
+    endforeach()
+    list(REMOVE_ITEM postgresql_configure_env_args "LDFLAGS=${postgresql_ldflags}")
+    list(APPEND postgresql_configure_env_args "LDFLAGS=${postgresql_probe_ldflags}")
   endif()
   set(postgresql_post_configure_command
     COMMAND ${CMAKE_COMMAND}
       -DCPKT_POSTGRESQL_SOURCE_DIR=${source_dir}
       -P ${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake)
+  if(DEFINED postgresql_probe_ldflags)
+    list(APPEND postgresql_post_configure_command
+      COMMAND ${CMAKE_COMMAND}
+        -DCPKT_POSTGRESQL_BUILD_DIR=${build_dir}
+        "-DCPKT_POSTGRESQL_PROBE_LDFLAGS=${postgresql_probe_ldflags}"
+        "-DCPKT_POSTGRESQL_BASE_LDFLAGS=${postgresql_ldflags}"
+        -P ${CMAKE_SOURCE_DIR}/cmake/remove_postgresql_probe_rpaths.cmake)
+  endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND postgresql_post_configure_command
       COMMAND ${CMAKE_COMMAND}
@@ -3612,6 +3635,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/build_openldap_libraries.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patch_openldap_lutil_link.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/remove_static_archive_member.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patches/openldap.series"
       "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_client_const.patch"
     RECIPE_FUNCTIONS cpkt_add_openldap)
@@ -3625,6 +3649,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/remove_postgresql_probe_rpaths.cmake"
     RECIPE_FUNCTIONS cpkt_add_postgresql)
   cpkt_prepare_dependency_component(
     NAME iodbc

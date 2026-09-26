@@ -34,7 +34,7 @@ jobs:
       - name: Run native curl tests
         run: |
           ctest --test-dir build/arm64-apple-darwin-native --verbose \
-            -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$|^(patch_series_portability|static_archive_member_cleanup)$'
+            -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$|^(patch_series_portability|static_archive_member_cleanup|postgresql_probe_rpaths)$'
       - name: Package SDK
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Verify bundled OpenSSL provenance
