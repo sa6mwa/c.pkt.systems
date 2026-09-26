@@ -1918,6 +1918,27 @@ if(CPKT_BUILD_TESTS)
         curl_multi_socket_${_cpkt_curl_linkage} PROPERTIES
         LABELS "integration;smoke" TIMEOUT 30)
     endforeach()
+    add_test(
+      NAME patch_series_portability
+      COMMAND "${CMAKE_COMMAND}"
+        "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+        "-DCPKT_PATCH_TEST_ROOT=${CMAKE_BINARY_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/tests/patch_series_portability_test.cmake")
+    add_test(
+      NAME static_archive_member_cleanup
+      COMMAND "${CMAKE_COMMAND}"
+        "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+        "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}"
+        "-DCPKT_TEST_CC=${CMAKE_C_COMPILER}"
+        "-DCPKT_TEST_AR=${CMAKE_AR}"
+        "-DCPKT_TEST_RANLIB=${CMAKE_RANLIB}"
+        -P "${CMAKE_SOURCE_DIR}/tests/static_archive_member_cleanup_test.cmake")
+    add_test(
+      NAME postgresql_probe_rpaths
+      COMMAND "${CMAKE_COMMAND}"
+        "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+        "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}"
+        -P "${CMAKE_SOURCE_DIR}/tests/postgresql_probe_rpaths_test.cmake")
     add_test(NAME lua_facade_unit COMMAND cpkt_lua_facade_test)
     add_test(
       NAME lua_runtime_c89_example
@@ -2301,27 +2322,6 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/dependency_archive_cache_test.sh"
           "${CMAKE_SOURCE_DIR}")
-      add_test(
-        NAME patch_series_portability
-        COMMAND "${CMAKE_COMMAND}"
-          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
-          "-DCPKT_PATCH_TEST_ROOT=${CMAKE_BINARY_DIR}"
-          -P "${CMAKE_SOURCE_DIR}/tests/patch_series_portability_test.cmake")
-      add_test(
-        NAME static_archive_member_cleanup
-        COMMAND "${CMAKE_COMMAND}"
-          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
-          "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}"
-          "-DCPKT_TEST_CC=${CMAKE_C_COMPILER}"
-          "-DCPKT_TEST_AR=${CMAKE_AR}"
-          "-DCPKT_TEST_RANLIB=${CMAKE_RANLIB}"
-          -P "${CMAKE_SOURCE_DIR}/tests/static_archive_member_cleanup_test.cmake")
-      add_test(
-        NAME postgresql_probe_rpaths
-        COMMAND "${CMAKE_COMMAND}"
-          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
-          "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}"
-          -P "${CMAKE_SOURCE_DIR}/tests/postgresql_probe_rpaths_test.cmake")
       if(CPKT_BUILD_DEPENDENCIES)
         add_test(
           NAME open62541_openssl_provenance
