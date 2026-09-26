@@ -33,7 +33,7 @@ foreach(_patch_name IN LISTS _series_entries)
   endif()
 
   execute_process(
-    COMMAND "${CPKT_PATCH_EXECUTABLE}" --dry-run --reverse -p1 -i "${_patch_path}"
+    COMMAND "${CPKT_PATCH_EXECUTABLE}" --force --dry-run --reverse -p1 -i "${_patch_path}"
     WORKING_DIRECTORY "${CPKT_PATCH_WORKING_DIRECTORY}"
     RESULT_VARIABLE _patch_reverse_result
     OUTPUT_QUIET
@@ -45,7 +45,7 @@ foreach(_patch_name IN LISTS _series_entries)
   endif()
 
   execute_process(
-    COMMAND "${CPKT_PATCH_EXECUTABLE}" --dry-run -p1 -i "${_patch_path}"
+    COMMAND "${CPKT_PATCH_EXECUTABLE}" --force --dry-run -p1 -i "${_patch_path}"
     WORKING_DIRECTORY "${CPKT_PATCH_WORKING_DIRECTORY}"
     RESULT_VARIABLE _patch_dry_run_result
     OUTPUT_VARIABLE _patch_dry_run_output
@@ -58,7 +58,7 @@ foreach(_patch_name IN LISTS _series_entries)
   endif()
 
   execute_process(
-    COMMAND "${CPKT_PATCH_EXECUTABLE}" -p1 -i "${_patch_path}"
+    COMMAND "${CPKT_PATCH_EXECUTABLE}" --force -p1 -i "${_patch_path}"
     WORKING_DIRECTORY "${CPKT_PATCH_WORKING_DIRECTORY}"
     RESULT_VARIABLE _patch_result
     OUTPUT_VARIABLE _patch_output

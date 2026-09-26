@@ -34,7 +34,7 @@ jobs:
       - name: Run native curl tests
         run: |
           ctest --test-dir build/arm64-apple-darwin-native --verbose \
-            -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
+            -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$|^patch_series_portability$'
       - name: Package SDK
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Test packaged libcurl static and shared

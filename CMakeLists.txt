@@ -2281,6 +2281,12 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}/tests/dependency_archive_cache_test.sh"
           "${CMAKE_SOURCE_DIR}")
       add_test(
+        NAME patch_series_portability
+        COMMAND "${CMAKE_COMMAND}"
+          "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+          "-DCPKT_PATCH_TEST_ROOT=${CMAKE_BINARY_DIR}"
+          -P "${CMAKE_SOURCE_DIR}/tests/patch_series_portability_test.cmake")
+      add_test(
         NAME dependency_cache_disabled
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/dependency_cache_disabled_test.sh"
