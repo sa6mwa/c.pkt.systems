@@ -37,14 +37,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def main():
     if len(sys.argv) < 2:
         raise SystemExit("usage: curl_async_dns_server.py <client> [<client> ...]")
+    print("multi socket harness: binding loopback server", flush=True)
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server.block_on_close = False
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         port = str(server.server_address[1])
+        print(f"multi socket harness: listening on {port}", flush=True)
         for client in sys.argv[1:]:
+            print(f"multi socket harness: starting {client}", flush=True)
             subprocess.run([client, "--multi", port], check=True, timeout=15)
+            print(f"multi socket harness: completed {client}", flush=True)
     finally:
+        print("multi socket harness: shutting down", flush=True)
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)

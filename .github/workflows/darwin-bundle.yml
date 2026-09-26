@@ -33,7 +33,7 @@ jobs:
             --target cpkt_curl_async_dns_static_test cpkt_curl_async_dns_shared_test
       - name: Run native curl tests
         run: |
-          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
+          ctest --test-dir build/arm64-apple-darwin-native --verbose \
             -R '^curl_(async_dns|multi_socket)_(static|shared)$'
       - name: Package SDK
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
