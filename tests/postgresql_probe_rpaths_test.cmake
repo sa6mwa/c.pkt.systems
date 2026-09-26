@@ -9,7 +9,7 @@ set(_makefile "${_work_dir}/src/Makefile.global")
 set(_base "-L/bundle/lib -Wl,-rpath,@loader_path")
 set(_probe "${_base} -Wl,-rpath,/private/probe/lib")
 file(WRITE "${_makefile}"
-  "LDFLAGS = \$(LDFLAGS_INTERNAL) ${_probe} -Wl,--as-needed\n")
+  "LDFLAGS = \$(LDFLAGS_INTERNAL) -isysroot \$(PG_SYSROOT) ${_probe} -Wl,--as-needed\n")
 
 execute_process(
   COMMAND "${CMAKE_COMMAND}"
@@ -23,7 +23,7 @@ if(NOT _result EQUAL 0)
 endif()
 file(READ "${_makefile}" _actual)
 if(NOT _actual STREQUAL
-    "LDFLAGS = \$(LDFLAGS_INTERNAL) ${_base} -Wl,--as-needed\n")
+    "LDFLAGS = \$(LDFLAGS_INTERNAL) -isysroot \$(PG_SYSROOT) ${_base} -Wl,--as-needed\n")
   message(FATAL_ERROR "probe rpaths leaked into PostgreSQL build flags: ${_actual}")
 endif()
 

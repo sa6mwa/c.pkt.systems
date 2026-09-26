@@ -18,16 +18,15 @@ if(NOT _base_prefix EQUAL 0)
 endif()
 
 file(READ "${_makefile}" _contents)
-set(_probe_assignment
-  "LDFLAGS = \$(LDFLAGS_INTERNAL) ${CPKT_POSTGRESQL_PROBE_LDFLAGS}")
-set(_base_assignment
-  "LDFLAGS = \$(LDFLAGS_INTERNAL) ${CPKT_POSTGRESQL_BASE_LDFLAGS}")
-string(FIND "${_contents}" "${_probe_assignment}" _probe_index)
+string(REGEX MATCH "(^|\n)LDFLAGS = [^\n]*" _assignment "${_contents}")
+string(FIND "${_assignment}" "${CPKT_POSTGRESQL_PROBE_LDFLAGS}" _probe_index)
 if(_probe_index EQUAL -1)
   message(FATAL_ERROR "PostgreSQL build flags did not contain the probe rpaths")
 endif()
-string(REPLACE "${_probe_assignment}" "${_base_assignment}" _contents "${_contents}")
-string(FIND "${_contents}" "${_probe_assignment}" _remaining_index)
+string(REPLACE "${CPKT_POSTGRESQL_PROBE_LDFLAGS}"
+  "${CPKT_POSTGRESQL_BASE_LDFLAGS}" _clean_assignment "${_assignment}")
+string(REPLACE "${_assignment}" "${_clean_assignment}" _contents "${_contents}")
+string(FIND "${_clean_assignment}" "${CPKT_POSTGRESQL_PROBE_LDFLAGS}" _remaining_index)
 if(NOT _remaining_index EQUAL -1)
   message(FATAL_ERROR "PostgreSQL probe rpaths remain in the build flags")
 endif()
