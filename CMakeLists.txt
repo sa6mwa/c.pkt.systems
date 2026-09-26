@@ -1305,6 +1305,12 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_openldap_${_cpkt_ldap_linkage}_test)
     target_link_libraries(cpkt_openldap_${_cpkt_ldap_linkage}_test PRIVATE
       cpkt::openldap_${_cpkt_ldap_linkage})
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND
+        _cpkt_ldap_linkage STREQUAL "shared")
+      set_target_properties(cpkt_openldap_shared_test PROPERTIES
+        BUILD_RPATH
+          "${CPKT_EXTERNAL_ROOT}/openldap/install/lib;${CPKT_EXTERNAL_ROOT}/cyrus-sasl/install/lib;${CPKT_EXTERNAL_ROOT}/openssl/install/lib;${CPKT_EXTERNAL_ROOT}/krb5/install/lib")
+    endif()
   endforeach()
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"

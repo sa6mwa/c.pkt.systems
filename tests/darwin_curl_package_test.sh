@@ -80,6 +80,8 @@ foreach(linkage IN ITEMS static shared)
     target_link_libraries(lua_facade_${linkage} PRIVATE cpkt::lua)
   else()
     target_link_libraries(lua_facade_${linkage} PRIVATE cpkt::lua_facade_shared)
+    set_target_properties(openldap_shared lua_facade_shared PROPERTIES
+      BUILD_RPATH "${CPKT_SDK_PREFIX}/lib")
   endif()
   add_test(NAME lua_facade_${linkage} COMMAND lua_facade_${linkage})
 endforeach()
