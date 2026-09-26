@@ -258,6 +258,36 @@ defaults. Outputs must start empty. On conversion failure after node creation,
 the new node is deleted using its native identifier. Tests exercise every node
 class, 64-bit arrays, attribute changes, browse paths and error outputs.
 
+### Typed server timers and reference iteration
+
+`cpkt_opcua_server_addTimedCallback_typed` and
+`cpkt_opcua_server_addRepeatedCallback_typed` install callbacks directly into
+the native server EventLoop. DateTime and callback IDs use the generated
+two-word C89 representation; all 64 bits are preserved. There is no facade
+scheduler or timer queue. Native interval changes, ordering, cancellation and
+missed-execution behavior apply.
+Changing a one-shot timer's interval makes it repeated, including a change
+from inside its callback. Its context then remains borrowed until removal or
+server destruction.
+
+Callback context remains caller-owned. A one-shot timer borrows it until its
+callback returns; a repeated timer borrows it until removal or server
+destruction. A callback may remove itself or another timer. Calls on one handle
+must be serialized, and the server must not be destroyed from its callback.
+Facade bookkeeping survives cancellation of a running callback. Destruction
+removes outstanding native timers before releasing their callback contexts,
+including when an externally owned EventLoop outlives the server. The facade
+does not release the caller's context.
+
+`cpkt_opcua_server_forEachChildNodeCall_typed` invokes the native synchronous
+reference iterator. Each callback borrows converted NodeIds until return.
+Nonzero callback statuses and conversion failures stop native traversal with
+that status. Native browse allocation remains upstream behavior; the facade
+does not gather a second collection of references. Static/shared and
+allocation-failure tests cover past/future deadlines, optional IDs, interval
+changes, reentrant cancellation, shutdown cleanup, inverse references and
+early termination.
+
 ### Generated public plugins
 
 Handwritten plugin records have no upstream schema generator. The maintained

@@ -55,6 +55,7 @@ static cpkt_opcua_result method(const cpkt_opcua_value *inputs, size_t count,
   cpkt_opcua_value_integer(output, 42);
   return CPKT_OPCUA_OK;
 }
+static void test_server_timers_and_iterator(void);
 void cpkt_types_test_server(void) {
   cpkt_opcua_server *server;
   cpkt_opcua_NodeId object, variable, variable_type, object_type,
@@ -368,4 +369,163 @@ void cpkt_types_test_server(void) {
             server, &missing, name(0, "missing")) != 0);
   CHECK(cpkt_opcua_server_deleteNode_typed(server, variable, 1) == 0);
   cpkt_opcua_server_free(server);
+  test_server_timers_and_iterator();
+}
+
+struct timer_state {
+  cpkt_opcua_server *server;
+  cpkt_opcua_UInt64 id, other;
+  unsigned int calls;
+  int cancel_self;
+  int cancel_other;
+  int rearm_once;
+};
+static void timer_callback(cpkt_opcua_server *server, void *context) {
+  struct timer_state *state = (struct timer_state *)context;
+  CHECK(server == state->server);
+  ++state->calls;
+  if (state->rearm_once && state->calls == 1) {
+    CHECK(cpkt_opcua_server_changeRepeatedCallbackInterval_typed(
+              server, state->id, 1) == 0);
+    return;
+  }
+  if (state->cancel_other)
+    cpkt_opcua_server_removeCallback_typed(server, state->other);
+  if (state->cancel_self)
+    cpkt_opcua_server_removeCallback_typed(server, state->id);
+}
+struct iterator_state {
+  unsigned int calls, forward, inverse;
+  cpkt_opcua_StatusCode stop;
+};
+static cpkt_opcua_StatusCode child_callback(cpkt_opcua_NodeId child,
+                                            cpkt_opcua_Boolean inverse,
+                                            cpkt_opcua_NodeId reference,
+                                            void *context) {
+  struct iterator_state *state = (struct iterator_state *)context;
+  CHECK(child.identifierType == CPKT_OPCUA_NODEIDTYPE_NUMERIC);
+  CHECK(reference.identifierType == CPKT_OPCUA_NODEIDTYPE_NUMERIC);
+  ++state->calls;
+  if (inverse)
+    ++state->inverse;
+  else
+    ++state->forward;
+  return state->stop;
+}
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+extern void cpkt_types_fail_after(size_t count);
+extern int cpkt_types_fail_stop(void);
+#endif
+static void test_server_timers_and_iterator(void) {
+  cpkt_opcua_server *server;
+  cpkt_opcua_DateTime past, future;
+  cpkt_opcua_UInt64 unknown;
+  struct timer_state once, repeat, victim, rearmed, converted;
+  struct iterator_state iterator;
+  unsigned int i;
+  CHECK(cpkt_opcua_server_new(&server, 0) == CPKT_OPCUA_OK);
+  memset(&once, 0, sizeof(once));
+  memset(&repeat, 0, sizeof(repeat));
+  memset(&victim, 0, sizeof(victim));
+  memset(&rearmed, 0, sizeof(rearmed));
+  memset(&converted, 0, sizeof(converted));
+  once.server = repeat.server = victim.server = server;
+  rearmed.server = converted.server = server;
+  memset(&past, 0, sizeof(past));
+  future.high32 = 0x7fffffffU;
+  future.low32 = 0xffffffffU;
+  CHECK(cpkt_opcua_server_addTimedCallback_typed(NULL, timer_callback, &once,
+                                                 past, &once.id) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(!once.id.high32 && !once.id.low32);
+  CHECK(cpkt_opcua_server_addTimedCallback_typed(server, NULL, &once, past,
+                                                 NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_server_addRepeatedCallback_typed(
+            server, timer_callback, &repeat, 0, &repeat.id) != 0);
+  CHECK(!repeat.id.high32 && !repeat.id.low32);
+  CHECK(cpkt_opcua_server_addTimedCallback_typed(
+            server, timer_callback, &victim, future, &victim.id) == 0);
+  once.cancel_self = once.cancel_other = 1;
+  once.other = victim.id;
+  CHECK(cpkt_opcua_server_addTimedCallback_typed(server, timer_callback, &once,
+                                                 past, &once.id) == 0);
+  unknown = once.id;
+  unknown.high32 ^= 0x80000000U;
+  cpkt_opcua_server_removeCallback_typed(server, unknown);
+  CHECK(cpkt_opcua_server_startup(server, NULL) == CPKT_OPCUA_OK);
+  for (i = 0; i < 16 && !once.calls; ++i)
+    CHECK(cpkt_opcua_server_iterate(server, 1, NULL) == CPKT_OPCUA_OK);
+  CHECK(once.calls == 1 && victim.calls == 0);
+  repeat.cancel_self = 1;
+  CHECK(cpkt_opcua_server_addRepeatedCallback_typed(
+            server, timer_callback, &repeat, 100, &repeat.id) == 0);
+  CHECK(cpkt_opcua_server_changeRepeatedCallbackInterval_typed(
+            server, repeat.id, 1) == 0);
+  for (i = 0; i < 128 && !repeat.calls; ++i)
+    CHECK(cpkt_opcua_server_iterate(server, 1, NULL) == CPKT_OPCUA_OK);
+  CHECK(repeat.calls == 1);
+  for (i = 0; i < 3; ++i)
+    CHECK(cpkt_opcua_server_iterate(server, 0, NULL) == CPKT_OPCUA_OK);
+  CHECK(repeat.calls == 1 && once.calls == 1 && victim.calls == 0);
+  rearmed.rearm_once = rearmed.cancel_self = 1;
+  CHECK(cpkt_opcua_server_addTimedCallback_typed(
+            server, timer_callback, &rearmed, past, &rearmed.id) == 0);
+  for (i = 0; i < 128 && rearmed.calls < 2; ++i)
+    CHECK(cpkt_opcua_server_iterate(server, 1, NULL) == CPKT_OPCUA_OK);
+  CHECK(rearmed.calls == 2);
+  converted.cancel_self = 1;
+  CHECK(cpkt_opcua_server_addTimedCallback_typed(
+            server, timer_callback, &converted, future, &converted.id) == 0);
+  CHECK(cpkt_opcua_server_changeRepeatedCallbackInterval_typed(
+            server, converted.id, 1) == 0);
+  for (i = 0; i < 128 && !converted.calls; ++i)
+    CHECK(cpkt_opcua_server_iterate(server, 1, NULL) == CPKT_OPCUA_OK);
+  CHECK(converted.calls == 1);
+  CHECK(cpkt_opcua_server_changeRepeatedCallbackInterval_typed(
+            NULL, repeat.id, 1) == CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  cpkt_opcua_server_removeCallback_typed(server, victim.id);
+  cpkt_opcua_server_removeCallback_typed(NULL, victim.id);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  for (i = 0; i < 8; ++i) {
+    cpkt_opcua_StatusCode status;
+    int injected;
+    cpkt_types_fail_after(i);
+    status = cpkt_opcua_server_addTimedCallback_typed(
+        server, timer_callback, &victim, future, &victim.id);
+    injected = cpkt_types_fail_stop();
+    if (!status) {
+      CHECK(!injected);
+      cpkt_opcua_server_removeCallback_typed(server, victim.id);
+      break;
+    }
+    CHECK(injected && status == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY);
+    CHECK(!victim.id.high32 && !victim.id.low32);
+  }
+  CHECK(i < 8);
+#endif
+  memset(&iterator, 0, sizeof(iterator));
+  CHECK(cpkt_opcua_server_forEachChildNodeCall_typed(
+            server, number(0, CPKT_OPCUA_NS0ID_OBJECTSFOLDER), child_callback,
+            &iterator) == 0);
+  CHECK(iterator.calls > 1 && iterator.forward && iterator.inverse);
+  memset(&iterator, 0, sizeof(iterator));
+  iterator.stop = CPKT_OPCUA_STATUSCODE_BADUNEXPECTEDERROR;
+  CHECK(cpkt_opcua_server_forEachChildNodeCall_typed(
+            server, number(0, CPKT_OPCUA_NS0ID_OBJECTSFOLDER), child_callback,
+            &iterator) == iterator.stop);
+  CHECK(iterator.calls == 1);
+  CHECK(cpkt_opcua_server_forEachChildNodeCall_typed(
+            server, number(0, 0xffffffffU), child_callback, &iterator) ==
+        CPKT_OPCUA_STATUSCODE_BADNODEIDUNKNOWN);
+  CHECK(cpkt_opcua_server_forEachChildNodeCall_typed(
+            server, number(0, CPKT_OPCUA_NS0ID_OBJECTSFOLDER), NULL,
+            &iterator) == CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_server_addTimedCallback_typed(server, timer_callback,
+                                                 &victim, future, NULL) == 0);
+  CHECK(cpkt_opcua_server_addRepeatedCallback_typed(server, timer_callback,
+                                                    &victim, 60000, NULL) == 0);
+  CHECK(cpkt_opcua_server_shutdown(server, NULL) == CPKT_OPCUA_OK);
+  cpkt_opcua_server_free(server);
+  CHECK(victim.calls == 0);
 }

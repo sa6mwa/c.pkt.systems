@@ -134,6 +134,48 @@ cpkt_opcua_StatusCode cpkt_opcua_client_monitored_item_delete_single(
     cpkt_opcua_client *client, cpkt_opcua_UInt32 subscription_id,
     cpkt_opcua_UInt32 monitored_item_id);
 
+/** Native server timer callback. Context is borrowed until execution of a
+ * one-shot timer, removal of a repeated timer, or server destruction. Calls on
+ * a handle must be serialized. A callback may remove itself or other timers;
+ * it must not destroy the server while a callback is running. */
+typedef void (*cpkt_opcua_ServerCallback)(cpkt_opcua_server *server,
+                                          void *data);
+/** Schedule with the native EventLoop, without a facade queue. date uses the
+ * upstream DateTime epoch/units. callback_id is optional; on failure it is
+ * zero. A past date executes on the next native iteration. */
+cpkt_opcua_StatusCode cpkt_opcua_server_addTimedCallback_typed(
+    cpkt_opcua_server *server, cpkt_opcua_ServerCallback callback, void *data,
+    cpkt_opcua_DateTime date, cpkt_opcua_UInt64 *callback_id);
+/** Native repeated timer. interval_ms must be positive. callback_id is
+ * optional. Context remains caller-owned and borrowed until removal or server
+ * destruction. The native scheduler controls timing and missed executions. */
+cpkt_opcua_StatusCode cpkt_opcua_server_addRepeatedCallback_typed(
+    cpkt_opcua_server *server, cpkt_opcua_ServerCallback callback, void *data,
+    cpkt_opcua_Double interval_ms, cpkt_opcua_UInt64 *callback_id);
+/** Change the interval of a native callback ID, including a callback not
+ * originally installed through the typed facade. Native validation applies.
+ * A one-shot timer becomes repeated on success, also when changed inside its
+ * callback; its context is then borrowed until removal or destruction. */
+cpkt_opcua_StatusCode cpkt_opcua_server_changeRepeatedCallbackInterval_typed(
+    cpkt_opcua_server *server, cpkt_opcua_UInt64 callback_id,
+    cpkt_opcua_Double interval_ms);
+/** Remove a native callback; an unknown ID is a no-op. NULL server is a no-op.
+ * A callback already running retains its borrowed context until it returns. */
+void cpkt_opcua_server_removeCallback_typed(cpkt_opcua_server *server,
+                                            cpkt_opcua_UInt64 callback_id);
+/** Synchronous native child-node visitor. Node identifiers and reference type
+ * are borrowed only during each call; copy them to retain them. A nonzero
+ * return stops traversal with that status, as in the upstream iterator. */
+typedef cpkt_opcua_StatusCode (*cpkt_opcua_NodeIteratorCallback)(
+    cpkt_opcua_NodeId child_id, cpkt_opcua_Boolean is_inverse,
+    cpkt_opcua_NodeId reference_type_id, void *handle);
+/** Iterate native references without collecting them into a facade array.
+ * Context is borrowed until return. Conversion failures stop traversal and
+ * return their status. Reference ordering and inverse flags are native. */
+cpkt_opcua_StatusCode cpkt_opcua_server_forEachChildNodeCall_typed(
+    cpkt_opcua_server *server, cpkt_opcua_NodeId parent,
+    cpkt_opcua_NodeIteratorCallback callback, void *handle);
+
 #ifdef __cplusplus
 }
 #endif

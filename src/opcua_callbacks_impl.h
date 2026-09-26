@@ -580,3 +580,189 @@ cpkt_opcua_StatusCode cpkt_opcua_client_monitored_item_delete_single(
     return UA_STATUSCODE_BADINVALIDARGUMENT;
   return UA_Client_MonitoredItems_deleteSingle(client->client, sub_id, id);
 }
+
+/* Timer userdata is retained across reentrant cancellation, but the native
+ * EventLoop remains the only scheduler. All handle operations are serialized.
+ */
+struct cpkt_server_timer {
+  struct cpkt_server_timer *next;
+  cpkt_opcua_server *owner;
+  cpkt_opcua_ServerCallback callback;
+  void *data;
+  UA_UInt64 id;
+  unsigned int references;
+  int repeated;
+  int removed;
+};
+static void cpkt_server_timer_unref(struct cpkt_server_timer *timer) {
+  struct cpkt_server_timer **slot;
+  if (--timer->references)
+    return;
+  for (slot = &timer->owner->typed_timers; *slot; slot = &(*slot)->next) {
+    if (*slot == timer) {
+      *slot = timer->next;
+      break;
+    }
+  }
+  UA_free(timer);
+}
+static void cpkt_server_timer_invoke(UA_Server *native, void *context) {
+  struct cpkt_server_timer *timer = (struct cpkt_server_timer *)context;
+  (void)native;
+  ++timer->references;
+  timer->callback(timer->owner, timer->data);
+  if (!timer->repeated && !timer->removed) {
+    timer->removed = 1;
+    cpkt_server_timer_unref(timer);
+  }
+  cpkt_server_timer_unref(timer);
+}
+static void cpkt_server_callbacks_clear(cpkt_opcua_server *server) {
+  struct cpkt_server_timer *timer;
+  while ((timer = server->typed_timers) != NULL) {
+    server->typed_timers = timer->next;
+    UA_Server_removeCallback(server->server, timer->id);
+    UA_free(timer);
+  }
+}
+static UA_StatusCode cpkt_server_timer_add(cpkt_opcua_server *server,
+                                           cpkt_opcua_ServerCallback callback,
+                                           void *data, UA_DateTime date,
+                                           UA_Double interval, int repeated,
+                                           cpkt_opcua_UInt64 *callback_id) {
+  struct cpkt_server_timer *timer;
+  UA_StatusCode status;
+  if (callback_id)
+    memset(callback_id, 0, sizeof(*callback_id));
+  if (!server || !callback)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  timer = (struct cpkt_server_timer *)UA_calloc(1, sizeof(*timer));
+  if (!timer)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  timer->owner = server;
+  timer->callback = callback;
+  timer->data = data;
+  timer->references = 1;
+  timer->repeated = repeated;
+  if (repeated)
+    status = UA_Server_addRepeatedCallback(
+        server->server, cpkt_server_timer_invoke, timer, interval, &timer->id);
+  else
+    status = UA_Server_addTimedCallback(
+        server->server, cpkt_server_timer_invoke, timer, date, &timer->id);
+  if (status) {
+    UA_free(timer);
+    return status;
+  }
+  timer->next = server->typed_timers;
+  server->typed_timers = timer;
+  server->typed_callbacks_clear = cpkt_server_callbacks_clear;
+  if (callback_id)
+    cpkt_convert(&timer->id, callback_id, &cpkt_types[CPKT_OPCUA_TYPES_UINT64],
+                 0, 0);
+  return 0;
+}
+/** Implements native one-shot scheduling with C89 DateTime conversion. */
+cpkt_opcua_StatusCode cpkt_opcua_server_addTimedCallback_typed(
+    cpkt_opcua_server *server, cpkt_opcua_ServerCallback callback, void *data,
+    cpkt_opcua_DateTime date, cpkt_opcua_UInt64 *callback_id) {
+  UA_DateTime native_date;
+  cpkt_convert(&date, &native_date, &cpkt_types[CPKT_OPCUA_TYPES_DATETIME], 1,
+               0);
+  return cpkt_server_timer_add(server, callback, data, native_date, 0, 0,
+                               callback_id);
+}
+/** Implements native repeated scheduling without retaining a facade queue. */
+cpkt_opcua_StatusCode cpkt_opcua_server_addRepeatedCallback_typed(
+    cpkt_opcua_server *server, cpkt_opcua_ServerCallback callback, void *data,
+    cpkt_opcua_Double interval_ms, cpkt_opcua_UInt64 *callback_id) {
+  return cpkt_server_timer_add(server, callback, data, 0, interval_ms, 1,
+                               callback_id);
+}
+/** Implements native repeated timer interval changes. */
+cpkt_opcua_StatusCode cpkt_opcua_server_changeRepeatedCallbackInterval_typed(
+    cpkt_opcua_server *server, cpkt_opcua_UInt64 callback_id,
+    cpkt_opcua_Double interval_ms) {
+  UA_UInt64 native_id;
+  UA_StatusCode status;
+  struct cpkt_server_timer *timer;
+  if (!server)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  cpkt_convert(&callback_id, &native_id, &cpkt_types[CPKT_OPCUA_TYPES_UINT64],
+               1, 0);
+  status = UA_Server_changeRepeatedCallbackInterval(server->server, native_id,
+                                                    interval_ms);
+  if (!status) {
+    for (timer = server->typed_timers; timer; timer = timer->next) {
+      if (timer->id == native_id && !timer->removed) {
+        timer->repeated = 1;
+        break;
+      }
+    }
+  }
+  return status;
+}
+/** Implements reentrant cancellation while preserving native callback IDs. */
+void cpkt_opcua_server_removeCallback_typed(cpkt_opcua_server *server,
+                                            cpkt_opcua_UInt64 callback_id) {
+  UA_UInt64 native_id;
+  struct cpkt_server_timer *timer;
+  if (!server)
+    return;
+  cpkt_convert(&callback_id, &native_id, &cpkt_types[CPKT_OPCUA_TYPES_UINT64],
+               1, 0);
+  UA_Server_removeCallback(server->server, native_id);
+  for (timer = server->typed_timers; timer; timer = timer->next) {
+    if (timer->id == native_id && !timer->removed) {
+      timer->removed = 1;
+      cpkt_server_timer_unref(timer);
+      break;
+    }
+  }
+}
+struct cpkt_server_iterator {
+  cpkt_opcua_NodeIteratorCallback callback;
+  void *handle;
+};
+static UA_StatusCode cpkt_server_iterator_invoke(UA_NodeId child,
+                                                 UA_Boolean inverse,
+                                                 UA_NodeId reference,
+                                                 void *context) {
+  struct cpkt_server_iterator *iterator =
+      (struct cpkt_server_iterator *)context;
+  cpkt_opcua_NodeId c_child, c_reference;
+  UA_StatusCode status;
+  memset(&c_child, 0, sizeof(c_child));
+  memset(&c_reference, 0, sizeof(c_reference));
+  status = cpkt_convert(&child, &c_child, &cpkt_types[CPKT_OPCUA_TYPES_NODEID],
+                        0, 0);
+  if (!status)
+    status = cpkt_convert(&reference, &c_reference,
+                          &cpkt_types[CPKT_OPCUA_TYPES_NODEID], 0, 0);
+  if (!status)
+    status =
+        iterator->callback(c_child, inverse, c_reference, iterator->handle);
+  cpkt_opcua_NodeId_clear(&c_child);
+  cpkt_opcua_NodeId_clear(&c_reference);
+  return status;
+}
+/** Implements the synchronous upstream child-node iterator boundary. */
+cpkt_opcua_StatusCode cpkt_opcua_server_forEachChildNodeCall_typed(
+    cpkt_opcua_server *server, cpkt_opcua_NodeId parent,
+    cpkt_opcua_NodeIteratorCallback callback, void *handle) {
+  struct cpkt_server_iterator iterator;
+  UA_NodeId native_parent;
+  UA_StatusCode status;
+  if (!server || !callback)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  memset(&native_parent, 0, sizeof(native_parent));
+  status = cpkt_convert(&parent, &native_parent,
+                        &cpkt_types[CPKT_OPCUA_TYPES_NODEID], 1, 0);
+  iterator.callback = callback;
+  iterator.handle = handle;
+  if (!status)
+    status = UA_Server_forEachChildNodeCall(
+        server->server, native_parent, cpkt_server_iterator_invoke, &iterator);
+  UA_NodeId_clear(&native_parent);
+  return status;
+}

@@ -27,6 +27,8 @@ struct cpkt_opcua_server {
   struct cpkt_opcua_method_context *methods;
   struct cpkt_gather_bridge *typed_history;
   void (*history_prepare_delete)(cpkt_opcua_server *);
+  struct cpkt_server_timer *typed_timers;
+  void (*typed_callbacks_clear)(cpkt_opcua_server *);
   char *endpoint_hostname;
   char *access_username;
   unsigned char *access_password;

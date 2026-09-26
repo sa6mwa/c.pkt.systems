@@ -4854,6 +4854,8 @@ void cpkt_opcua_server_free(cpkt_opcua_server *server) {
     }
     if (server->history_prepare_delete)
       server->history_prepare_delete(server);
+    if (server->typed_callbacks_clear)
+      server->typed_callbacks_clear(server);
     UA_Server_delete(server->server);
   }
   method = server->methods;

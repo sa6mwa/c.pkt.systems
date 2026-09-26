@@ -37,6 +37,8 @@ behind a callback interface.
 - [x] Generate synchronous/asynchronous client services and full subscription,
   monitored-item and event notifications with native request/context lifetimes.
 - [x] Generate schema-only server operations and native attribute defaults.
+- [x] Expose native server timers and child-node iteration with C89 callback
+  arguments, complete 64-bit IDs and reentrant cancellation/cleanup tests.
 - [x] Generate full AccessControl and HistoryDatabase callback records, including
   staged replacement, nested conversions and allocation-failure coverage.
 - [x] Generate the full HistoryDataBackend callback record, persistent borrowed
