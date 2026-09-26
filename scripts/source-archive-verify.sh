@@ -173,6 +173,9 @@ for required in \
   tools/opcua/plugin_emitter.py \
   tools/opcua/history_emitter.py \
   tools/opcua/server_emitter.py \
+  tools/opcua/public_api.py \
+  tools/opcua/public_api_contract.json \
+  tests/opcua_public_api_test.py \
   tests/opcua_types_test.c \
   tests/opcua_callbacks_test.c \
   tests/opcua_plugins_test.c \

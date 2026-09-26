@@ -1062,6 +1062,17 @@ add_custom_target(cpkt_opcua_types_generate DEPENDS
   "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_plugins.h"
   "${CPKT_OPCUA_GENERATED_DIR}/opcua_plugins_metadata.inc"
   "${CPKT_OPCUA_GENERATED_DIR}/opcua_types_metadata.inc")
+set(_cpkt_opcua_public_api_command
+  "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/opcua/public_api.py"
+  --compiler "${CMAKE_C_COMPILER}" --platform "${CPKT_TARGET_OS}"
+  --native-include "${CPKT_EXTERNAL_ROOT}/open62541/install/include"
+  --facade-include "${CMAKE_SOURCE_DIR}/include"
+  --generated-include "${CPKT_OPCUA_GENERATED_DIR}"
+  --contract "${CMAKE_SOURCE_DIR}/tools/opcua/public_api_contract.json"
+  --report "${CMAKE_CURRENT_BINARY_DIR}/opcua-public-api-coverage.json")
+add_custom_target(cpkt_opcua_public_api_complete
+  COMMAND ${_cpkt_opcua_public_api_command} --require-complete
+  DEPENDS cpkt_opcua_types_generate VERBATIM)
 
 add_library(cpkt_opcua_static STATIC src/opcua.c src/opcua_types.c)
 cpkt_configure_c89_target(cpkt_opcua_static)
@@ -1980,6 +1991,14 @@ if(CPKT_BUILD_TESTS)
       "${CMAKE_SOURCE_DIR}" "${CPKT_EXTERNAL_ROOT}/open62541/install/share/open62541"
       "${CMAKE_CURRENT_BINARY_DIR}")
   set_tests_properties(opcua_types_generator PROPERTIES LABELS "opcua;packaging")
+  add_test(NAME opcua_public_api_contract
+    COMMAND ${_cpkt_opcua_public_api_command})
+  add_test(NAME opcua_public_api_contract_failures
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_public_api_test.py"
+      "${CMAKE_SOURCE_DIR}" "${CMAKE_C_COMPILER}" "${CPKT_TARGET_OS}"
+      "${CMAKE_CURRENT_BINARY_DIR}")
+  set_tests_properties(opcua_public_api_contract opcua_public_api_contract_failures
+    PROPERTIES LABELS "opcua;packaging")
   set(_cpkt_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/opcua-fixture")
   add_custom_command(
     OUTPUT "${_cpkt_fixture_dir}/cpkt/opcua_types.h"

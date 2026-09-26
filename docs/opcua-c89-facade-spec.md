@@ -242,6 +242,45 @@ caller can delete it. If a successful monitored-item batch cannot be converted,
 delete the known subscription before releasing contexts. Calls on one facade
 handle are serialized as required by its lifecycle contract.
 
+### Public API coverage contract
+
+`tools/opcua/public_api.py` inventories every installed public header using the
+configured target compiler's preprocessor. It includes enabled functions,
+typedefs, enums, complete configuration/plugin records and global defaults.
+System-header declarations and generated native compile assertions are not
+consumer interfaces. Schema declarations and lifecycle helpers are matched
+against the actual upstream-generated C89 model without duplicating its schema.
+
+`tools/opcua/public_api_contract.json` records reviewed bindings, explicit pending
+work and narrowly explained implementation helpers. The check rejects new or
+changed native declarations, missing C89 declarations, incomplete public
+records, changed enum values and native escape hatches used as bindings.
+Binding existence is a structural gate; behavioral, ownership and lifetime
+tests remain required. Existing convenience and aggregate bindings still need
+semantic classification where an entry is pending. Pending counts therefore
+measure unclassified declarations, not the number of missing implementations.
+Linux-only syslog, Ethernet and filestore declarations follow the target's
+actual header guards; their absence on Darwin does not waive Linux coverage.
+
+Run the standard contract and negative tests with:
+
+```sh
+ctest --preset debug -R '^opcua_public_api_' --output-on-failure
+```
+
+The strict completion gate is:
+
+```sh
+cmake --build --preset debug --target cpkt_opcua_public_api_complete
+```
+
+It fails while any enabled declaration remains pending and writes its coverage
+report only under the build directory. Run the equivalent target for every
+shipped preset before declaring the full interface complete. During this
+ongoing migration the standard contract test permits explicitly recorded
+pending entries; switching it to strict mode is a remaining completion task.
+The contract retains the source-header license/copyright notices in `_origin`.
+
 ### Typed server operations
 
 The generator derives schema-only server functions directly from `server.h`:

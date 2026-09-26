@@ -31,9 +31,13 @@ behind a callback interface.
 
 # Remaining OPC UA function and callback coverage
 
-- [ ] Inventory the enabled hand-written public open62541 interfaces against
-  facade entry points. The complete standard C89 schema model is generated;
-  this is function/callback coverage, not a second hand-maintained type model.
+- [x] Inventory enabled public declarations, configuration fields and callback
+  slots with the configured compiler. A maintained coverage contract rejects
+  new or changed declarations, missing bindings and incomplete C89 records.
+- [ ] Finish the contract's explicit pending classifications/bindings and switch
+  the standard contract test to `--require-complete`. Existing convenience or
+  aggregate bindings need semantic review; pending counts are not a claim that
+  every entry lacks implementation. Native escape hatches do not count.
 - [x] Generate synchronous/asynchronous client services and full subscription,
   monitored-item and event notifications with native request/context lifetimes.
 - [x] Generate schema-only server operations and native attribute defaults.
