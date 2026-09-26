@@ -361,6 +361,12 @@ function(cpkt_get_autotools_link_flags out_var)
     set(_flags "-Wl,--enable-new-dtags,-rpath,\\\\$$ORIGIN")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(_flags "-Wl,-rpath,@loader_path")
+    if(NOT CMAKE_CROSSCOMPILING)
+      # Apple's linker treats temporary /usr/lib install names as shared-cache
+      # eligible before normalization. Bundled dylibs need a relocatable closure.
+      # The osxcross linker does not enforce this rule or implement this flag.
+      string(APPEND _flags " -Wl,-not_for_dyld_shared_cache")
+    endif()
   endif()
   if(NOT "${CMAKE_SHARED_LINKER_FLAGS}" STREQUAL "")
     string(APPEND _flags " ${CMAKE_SHARED_LINKER_FLAGS}")
@@ -2739,12 +2745,6 @@ function(cpkt_add_openldap)
   cpkt_get_target_triple(target_triple)
   cpkt_get_external_c_flags(external_cflags)
   cpkt_get_autotools_link_flags(external_ldflags)
-  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    # The temporary /usr/lib install name makes libldap shared-cache eligible
-    # before its install name is normalized. It links to bundled SASL, which
-    # cannot be loaded from the system shared cache.
-    string(APPEND external_ldflags " -Wl,-not_for_dyld_shared_cache")
-  endif()
   set(env_args "")
   cpkt_append_pinned_external_toolchain_env_args(env_args)
   list(APPEND env_args
