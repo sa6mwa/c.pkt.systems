@@ -1882,6 +1882,10 @@ if(CPKT_BUILD_TESTS)
   endif()
 
   if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+    add_test(NAME curl_server_bind
+      COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tests/curl_async_dns_server_test.py")
+    set_tests_properties(curl_server_bind PROPERTIES LABELS "integration;smoke" TIMEOUT 10)
     foreach(_cpkt_curl_linkage IN ITEMS static shared)
       add_test(NAME curl_async_dns_${_cpkt_curl_linkage}
         COMMAND cpkt_curl_async_dns_${_cpkt_curl_linkage}_test)

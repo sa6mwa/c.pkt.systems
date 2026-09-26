@@ -2,6 +2,7 @@
 """Exercise bundled libcurl's multi socket API against a local hostname."""
 
 import http.server
+import socketserver
 import subprocess
 import sys
 import threading
@@ -34,11 +35,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(404)
 
 
+class LoopbackHTTPServer(http.server.ThreadingHTTPServer):
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "localhost"
+        self.server_port = self.server_address[1]
+
+
 def main():
     if len(sys.argv) < 2:
         raise SystemExit("usage: curl_async_dns_server.py <client> [<client> ...]")
     print("multi socket harness: binding loopback server", flush=True)
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True
     server.block_on_close = False
     thread = threading.Thread(target=server.serve_forever, daemon=True)
