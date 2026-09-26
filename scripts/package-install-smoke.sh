@@ -382,6 +382,8 @@ assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
 assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktSasl/CpktSaslConfig.cmake"
 assert_package_file "lib/cmake/CpktSasl/CpktSaslConfigVersion.cmake"
+assert_package_file "lib/cmake/OpenLDAP/OpenLDAPConfig.cmake"
+assert_package_file "lib/cmake/OpenLDAP/OpenLDAPConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktSqlite/CpktSqliteConfig.cmake"
 assert_package_file "lib/cmake/CpktSqlite/CpktSqliteConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktPng/CpktPngConfig.cmake"
@@ -1123,6 +1125,7 @@ int main(void) {
   return cpkt_gss_status_is_error(status) || mechanisms != 0;
 }
 EOF
+cp "$repo_root/tests/openldap_link_test.c" "$cmake_source_dir/cpkt_openldap.c"
 cat > "$cmake_source_dir/cpkt_postgres_facade_strict.c" <<'EOF'
 #include <cpkt/postgres.h>
 
@@ -1510,6 +1513,7 @@ find_package(CpktMqttc CONFIG REQUIRED)
 find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
 find_package(CpktGssapi CONFIG REQUIRED)
+find_package(OpenLDAP CONFIG REQUIRED)
 find_package(CpktPostgres CONFIG REQUIRED)
 find_package(CpktSasl CONFIG REQUIRED)
 find_package(CpktSqlite CONFIG REQUIRED)
@@ -1563,6 +1567,8 @@ cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541
 cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
 cpkt_add_static_smoke(cpkt_cmake_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
+cpkt_add_static_smoke(cpkt_cmake_openldap cpkt_openldap.c cpkt::openldap_static)
+cpkt_add_shared_smoke(cpkt_cmake_openldap_shared cpkt_openldap.c cpkt::openldap_shared)
 cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
 cpkt_add_static_smoke(cpkt_cmake_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
 cpkt_add_shared_smoke(cpkt_cmake_sasl_facade_shared cpkt_sasl_facade_strict.c cpkt::sasl_shared)
@@ -1679,6 +1685,7 @@ cmake_args=(
   -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
   -DCpktGssapi_DIR="$prefix/lib/cmake/CpktGssapi" \
+  -DOpenLDAP_DIR="$prefix/lib/cmake/OpenLDAP" \
   -DCpktPostgres_DIR="$prefix/lib/cmake/CpktPostgres" \
   -DCpktSasl_DIR="$prefix/lib/cmake/CpktSasl" \
   -DCpktSqlite_DIR="$prefix/lib/cmake/CpktSqlite" \
@@ -2524,6 +2531,8 @@ if [ -z "$run_prefix" ]; then
   "$cmake_build_dir/cpkt_cmake_open62541"
   "$cmake_build_dir/cpkt_cmake_opcua_facade"
   "$cmake_build_dir/cpkt_cmake_gssapi_facade"
+  "$cmake_build_dir/cpkt_cmake_openldap"
+  "$cmake_build_dir/cpkt_cmake_openldap_shared"
   "$cmake_build_dir/cpkt_cmake_postgres_facade"
   "$cmake_build_dir/cpkt_cmake_pdf_facade"
   "$cmake_build_dir/cpkt_cmake_pdf_facade_shared"
@@ -2594,6 +2603,10 @@ else
   $run_prefix "$cmake_build_dir/cpkt_cmake_opcua_facade"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_gssapi_facade"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_openldap"
+  # shellcheck disable=SC2086
+  $run_prefix "$cmake_build_dir/cpkt_cmake_openldap_shared"
   # shellcheck disable=SC2086
   $run_prefix "$cmake_build_dir/cpkt_cmake_postgres_facade"
   # shellcheck disable=SC2086

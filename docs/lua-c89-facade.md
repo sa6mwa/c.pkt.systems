@@ -3,7 +3,7 @@
 The complete Lua 5.5.1 C API is available to strict C89 consumers through
 `<cpkt/lua.h>` and the separate `cpkt_lua` library. Use
 `find_package(CpktLua CONFIG REQUIRED)` with `cpkt::lua` or
-`cpkt::lua_shared`, or use `pkg-config --static --cflags --libs cpkt-lua`.
+`cpkt::lua_facade_shared`, or use `pkg-config --static --cflags --libs cpkt-lua`.
 The installed header is generated from the three pinned upstream public Lua
 headers and covers all 156 declared Lua, auxiliary-library, and standard-library
 functions, plus C89 equivalents of the public convenience macros.

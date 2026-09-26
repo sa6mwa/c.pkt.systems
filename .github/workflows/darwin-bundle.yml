@@ -39,7 +39,12 @@ jobs:
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Verify bundled OpenSSL provenance
         run: ctest --test-dir build/arm64-apple-darwin-native --output-on-failure -R '^open62541_openssl_provenance$'
-      - name: Test packaged libcurl static and shared
+      - name: Verify OpenLDAP build target closure
+        run: |
+          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
+            --target cpkt_openldap_static_test cpkt_openldap_shared_test
+          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure -R '^openldap_(static|shared)$'
+      - name: Test packaged curl, OpenLDAP, and Lua static and shared
         run: bash tests/darwin_curl_package_test.sh dist/*-arm64-apple-darwin.tar.gz
       - name: Preserve diagnostic SDK archive
         uses: actions/upload-artifact@v4

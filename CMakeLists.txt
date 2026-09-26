@@ -1297,6 +1297,15 @@ if(CPKT_BUILD_TESTS)
           "${CPKT_EXTERNAL_ROOT}/curl/install/lib;${CPKT_EXTERNAL_ROOT}/openssl/install/lib;${CPKT_EXTERNAL_ROOT}/nghttp2/install/lib;${CPKT_EXTERNAL_ROOT}/libssh2/install/lib;${CPKT_EXTERNAL_ROOT}/zlib/install/lib")
     endif()
   endforeach()
+  foreach(_cpkt_ldap_linkage IN ITEMS static shared)
+    add_executable(cpkt_openldap_${_cpkt_ldap_linkage}_test
+      tests/openldap_link_test.c)
+    cpkt_use_local_runtime(cpkt_openldap_${_cpkt_ldap_linkage}_test)
+    cpkt_configure_c89_target(cpkt_openldap_${_cpkt_ldap_linkage}_test)
+    cpkt_add_repo_warning_errors(cpkt_openldap_${_cpkt_ldap_linkage}_test)
+    target_link_libraries(cpkt_openldap_${_cpkt_ldap_linkage}_test PRIVATE
+      cpkt::openldap_${_cpkt_ldap_linkage})
+  endforeach()
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"
     "local host = require('example_host')\n"
@@ -1882,6 +1891,12 @@ if(CPKT_BUILD_TESTS)
   endif()
 
   if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+    foreach(_cpkt_ldap_linkage IN ITEMS static shared)
+      add_test(NAME openldap_${_cpkt_ldap_linkage}
+        COMMAND cpkt_openldap_${_cpkt_ldap_linkage}_test)
+      set_tests_properties(openldap_${_cpkt_ldap_linkage} PROPERTIES
+        LABELS "integration;smoke" TIMEOUT 10)
+    endforeach()
     add_test(NAME curl_server_bind
       COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/curl_async_dns_server_test.py")

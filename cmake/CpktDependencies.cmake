@@ -2742,6 +2742,7 @@ function(cpkt_add_openldap)
   set(lber_static_library "${install_dir}/lib/liblber${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(lutil_static_library "${install_dir}/lib/liblutil${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(ldap_shared_library "${install_dir}/lib/libldap${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(lber_shared_library "${install_dir}/lib/liblber${CMAKE_SHARED_LIBRARY_SUFFIX}")
   cpkt_get_target_triple(target_triple)
   cpkt_get_external_c_flags(external_cflags)
   cpkt_get_autotools_link_flags(external_ldflags)
@@ -2847,7 +2848,7 @@ function(cpkt_add_openldap)
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
         COMMAND ${openldap_darwin_install_name_normalize_command}
         COMMAND ${strip_install_command}
-      BUILD_BYPRODUCTS "${ldap_static_library}" "${lber_static_library}" "${lutil_static_library}" "${ldap_shared_library}"
+      BUILD_BYPRODUCTS "${ldap_static_library}" "${lber_static_library}" "${lutil_static_library}" "${ldap_shared_library}" "${lber_shared_library}"
       BUILD_IN_SOURCE 1
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   endif()
@@ -2860,7 +2861,7 @@ function(cpkt_add_openldap)
   set_target_properties(cpkt::openldap_shared PROPERTIES
     IMPORTED_LOCATION "${ldap_shared_library}"
     INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
-    INTERFACE_LINK_LIBRARIES "cpkt::cyrus_sasl_shared;cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared;cpkt::gssapi_krb5_shared")
+    INTERFACE_LINK_LIBRARIES "${lber_shared_library};cpkt::cyrus_sasl_shared;cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared;cpkt::gssapi_krb5_shared")
   if(CPKT_BUILD_DEPENDENCIES)
     add_dependencies(cpkt::openldap_static ${project_name})
     add_dependencies(cpkt::openldap_shared ${project_name})
@@ -2869,6 +2870,7 @@ function(cpkt_add_openldap)
     cpkt_require_dependency_file("${ldap_static_library}" "OpenLDAP static library")
     cpkt_require_dependency_file("${lber_static_library}" "OpenLDAP LBER static library")
     cpkt_require_dependency_file("${ldap_shared_library}" "OpenLDAP shared library")
+    cpkt_require_dependency_file("${lber_shared_library}" "OpenLDAP LBER shared library")
     cpkt_require_dependency_file("${install_dir}/include/ldap.h" "OpenLDAP header")
   endif()
   set(CPKT_OPENLDAP_PREFIX "${install_dir}" PARENT_SCOPE)
