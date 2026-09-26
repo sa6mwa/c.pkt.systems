@@ -6,6 +6,8 @@ backend changes representation and emits offsets for a single conversion engine.
 from pathlib import Path
 import re
 from nodeset_compiler.type_parser import BuiltinType, EnumerationType, OpaqueType, StructType
+from plugin_emitter import emit_plugins
+from server_emitter import emit_server
 
 
 def emit(generator, output, client_header):
@@ -18,6 +20,7 @@ def emit(generator, output, client_header):
               '#ifndef CPKT_OPCUA_TYPES_H', '#define CPKT_OPCUA_TYPES_H',
               '#include <cpkt/opcua_types_base.h>', '#ifdef __cplusplus',
               'extern "C" {', '#endif',
+              '#include <cpkt/opcua_constants.h>',
               f'#define CPKT_OPCUA_TYPES_COUNT {len(types)}']
     metadata = ['/* Generated conversion metadata. Do not edit. */',
                 'typedef char cpkt_type_count_matches[(CPKT_OPCUA_TYPES_COUNT == UA_TYPES_COUNT) ? 1 : -1];']
@@ -95,11 +98,16 @@ def emit(generator, output, client_header):
         metadata.append(f'  {{"{t.name}", sizeof(cpkt_opcua_{t.name}), &UA_TYPES[{i}], '
                         f'{kind}, {size}, {members}}},')
     metadata.append('};')
+    pairs = [(t.name, t.name[:-7] + 'Response') for t in types
+             if t.name.endswith('Request') and t.name[:-7] + 'Response' in index]
+    metadata.append('static const size_t cpkt_service_pairs[][2] = {')
+    metadata.extend(f'  {{{index[request]}, {index[response]}}},' for request, response in pairs)
+    metadata.append('};')
     services = []
     if client_header:
         text = Path(client_header).read_text()
         services = re.findall(r'UA_(\w+Response)\s+UA_EXPORT\s+UA_THREADSAFE\s+'
-                              r'UA_Client_Service_(\w+)\(UA_Client \*client,\s*'
+                              r'UA_Client_Service_(\w+)\(\s*UA_Client \*client,\s*'
                               r'const UA_(\w+Request) req\)', text)
     declared = set(re.findall(r'UA_Client_Service_(\w+)\s*\(', text))
     parsed = {name for _, name, _ in services}
@@ -107,6 +115,12 @@ def emit(generator, output, client_header):
         raise ValueError(f'Adapt C89 emitter to changed public service signatures: {declared - parsed}')
     configuration = Path(client_header).with_name('config.h').read_text()
     query_enabled = re.search(r'^#define UA_ENABLE_QUERY\b', configuration, re.M) is not None
+    subscriptions = Path(client_header).with_name('client_subscriptions.h').read_text()
+    specialized = re.findall(r'UA_(\w+Response)\s+UA_EXPORT\s+UA_THREADSAFE\s+'
+                             r'UA_Client_((?:Subscriptions|MonitoredItems)_\w+)\(\s*UA_Client \*client,\s*'
+                             r'const UA_(\w+Request)(?:\s+request)?\);', subscriptions)
+    services.extend(specialized)
+    specialized_names = {name for _, name, _ in specialized}
     for response, name, request in services:
         if name.startswith('query') and not query_enabled:
             continue
@@ -117,21 +131,79 @@ def emit(generator, output, client_header):
                        f'cpkt_opcua_StatusCode cpkt_opcua_client_service_{name}('
                        f'cpkt_opcua_client *client, const cpkt_opcua_{request} *request, '
                        f'cpkt_opcua_{response} *response);'])
+        native_function = f'UA_Client_{name}' if name in specialized_names else f'UA_Client_Service_{name}'
+        specialized_async = name in specialized_names and native_function + '_async(' in subscriptions
         metadata.append(f'static void service_{name}(UA_Client *client, const void *request, void *response) {{\n'
-                        f'  *(UA_{response} *)response = UA_Client_Service_{name}(client, *(const UA_{request} *)request);\n}}\n'
+                        f'  *(UA_{response} *)response = {native_function}(client, *(const UA_{request} *)request);\n}}\n'
                         f'cpkt_opcua_StatusCode cpkt_opcua_client_service_{name}('
                         f'cpkt_opcua_client *client, const cpkt_opcua_{request} *request, '
                         f'cpkt_opcua_{response} *response) {{\n'
                         f'  return cpkt_typed_service(client, request, response, '
                         f'&cpkt_types[{index[request]}], &cpkt_types[{index[response]}], service_{name});\n}}')
+        header.extend([
+            f'/** Completion of {name}. Response is borrowed until return; status is conversion status. */',
+            f'typedef void (*cpkt_opcua_service_{name}_async_fn)(cpkt_opcua_client *client, void *user, cpkt_opcua_UInt32 request_id, cpkt_opcua_StatusCode status, const cpkt_opcua_{response} *response);',
+            f'/** Submit upstream {name} without waiting. Request storage may be released on return. '
+            'Completion also runs on timeout/disconnect/destruction; do not destroy the client from its callback. */',
+            f'cpkt_opcua_StatusCode cpkt_opcua_client_service_{name}_async(cpkt_opcua_client *client, const cpkt_opcua_{request} *request, cpkt_opcua_service_{name}_async_fn fn, void *user, cpkt_opcua_UInt32 *request_id);'])
+        metadata.extend([
+            f'typedef struct {{ cpkt_async_base base; cpkt_opcua_service_{name}_async_fn fn; }} async_{name}_context;',
+            f'static void async_{name}_deliver(cpkt_async_base *base, UA_UInt32 id, UA_StatusCode status, const void *response) {{',
+            f'  async_{name}_context *context = (async_{name}_context *)base;',
+            f'  context->fn(base->client, base->user, id, status, (const cpkt_opcua_{response} *)response);', '}',
+            f'cpkt_opcua_StatusCode cpkt_opcua_client_service_{name}_async(cpkt_opcua_client *client, const cpkt_opcua_{request} *request, cpkt_opcua_service_{name}_async_fn fn, void *user, cpkt_opcua_UInt32 *request_id) {{',
+            f'  async_{name}_context *context;',
+            '  if(request_id) *request_id = 0;',
+            '  if(!client || !request || !fn) return UA_STATUSCODE_BADINVALIDARGUMENT;',
+            f'  context = (async_{name}_context *)UA_calloc(1, sizeof(*context));',
+            '  if(!context) return UA_STATUSCODE_BADOUTOFMEMORY;',
+            f'  context->fn = fn; context->base.deliver = async_{name}_deliver;',
+            '  context->base.client = client; context->base.user = user;',
+            f'  context->base.type = &cpkt_types[{index[response]}];',
+            *([f'  context->base.invoke = async_{name}_invoke;'] if specialized_async else []),
+            f'  return cpkt_typed_async(request, &cpkt_types[{index[request]}], &context->base, request_id);', '}'])
+        if specialized_async:
+            pattern = (re.escape(native_function) + r'_async\(\s*UA_Client \*client,\s*'
+                       r'const UA_' + request + r' request,\s*(UA_ClientAsync\w+Callback)\s+callback,')
+            callback = re.search(pattern, subscriptions)
+            if not callback:
+                raise ValueError(f'Adapt emitter to changed async subscription declaration: {name}')
+            # Put the invocation trampoline before the generated public function.
+            marker = next(i for i in range(len(metadata) - 1, -1, -1)
+                          if metadata[i].startswith(f'cpkt_opcua_StatusCode cpkt_opcua_client_service_{name}_async('))
+            metadata[marker:marker] = [
+                f'static void async_{name}_native(UA_Client *client, void *user, UA_UInt32 id, UA_{response} *response) {{',
+                '  cpkt_async_response(client, user, id, response);', '}',
+                f'static UA_StatusCode async_{name}_invoke(UA_Client *client, const void *request, cpkt_async_base *context, UA_UInt32 *id) {{',
+                f'  return {native_function}_async(client, *(const UA_{request} *)request, async_{name}_native, context, id);', '}']
+    server_header, server_metadata = emit_server(index, Path(client_header).parent)
+    header.extend(server_header)
+    metadata.extend(server_metadata)
     header.extend([
         '/** Read all public DataValue fields through the native server read API. */',
         'cpkt_opcua_StatusCode cpkt_opcua_server_read_typed(cpkt_opcua_server *server, const cpkt_opcua_ReadValueId *request, cpkt_opcua_TimestampsToReturn timestamps, cpkt_opcua_DataValue *response);',
         '/** Write any generated scalar, array or nested public value. */',
         'cpkt_opcua_StatusCode cpkt_opcua_server_write_typed(cpkt_opcua_server *server, const cpkt_opcua_WriteValue *request);',
+        '#include <cpkt/opcua_callbacks.h>',
+        '#include <cpkt/opcua_plugins.h>',
         '#ifdef __cplusplus', '}', '#endif', '#endif', ''])
     root = Path(output)
     root.mkdir(parents=True, exist_ok=True)
+    native_headers = Path(client_header).parent
+    nodeids = (root / 'nodeids.h').read_text()
+    expected_nodeids = re.findall(r'^#define (UA_NS0ID_\w+)\s+(\d+)\b',
+                                  (native_headers / 'nodeids.h').read_text(), re.M)
+    generated_nodeids = re.findall(r'^#define (UA_NS0ID_\w+)\s+(\d+)\b', nodeids, re.M)
+    if generated_nodeids != expected_nodeids:
+        raise ValueError('C89 node ID catalogue differs from the installed native catalogue')
+    constants = ['/* Generated from upstream catalogues; see OPC Foundation notice. */',
+                 '#ifndef CPKT_OPCUA_CONSTANTS_H', '#define CPKT_OPCUA_CONSTANTS_H',
+                 '#include <cpkt/opcua_types_base.h>',
+                 nodeids.replace('UA_', 'CPKT_OPCUA_'),
+                 (native_headers / 'statuscodes.h').read_text().replace('UA_StatusCode', 'cpkt_opcua_StatusCode').replace('UA_', 'CPKT_OPCUA_'),
+                 '#endif', '']
     (root / 'cpkt' / 'opcua_types.h').parent.mkdir(parents=True, exist_ok=True)
+    (root / 'cpkt' / 'opcua_constants.h').write_text('\n'.join(constants))
+    emit_plugins(index, native_headers, root)
     (root / 'cpkt' / 'opcua_types.h').write_text('\n'.join(header))
     (root / 'opcua_types_metadata.inc').write_text('\n'.join(metadata) + '\n')

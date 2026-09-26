@@ -158,6 +158,21 @@ const cpkt_opcua_Type *cpkt_opcua_type_at(size_t index);
 const char *cpkt_opcua_type_name(const cpkt_opcua_Type *type);
 /** Return the C89 allocation size, or zero for NULL. */
 size_t cpkt_opcua_type_size(const cpkt_opcua_Type *type);
+/** Allocate an owned C89 array of empty generated values. Zero length returns
+ * the upstream empty-array sentinel; failure or invalid descriptor returns
+ * NULL. Delete with array_delete. The configured upstream allocator owns the
+ * buffer. */
+void *cpkt_opcua_array_new(size_t length, const cpkt_opcua_Type *type);
+/** Deep-copy a C89 array, including nested ownership. Destination must start
+ * empty. Null versus empty-sentinel semantics are preserved; failure leaves
+ * *destination NULL. Source may be borrowed and is not modified. */
+cpkt_opcua_StatusCode cpkt_opcua_array_copy(const void *source, size_t length,
+                                            void **destination,
+                                            const cpkt_opcua_Type *type);
+/** Clear every array element and free the owned array. NULL and the empty-array
+ * sentinel are harmless. Do not pass arrays borrowed from callbacks. */
+void cpkt_opcua_array_delete(void *array, size_t length,
+                             const cpkt_opcua_Type *type);
 /** Initialize/new produce empty values. Copy/decode/service destinations must
  * be empty; clear them before reuse. Copies own all nested allocations,
  * including formerly borrowed Variant/ExtensionObject data. Clear honors the
@@ -188,6 +203,41 @@ cpkt_opcua_StatusCode cpkt_opcua_type_encode_binary(const void *src,
 cpkt_opcua_StatusCode
 cpkt_opcua_type_decode_binary(const cpkt_opcua_ByteString *src, void *dst,
                               const cpkt_opcua_Type *type);
+
+/** Generic async completion. Response and descriptor are borrowed until return.
+ * Conversion failure yields nonzero status and NULL response. Upstream service
+ * status remains in the response header, including timeout and shutdown. Copy
+ * a response to retain it. Do not destroy the client inside its callback. */
+typedef void (*cpkt_opcua_async_service_fn)(
+    cpkt_opcua_client *client, void *user, cpkt_opcua_UInt32 request_id,
+    cpkt_opcua_StatusCode status, const void *response,
+    const cpkt_opcua_Type *response_type);
+/** Send a standard request/response pair using upstream's generic async API.
+ * The request is borrowed only during this call; user must live until callback.
+ * Submission failure produces no callback and resets request_id to zero.
+ * Drive completions with client_run_iterate or other native service operations;
+ * pending callbacks also run during client destruction. No facade queue/spool.
+ * Calls and callbacks follow upstream's synchronization/reentrancy rules. */
+cpkt_opcua_StatusCode cpkt_opcua_client_service_async(
+    cpkt_opcua_client *client, const void *request,
+    const cpkt_opcua_Type *request_type, const cpkt_opcua_Type *response_type,
+    cpkt_opcua_async_service_fn fn, void *user, cpkt_opcua_UInt32 *request_id);
+/** Ask the server to cancel by native request handle. Does not free userdata or
+ * guarantee local completion; wait for the original callback. */
+cpkt_opcua_StatusCode
+cpkt_opcua_client_cancel_by_request_handle(cpkt_opcua_client *client,
+                                           cpkt_opcua_UInt32 handle,
+                                           cpkt_opcua_UInt32 *cancel_count);
+/** Resolve a pending request ID and issue upstream cancellation. Unknown IDs
+ * return BADNOTFOUND. The original completion still governs userdata lifetime.
+ */
+cpkt_opcua_StatusCode
+cpkt_opcua_client_cancel_by_request_id(cpkt_opcua_client *client,
+                                       cpkt_opcua_UInt32 request_id,
+                                       cpkt_opcua_UInt32 *cancel_count);
+/** Trigger upstream's asynchronous SecureChannel renewal. */
+cpkt_opcua_StatusCode
+cpkt_opcua_client_renew_secure_channel(cpkt_opcua_client *client);
 
 #ifdef __cplusplus
 }

@@ -1,3 +1,4 @@
+#include "opcua_callbacks_test.h"
 #include "opcua_types_peer.h"
 #include <cpkt/opcua_types.h>
 #include <stdio.h>
@@ -315,6 +316,94 @@ static void test_failure_contracts(void) {
   CHECK(diagnostic_copy.innerDiagnosticInfo == NULL);
 }
 
+typedef struct {
+  unsigned int calls;
+  cpkt_opcua_UInt32 id;
+  cpkt_opcua_StatusCode conversion, service;
+  cpkt_opcua_ReadResponse copy;
+} async_result;
+static void read_complete(cpkt_opcua_client *client, void *user,
+                          cpkt_opcua_UInt32 id, cpkt_opcua_StatusCode status,
+                          const cpkt_opcua_ReadResponse *response) {
+  async_result *result = (async_result *)user;
+  CHECK(client != NULL);
+  ++result->calls;
+  result->id = id;
+  result->conversion = status;
+  if (status)
+    CHECK(response == NULL);
+  else {
+    CHECK(response != NULL);
+    result->service = response->responseHeader.serviceResult;
+    CHECK(cpkt_opcua_ReadResponse_copy(response, &result->copy) == 0);
+  }
+}
+static void generic_complete(cpkt_opcua_client *client, void *user,
+                             cpkt_opcua_UInt32 id, cpkt_opcua_StatusCode status,
+                             const void *response,
+                             const cpkt_opcua_Type *type) {
+  CHECK(type == cpkt_opcua_type_at(CPKT_OPCUA_TYPES_READRESPONSE));
+  read_complete(client, user, id, status,
+                (const cpkt_opcua_ReadResponse *)response);
+}
+static void test_async(cpkt_opcua_client *client,
+                       cpkt_opcua_ReadRequest *read) {
+  async_result results[3];
+  cpkt_opcua_UInt32 ids[3], count;
+  cpkt_opcua_client *disconnected = NULL;
+  cpkt_opcua_ReadValueId saved[2];
+  cpkt_opcua_Int64 *values;
+  size_t i;
+  memset(results, 0, sizeof(results));
+  CHECK(cpkt_opcua_client_service_read_async(client, read, read_complete,
+                                             &results[0], &ids[0]) == 0);
+  CHECK(cpkt_opcua_client_service_async(
+            client, read, cpkt_opcua_type_at(CPKT_OPCUA_TYPES_READREQUEST),
+            cpkt_opcua_type_at(CPKT_OPCUA_TYPES_READRESPONSE), generic_complete,
+            &results[1], &ids[1]) == 0);
+  CHECK(ids[0] && ids[1] && ids[0] != ids[1]);
+  /* Submission encoded the request: the original nested storage is no longer
+   * borrowed by either the facade or native async mechanism. */
+  memcpy(saved, read->nodesToRead, sizeof(saved));
+  memset(read->nodesToRead, 0, sizeof(saved));
+  for (i = 0; i < 200 && (!results[0].calls || !results[1].calls); ++i)
+    CHECK(cpkt_opcua_client_run_iterate(client, 10, NULL) == CPKT_OPCUA_OK);
+  memcpy(read->nodesToRead, saved, sizeof(saved));
+  for (i = 0; i < 2; ++i) {
+    CHECK(results[i].calls == 1 && results[i].id == ids[i] &&
+          results[i].conversion == 0 && results[i].service == 0);
+    CHECK(results[i].copy.resultsSize == 2 &&
+          results[i].copy.results[0].value.arrayLength == 4 &&
+          results[i].copy.results[1].status != 0);
+    values = (cpkt_opcua_Int64 *)results[i].copy.results[0].value.data;
+    CHECK(values[0].high32 == 0x80000000U && values[0].low32 == 0);
+    CHECK(values[1].high32 == 0x7fffffffU && values[1].low32 == 0xffffffffU);
+    cpkt_opcua_ReadResponse_clear(&results[i].copy);
+  }
+  ids[2] = 123;
+  CHECK(cpkt_opcua_client_service_async(
+            client, read, cpkt_opcua_type_at(CPKT_OPCUA_TYPES_READREQUEST),
+            cpkt_opcua_type_at(CPKT_OPCUA_TYPES_WRITERESPONSE),
+            generic_complete, &results[2], &ids[2]) != 0 &&
+        ids[2] == 0);
+  CHECK(cpkt_opcua_client_service_read_async(client, read, NULL, &results[2],
+                                             &ids[2]) != 0);
+  CHECK(cpkt_opcua_client_cancel_by_request_id(client, 0xffffffffU, &count) !=
+        0);
+  CHECK(count == 0 && results[2].calls == 0);
+  CHECK(cpkt_opcua_client_new(&disconnected) == CPKT_OPCUA_OK);
+  CHECK(cpkt_opcua_client_service_read_async(disconnected, read, read_complete,
+                                             &results[2], &ids[2]) != 0);
+  CHECK(ids[2] == 0 && results[2].calls == 0);
+  cpkt_opcua_client_free(disconnected);
+  CHECK(cpkt_opcua_client_service_read_async(client, read, read_complete,
+                                             &results[2], &ids[2]) == 0);
+  cpkt_opcua_client_free(client);
+  CHECK(results[2].calls == 1 && results[2].id == ids[2] &&
+        results[2].conversion == 0);
+  cpkt_opcua_ReadResponse_clear(&results[2].copy);
+}
+
 static void test_services(void) {
   unsigned short port;
   void *peer;
@@ -399,7 +488,8 @@ static void test_services(void) {
   CHECK(browse_response.results[0].referencesSize > 0);
   cpkt_opcua_BrowseResponse_clear(&browse_response);
   CHECK(cpkt_opcua_client_service_read(NULL, &read, &read_response) != 0);
-  cpkt_opcua_client_free(client);
+  cpkt_types_test_callbacks(client, peer);
+  test_async(client, &read);
   cpkt_types_peer_stop(peer);
 }
 int main(void) {
@@ -410,6 +500,8 @@ int main(void) {
   test_populated_types();
   test_nested_values();
   test_failure_contracts();
+  cpkt_types_test_plugins();
+  cpkt_types_test_server();
   test_services();
   puts("All public schema types, nested conversions and real typed services "
        "passed");

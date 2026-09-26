@@ -178,10 +178,13 @@ for header in public_headers:
 opcua_types_header = build_dir / "generated/opcua/cpkt/opcua_types.h"
 if not opcua_types_header.is_file():
     sys.exit("generated OPC UA C89 schema header is missing")
-for line, symbol in verify_header(opcua_types_header):
-    all_failures.append((opcua_types_header, line, symbol))
-# Each generated type declaration carries its schema name/description comment.
-documented_symbols.update(re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(", opcua_types_header.read_text()))
+for filename in ("opcua_types.h", "opcua_constants.h", "opcua_plugins.h"):
+    generated_header = opcua_types_header.with_name(filename)
+    if not generated_header.is_file():
+        sys.exit(f"generated OPC UA header is missing: {filename}")
+    for line, symbol in verify_header(generated_header):
+        all_failures.append((generated_header, line, symbol))
+    documented_symbols.update(re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(", generated_header.read_text()))
 for source in facade_sources:
     for line, symbol in verify_source(source, documented_symbols):
         all_failures.append((source, line, symbol))

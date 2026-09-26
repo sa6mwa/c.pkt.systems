@@ -161,11 +161,21 @@ for required in \
   include/cpkt/postgres.h \
   include/cpkt/sqlite.h \
   include/cpkt/opcua_types_base.h \
+  include/cpkt/opcua_callbacks.h \
+  src/opcua_internal.h \
+  src/opcua_callbacks_impl.h \
+  src/opcua_plugins_impl.h \
   src/opcua_types.c \
   src/opcua_types_internal.h \
   tools/opcua/generate.py \
   tools/opcua/c89_emitter.py \
+  tools/opcua/plugin_emitter.py \
+  tools/opcua/server_emitter.py \
   tests/opcua_types_test.c \
+  tests/opcua_callbacks_test.c \
+  tests/opcua_plugins_test.c \
+  tests/opcua_server_types_test.c \
+  tests/opcua_callbacks_test.h \
   tests/opcua_types_native_peer.c \
   tests/opcua_types_peer.h \
   tests/opcua_types_alloc_failure.c \

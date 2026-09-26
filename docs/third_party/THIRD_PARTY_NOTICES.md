@@ -18,3 +18,15 @@ Foundation schema distributed with open62541 1.5.8 (OPC Foundation MIT License
 schema parser and C generator in a disposable build directory. The upstream
 MPL-2.0 license and sources remain available with the bundled open62541 files;
 the project backend and conversion engine do not replace the upstream ABI.
+
+Generated `cpkt/opcua_constants.h` includes the standard namespace-zero NodeId
+and StatusCode catalogues. NodeIds are emitted by upstream's generator; the
+result is verified against the bundled native catalogue. These standard
+catalogues share the OPC Foundation schema provenance above.
+
+Generated `cpkt/opcua_plugins.h` reproduces the public open62541 access-control
+and history-database declarations under MPL-2.0, including the basysKom GmbH
+copyright notice. Generated service/server bindings also derive their
+declarations from open62541 public headers. The original MPL license and
+upstream source are shipped with open62541; the maintained generator backends
+and conversion implementation ship in the c.pkt.systems source archive.

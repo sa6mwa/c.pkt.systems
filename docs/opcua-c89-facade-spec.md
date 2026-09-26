@@ -99,8 +99,7 @@ The existing facade already covers a useful core workflow:
   File-based certificate loading and custom security plugins remain available
   through native config callbacks.
 - C89 username/password access-control callbacks for common login decisions,
-  with full access-control plugins still available through native config
-  callbacks.
+  plus generated full C89 access-control and history-database plugin records.
 - Native callbacks for client and server escape hatches.
 - Explicit advanced native pass-through entry points for PubSub/MQTT, history,
   file/json server configuration, and security plugin configuration, plus
@@ -131,13 +130,13 @@ does not imply that every such function is already wrapped.
 | Methods | `client_highlevel.h`, `server.h` | First-class multi-input and multi-output wrappers | Current one-output scalar wrapper is too narrow. |
 | Subscriptions | `client_subscriptions.h` | First-class wrappers | Data-change, event, modify, delete, and monitoring-mode APIs are core client workflows. |
 | Value and data model | `types.h`, `types_generated.h` | First-class C89 value layer with native variant escape hatch | Scalars, arrays, strings, byte strings, GUIDs, time, localized text, qualified names, status, data values, and node ids must be usable from C89. |
-| Generated request/response services | `client.h`, `types_generated.h` | Generated C89 types and 14 typed public client service bindings | Reuse upstream parsing and declarations; convert recursively without changing the upstream ABI. |
+| Generated request/response services | `client.h`, `types_generated.h` | Generated C89 types, 14 synchronous/asynchronous public services and specialized subscription service bindings | Reuse upstream parsing and declarations; convert recursively without changing the upstream ABI. |
 | Security and certificates | `server_config_default.h`, `client_config_default.h`, plugin security headers | First-class buffer configuration wrappers plus native config callback | Common secure setup needs DX; file loading and custom policies/stores are application-specific and can be handled explicitly in native callbacks. |
-| Access control | `plugin/accesscontrol*.h` | First-class username/password callback adapter for common login decisions; native pass-through for full plugin | Callback ABI can be C89; full plugin model stays upstream-owned. |
-| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Native-first server/backend setup plus common raw-history client reads | History backends are application-specific; raw value reads map cleanly to the C89 `DataValue` layer. |
+| Access control | `plugin/accesscontrol*.h` | Complete generated C89 access-control callback record plus common login wrappers | Native authorization semantics are retained; schema arguments are converted at the callback boundary. |
+| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Full generated C89 HistoryDatabase callback record plus typed client history services | Lower-level HistoryDataBackend/Gathering extension interfaces remain separate coverage work. |
 | Events and alarms/conditions | `server.h`, `client_subscriptions.h` | First-class event creation/trigger and event monitored items; alarms/conditions native-first | Events are common; alarms/conditions are broad generated models. |
 | PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Native-first plus common MQTT connection, publisher, subscriber, and config byte-string wrappers | PubSub is extensive and config-heavy. open62541 owns the MQTT integration; the facade should avoid duplicating generated config structures. |
-| Async services | `client_highlevel_async.h`, `server.h` async operations | Native-first, with selected callbacks only when a concrete workflow needs them | Async callbacks can be C89, but full async service mirroring is large. |
+| Async services | `client_highlevel_async.h`, `server.h` async operations | Generated typed async client services and full subscription/event callback records | Server-local async operations and other callback/configuration boundaries remain separate coverage work. |
 | File/json server config | `server_config_file_based.h` | Explicit JSON bytes/file constructors plus native config callback | Useful, but file I/O must stay explicit at the application boundary. |
 | Logging | `plugin/log.h` | First-class C89 callback with every upstream level/category, constructor configuration, and destination replacement | Capture initialization, runtime, security, event-loop, and destruction messages without depending on a logging library. |
 | Event loop plugins | `plugin/eventloop.h` | Native config callback | Upstream event-loop customization remains available through native configuration. Its logs use the same configured logger. |
@@ -210,9 +209,86 @@ C89 example exercises typed server read/write too.
 The standard graph and its indices are part of the new public facade surface.
 Dependency upgrade review must compare generated layouts, indices and semantics
 against the last released bundle alongside the existing ABI checks. Generated
-model coverage does not yet make custom plugin configuration, generic async
-services, subscriptions or event-loop vtables fully typed C89 APIs; track those
-function/callback boundaries separately.
+model coverage does not imply that every handwritten public interface has a C89
+binding. PubSub component configuration, low-level history backends, custom
+security/event-loop/nodestore plugins, full server method/value-source/lifecycle
+callbacks and server-local asynchronous operations remain distinct coverage work.
+
+### Typed services and subscriptions
+
+The generated client service bindings mirror native `UA_Client_Service_*`
+operations in both synchronous and asynchronous forms. Generic
+`cpkt_opcua_client_service_async` checks the request/response descriptor pair
+before submission. Specialized subscription/monitored-item operations invoke
+upstream's specialized functions, retaining native client bookkeeping. Request
+storage may be released or changed after submission returns; the facade adds no
+pending request buffer or queue. Native timeout, disconnect and destruction
+complete each accepted request once. Destruction may process an already-arrived
+successful response. Do not destroy the client from its callback.
+
+The callback's conversion status is separate from `responseHeader.serviceResult`
+and per-operation statuses. A response is borrowed until callback return; make
+an owned typed copy to retain it. On conversion failure the response is NULL.
+Native cancellation operates on request IDs/handles and does not replace the
+original completion that controls user-data lifetime.
+
+`cpkt/opcua_callbacks.h` exposes every DataValue field, subscription status and
+deletion, monitored-item deletion, and the full named event KeyValueMap with
+arbitrary generated Variants. Registration records are copied during creation;
+caller contexts remain caller-owned until deletion. Subscription creation exposes
+the native scalar subscription ID even if response conversion fails, so the
+caller can delete it. If a successful monitored-item batch cannot be converted,
+delete the known subscription before releasing contexts. Calls on one facade
+handle are serialized as required by its lifecycle contract.
+
+### Typed server operations
+
+The generator derives schema-only server functions directly from `server.h`:
+all specialized attribute reads/writes, all seven non-method node classes,
+context and namespace access, owned session attributes, browse/browseNext,
+path translation, method-call results, object properties and references.
+Names retain the upstream operation spelling as
+`cpkt_opcua_server_<operation>_typed`. Native errors and per-result statuses are
+preserved. In particular, an exported setter can still return
+`BadWriteNotSupported` for an immutable attribute such as BrowseName.
+
+`cpkt_opcua_<Attributes>_default` makes an owned C89 copy of the actual native
+defaults. Outputs must start empty. On conversion failure after node creation,
+the new node is deleted using its native identifier. Tests exercise every node
+class, 64-bit arrays, attribute changes, browse paths and error outputs.
+
+### Generated public plugins
+
+Handwritten plugin records have no upstream schema generator. The maintained
+plugin emitter derives their complete declarations and typed trampolines from
+the actual installed public headers. Unknown fields, callback signatures and
+conditionals fail generation rather than silently dropping public slots.
+
+`cpkt_opcua_server_set_access_control_plugin` installs the complete enabled
+AccessControl record before startup. Callback slots and token policies are
+copied; original caller context transfers only on successful installation.
+Callbacks borrow a facade-owned policy copy and converted schema inputs.
+`clear` releases caller context only, never policy arrays. Failed authorization
+conversion denies the operation. A failed closeSession conversion still calls
+closeSession with NULL sessionId and the original sessionContext, and logs the
+failure, allowing the application to release its session resources.
+
+`cpkt_opcua_server_set_history_database_plugin` exposes all ten history operations
+and clear. Mutable response/result records own their C89 allocations and are
+converted back after the callback. Allocate output records with typed new/array
+helpers. History-data pointers alias the payloads inside the converted response,
+matching native callback semantics; the temporary pointer array is borrowed.
+Native result updates are staged so a failed output conversion leaves the
+original native storage intact and reports the failure through its status.
+Void notification failures go to the configured logger. No file staging or
+additional history queue is introduced.
+
+Replacing a plugin stages all allocations before clearing the installed plugin.
+Failure preserves the previous plugin and leaves the new context with its
+caller. Static/shared C89 tests invoke every enabled callback slot across the
+native boundary. Allocation-failure tests cover staging, partial nested arrays,
+closeSession cleanup and history-result conversion. Generated plugin records,
+constants and all generator inputs are included in package/source checks.
 
 ## Facade API Tiers
 
@@ -375,17 +451,18 @@ boundaries, not maintaining hand-written copies of the structures.
   - native server callback for full `UA_Server_*PubSub*` configuration;
   - tests use loopback or a deterministic local broker only when available.
 - Security plugins:
-  - native hooks for custom security policies, certificate groups, and access
-    control plugins;
+  - native hooks for custom security policies and certificate groups;
+  - full generated C89 access-control callbacks;
   - convenience helpers for bundled default policies only.
 - History:
   - client history-read wrappers for common raw value reads;
-  - server history backend registration through native callbacks and selected
-    C89 callback adapters.
+  - full generated C89 HistoryDatabase callbacks;
+  - lower-level backend/gathering registration remains a native extension.
 - Async services:
   - selected async read, write, browse, call, and add-node wrappers with C89
     callbacks;
-  - raw async service pass-through through native callbacks.
+  - generic and generated typed async client service bindings;
+  - native hooks remain for server-local asynchronous operations.
 - File/json server config:
   - create server from explicit JSON bytes or explicit file path;
   - no implicit config-file discovery.
@@ -410,7 +487,9 @@ Pass-through is a supported part of the facade, not a loophole.
 
 ## Memory And Error Contract
 
-- All fallible functions return `cpkt_opcua_result`.
+- Convenience functions return `cpkt_opcua_result`. Generated typed boundaries
+  return exact `cpkt_opcua_StatusCode`; service/result statuses remain in their
+  generated response records, separate from conversion status.
 - Upstream service failures return `CPKT_OPCUA_ERR_UPSTREAM` and write the
   upstream status when `status_out` is non-null.
 - Type mismatches return `CPKT_OPCUA_ERR_TYPE`; numeric narrowing failures return

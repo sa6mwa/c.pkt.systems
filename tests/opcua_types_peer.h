@@ -8,5 +8,11 @@ unsigned int cpkt_types_native_populated(size_t index, unsigned char **bytes,
 void cpkt_types_native_free(unsigned char *bytes);
 void *cpkt_types_peer_start(unsigned short *port);
 int cpkt_types_peer_check(void *peer);
+unsigned int cpkt_types_peer_event(void *peer);
+unsigned int cpkt_types_peer_access_control(void *native_server);
+unsigned int cpkt_types_peer_history(void *native_server);
+unsigned int cpkt_types_peer_history_failure(void *native_server);
+unsigned int cpkt_types_peer_close_session_failure(void *native_server,
+                                                   void *context);
 void cpkt_types_peer_stop(void *peer);
 #endif

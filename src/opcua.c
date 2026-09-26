@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "opcua_internal.h"
 #include <open62541/client.h>
 #include <open62541/client_config_default.h>
 #include <open62541/client_highlevel.h>
@@ -83,13 +84,6 @@ struct cpkt_opcua_method_context {
   int *output_types;
 };
 
-struct cpkt_opcua_logger {
-  UA_Logger native;
-  UA_Logger original;
-  cpkt_opcua_log_config config;
-  int configured;
-};
-
 static int cpkt_logger_valid(const cpkt_opcua_log_config *config) {
   return config == NULL || config->min_level == 0 ||
          (config->min_level >= CPKT_OPCUA_LOG_TRACE &&
@@ -149,26 +143,6 @@ static void cpkt_logger_set(struct cpkt_opcua_logger *logger, UA_Logger *native,
   native->clear = cpkt_logger_clear;
   /* Keep the plugin address borrowed by event-loop/security plugins. */
 }
-
-struct cpkt_opcua_client {
-  UA_Client *client;
-  struct cpkt_opcua_logger logger;
-  struct cpkt_opcua_monitor_context *monitors;
-  struct cpkt_opcua_async_context *asyncs;
-};
-
-struct cpkt_opcua_server {
-  UA_Server *server;
-  struct cpkt_opcua_logger logger;
-  unsigned short port;
-  int started;
-  struct cpkt_opcua_method_context *methods;
-  char *endpoint_hostname;
-  char *access_username;
-  unsigned char *access_password;
-  cpkt_opcua_login_fn access_login_fn;
-  void *access_login_user;
-};
 
 struct cpkt_owned_node_id_memory {
   char *string;

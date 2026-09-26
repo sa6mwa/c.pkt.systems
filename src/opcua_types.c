@@ -1,6 +1,23 @@
+#include "opcua_internal.h"
 #include "opcua_types_internal.h"
 #include <limits.h>
+#include <open62541/client_highlevel_async.h>
+#include <open62541/client_subscriptions.h>
+#include <open62541/util.h>
 #include <string.h>
+
+typedef struct cpkt_async_base cpkt_async_base;
+struct cpkt_async_base {
+  cpkt_opcua_client *client;
+  void *user;
+  const cpkt_opcua_Type *type;
+  void (*deliver)(cpkt_async_base *, UA_UInt32, UA_StatusCode, const void *);
+  UA_StatusCode (*invoke)(UA_Client *, const void *, cpkt_async_base *,
+                          UA_UInt32 *);
+};
+static void cpkt_async_response(UA_Client *, void *, UA_UInt32, void *);
+static UA_StatusCode cpkt_typed_async(const void *, const cpkt_opcua_Type *,
+                                      cpkt_async_base *, cpkt_opcua_UInt32 *);
 
 typedef char cpkt_word_is_32[(sizeof(cpkt_opcua_UInt32) == 4 &&
                               UINT_MAX == 0xffffffffU && CHAR_BIT == 8)
@@ -64,6 +81,47 @@ static void cpkt_clear_array(void *data, size_t length,
   for (i = 0; i < length; ++i)
     cpkt_opcua_type_clear((char *)data + i * type->size, type);
   UA_free(data);
+}
+/** Implements generated array allocation using the upstream allocator. */
+void *cpkt_opcua_array_new(size_t length, const cpkt_opcua_Type *type) {
+  if (!cpkt_valid_type(type) || length > (size_t)-1 / type->size)
+    return NULL;
+  return length ? UA_calloc(length, type->size)
+                : CPKT_OPCUA_EMPTY_ARRAY_SENTINEL;
+}
+/** Implements generated array ownership in the public type contract. */
+void cpkt_opcua_array_delete(void *array, size_t length,
+                             const cpkt_opcua_Type *type) {
+  if (cpkt_valid_type(type))
+    cpkt_clear_array(array, length, type);
+}
+/** Implements full nested C89 array copies without changing the source. */
+cpkt_opcua_StatusCode cpkt_opcua_array_copy(const void *source, size_t length,
+                                            void **destination,
+                                            const cpkt_opcua_Type *type) {
+  size_t i;
+  UA_StatusCode status;
+  if (!destination)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  *destination = NULL;
+  if (!cpkt_valid_type(type) || (!source && length) ||
+      (source == CPKT_OPCUA_EMPTY_ARRAY_SENTINEL && length))
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  if (!source)
+    return 0;
+  *destination = cpkt_opcua_array_new(length, type);
+  if (!*destination)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  for (i = 0; i < length; ++i) {
+    status = cpkt_opcua_type_copy((const char *)source + i * type->size,
+                                  (char *)*destination + i * type->size, type);
+    if (status) {
+      cpkt_clear_array(*destination, length, type);
+      *destination = NULL;
+      return status;
+    }
+  }
+  return 0;
 }
 static UA_StatusCode cpkt_array(const void *src, size_t length, void **dst,
                                 const cpkt_opcua_Type *type, int to_native,
@@ -665,6 +723,161 @@ cpkt_typed_service(cpkt_opcua_client *client, const void *request,
 }
 
 typedef struct {
+  cpkt_async_base *context;
+  const void *request;
+  const UA_DataType *request_type;
+  UA_UInt32 request_id;
+  UA_StatusCode status;
+} cpkt_async_call;
+static void cpkt_async_response(UA_Client *client, void *userdata, UA_UInt32 id,
+                                void *native_response) {
+  cpkt_async_base *context = (cpkt_async_base *)userdata;
+  void *response;
+  UA_StatusCode status;
+  (void)client;
+  response = cpkt_opcua_type_new(context->type);
+  status = response
+               ? cpkt_convert(native_response, response, context->type, 0, 0)
+               : UA_STATUSCODE_BADOUTOFMEMORY;
+  if (status) {
+    cpkt_opcua_type_delete(response, context->type);
+    response = NULL;
+  }
+  context->deliver(context, id, status, response);
+  cpkt_opcua_type_delete(response, context->type);
+  UA_free(context);
+}
+static cpkt_opcua_status cpkt_async_native(void *client, void *userdata) {
+  cpkt_async_call *call = (cpkt_async_call *)userdata;
+  if (call->context->invoke)
+    call->status = call->context->invoke((UA_Client *)client, call->request,
+                                         call->context, &call->request_id);
+  else
+    call->status = __UA_Client_AsyncService(
+        (UA_Client *)client, call->request, call->request_type,
+        cpkt_async_response, call->context->type->native, call->context,
+        &call->request_id);
+  return 0;
+}
+static UA_StatusCode cpkt_typed_async(const void *request,
+                                      const cpkt_opcua_Type *type,
+                                      cpkt_async_base *context,
+                                      cpkt_opcua_UInt32 *request_id) {
+  cpkt_async_call call;
+  void *native;
+  UA_StatusCode status;
+  if (request_id)
+    *request_id = 0;
+  memset(&call, 0, sizeof(call));
+  native = UA_new(type->native);
+  status = native ? cpkt_convert(request, native, type, 1, 0)
+                  : UA_STATUSCODE_BADOUTOFMEMORY;
+  call.request = native;
+  call.request_type = type->native;
+  call.context = context;
+  if (!status && cpkt_opcua_client_native(context->client, cpkt_async_native,
+                                          &call) != CPKT_OPCUA_OK)
+    status = UA_STATUSCODE_BADINVALIDARGUMENT;
+  if (!status)
+    status = call.status;
+  if (native)
+    UA_delete(native, type->native);
+  if (status)
+    UA_free(context);
+  else if (request_id)
+    *request_id = call.request_id;
+  return status;
+}
+typedef struct {
+  cpkt_async_base base;
+  cpkt_opcua_async_service_fn fn;
+} cpkt_generic_async;
+static void cpkt_generic_deliver(cpkt_async_base *base, UA_UInt32 id,
+                                 UA_StatusCode status, const void *response) {
+  cpkt_generic_async *context = (cpkt_generic_async *)base;
+  context->fn(base->client, base->user, id, status, response, base->type);
+}
+/** Implements the asynchronous ownership contract in the public header. */
+cpkt_opcua_StatusCode cpkt_opcua_client_service_async(
+    cpkt_opcua_client *client, const void *request,
+    const cpkt_opcua_Type *request_type, const cpkt_opcua_Type *response_type,
+    cpkt_opcua_async_service_fn fn, void *user, cpkt_opcua_UInt32 *request_id) {
+  size_t i;
+  cpkt_generic_async *context;
+  if (request_id)
+    *request_id = 0;
+  if (!client || !request || !fn || !cpkt_valid_type(request_type) ||
+      !cpkt_valid_type(response_type))
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  for (i = 0; i < sizeof(cpkt_service_pairs) / sizeof(cpkt_service_pairs[0]);
+       ++i)
+    if (&cpkt_types[cpkt_service_pairs[i][0]] == request_type &&
+        &cpkt_types[cpkt_service_pairs[i][1]] == response_type)
+      break;
+  if (i == sizeof(cpkt_service_pairs) / sizeof(cpkt_service_pairs[0]))
+    return UA_STATUSCODE_BADTYPEMISMATCH;
+  context = (cpkt_generic_async *)UA_calloc(1, sizeof(*context));
+  if (!context)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  context->base.client = client;
+  context->base.user = user;
+  context->base.type = response_type;
+  context->base.deliver = cpkt_generic_deliver;
+  context->fn = fn;
+  return cpkt_typed_async(request, request_type, &context->base, request_id);
+}
+typedef struct {
+  UA_UInt32 id, count;
+  unsigned int operation;
+  UA_StatusCode status;
+} cpkt_cancel_call;
+static cpkt_opcua_status cpkt_cancel_native(void *client, void *userdata) {
+  cpkt_cancel_call *call = (cpkt_cancel_call *)userdata;
+  if (call->operation == 0)
+    call->status = UA_Client_cancelByRequestId((UA_Client *)client, call->id,
+                                               &call->count);
+  else if (call->operation == 1)
+    call->status = UA_Client_cancelByRequestHandle((UA_Client *)client,
+                                                   call->id, &call->count);
+  else
+    call->status = UA_Client_renewSecureChannel((UA_Client *)client);
+  return 0;
+}
+static UA_StatusCode cpkt_cancel(cpkt_opcua_client *client, UA_UInt32 id,
+                                 unsigned int operation,
+                                 cpkt_opcua_UInt32 *count) {
+  cpkt_cancel_call call;
+  memset(&call, 0, sizeof(call));
+  if (count)
+    *count = 0;
+  if (!client)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  call.id = id;
+  call.operation = operation;
+  if (cpkt_opcua_client_native(client, cpkt_cancel_native, &call) !=
+      CPKT_OPCUA_OK)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  if (count)
+    *count = call.count;
+  return call.status;
+}
+/** Implements upstream cancellation without changing callback ownership. */
+cpkt_opcua_StatusCode cpkt_opcua_client_cancel_by_request_id(
+    cpkt_opcua_client *client, cpkt_opcua_UInt32 id, cpkt_opcua_UInt32 *count) {
+  return cpkt_cancel(client, id, 0, count);
+}
+/** Implements upstream cancellation without changing callback ownership. */
+cpkt_opcua_StatusCode cpkt_opcua_client_cancel_by_request_handle(
+    cpkt_opcua_client *client, cpkt_opcua_UInt32 id, cpkt_opcua_UInt32 *count) {
+  return cpkt_cancel(client, id, 1, count);
+}
+/** Implements upstream asynchronous SecureChannel renewal. */
+cpkt_opcua_StatusCode
+cpkt_opcua_client_renew_secure_channel(cpkt_opcua_client *client) {
+  return cpkt_cancel(client, 0, 2, NULL);
+}
+
+typedef struct {
   const UA_ReadValueId *read;
   const UA_WriteValue *write;
   UA_DataValue response;
@@ -731,3 +944,6 @@ cpkt_opcua_server_write_typed(cpkt_opcua_server *server,
   UA_WriteValue_clear(&native);
   return status;
 }
+
+#include "opcua_callbacks_impl.h"
+#include "opcua_plugins_impl.h"

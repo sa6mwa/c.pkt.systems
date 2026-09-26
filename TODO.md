@@ -34,8 +34,15 @@ behind a callback interface.
 - [ ] Inventory the enabled hand-written public open62541 interfaces against
   facade entry points. The complete standard C89 schema model is generated;
   this is function/callback coverage, not a second hand-maintained type model.
-- [ ] Use generated typed records at remaining async, subscription, PubSub,
-  history-backend and configuration/plugin boundaries. Preserve the upstream
+- [x] Generate synchronous/asynchronous client services and full subscription,
+  monitored-item and event notifications with native request/context lifetimes.
+- [x] Generate schema-only server operations and native attribute defaults.
+- [x] Generate full AccessControl and HistoryDatabase callback records, including
+  staged replacement, nested conversions and allocation-failure coverage.
+- [ ] Use generated typed records at remaining PubSub component configuration,
+  low-level history backend/gathering, server method/value-source/lifecycle
+  callbacks, server-local async, and custom
+  security/event-loop/nodestore plugin boundaries. Preserve the upstream
   behavior and ownership rules; no C99-only native callback substitutes for
   a promised C89 binding. Custom native datatype registration is still separate.
 - [ ] Compare generated public type layouts and indices with the last released

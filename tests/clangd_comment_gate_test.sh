@@ -59,6 +59,8 @@ run_gate() {
 }
 
 printf '/** Generated schema declaration. */\nvoid cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
+printf '/** Generated constants. */\n' > "$build_dir/generated/opcua/cpkt/opcua_constants.h"
+printf '/** Generated plugin declarations. */\n' > "$build_dir/generated/opcua/cpkt/opcua_plugins.h"
 
 write_header '/** Public facade declaration. */'
 write_source '/** Public facade definition. */'
@@ -97,3 +99,11 @@ if run_gate >"$work_dir/opcua.out" 2>"$work_dir/opcua.err"; then
   exit 1
 fi
 grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/opcua.err" >/dev/null
+
+printf '/** Generated schema declaration. */\nvoid cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
+printf 'void cpkt_opcua_plugin_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_plugins.h"
+if run_gate >"$work_dir/plugins.out" 2>"$work_dir/plugins.err"; then
+  printf 'clangd comment gate accepted undocumented generated OPC UA plugin declaration\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/plugins.err" >/dev/null

@@ -1,5 +1,7 @@
 #include "opcua_types_peer.h"
 #include <arpa/inet.h>
+#include <open62541/plugin/accesscontrol.h>
+#include <open62541/plugin/historydatabase.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
 #include <pthread.h>
@@ -28,12 +30,242 @@ unsigned int cpkt_types_native_empty(size_t index, unsigned char **bytes,
   return status;
 }
 void cpkt_types_native_free(unsigned char *bytes) { UA_free(bytes); }
+unsigned int cpkt_types_peer_access_control(void *arg) {
+  UA_Server *server = (UA_Server *)arg;
+  UA_AccessControl *ac = &UA_Server_getConfig(server)->accessControl;
+  UA_NodeId session = UA_NODEID_NUMERIC(2, 17),
+            node = UA_NODEID_STRING(3, "wide");
+  UA_EndpointDescription endpoint;
+  UA_AnonymousIdentityToken token;
+  UA_ExtensionObject identity;
+  UA_AddNodesItem add;
+  UA_AddReferencesItem add_reference;
+  UA_DeleteNodesItem deletion;
+  UA_DeleteReferencesItem delete_reference;
+  UA_DataValue value;
+  UA_Int64 number = INT64_MIN;
+  UA_ByteString certificate = UA_BYTESTRING("cert");
+  void *context = NULL;
+  UA_EndpointDescription_init(&endpoint);
+  endpoint.server.applicationUri = UA_STRING("application");
+  UA_AnonymousIdentityToken_init(&token);
+  token.policyId = UA_STRING("typed");
+  UA_ExtensionObject_init(&identity);
+  identity.encoding = UA_EXTENSIONOBJECT_DECODED_NODELETE;
+  identity.content.decoded.type = &UA_TYPES[UA_TYPES_ANONYMOUSIDENTITYTOKEN];
+  identity.content.decoded.data = &token;
+  if (ac->activateSession(server, ac, &endpoint, &certificate, &session,
+                          &identity, &context) != 0 ||
+      !context)
+    return UA_STATUSCODE_BADUNEXPECTEDERROR;
+  if (ac->getUserRightsMask(server, ac, &session, context, &node, NULL) !=
+          0xffffffffU ||
+      ac->getUserAccessLevel(server, ac, &session, context, &node, NULL) != 3 ||
+      !ac->getUserExecutable(server, ac, &session, context, &node, NULL) ||
+      !ac->getUserExecutableOnObject(server, ac, &session, context, &node, NULL,
+                                     &node, NULL) ||
+      !ac->allowBrowseNode(server, ac, NULL, context, &node, NULL) ||
+      !ac->allowTransferSubscription(server, ac, &session, context, NULL,
+                                     context))
+    return UA_STATUSCODE_BADUNEXPECTEDERROR;
+  UA_AddNodesItem_init(&add);
+  add.browseName = UA_QUALIFIEDNAME(1, "added");
+  UA_AddReferencesItem_init(&add_reference);
+  add_reference.sourceNodeId = node;
+  UA_DeleteNodesItem_init(&deletion);
+  deletion.nodeId = node;
+  UA_DeleteReferencesItem_init(&delete_reference);
+  delete_reference.sourceNodeId = node;
+  if (!ac->allowAddNode(server, ac, &session, context, &add) ||
+      !ac->allowAddReference(server, ac, &session, context, &add_reference) ||
+      !ac->allowDeleteNode(server, ac, &session, context, &deletion) ||
+      !ac->allowDeleteReference(server, ac, &session, context,
+                                &delete_reference))
+    return UA_STATUSCODE_BADUNEXPECTEDERROR;
+  UA_DataValue_init(&value);
+  value.hasValue = true;
+  UA_Variant_setScalar(&value.value, &number, &UA_TYPES[UA_TYPES_INT64]);
+  value.value.storageType = UA_VARIANT_DATA_NODELETE;
+  if (!ac->allowHistoryUpdateUpdateData(server, ac, &session, context, &node,
+                                        UA_PERFORMUPDATETYPE_INSERT, &value) ||
+      !ac->allowHistoryUpdateDeleteRawModified(
+          server, ac, &session, context, &node, INT64_MIN, INT64_MAX, true))
+    return UA_STATUSCODE_BADUNEXPECTEDERROR;
+  ac->closeSession(server, ac, &session, context);
+  return 0;
+}
+unsigned int cpkt_types_peer_history(void *arg) {
+  UA_Server *server = (UA_Server *)arg;
+  UA_HistoryDatabase *hdb = &UA_Server_getConfig(server)->historyDatabase;
+  UA_NodeId node = UA_NODEID_NUMERIC(1, 6001);
+  UA_DataValue value;
+  UA_Int64 number = INT64_MIN;
+  UA_RequestHeader header;
+  UA_HistoryReadValueId read;
+  UA_ReadRawModifiedDetails raw;
+  UA_ReadEventDetails event;
+  UA_ReadProcessedDetails processed;
+  UA_ReadAtTimeDetails at_time;
+  UA_HistoryReadResponse response;
+  UA_HistoryUpdateResult result;
+  UA_UpdateDataDetails update;
+  UA_DeleteRawModifiedDetails deletion;
+  UA_DeleteEventDetails delete_event;
+  size_t i;
+  UA_DataValue_init(&value);
+  value.hasValue = true;
+  UA_Variant_setScalar(&value.value, &number, &UA_TYPES[UA_TYPES_INT64]);
+  value.value.storageType = UA_VARIANT_DATA_NODELETE;
+  hdb->setValue(server, hdb->context, NULL, NULL, &node, true, &value);
+  UA_EventFieldList fields;
+  UA_EventFieldList_init(&fields);
+  hdb->setEvent(server, hdb->context, &node, &node, NULL, &fields);
+  UA_EventFieldList_clear(&fields);
+  UA_RequestHeader_init(&header);
+  UA_HistoryReadValueId_init(&read);
+  read.nodeId = node;
+  UA_ReadRawModifiedDetails_init(&raw);
+  raw.startTime = INT64_MIN;
+  raw.endTime = INT64_MAX;
+  UA_ReadEventDetails_init(&event);
+  UA_ReadProcessedDetails_init(&processed);
+  UA_ReadAtTimeDetails_init(&at_time);
+  for (i = 0; i < 5; ++i) {
+    const UA_DataType *type = &UA_TYPES[i == 1   ? UA_TYPES_HISTORYMODIFIEDDATA
+                                        : i == 2 ? UA_TYPES_HISTORYEVENT
+                                                 : UA_TYPES_HISTORYDATA];
+    void *payload = UA_new(type);
+    UA_HistoryReadResponse_init(&response);
+    response.results = UA_Array_new(1, &UA_TYPES[UA_TYPES_HISTORYREADRESULT]);
+    response.resultsSize = 1;
+    if (!payload || !response.results)
+      abort();
+    UA_ExtensionObject_setValue(&response.results[0].historyData, payload,
+                                type);
+    if (i == 1) {
+      UA_HistoryModifiedData *items[1] = {payload};
+      hdb->readModified(server, hdb->context, NULL, NULL, &header, &raw,
+                        UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
+                        items);
+    } else if (i == 2) {
+      UA_HistoryEvent *items[1] = {payload};
+      hdb->readEvent(server, hdb->context, NULL, NULL, &header, &event,
+                     UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
+                     items);
+    } else {
+      UA_HistoryData *items[1] = {payload};
+      if (i == 0)
+        hdb->readRaw(server, hdb->context, NULL, NULL, &header, &raw,
+                     UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
+                     items);
+      else if (i == 3)
+        hdb->readProcessed(server, hdb->context, NULL, NULL, &header,
+                           &processed, UA_TIMESTAMPSTORETURN_BOTH, false, 1,
+                           &read, &response, items);
+      else
+        hdb->readAtTime(server, hdb->context, NULL, NULL, &header, &at_time,
+                        UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
+                        items);
+    }
+    if (response.responseHeader.serviceResult || response.resultsSize != 1 ||
+        response.results[0].historyData.content.decoded.type != type)
+      abort();
+    if (i == 2) {
+      UA_HistoryEvent *history =
+          response.results[0].historyData.content.decoded.data;
+      if (history->eventsSize != 1 || history->events[0].eventFieldsSize != 1 ||
+          *(const UA_Int64 *)history->events[0].eventFields[0].data !=
+              INT64_MIN)
+        abort();
+    } else if (i == 1) {
+      UA_HistoryModifiedData *history =
+          response.results[0].historyData.content.decoded.data;
+      if (history->dataValuesSize != 1 ||
+          *(const UA_Int64 *)history->dataValues[0].value.data != INT64_MIN)
+        abort();
+    } else {
+      UA_HistoryData *history =
+          response.results[0].historyData.content.decoded.data;
+      if (history->dataValuesSize != 1 ||
+          *(const UA_Int64 *)history->dataValues[0].value.data != INT64_MIN)
+        abort();
+    }
+    UA_HistoryReadResponse_clear(&response);
+  }
+  UA_UpdateDataDetails_init(&update);
+  update.nodeId = node;
+  update.updateValues = &value;
+  update.updateValuesSize = 1;
+  UA_DeleteRawModifiedDetails_init(&deletion);
+  deletion.nodeId = node;
+  deletion.startTime = INT64_MIN;
+  deletion.endTime = INT64_MAX;
+  UA_DeleteEventDetails_init(&delete_event);
+  delete_event.nodeId = node;
+  for (i = 0; i < 3; ++i) {
+    UA_HistoryUpdateResult_init(&result);
+    if (i == 0)
+      hdb->updateData(server, hdb->context, NULL, NULL, &header, &update,
+                      &result);
+    else if (i == 1)
+      hdb->deleteRawModified(server, hdb->context, NULL, NULL, &header,
+                             &deletion, &result);
+    else
+      hdb->deleteEvent(server, hdb->context, NULL, NULL, &header, &delete_event,
+                       &result);
+    if (result.statusCode || result.operationResultsSize != 1 ||
+        result.operationResults[0] != UA_STATUSCODE_BADNOTFOUND)
+      abort();
+    UA_HistoryUpdateResult_clear(&result);
+  }
+  return 0;
+}
+unsigned int cpkt_types_peer_close_session_failure(void *native_server,
+                                                   void *context) {
+  UA_Server *server = (UA_Server *)native_server;
+  UA_AccessControl *ac = &UA_Server_getConfig(server)->accessControl;
+  UA_NodeId session = UA_NODEID_STRING(2, "session");
+  ac->closeSession(server, ac, &session, context);
+  return 0;
+}
+unsigned int cpkt_types_peer_history_failure(void *native_server) {
+  UA_Server *server = (UA_Server *)native_server;
+  UA_HistoryDatabase *hdb = &UA_Server_getConfig(server)->historyDatabase;
+  UA_RequestHeader header;
+  UA_DeleteEventDetails details;
+  UA_HistoryUpdateResult result;
+  UA_StatusCode status;
+  UA_RequestHeader_init(&header);
+  UA_DeleteEventDetails_init(&details);
+  UA_HistoryUpdateResult_init(&result);
+  details.nodeId = UA_NODEID_NUMERIC(2, 6001);
+  hdb->deleteEvent(server, hdb->context, NULL, NULL, &header, &details,
+                   &result);
+  status = result.statusCode;
+  if (result.operationResultsSize != 0 || result.operationResults != NULL)
+    abort();
+  UA_HistoryUpdateResult_clear(&result);
+  return status;
+}
 struct peer {
   UA_Server *server;
   pthread_t thread;
   pthread_mutex_t lock;
   int running;
 };
+unsigned int cpkt_types_peer_event(void *arg) {
+  struct peer *peer = (struct peer *)arg;
+  UA_StatusCode status;
+  UA_LocalizedText message = UA_LOCALIZEDTEXT("en", "typed event");
+  UA_UInt16 severity = 321;
+  pthread_mutex_lock(&peer->lock);
+  status =
+      UA_Server_createEvent(peer->server, UA_NODEID_NUMERIC(0, UA_NS0ID_SERVER),
+                            UA_NODEID_NUMERIC(0, UA_NS0ID_BASEEVENTTYPE),
+                            severity, message, NULL, NULL, NULL);
+  pthread_mutex_unlock(&peer->lock);
+  return status;
+}
 static void *server_loop(void *arg) {
   struct peer *peer = (struct peer *)arg;
   for (;;) {

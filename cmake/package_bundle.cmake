@@ -257,6 +257,10 @@ file(COPY_FILE
   "${_stage_root}/include/cpkt/mqttc.h")
 file(COPY_FILE "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
   "${_stage_root}/include/cpkt/opcua_types.h")
+file(COPY_FILE "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_constants.h"
+  "${_stage_root}/include/cpkt/opcua_constants.h")
+file(COPY_FILE "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_plugins.h"
+  "${_stage_root}/include/cpkt/opcua_plugins.h")
 function(cpkt_stage_facade_library facade_label static_source static_name shared_source shared_real_name shared_abi_name shared_link_name)
   set(_facade_static_destination
     "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}")

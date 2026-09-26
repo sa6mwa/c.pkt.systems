@@ -2,6 +2,7 @@
 """Fail-fast and deterministic-generation checks for the upstream emitter hook."""
 from pathlib import Path
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -11,10 +12,13 @@ from types import SimpleNamespace
 repo, upstream, build = map(Path, sys.argv[1:])
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(upstream))
+sys.path.insert(0, str(repo / 'tools/opcua'))
 from nodeset_compiler.type_parser import BuiltinType
 spec = importlib.util.spec_from_file_location('cpkt_c89_emitter', repo / 'tools/opcua/c89_emitter.py')
 emitter = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(emitter)
+import plugin_emitter
+import server_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -30,13 +34,57 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         else:
             raise AssertionError('Emitter accepted an unsupported or ambiguous graph')
     assert not (work / 'invalid/cpkt/opcua_types.h').exists()
+    assert plugin_emitter.translate('UA_ServerState state; bool flag; UA_Server *server;') == 'cpkt_opcua_ServerState state; cpkt_opcua_Boolean flag; cpkt_opcua_server *server;'
+    try:
+        plugin_emitter.validate_fields('void *context; UA_UInt32 newField;', ['void *context'])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Plugin backend silently ignored a new data field')
     tool = repo / 'tools/opcua/generate.py'
     for name in ('one', 'two'):
         subprocess.run([sys.executable, tool, '--upstream', upstream, '--output', work / name], check=True)
-    for filename in ('cpkt/opcua_types.h', 'opcua_types_metadata.inc'):
+    for filename in ('cpkt/opcua_types.h', 'cpkt/opcua_constants.h', 'cpkt/opcua_plugins.h',
+                     'opcua_types_metadata.inc', 'opcua_plugins_metadata.inc'):
         first = (work / 'one' / filename).read_bytes()
         assert first == (work / 'two' / filename).read_bytes()
         assert str(repo).encode() not in first and str(work).encode() not in first
+    index = {name: int(value) for name, value in re.findall(
+        r'^#define CPKT_OPCUA_TYPES_(\w+) (\d+)$',
+        (work / 'one/cpkt/opcua_types.h').read_text(), re.M)}
+    # Use descriptor names to retain upstream mixed-case names.
+    names = re.findall(r'^  \{"(\w+)", sizeof\(cpkt_opcua_\w+\)',
+                       (work / 'one/opcua_types_metadata.inc').read_text(), re.M)
+    index = {name: index[name.upper()] for name in names}
+    native_headers = upstream.parent.parent / 'include/open62541'
+    changed_headers = work / 'headers'
+    shutil.copytree(native_headers, changed_headers)
+    ac = changed_headers / 'plugin/accesscontrol.h'
+    original_ac = ac.read_text()
+    ac.chmod(0o644)
+    ac.write_text(original_ac.replace('void *context;', 'void *context; UA_UInt32 unexpected;', 1))
+    try:
+        plugin_emitter.emit_plugins(index, changed_headers, work / 'one')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('New public plugin field was silently ignored')
+    ac.write_text(original_ac.replace('(*activateSession)', '(*activateSessionChanged)', 1).replace('UA_AccessControl *ac,', 'UA_UnknownPlugin *ac,', 1))
+    try:
+        plugin_emitter.emit_plugins(index, changed_headers, work / 'one')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Unsupported public callback context was accepted')
+    server = changed_headers / 'server.h'
+    server.chmod(0o644)
+    server.write_text(server.read_text().replace('UA_NodeId *out);', 'UA_NodeId **out);', 1))
+    try:
+        server_emitter.emit_server(index, changed_headers)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Changed public server pointer signature was accepted')
     changed = work / 'changed/share/open62541'
     shutil.copytree(upstream, changed)
     generator = changed / 'generate_datatypes.py'
