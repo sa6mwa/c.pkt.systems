@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<opc:TypeDictionary xmlns:opc="http://opcfoundation.org/BinarySchema/"
+ xmlns:ua="http://opcfoundation.org/UA/" xmlns:tns="http://opcfoundation.org/UA/"
+ TargetNamespace="http://opcfoundation.org/UA/" DefaultByteOrder="LittleEndian">
+ <opc:Import Namespace="http://opcfoundation.org/UA/"/>
+ <opc:StructuredType Name="CpktFixtureOptional" BaseType="ua:ExtensionObject">
+  <opc:Field Name="WordSpecified" TypeName="opc:Bit"/>
+  <opc:Field Name="Reserved1" TypeName="opc:Bit" Length="31"/>
+  <opc:Field Name="Word" TypeName="opc:Int64" SwitchField="WordSpecified"/>
+  <opc:Field Name="NoOfItems" TypeName="opc:Int32"/>
+  <opc:Field Name="Items" TypeName="opc:UInt64" LengthField="NoOfItems"/>
+ </opc:StructuredType>
+ <opc:StructuredType Name="CpktFixtureUnion" BaseType="ua:Union">
+  <opc:Field Name="SwitchField" TypeName="opc:UInt32"/>
+  <opc:Field Name="Word" TypeName="opc:UInt64" SwitchField="SwitchField" SwitchValue="1"/>
+  <opc:Field Name="NoOfChildren" TypeName="opc:Int32" SwitchField="SwitchField" SwitchValue="2"/>
+  <opc:Field Name="Children" TypeName="tns:CpktFixtureOptional" LengthField="NoOfChildren" SwitchField="SwitchField" SwitchValue="2"/>
+ </opc:StructuredType>
+ <opc:EnumeratedType Name="CpktFixtureFlags" LengthInBits="64" IsOptionSet="true">
+  <opc:EnumeratedValue Name="Top" Value="9223372036854775808"/>
+ </opc:EnumeratedType>
+</opc:TypeDictionary>

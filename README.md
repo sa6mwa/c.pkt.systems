@@ -499,6 +499,15 @@ facade instead:
 #include <cpkt/opcua.h>
 ```
 
+Include `<cpkt/opcua_types.h>` for the complete generated standard public model:
+388 types, nested structures/arrays, 64-bit words on every target, lifecycle
+helpers, binary codecs, 14 typed synchronous client services, and complete typed
+server DataValue read/write. Types follow upstream names and fields with a
+`cpkt_opcua_` prefix. Generation reuses upstream's schema parser and C generator;
+it preserves the native ABI. See the [generated model contract](docs/opcua-c89-facade-spec.md#generated-c89-public-model)
+for ownership and error handling. Hand-written plugin and configuration bindings
+remain a separate coverage task.
+
 The facade header does not include open62541 headers or expose `UA_Client`,
 `UA_Server`, `UA_StatusCode`, `UA_NodeId`, `UA_Variant`, fixed-width C99 integer
 types, `long long`, or inline functions. Its implementation is compiled as C89

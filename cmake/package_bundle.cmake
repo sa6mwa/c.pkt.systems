@@ -59,6 +59,7 @@ foreach(_required
     CPKT_SUS_STATIC_LIBRARY
     CPKT_SUS_SHARED_LIBRARY
     CPKT_OPCUA_ABI_VERSION
+    CPKT_OPCUA_GENERATED_DIR
     CPKT_OPCUA_STATIC_LIBRARY
     CPKT_OPCUA_SHARED_LIBRARY
     CPKT_GSSAPI_ABI_VERSION
@@ -254,6 +255,8 @@ file(COPY_FILE
 file(COPY_FILE
   "${CPKT_MQTTC_FACADE_INCLUDE_DIR}/cpkt/mqttc.h"
   "${_stage_root}/include/cpkt/mqttc.h")
+file(COPY_FILE "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
+  "${_stage_root}/include/cpkt/opcua_types.h")
 function(cpkt_stage_facade_library facade_label static_source static_name shared_source shared_real_name shared_abi_name shared_link_name)
   set(_facade_static_destination
     "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}")
@@ -2086,6 +2089,7 @@ cpkt_stage_license("lua" "${CPKT_DEPENDENCY_BUILD_ROOT}/lua/src/src/lua.h")
 cpkt_stage_license("miniaudio" "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio/src/LICENSE")
 cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src-static/LICENSE")
 cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
+cpkt_stage_license("opcua-schema" "${CPKT_SOURCE_DIR}/docs/third_party/opcua-schema/LICENSE")
 cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src-static/LICENSE")
 cpkt_stage_license("mit-kerberos" "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5/src/NOTICE")
 cpkt_stage_license("cyrus-sasl" "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl/src/COPYING")

@@ -1037,8 +1037,26 @@ if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
   endif()
 endif()
 
-add_library(cpkt_opcua_static STATIC src/opcua.c)
+# Generate the C89 view with the upstream schema parser and C generator.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CPKT_OPCUA_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/opcua")
+add_custom_command(
+  OUTPUT "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_types_metadata.inc"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/opcua/generate.py"
+    --upstream "${CPKT_EXTERNAL_ROOT}/open62541/install/share/open62541"
+    --output "${CPKT_OPCUA_GENERATED_DIR}"
+  DEPENDS cpkt::open62541_static
+    "${CMAKE_SOURCE_DIR}/tools/opcua/generate.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/c89_emitter.py"
+  VERBATIM)
+add_custom_target(cpkt_opcua_types_generate DEPENDS
+  "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_types_metadata.inc")
+
+add_library(cpkt_opcua_static STATIC src/opcua.c src/opcua_types.c)
 cpkt_configure_c89_target(cpkt_opcua_static)
+add_dependencies(cpkt_opcua_static cpkt_opcua_types_generate)
 cpkt_add_repo_warning_errors(cpkt_opcua_static)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   # open62541 exposes internal convenience functions as static inline in its
@@ -1048,6 +1066,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
 endif()
 target_include_directories(cpkt_opcua_static
   PUBLIC
+    "$<BUILD_INTERFACE:${CPKT_OPCUA_GENERATED_DIR}>"
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
 target_link_libraries(cpkt_opcua_static PUBLIC cpkt::open62541_static)
@@ -1057,14 +1076,16 @@ set_target_properties(cpkt_opcua_static PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 
-add_library(cpkt_opcua_shared SHARED src/opcua.c)
+add_library(cpkt_opcua_shared SHARED src/opcua.c src/opcua_types.c)
 cpkt_configure_c89_target(cpkt_opcua_shared)
+add_dependencies(cpkt_opcua_shared cpkt_opcua_types_generate)
 cpkt_add_repo_warning_errors(cpkt_opcua_shared)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   target_compile_options(cpkt_opcua_shared PRIVATE -Dinline=)
 endif()
 target_include_directories(cpkt_opcua_shared
   PUBLIC
+    "$<BUILD_INTERFACE:${CPKT_OPCUA_GENERATED_DIR}>"
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
 target_link_libraries(cpkt_opcua_shared PUBLIC cpkt::open62541_shared)
@@ -1944,6 +1965,86 @@ if(CPKT_BUILD_TESTS)
 
     cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_mock_test tests/lua_runtime_mock_test.c)
   endif()
+
+  add_test(NAME opcua_types_generator
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_types_generator_test.py"
+      "${CMAKE_SOURCE_DIR}" "${CPKT_EXTERNAL_ROOT}/open62541/install/share/open62541"
+      "${CMAKE_CURRENT_BINARY_DIR}")
+  set_tests_properties(opcua_types_generator PROPERTIES LABELS "opcua;packaging")
+  set(_cpkt_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/opcua-fixture")
+  add_custom_command(
+    OUTPUT "${_cpkt_fixture_dir}/cpkt/opcua_types.h"
+      "${_cpkt_fixture_dir}/opcua_types_metadata.inc"
+      "${_cpkt_fixture_dir}/native/open62541/types_generated.c"
+      "${_cpkt_fixture_dir}/native/open62541/types_generated.h"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/opcua/generate.py"
+      --upstream "${CPKT_EXTERNAL_ROOT}/open62541/install/share/open62541"
+      --output "${_cpkt_fixture_dir}"
+      --extra-bsd "${CMAKE_SOURCE_DIR}/tests/opcua_types_fixture.bsd" --fixture-table
+    DEPENDS cpkt::open62541_static tools/opcua/generate.py tools/opcua/c89_emitter.py
+      tests/opcua_types_fixture.bsd VERBATIM)
+  add_executable(cpkt_opcua_types_fixture_test tests/opcua_types_fixture_test.c
+    src/opcua_types.c "${_cpkt_fixture_dir}/native/open62541/types_generated.c")
+  cpkt_use_local_runtime(cpkt_opcua_types_fixture_test)
+  cpkt_add_repo_warning_errors(cpkt_opcua_types_fixture_test)
+  target_include_directories(cpkt_opcua_types_fixture_test BEFORE PRIVATE
+    "${_cpkt_fixture_dir}" "${_cpkt_fixture_dir}/native")
+  target_compile_options(cpkt_opcua_types_fixture_test PRIVATE -UNDEBUG -Dinline=)
+  set_source_files_properties(tests/opcua_types_fixture_test.c src/opcua_types.c PROPERTIES
+    COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+  target_link_libraries(cpkt_opcua_types_fixture_test PRIVATE cpkt_opcua_static)
+  add_executable(cpkt_opcua_types_cpp_test tests/opcua_types_cpp_test.cpp)
+  cpkt_use_local_runtime(cpkt_opcua_types_cpp_test)
+  cpkt_add_repo_warning_errors(cpkt_opcua_types_cpp_test)
+  set_target_properties(cpkt_opcua_types_cpp_test PROPERTIES CXX_STANDARD 98 CXX_STANDARD_REQUIRED YES CXX_EXTENSIONS NO)
+  target_link_libraries(cpkt_opcua_types_cpp_test PRIVATE cpkt_opcua_static)
+  if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+    add_test(NAME opcua_types_schema_fixture COMMAND cpkt_opcua_types_fixture_test)
+    add_test(NAME opcua_types_cpp COMMAND cpkt_opcua_types_cpp_test)
+    set_tests_properties(opcua_types_schema_fixture PROPERTIES
+      LABELS "facade;opcua;memcheck" TIMEOUT 30)
+  endif()
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(cpkt_opcua_types_alloc_test tests/opcua_types_test.c
+      tests/opcua_types_native_peer.c tests/opcua_types_alloc_failure.c)
+    cpkt_use_local_runtime(cpkt_opcua_types_alloc_test)
+    cpkt_add_repo_warning_errors(cpkt_opcua_types_alloc_test)
+    target_compile_definitions(cpkt_opcua_types_alloc_test PRIVATE CPKT_OPCUA_TYPES_ALLOC_FAILURE)
+    target_compile_options(cpkt_opcua_types_alloc_test PRIVATE -UNDEBUG)
+    target_link_options(cpkt_opcua_types_alloc_test PRIVATE -Wl,--wrap=calloc,--wrap=malloc,--wrap=realloc)
+    target_link_libraries(cpkt_opcua_types_alloc_test PRIVATE cpkt_opcua_static Threads::Threads)
+    if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+      add_test(NAME opcua_types_allocation_failure COMMAND cpkt_opcua_types_alloc_test)
+      set_tests_properties(opcua_types_allocation_failure PROPERTIES
+        LABELS "facade;integration;offline;opcua;memcheck" TIMEOUT 90)
+    endif()
+  endif()
+
+  foreach(_cpkt_types_linkage IN ITEMS static shared)
+    add_executable(cpkt_opcua_types_${_cpkt_types_linkage}_test
+      tests/opcua_types_test.c tests/opcua_types_native_peer.c)
+    cpkt_use_local_runtime(cpkt_opcua_types_${_cpkt_types_linkage}_test)
+    cpkt_add_repo_warning_errors(cpkt_opcua_types_${_cpkt_types_linkage}_test)
+    target_compile_options(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE -UNDEBUG)
+    set_source_files_properties(tests/opcua_types_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+    set_source_files_properties(tests/opcua_types_native_peer.c PROPERTIES COMPILE_OPTIONS "-std=c99")
+    target_link_libraries(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE
+      cpkt_opcua_${_cpkt_types_linkage} Threads::Threads)
+    add_test(NAME opcua_types_exports_${_cpkt_types_linkage}
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_types_exports_test.py"
+        "${CMAKE_NM}" "$<TARGET_FILE:cpkt_opcua_${_cpkt_types_linkage}>"
+        "${CMAKE_SOURCE_DIR}/include/cpkt/opcua.h"
+        "${CMAKE_SOURCE_DIR}/include/cpkt/opcua_types_base.h"
+        "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h")
+    set_tests_properties(opcua_types_exports_${_cpkt_types_linkage} PROPERTIES LABELS "packaging;opcua")
+    if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+      add_test(NAME opcua_types_${_cpkt_types_linkage}
+        COMMAND cpkt_opcua_types_${_cpkt_types_linkage}_test)
+      set_tests_properties(opcua_types_${_cpkt_types_linkage} PROPERTIES
+        LABELS "facade;integration;offline;opcua;memcheck" TIMEOUT 90)
+    endif()
+  endforeach()
 
   if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
     foreach(_cpkt_ldap_linkage IN ITEMS static shared)
@@ -2875,6 +2976,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_AUDIO_STATIC_LIBRARY=$<TARGET_FILE:cpkt_audio_static>
         -DCPKT_AUDIO_SHARED_LIBRARY=$<TARGET_FILE:cpkt_audio_shared>
         -DCPKT_OPCUA_ABI_VERSION=${CPKT_OPCUA_ABI_VERSION}
+        -DCPKT_OPCUA_GENERATED_DIR=${CPKT_OPCUA_GENERATED_DIR}
         -DCPKT_OPCUA_STATIC_LIBRARY=$<TARGET_FILE:cpkt_opcua_static>
         -DCPKT_OPCUA_SHARED_LIBRARY=$<TARGET_FILE:cpkt_opcua_shared>
         -DCPKT_GSSAPI_ABI_VERSION=${CPKT_GSSAPI_ABI_VERSION}

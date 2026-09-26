@@ -160,6 +160,21 @@ for required in \
   include/cpkt/sasl.h \
   include/cpkt/postgres.h \
   include/cpkt/sqlite.h \
+  include/cpkt/opcua_types_base.h \
+  src/opcua_types.c \
+  src/opcua_types_internal.h \
+  tools/opcua/generate.py \
+  tools/opcua/c89_emitter.py \
+  tests/opcua_types_test.c \
+  tests/opcua_types_native_peer.c \
+  tests/opcua_types_peer.h \
+  tests/opcua_types_alloc_failure.c \
+  tests/opcua_types_fixture.bsd \
+  tests/opcua_types_fixture_test.c \
+  tests/opcua_types_cpp_test.cpp \
+  tests/opcua_types_exports_test.py \
+  tests/opcua_types_generator_test.py \
+  docs/third_party/opcua-schema/LICENSE \
   src/opcua.c \
   src/gssapi.c \
   src/sasl.c \

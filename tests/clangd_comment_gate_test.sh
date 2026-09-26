@@ -13,14 +13,14 @@ trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 source_dir="$work_dir/source"
 build_dir="$work_dir/build"
 mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" "$source_dir/tests" \
-  "$build_dir/generated/lua/include/cpkt" "$work_dir/bin"
+  "$build_dir/generated/opcua/cpkt" "$build_dir/generated/lua/include/cpkt" "$work_dir/bin"
 
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/bin/clangd"
 chmod +x "$work_dir/bin/clangd"
 
 write_header() {
   local comment=$1
-  printf '%s\nvoid cpkt_documented(void);\n' "$comment" > "$source_dir/include/cpkt/facade.h"
+  printf '#ifdef __cplusplus\nextern "C" {\n#endif\n%s\nvoid cpkt_documented(void);\n#ifdef __cplusplus\n}\n#endif\n' "$comment" > "$source_dir/include/cpkt/facade.h"
 }
 
 write_source() {
@@ -47,6 +47,7 @@ for source_file in \
   examples/lua-runtime-c89/host_module.c \
   examples/opcua-c89/main.c \
   tests/opcua_logging_test.c \
+  tests/opcua_types_test.c \
   tests/pdf_facade_test.c; do
   mkdir -p "$(dirname "$source_dir/$source_file")"
   : > "$source_dir/$source_file"
@@ -56,6 +57,8 @@ done
 run_gate() {
   PATH="$work_dir/bin:$PATH" bash "$checker" "$source_dir" "$build_dir"
 }
+
+printf '/** Generated schema declaration. */\nvoid cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
 
 write_header '/** Public facade declaration. */'
 write_source '/** Public facade definition. */'
@@ -84,3 +87,13 @@ if run_gate >"$work_dir/lua.out" 2>"$work_dir/lua.err"; then
   exit 1
 fi
 grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/lua.err" >/dev/null
+
+write_header '/** Public facade declaration. */'
+write_source '/** Public facade definition. */'
+write_lua_header '/** Generated Lua facade declaration. */'
+printf 'void cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
+if run_gate >"$work_dir/opcua.out" 2>"$work_dir/opcua.err"; then
+  printf 'clangd comment gate accepted undocumented generated OPC UA declaration\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/opcua.err" >/dev/null

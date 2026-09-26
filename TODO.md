@@ -28,3 +28,15 @@ Native callbacks requiring upstream headers do not replace a usable C89 logging
 interface. Deliver records as emitted; materializing one formatted record is
 acceptable, but do not buffer a sequence of logs or spool them through a file
 behind a callback interface.
+
+# Remaining OPC UA function and callback coverage
+
+- [ ] Inventory the enabled hand-written public open62541 interfaces against
+  facade entry points. The complete standard C89 schema model is generated;
+  this is function/callback coverage, not a second hand-maintained type model.
+- [ ] Use generated typed records at remaining async, subscription, PubSub,
+  history-backend and configuration/plugin boundaries. Preserve the upstream
+  behavior and ownership rules; no C99-only native callback substitutes for
+  a promised C89 binding. Custom native datatype registration is still separate.
+- [ ] Compare generated public type layouts and indices with the last released
+  model during dependency upgrades, enforcing the existing compatibility policy.

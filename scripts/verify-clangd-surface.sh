@@ -99,6 +99,10 @@ def verify_header(path):
     start = None
     chunks = []
     for i, line in enumerate(lines):
+        # C++ linkage framing is not a type declaration. Count only declaration
+        # braces so an extern block cannot hide every public symbol from this gate.
+        if depth == 0 and line.strip() in ('extern "C" {', '}'):
+            continue
         if depth == 0 and start is None and line.strip() and not line.lstrip().startswith("#"):
             start = i
         depth += line.count("{") - line.count("}")
@@ -171,6 +175,13 @@ for header in public_headers:
         re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(",
                    header.read_text(encoding="utf-8"))
     )
+opcua_types_header = build_dir / "generated/opcua/cpkt/opcua_types.h"
+if not opcua_types_header.is_file():
+    sys.exit("generated OPC UA C89 schema header is missing")
+for line, symbol in verify_header(opcua_types_header):
+    all_failures.append((opcua_types_header, line, symbol))
+# Each generated type declaration carries its schema name/description comment.
+documented_symbols.update(re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(", opcua_types_header.read_text()))
 for source in facade_sources:
     for line, symbol in verify_source(source, documented_symbols):
         all_failures.append((source, line, symbol))
@@ -209,6 +220,7 @@ require_compile_command "examples/lua-runtime-c89/main.c"
 require_compile_command "examples/lua-runtime-c89/host_module.c"
 require_compile_command "examples/opcua-c89/main.c"
 require_compile_command "tests/opcua_logging_test.c"
+require_compile_command "tests/opcua_types_test.c"
 require_compile_command "tests/pdf_facade_test.c"
 
 if ! command -v clangd >/dev/null 2>&1; then
@@ -225,3 +237,4 @@ clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/host_module.c" --compile-
 clangd --check="${SOURCE_DIR}/examples/opcua-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/tests/pdf_facade_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
 clangd --check="${SOURCE_DIR}/tests/opcua_logging_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
+clangd --check="${SOURCE_DIR}/tests/opcua_types_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null

@@ -14,18 +14,19 @@ while delegating OPC UA semantics to open62541.
 - Provide a C89-compatible `include/cpkt/opcua.h` facade that lets C89 consumers
   build practical OPC UA clients and servers without including open62541 public
   headers or using C99-only upstream types in public signatures.
-- Keep advanced open62541 surfaces reachable through explicit native escape
-  hatches instead of reimplementing large generated OPC UA structures.
+- Generate the complete standard public schema model in C89 using upstream's
+  parser and C generator, with transparent conversions at typed API boundaries.
+  Keep native extension hooks for hand-written plugin interfaces still awaiting
+  C89 bindings.
 - Prove facade behavior with integration tests that cross the facade/native
   boundary in both directions.
 
 ## Non-Goals
 
 - Do not fork open62541 into a new implementation.
-- Do not translate every generated OPC UA service request/response structure into
-  a bespoke `cpkt` struct. Where a structure is very large, generated, or
-  unstable, provide native pass-through and a small C89 convenience wrapper for
-  common workflows.
+- Do not maintain a second schema parser or hand-written copies of hundreds of
+  schema types. Adapt the upstream generator; centralize representation rules
+  and conversion, including nested structures, arrays and 64-bit values.
 - Do not expose open62541 headers from `include/cpkt/opcua.h`. Native callbacks
   receive borrowed `void *` upstream handles; users who opt in can cast them in
   implementation files that include open62541 headers.
@@ -114,9 +115,9 @@ The existing facade already covers a useful core workflow:
   through the C89 value layer with native history services still available
   through explicit pass-through.
 
-This is the Tier 1 practical C89 facade surface. Tier 2 advanced upstream
-features remain native-first unless a concrete downstream workflow needs a
-typed convenience wrapper.
+The generated model below extends the practical C89 surface. Some hand-written
+configuration and plugin interfaces still use native callbacks; type completeness
+does not imply that every such function is already wrapped.
 
 ## Upstream Surface Inventory
 
@@ -130,7 +131,7 @@ typed convenience wrapper.
 | Methods | `client_highlevel.h`, `server.h` | First-class multi-input and multi-output wrappers | Current one-output scalar wrapper is too narrow. |
 | Subscriptions | `client_subscriptions.h` | First-class wrappers | Data-change, event, modify, delete, and monitoring-mode APIs are core client workflows. |
 | Value and data model | `types.h`, `types_generated.h` | First-class C89 value layer with native variant escape hatch | Scalars, arrays, strings, byte strings, GUIDs, time, localized text, qualified names, status, data values, and node ids must be usable from C89. |
-| Generated request/response services | `client.h`, `types_generated.h` | Native pass-through plus selected convenience wrappers | Full generated structure mirroring would be a reimplementation burden. |
+| Generated request/response services | `client.h`, `types_generated.h` | Generated C89 types and 14 typed public client service bindings | Reuse upstream parsing and declarations; convert recursively without changing the upstream ABI. |
 | Security and certificates | `server_config_default.h`, `client_config_default.h`, plugin security headers | First-class buffer configuration wrappers plus native config callback | Common secure setup needs DX; file loading and custom policies/stores are application-specific and can be handled explicitly in native callbacks. |
 | Access control | `plugin/accesscontrol*.h` | First-class username/password callback adapter for common login decisions; native pass-through for full plugin | Callback ABI can be C89; full plugin model stays upstream-owned. |
 | History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Native-first server/backend setup plus common raw-history client reads | History backends are application-specific; raw value reads map cleanly to the C89 `DataValue` layer. |
@@ -140,6 +141,78 @@ typed convenience wrapper.
 | File/json server config | `server_config_file_based.h` | Explicit JSON bytes/file constructors plus native config callback | Useful, but file I/O must stay explicit at the application boundary. |
 | Logging | `plugin/log.h` | First-class C89 callback with every upstream level/category, constructor configuration, and destination replacement | Capture initialization, runtime, security, event-loop, and destruction messages without depending on a logging library. |
 | Event loop plugins | `plugin/eventloop.h` | Native config callback | Upstream event-loop customization remains available through native configuration. Its logs use the same configured logger. |
+
+## Generated C89 public model
+
+Include `<cpkt/opcua_types.h>` for all 388 types in the bundled standard public
+schema graph. This includes request/response records, nested arrays, attributes,
+PubSub configuration records, enums and opaque aliases. Types and field names
+follow upstream, replacing `UA_` with `cpkt_opcua_`; existing lowercase
+convenience records remain supported. No upstream private transport types are
+exposed. Generated type completeness is checked against the native count and
+every native type index at compile time.
+
+`tools/opcua/generate.py` copies the installed upstream tools into the build tree
+and adds a small emitter hook after `CGenerator.write_definitions`.
+`c89_emitter.py` uses that generator's already parsed and filtered type graph,
+its struct/enum declaration routines and the public client service declarations.
+There is no second schema parser. Native dependency builds, their public type
+layouts and their ABI are unchanged. A changed upstream hook, unsupported
+builtin/class, missing member type, or mismatched native table fails generation
+or compilation before tests/package production. The extra-schema/table options
+are for regression fixtures, not an installed custom-type registration API.
+
+The 25 builtin representations form the small maintained foundation. Boolean
+is a C89 byte with zero/nonzero truth; short/int carry exact 16/32-bit values
+on the supported target matrix. UInt64, Int64 and DateTime use two unsigned
+32-bit words, most significant first. Signed values use two's-complement bits;
+for example INT64_MIN is `{0x80000000U, 0U}`. The bridge widens before shifting
+and uses bit-preserving copies for signed native values. Native byte order,
+word alignment and C89/native nested struct layouts need not match. All ordinary
+schema member offsets in both representations are generated with `offsetof`.
+
+The public descriptor describes a type, not an opaque payload. Payloads are
+ordinary structs. Each type has generated `init/new/copy/clear/delete/equal`
+helpers and an index for `cpkt_opcua_type_at`. The shared recursive bridge
+handles optional pointers, union selections, arrays and nested records;
+Variant dimensions, null versus empty arrays, recursive diagnostics, all
+DataValue flags/picoseconds, and encoded/decoded ExtensionObjects are preserved.
+Unknown custom native descriptors fail explicitly instead of being reinterpreted
+as a standard type. Recursive conversion is bounded to 128 levels.
+
+Initialize destination values empty, clear before reuse, and use the facade's
+clear/delete helpers to release owned results. Copies own all their allocations,
+even when the input Variant or ExtensionObject is borrowed. Clearing caller-built
+NODELETE values preserves borrowed payloads/dimensions. Caller-built borrowed
+strings, arrays and struct members must not be cleared as owned values. Failed
+copy/decode/service conversions leave the output empty, including allocation
+failure. `type_equal` returns false if conversion/allocation fails.
+
+The 14 `cpkt_opcua_client_service_*` bindings mirror the public synchronous
+service calls enabled in this bundle: read/write, historyRead/historyUpdate,
+call, addNodes/addReferences/deleteNodes/deleteReferences, browse/browseNext,
+translateBrowsePathsToNodeIds, registerNodes/unregisterNodes. They return a
+conversion status. A successful conversion can still contain an upstream service
+error: inspect `responseHeader.serviceResult` and per-operation statuses.
+`cpkt_opcua_server_read_typed` and `server_write_typed` expose complete native
+DataValue operations; server write returns the upstream operation status. The
+binary encode/decode helpers delegate to the upstream codec and materialize a
+message just as that codec does. They make no streaming claim.
+
+Verification covers every empty and populated standard type against independently
+constructed native values and identical wire bytes, nested 64-bit array read/write
+against a native server, browse/error responses, borrowed ownership, partial
+allocation failures, strict C89/C++98 compilation, exact public exports and
+Valgrind. Separate generated schema fixtures exercise optional fields, union
+branches/arrays, invalid selections and 64-bit option-set constants. The installed
+C89 example exercises typed server read/write too.
+
+The standard graph and its indices are part of the new public facade surface.
+Dependency upgrade review must compare generated layouts, indices and semantics
+against the last released bundle alongside the existing ABI checks. Generated
+model coverage does not yet make custom plugin configuration, generic async
+services, subscriptions or event-loop vtables fully typed C89 APIs; track those
+function/callback boundaries separately.
 
 ## Facade API Tiers
 
@@ -216,8 +289,8 @@ Tier 1 is the released first-class C89 OPC UA surface.
     values, and variant handles;
   - parse/print helpers for node ids, GUIDs, qualified names, and localized
     text;
-  - native variant/data-value callbacks for unsupported generated or extension
-    object payloads.
+  - generated typed Variant/DataValue and ExtensionObject payloads for every
+    standard public schema type; native hooks remain for custom native types.
 - Expanded node ids:
   - keep null, numeric, string, GUID, and byte-string constructors and
     compare/parse/print helpers as the first stable node-id slice;
@@ -291,8 +364,9 @@ Tier 1 is the released first-class C89 OPC UA surface.
 
 ### Tier 2: Advanced Pass-Through With Convenience Entry Points
 
-Tier 2 keeps advanced upstream features reachable and documented without
-attempting to mirror every generated structure.
+Tier 2 keeps hand-written advanced interfaces reachable. Schema-defined public
+structures are generated in C89; the remaining work is their function and callback
+boundaries, not maintaining hand-written copies of the structures.
 
 - PubSub/MQTT:
   - convenience wrappers for common MQTT broker, topic, publisher, subscriber,

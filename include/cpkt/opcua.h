@@ -557,9 +557,11 @@ typedef cpkt_opcua_result (*cpkt_opcua_method_many_fn)(
 
 /** Return bundled upstream and facade ABI versions as static strings. */
 const char *cpkt_opcua_open62541_version(void);
+/** Return the facade ABI version as a borrowed static string. */
 const char *cpkt_opcua_facade_version(void);
 /** Return static diagnostic text for statuses and facade results. */
 const char *cpkt_opcua_status_name(cpkt_opcua_status status);
+/** Return borrowed static diagnostic text for a facade result. */
 const char *cpkt_opcua_result_string(cpkt_opcua_result result);
 
 /** Construct C89-safe node id values. */

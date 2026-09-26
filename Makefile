@@ -78,8 +78,8 @@ help:
 	@printf '  %-30s %s\n' 'lifecycle-version-contract' 'Run pre-clean release version checks using the reserved temp tag.'
 	@printf '  %-30s %s\n' 'release' 'Run the clean final binary and source-archive release gate.'
 	@printf '  %-30s %s\n' 'print-release-version' 'Print the version used by package and release artifacts.'
-	@printf '  %-30s %s\n' 'format' 'Format project-owned C and header files with clang-format.'
-	@printf '  %-30s %s\n' 'format-check' 'Fail if project-owned C or headers need clang-format.'
+	@printf '  %-30s %s\n' 'format' 'Format project-owned C, C++ and header files with clang-format.'
+	@printf '  %-30s %s\n' 'format-check' 'Fail if project-owned C, C++ or headers need clang-format.'
 	@printf '\nCleanup:\n'
 	@printf '  %-30s %s\n' 'clean' 'Remove generated build, cache, and dist output.'
 	@printf '  %-30s %s\n' 'clean-dist' 'Remove only release artifacts under dist/.'
@@ -308,11 +308,11 @@ print-release-version:
 
 format:
 	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format\n' >&2; exit 1; }
-	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
+	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format -i
 
 format-check:
 	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format-check\n' >&2; exit 1; }
-	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 clang-format --dry-run --Werror
+	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format --dry-run --Werror
 
 release:
 	$(MAKE) lifecycle-version-contract
