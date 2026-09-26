@@ -11,9 +11,19 @@ if(NOT EXISTS "${CPKT_PATCH_SERIES}")
   message(FATAL_ERROR "patch series does not exist: ${CPKT_PATCH_SERIES}")
 endif()
 
-find_program(CPKT_PATCH_EXECUTABLE NAMES patch)
+find_program(CPKT_PATCH_EXECUTABLE NAMES gpatch patch)
 if(NOT CPKT_PATCH_EXECUTABLE)
-  message(FATAL_ERROR "patch executable is required to apply ${CPKT_PATCH_SERIES}")
+  message(FATAL_ERROR "GNU patch is required to apply ${CPKT_PATCH_SERIES}")
+endif()
+execute_process(
+  COMMAND "${CPKT_PATCH_EXECUTABLE}" --version
+  RESULT_VARIABLE _patch_version_result
+  OUTPUT_VARIABLE _patch_version_output
+  ERROR_QUIET)
+if(NOT _patch_version_result EQUAL 0 OR NOT _patch_version_output MATCHES "GNU patch")
+  message(FATAL_ERROR
+    "GNU patch is required to apply ${CPKT_PATCH_SERIES}; found ${CPKT_PATCH_EXECUTABLE}. "
+    "Install gpatch on macOS or patch on Linux.")
 endif()
 
 get_filename_component(_series_dir "${CPKT_PATCH_SERIES}" DIRECTORY)

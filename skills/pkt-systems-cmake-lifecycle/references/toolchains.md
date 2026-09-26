@@ -56,6 +56,10 @@ eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
 
 ## Development-machine provisioning
 
+Native macOS SDK builds that apply bundled dependency patches require GNU
+`patch`. Install Homebrew `gpatch` (`brew install gpatch`) and keep `gpatch` on
+`PATH`; the system BSD `patch` does not apply every bundled patch reliably.
+
 These instructions establish the complete Debian/Ubuntu Linux development
 workstation baseline used across pkt.systems Go work and C/CMake work. They
 are workstation prerequisites, not SDK contents and not release-artifact

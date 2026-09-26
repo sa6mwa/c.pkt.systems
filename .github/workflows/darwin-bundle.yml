@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build tools
-        run: brew install cmake ninja coreutils gnu-sed gnu-tar util-linux pkg-config
+        run: brew install cmake ninja coreutils gnu-sed gnu-tar gpatch util-linux pkg-config
       - name: Configure native arm64 bundle
         run: |
           cmake --preset arm64-apple-darwin-native \
