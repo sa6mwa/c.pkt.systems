@@ -3561,6 +3561,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch"
     RECIPE_FUNCTIONS cpkt_add_open62541)
   cpkt_prepare_dependency_component(
     NAME krb5

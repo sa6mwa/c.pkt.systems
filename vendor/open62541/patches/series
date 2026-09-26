@@ -1,2 +1,3 @@
 0001-prefix-embedded-mqtt-c-symbols.patch
 0003-stub-posix-ethernet-when-packet-headers-are-missing.patch
+0004-link-bundled-openssl-crypto.patch

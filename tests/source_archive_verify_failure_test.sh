@@ -89,6 +89,7 @@ cmake/patch_postgresql_buildinfo.cmake
 vendor/open62541/patches/series
 vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch
 vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch
+vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch
 '
 
 make_archive() {

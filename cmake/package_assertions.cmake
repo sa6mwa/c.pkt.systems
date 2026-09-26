@@ -1227,7 +1227,8 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/postgresql/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/patches/series"
     "share/doc/c.pkt.systems/third_party/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
-    "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch")
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch"
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0004-link-bundled-openssl-crypto.patch")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
 endforeach()
 
