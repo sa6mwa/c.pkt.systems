@@ -264,6 +264,19 @@ if [ "$prefix_actual" != "c.pkt.systems-1.2.3-x86_64-linux-gnu" ]; then
   exit 1
 fi
 
+for extra in loose.txt .hidden-file; do
+  touch "$prefix_fixture/$extra"
+  (cd "$prefix_fixture" && tar -czf "$prefix_archive" -- c.pkt.systems-1.2.3-x86_64-linux-gnu "$extra")
+  if CPKT_PACKAGE_INSTALL_SMOKE_PRINT_EXTRACTED_PREFIX=1 \
+      bash "$repo_root/scripts/package-install-smoke.sh" "$prefix_archive" \
+        x86_64-linux-gnu "$work_root/source.c" > "$work_root/top-level.log" 2>&1; then
+    printf 'package smoke accepted a top-level file: %s\n' "$extra" >&2
+    exit 1
+  fi
+  grep -F 'unexpected top-level file' "$work_root/top-level.log" >/dev/null
+  rm "$prefix_fixture/$extra"
+done
+
 multi_root_fixture="$work_root/multi-root-fixture"
 mkdir -p "$multi_root_fixture/sdk-one" "$multi_root_fixture/sdk-two"
 multi_root_archive="$work_root/multi-root-fixture.tar.gz"

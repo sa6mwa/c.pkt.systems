@@ -28,6 +28,9 @@ with tempfile.TemporaryDirectory(prefix="package diagnostics-", dir=build) as tm
 set -euo pipefail
 if [[ ${0##*/} == ctest ]]; then
   phase=test
+  for arg in "$@"; do
+    if [[ $arg == -R ]]; then phase=fixture; fi
+  done
 elif [[ $1 == --build && ${3:-} == package-* ]]; then
   phase=package
 elif [[ $1 == --build ]]; then
@@ -106,11 +109,17 @@ fi
         context = name + ":\n" + output
         if not phase:
             assert process.returncode == 0, context
-            assert actual_calls == ["configure", "build", "test", "package"] * 6 + [
-                "configure", "build", "package"], context
+            assert actual_calls == ["configure"] * 7 + ["fixture"] * 18 + [
+                "build", "test", "package"] * 6 + ["build", "package"], context
         else:
-            assert actual_calls == ["configure", "build", "test", "package"][
-                :["configure", "build", "test", "package"].index(phase) + 1], context
+            if phase == "configure":
+                expected_calls = ["configure"]
+            elif phase == "fixture":
+                expected_calls = ["configure"] * 7 + ["fixture"]
+            else:
+                expected_calls = ["configure"] * 7 + ["fixture"] * 18 + [
+                    "build", "test", "package"][:["build", "test", "package"].index(phase) + 1]
+            assert actual_calls == expected_calls, context
             prefix = "[package] " + (
                 "INTERRUPTED" if mode in ("group", "parent") else "FAILED")
             diagnostics = [line for line in output.splitlines()
@@ -136,7 +145,7 @@ fi
                     assert "SIGTERM" in output and "explicit exit" in output, context
         cases.append(name)
 
-    for phase in ("configure", "build", "test", "package"):
+    for phase in ("configure", "fixture", "build", "test", "package"):
         run("failure-" + phase, phase)
     run("explicit-143", "test", status=143)
     run("child-term", "test", mode="child")
@@ -145,4 +154,18 @@ fi
         run(signal.Signals(signum).name, "test", mode="group", signum=signum)
     run("make-group-term", "test", mode="group", via_make=True)
     run("success")
+    route_tools = root / "route-tools"
+    route_tools.mkdir()
+    route_make = route_tools / "make"
+    route_make.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CPKT_MATRIX_ROUTE_CALLS"\nexit 19\n')
+    route_make.chmod(0o755)
+    route_calls = root / "route.calls"
+    route_env = os.environ.copy()
+    route_env.update(PATH=str(route_tools) + os.pathsep + route_env["PATH"],
+                     CPKT_MATRIX_ROUTE_CALLS=str(route_calls))
+    route_result = subprocess.run(["bash", str(source / "scripts/run_linux_release_matrix.sh")],
+                                  env=route_env, capture_output=True, text=True)
+    assert route_result.returncode == 19, route_result
+    assert route_calls.read_text().splitlines() == ["-C", str(source), "release-final-matrix"]
+    cases.append("canonical-matrix-route")
     print("[test] package failure diagnostics: %d cases passed" % len(cases))

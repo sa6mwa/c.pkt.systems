@@ -148,6 +148,11 @@ mkdir -p "$work_root/multiple-roots/stage/c.pkt.systems-1.2.3" "$work_root/multi
 expect_verify_failure "$(make_archive multiple-roots c.pkt.systems-1.2.3 extra-root)" \
   "source archive must contain exactly one root directory"
 
+mkdir -p "$work_root/outside-file/stage/c.pkt.systems-1.2.3"
+printf 'extra\n' > "$work_root/outside-file/stage/extra.txt"
+expect_verify_failure "$(make_archive outside-file c.pkt.systems-1.2.3 extra.txt)" \
+  "source archive contains entry outside its root"
+
 fixture_root="$work_root/non-root-owner/stage/c.pkt.systems-1.2.3"
 mkdir -p "$fixture_root"
 printf '1.2.3\n' > "$fixture_root/VERSION"
@@ -206,5 +211,35 @@ printf 'VERSION\nRELEASE_MANIFEST\n' >> "$fixture_root/RELEASE_MANIFEST"
 printf 'extra\n' > "$fixture_root/extra-unlisted.txt"
 expect_verify_failure "$(make_archive manifest-mismatch c.pkt.systems-1.2.3)" \
   "source archive payload does not match RELEASE_MANIFEST"
+
+# A parent-only signal during configure must stop before build, not merely
+# remove the extraction directory and continue into the next release command.
+rm "$fixture_root/extra-unlisted.txt"
+valid_archive=$(make_archive manifest-mismatch c.pkt.systems-1.2.3)
+real_cmake=$(command -v cmake)
+mkdir -p "$work_root/bin"
+cat > "$work_root/bin/cmake" <<'EOF'
+#!/usr/bin/env bash
+if [[ $1 == -S ]]; then
+  kill -TERM "$PPID"
+  exit 0
+fi
+if [[ $1 == --build ]]; then
+  printf 'build ran after interruption\n' > "$CPKT_SIGNAL_BUILD_LOG"
+fi
+exec "$CPKT_SIGNAL_REAL_CMAKE" "$@"
+EOF
+chmod +x "$work_root/bin/cmake"
+signal_status=0
+PATH="$work_root/bin:$PATH" CPKT_SIGNAL_REAL_CMAKE="$real_cmake" \
+  CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE="$repo_root/cmake/toolchains/x86_64-linux-gnu.cmake" \
+  CPKT_SIGNAL_BUILD_LOG="$work_root/signal-build.log" \
+  bash "$repo_root/scripts/source-archive-verify.sh" "$valid_archive" 1.2.3 \
+    > "$work_root/signal.log" 2>&1 || signal_status=$?
+if [[ $signal_status != 143 || -e "$work_root/signal-build.log" ]]; then
+  printf 'source verifier continued after SIGTERM (status=%s)\n' "$signal_status" >&2
+  cat "$work_root/signal.log" >&2
+  exit 1
+fi
 
 printf '[test] source archive verifier failure modes passed\n'

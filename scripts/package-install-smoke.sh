@@ -106,7 +106,7 @@ case "$target_id" in
     fi
     osxcross_root=$(cpkt_resolver_value "$darwin_toolchain_report" root)
     osxcross_host=$(cpkt_resolver_value "$darwin_toolchain_report" prefix)
-    cc=${CC:-$(cpkt_resolver_value "$darwin_toolchain_report" cc)}
+    cc=$(cpkt_resolver_value "$darwin_toolchain_report" cc)
     target_command_env=("LD_LIBRARY_PATH=$osxcross_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")
     run_prefix=
     run_consumers=0
@@ -291,9 +291,13 @@ cpkt_cmake_build_checked() {
 (cd "$work_root" && cmake -E tar xf "$archive")
 prefix_count=0
 prefix=
-for candidate in "$work_root"/*; do
-  if [ ! -d "$candidate" ] || [ "$candidate" = "$diagnostic_dir" ]; then
+for candidate in "$work_root"/* "$work_root"/.[!.]* "$work_root"/..?*; do
+  if { [ ! -e "$candidate" ] && [ ! -L "$candidate" ]; } || [ "$candidate" = "$diagnostic_dir" ]; then
     continue
+  fi
+  if [ ! -d "$candidate" ]; then
+    printf 'archive contains unexpected top-level file: %s\n' "$candidate" >&2
+    exit 1
   fi
   prefix_count=$((prefix_count + 1))
   prefix=$candidate
@@ -2505,192 +2509,44 @@ case "$target_id" in
     ;;
 esac
 
-# Direct find_package consumers and the default pkg-config OpenSSL link must
-# execute as well as build; they exercise distinct exported metadata surfaces.
-for consumer in "$direct_build_dir"/cpkt_direct_* "$work_root/bin/cpkt_pkg_openssl_default" "$work_root/bin/cpkt_pkg_cpkt-openssl_default" "$work_root/bin/cpkt_pkg_cpkt-nghttp2_default"; do
-  printf 'Running package consumer: %s\n' "${consumer##*/}"
-  if [ -z "$run_prefix" ]; then
-    "$consumer"
-  else
-    # shellcheck disable=SC2086
-    $run_prefix "$consumer"
+# Execute every generated CMake and pkg-config consumer. New facade targets
+# participate automatically instead of relying on a separate hand-maintained list.
+consumer_runner=()
+case "$target_id" in
+  aarch64-linux-*) consumer_runner=(--qemu "${CPKT_QEMU_AARCH64:-/usr/bin/qemu-aarch64}" --sysroot "$toolchain_sysroot") ;;
+  armhf-linux-*) consumer_runner=(--qemu "${CPKT_QEMU_ARM:-/usr/bin/qemu-arm}" --sysroot "$toolchain_sysroot") ;;
+esac
+consumers=()
+for consumer in "$cmake_build_dir"/cpkt_cmake_* "$direct_build_dir"/cpkt_direct_* \
+    "$work_root/bin"/cpkt_pkg_* "$work_root/bin"/cpkt_sasl_single_binary; do
+  if [ -f "$consumer" ] && [ -x "$consumer" ]; then
+    consumers+=("$consumer")
   fi
 done
+bash "$repo_root/scripts/run-package-consumers.sh" \
+  --lua-file "$cmake_build_dir/strict_file.lua" "${consumer_runner[@]}" -- "${consumers[@]}"
 
-if [ -z "$run_prefix" ]; then
-  "$cmake_build_dir/cpkt_cmake_zlib"
-  "$cmake_build_dir/cpkt_cmake_nghttp2"
-  "$cmake_build_dir/cpkt_cmake_crypto"
-  "$cmake_build_dir/cpkt_cmake_ssl"
-  "$cmake_build_dir/cpkt_cmake_openssl_facade_shared"
-  "$cmake_build_dir/cpkt_cmake_libssh2"
-  "$cmake_build_dir/cpkt_cmake_curl"
-  "$cmake_build_dir/cpkt_cmake_libxml2"
-  "$cmake_build_dir/cpkt_cmake_lua"
-  "$cmake_build_dir/cpkt_cmake_mqttc"
-  "$cmake_build_dir/cpkt_cmake_open62541"
-  "$cmake_build_dir/cpkt_cmake_opcua_facade"
-  "$cmake_build_dir/cpkt_cmake_gssapi_facade"
-  "$cmake_build_dir/cpkt_cmake_openldap"
-  "$cmake_build_dir/cpkt_cmake_openldap_shared"
-  "$cmake_build_dir/cpkt_cmake_postgres_facade"
-  "$cmake_build_dir/cpkt_cmake_pdf_facade"
-  "$cmake_build_dir/cpkt_cmake_pdf_facade_shared"
-  env SASL_PATH=/cpkt-no-external-sasl-plugins "$cmake_build_dir/cpkt_cmake_sasl_facade"
-  env -u SASL_PATH "$cmake_build_dir/cpkt_cmake_sasl_facade_shared"
-  "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
-  "$cmake_build_dir/cpkt_cmake_all"
-  "$work_root/bin/cpkt_pkg_zlib"
-  "$work_root/bin/cpkt_pkg_libnghttp2"
-  "$work_root/bin/cpkt_pkg_libcrypto"
-  "$work_root/bin/cpkt_pkg_libssl"
-  "$work_root/bin/cpkt_pkg_openssl"
-  "$work_root/bin/cpkt_pkg_libssh2"
-  "$work_root/bin/cpkt_pkg_libcurl"
-  "$work_root/bin/cpkt_pkg_libxml-2.0"
-  "$work_root/bin/cpkt_pkg_lua"
-  "$work_root/bin/cpkt_pkg_mqtt-c"
-  "$work_root/bin/cpkt_pkg_open62541"
-  "$work_root/bin/cpkt_pkg_cpkt-opcua"
-  "$work_root/bin/cpkt_pkg_cpkt-gssapi"
-  "$work_root/bin/cpkt_pkg_cpkt-postgres"
-  "$work_root/bin/cpkt_pkg_cpkt-pdf"
-  env SASL_PATH=/cpkt-no-external-sasl-plugins "$work_root/bin/cpkt_pkg_cpkt-sasl"
-  env SASL_PATH=/cpkt-no-external-sasl-plugins "$sasl_single_binary"
+cpkt_run_example() {
+  local runner=()
   case "$target_id" in
-    *-linux-*) "$work_root/bin/cpkt_pkg_sus_mixed_cxx" ;;
+    aarch64-linux-*) runner=("${CPKT_QEMU_AARCH64:-/usr/bin/qemu-aarch64}" -L "$toolchain_sysroot") ;;
+    armhf-linux-*) runner=("${CPKT_QEMU_ARM:-/usr/bin/qemu-arm}" -L "$toolchain_sysroot") ;;
   esac
-  "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
-  "$example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
-  "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
-  "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
-  "$opcua_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
-  "$audio_sus_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
-  "$audio_vox_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
-  "$audio_live_vox_example_pkg_config_output" --smoke
-  "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
-  "$sus_vox_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
-  "$sus_live_vox_example_pkg_config_output" --smoke
-else
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_zlib"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_nghttp2"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_crypto"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_ssl"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_openssl_facade_shared"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_libssh2"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_curl"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_libxml2"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_mqttc"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_open62541"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_opcua_facade"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_gssapi_facade"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_openldap"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_openldap_shared"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_postgres_facade"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_pdf_facade"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_pdf_facade_shared"
-  # shellcheck disable=SC2086
-  env SASL_PATH=/cpkt-no-external-sasl-plugins $run_prefix "$cmake_build_dir/cpkt_cmake_sasl_facade"
-  # shellcheck disable=SC2086
-  env -u SASL_PATH $run_prefix "$cmake_build_dir/cpkt_cmake_sasl_facade_shared"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_all"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_zlib"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libnghttp2"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libcrypto"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libssl"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_openssl"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libssh2"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libcurl"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libxml-2.0"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_mqtt-c"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_open62541"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-opcua"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-gssapi"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-postgres"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-pdf"
-  # shellcheck disable=SC2086
-  env SASL_PATH=/cpkt-no-external-sasl-plugins $run_prefix "$work_root/bin/cpkt_pkg_cpkt-sasl"
-  # shellcheck disable=SC2086
-  env SASL_PATH=/cpkt-no-external-sasl-plugins $run_prefix "$sasl_single_binary"
-  case "$target_id" in
-    *-linux-*)
-      # shellcheck disable=SC2086
-      $run_prefix "$work_root/bin/cpkt_pkg_sus_mixed_cxx"
-      ;;
-  esac
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$opcua_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$audio_sus_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$audio_vox_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
-  # shellcheck disable=SC2086
-  $run_prefix "$audio_live_vox_example_pkg_config_output" --smoke
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$sus_vox_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
-  # shellcheck disable=SC2086
-  $run_prefix "$sus_live_vox_example_pkg_config_output" --smoke
-fi
+  "${runner[@]}" "$@"
+}
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
+cpkt_run_example "$example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
+cpkt_run_example "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
+cpkt_run_example "$opcua_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
+cpkt_run_example "$audio_sus_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
+cpkt_run_example "$audio_vox_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
+cpkt_run_example "$audio_live_vox_example_pkg_config_output" --smoke
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
+cpkt_run_example "$sus_vox_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
+cpkt_run_example "$sus_live_vox_example_pkg_config_output" --smoke

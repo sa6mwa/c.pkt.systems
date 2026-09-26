@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
   printf 'usage: %s <dist-dir> <project> <version>\n' "$0" >&2
@@ -18,6 +18,10 @@ if [ ! -d "$dist_dir" ]; then
 fi
 if [ ! -f "$checksums_path" ]; then
   printf 'missing checksum manifest: %s\n' "$checksums_path" >&2
+  exit 1
+fi
+if [ -e "$dist_dir/SHA256SUMS" ]; then
+  printf 'obsolete checksum manifest remains under dist: %s\n' "$dist_dir/SHA256SUMS" >&2
   exit 1
 fi
 
@@ -44,8 +48,56 @@ is_current_artifact() {
 }
 
 manifest_contains() {
-  grep -E "[[:space:]]$1\$" "$checksums_path" >/dev/null 2>&1
+  awk -v name="$1" '$2 == name { found = 1 } END { exit !found }' "$checksums_path"
 }
+
+
+seen_names=
+entry_count=0
+while IFS= read -r manifest_entry || [ -n "$manifest_entry" ]; do
+  case "$manifest_entry" in
+    ""|\#*) continue ;;
+  esac
+  if [[ ! $manifest_entry =~ ^([[:xdigit:]]{64})[[:blank:]][[:blank:]]([^[:space:]]+)$ ]]; then
+    printf 'checksum manifest contains malformed SHA-256 entry: %s\n' "$manifest_entry" >&2
+    exit 1
+  fi
+  expected_hash=${BASH_REMATCH[1]}
+  expected_hash=$(printf '%s' "$expected_hash" | tr '[:upper:]' '[:lower:]')
+  artifact_name=${BASH_REMATCH[2]}
+  case "$artifact_name" in
+    */*|""|.*)
+      printf 'checksum manifest contains invalid artifact name: %s\n' "$artifact_name" >&2
+      exit 1
+      ;;
+  esac
+  if ! is_release_artifact "$artifact_name" || ! is_current_artifact "$artifact_name" ||
+      [ "$artifact_name" = "$checksums_name" ]; then
+    printf 'checksum manifest contains unexpected release artifact: %s\n' "$artifact_name" >&2
+    exit 1
+  fi
+  if printf '%s\n' "$seen_names" | grep -Fxq -- "$artifact_name"; then
+    printf 'checksum manifest lists artifact more than once: %s\n' "$artifact_name" >&2
+    exit 1
+  fi
+  seen_names="$seen_names
+$artifact_name"
+  if [ ! -f "$dist_dir/$artifact_name" ]; then
+    printf 'checksum-listed artifact does not exist under dist: %s\n' "$artifact_name" >&2
+    exit 1
+  fi
+  actual_hash=$(cmake -E sha256sum "$dist_dir/$artifact_name")
+  actual_hash=${actual_hash%% *}
+  if [ "$expected_hash" != "$actual_hash" ]; then
+    printf 'SHA-256 mismatch for release artifact: %s\n' "$artifact_name" >&2
+    exit 1
+  fi
+  entry_count=$((entry_count + 1))
+done < "$checksums_path"
+if [ "$entry_count" -eq 0 ]; then
+  printf 'checksum manifest contains no release artifacts: %s\n' "$checksums_path" >&2
+  exit 1
+fi
 
 while IFS= read -r artifact_path; do
   artifact_name=$(basename -- "$artifact_path")
@@ -63,20 +115,3 @@ while IFS= read -r artifact_path; do
 done <<EOF
 $(find "$dist_dir" -maxdepth 1 -type f | sort)
 EOF
-
-while IFS= read -r manifest_entry; do
-  case "$manifest_entry" in
-    ""|\#*) continue ;;
-  esac
-  artifact_name=${manifest_entry##* }
-  case "$artifact_name" in
-    */*|""|.*)
-      printf 'checksum manifest contains invalid artifact name: %s\n' "$artifact_name" >&2
-      exit 1
-      ;;
-  esac
-  if [ ! -f "$dist_dir/$artifact_name" ]; then
-    printf 'checksum-listed artifact does not exist under dist: %s\n' "$artifact_name" >&2
-    exit 1
-  fi
-done < "$checksums_path"

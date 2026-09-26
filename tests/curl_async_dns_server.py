@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Exercise bundled libcurl's multi socket API against a local hostname."""
 
+import argparse
 import http.server
 import socketserver
 import subprocess
-import sys
 import threading
 import time
 
@@ -42,9 +42,12 @@ class LoopbackHTTPServer(http.server.ThreadingHTTPServer):
         self.server_port = self.server_address[1]
 
 
-def main():
-    if len(sys.argv) < 2:
-        raise SystemExit("usage: curl_async_dns_server.py <client> [<client> ...]")
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--runner", action="append", default=[],
+                        help="one configured emulator argument; repeat for each argument")
+    parser.add_argument("clients", nargs="+")
+    args = parser.parse_args(argv)
     print("multi socket harness: binding loopback server", flush=True)
     server = LoopbackHTTPServer(("127.0.0.1", 0), Handler)
     server.daemon_threads = True
@@ -54,9 +57,9 @@ def main():
     try:
         port = str(server.server_address[1])
         print(f"multi socket harness: listening on {port}", flush=True)
-        for client in sys.argv[1:]:
+        for client in args.clients:
             print(f"multi socket harness: starting {client}", flush=True)
-            subprocess.run([client, "--multi", port], check=True, timeout=15)
+            subprocess.run(args.runner + [client, "--multi", port], check=True, timeout=15)
             print(f"multi socket harness: completed {client}", flush=True)
     finally:
         print("multi socket harness: shutting down", flush=True)

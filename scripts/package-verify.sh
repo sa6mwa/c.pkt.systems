@@ -20,6 +20,15 @@ else
   fi
 fi
 
+bash "$repo_root/scripts/verify-dist-manifest.sh" "$repo_root/dist" c.pkt.systems "$bundle_version"
+scan_paths="$repo_root/dist/c.pkt.systems-$bundle_version-CHECKSUMS"
+while read -r hash artifact || [ -n "${hash:-}" ]; do
+  case "$hash" in ""|\#*) continue ;; esac
+  scan_paths="$scan_paths;$repo_root/dist/$artifact"
+done < "$repo_root/dist/c.pkt.systems-$bundle_version-CHECKSUMS"
+cmake -DCPKT_ROOT="$repo_root" -DCPKT_SCAN_LABEL="release manifest artifacts" \
+  -DCPKT_SCAN_PATHS="$scan_paths" -P "$repo_root/tests/privacy_scan.cmake"
+
 bash "$repo_root/tests/package_install_smoke_args_test.sh"
 bash "$repo_root/tests/lifecycle_surface_test.sh"
 bash "$repo_root/tests/osxcross_linker_route_test.sh"
@@ -44,7 +53,6 @@ bash "$repo_root/tests/source_archive_portability_test.sh"
 bash "$repo_root/tests/source_archive_verify_failure_test.sh"
 bash "$repo_root/tests/source_archive_git_ignore_test.sh"
 bash "$repo_root/tests/source_archive_git_parent_test.sh"
-bash "$repo_root/scripts/verify-dist-manifest.sh" "$repo_root/dist" c.pkt.systems "$bundle_version"
 
 for target_id in $targets; do
   archive="$repo_root/dist/c.pkt.systems-$bundle_version-$target_id.tar.gz"
@@ -76,20 +84,12 @@ for target_id in $targets; do
     -DCPKT_TARGET_ID="$target_id" \
     -DCPKT_BUNDLE_VERSION="$bundle_version" \
     "${package_assertion_tool_args[@]}"
-  cmake \
-    -DCPKT_ROOT="$repo_root" \
-    -DCPKT_SCAN_LABEL="bundle" \
-    -DCPKT_SCAN_PATHS="$archive" \
-    -P "$repo_root/tests/privacy_scan.cmake"
   case "$target_id" in
     arm64-apple-darwin)
       smoke_zip="$repo_root/dist/c.pkt.systems-$bundle_version-$target_id-smoke-test.zip"
-      if [ -f "$smoke_zip" ]; then
-        cmake \
-          -DCPKT_ROOT="$repo_root" \
-          -DCPKT_SCAN_LABEL="darwin smoke test bundle" \
-          -DCPKT_SCAN_PATHS="$smoke_zip" \
-          -P "$repo_root/tests/privacy_scan.cmake"
+      if [ ! -f "$smoke_zip" ]; then
+        printf 'missing required Darwin smoke test bundle: %s\n' "$smoke_zip" >&2
+        exit 1
       fi
       ;;
   esac

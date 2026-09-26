@@ -107,6 +107,9 @@ it does not publish a release, push commits, or create a release tag.
 The package matrix reports each target and phase, runs CTest verbosely to retain
 individual test-case progress, and reports a failed command's exit status or a
 signal received by the package script. Failures stop the matrix immediately.
+Before building dependencies, it configures every target and runs the archive,
+patch, and PostgreSQL build-probe fixtures across all six Linux toolchains.
+Those fixtures use the selected collection runtime or configured QEMU sysroot.
 An exit status such as 143 can mean SIGTERM or an explicit `exit(143)`; it cannot
 identify who sent a signal. Shell traps likewise cannot recover sender identity.
 
@@ -547,8 +550,13 @@ installs the limit hook on coroutines created through `coroutine.create` and
 
 ## Verification Coverage
 
-Release verification checks every produced tarball from an extracted install
-tree. It asserts archive layout, checksum coverage, metadata path placement,
+Release verification validates SHA-256 and privacy for every checksum-listed
+artifact, including source archives and the required Darwin smoke ZIP. It
+checks every SDK tarball from an extracted install tree and executes all
+generated Linux CMake and pkg-config consumers, using the selected collection
+runtime or QEMU. Darwin consumers are cross-linked locally; native execution
+is covered separately by the macOS runtime workflow.
+It asserts archive layout, checksum coverage, metadata path placement,
 metadata relocatability, absence of old non-upstream CMake package directories,
 privacy/path hygiene, static transitive propagation through CMake and
 pkg-config, direct `Libssh2_DIR` and `CURL_DIR` package use, and representative

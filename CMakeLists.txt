@@ -1907,12 +1907,17 @@ if(CPKT_BUILD_TESTS)
       COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/curl_async_dns_server_test.py")
     set_tests_properties(curl_server_bind PROPERTIES LABELS "integration;smoke" TIMEOUT 10)
+    set(_cpkt_curl_harness_runner)
+    foreach(_cpkt_runner_argument IN LISTS CPKT_TEST_EXECUTABLE_PREFIX)
+      list(APPEND _cpkt_curl_harness_runner "--runner=${_cpkt_runner_argument}")
+    endforeach()
     foreach(_cpkt_curl_linkage IN ITEMS static shared)
       add_test(NAME curl_async_dns_${_cpkt_curl_linkage}
         COMMAND cpkt_curl_async_dns_${_cpkt_curl_linkage}_test)
       add_test(NAME curl_multi_socket_${_cpkt_curl_linkage}
         COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/tests/curl_async_dns_server.py"
+          ${_cpkt_curl_harness_runner}
           "$<TARGET_FILE:cpkt_curl_async_dns_${_cpkt_curl_linkage}_test>")
       set_tests_properties(curl_async_dns_${_cpkt_curl_linkage}
         curl_multi_socket_${_cpkt_curl_linkage} PROPERTIES
@@ -1942,6 +1947,8 @@ if(CPKT_BUILD_TESTS)
         "-DCPKT_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
         "-DCPKT_TEST_BINARY_DIR=${CMAKE_BINARY_DIR}"
         -P "${CMAKE_SOURCE_DIR}/tests/postgresql_probe_rpaths_test.cmake")
+    set_tests_properties(patch_series_portability static_archive_member_cleanup
+      postgresql_probe_rpaths PROPERTIES LABELS "packaging;smoke" TIMEOUT 30)
     add_test(NAME lua_facade_unit COMMAND cpkt_lua_facade_test)
     add_test(
       NAME lua_runtime_c89_example
@@ -2414,6 +2421,20 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_SOURCE_DIR}")
       set_tests_properties(package_failure_diagnostics PROPERTIES
         LABELS "packaging"
+        TIMEOUT 30)
+      add_test(
+        NAME package_consumer_execution
+        COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/package_consumer_execution_test.py"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(package_consumer_execution PROPERTIES
+        LABELS "packaging;smoke"
+        TIMEOUT 30)
+      add_test(
+        NAME package_archive_layout
+        COMMAND python3 "${CMAKE_SOURCE_DIR}/tests/package_archive_layout_test.py"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(package_archive_layout PROPERTIES
+        LABELS "packaging;smoke"
         TIMEOUT 30)
       add_test(
         NAME package_verify_toolchain_tools

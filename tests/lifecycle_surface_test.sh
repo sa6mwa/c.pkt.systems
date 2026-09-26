@@ -74,6 +74,7 @@ for script in \
   scripts/package-source.sh \
   scripts/source-archive-verify.sh \
   scripts/package-verify.sh \
+  scripts/run-package-consumers.sh \
   tests/release_version_contract_test.sh; do
   require_script "$script"
 done

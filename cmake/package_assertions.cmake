@@ -599,6 +599,17 @@ execute_process(
 if(NOT _list_result EQUAL 0)
   message(FATAL_ERROR "failed to list ${CPKT_ARCHIVE}\n${_list_error}")
 endif()
+string(REPLACE "\r\n" "\n" _root_listing "${_listing}")
+string(REPLACE "\n" ";" _root_entries "${_root_listing}")
+foreach(_root_entry IN LISTS _root_entries)
+  if(_root_entry STREQUAL "")
+    continue()
+  endif()
+  if(NOT _root_entry MATCHES "^${_archive_stem_re}(/|$)"
+      OR _root_entry MATCHES "(^|/)\\.\\.(/|$)")
+    message(FATAL_ERROR "package archive contains entry outside its root: ${_root_entry}")
+  endif()
+endforeach()
 
 execute_process(
   COMMAND tar --numeric-owner -tvf "${CPKT_ARCHIVE}"

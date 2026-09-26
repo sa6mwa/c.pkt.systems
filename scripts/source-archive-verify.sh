@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -eu
+set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
@@ -55,13 +55,25 @@ else
   printf 'source archive entries must be owned by 0/0\n' >&2
   exit 1
 fi
+archive_listing=$(cmake -E tar tf "$archive_path")
+while IFS= read -r entry; do
+  case "$entry" in
+    /*|..|../*|*/../*|*/..)
+      printf 'source archive contains unsafe entry: %s\n' "$entry" >&2
+      exit 1
+      ;;
+  esac
+done <<< "$archive_listing"
 
 mkdir -p "$repo_root/build"
 work_dir=$(mktemp -d "$repo_root/build/cpkt-source-verify.XXXXXXXXXX")
 cleanup() {
   rm -rf "$work_dir"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 (
   cd "$work_dir"
@@ -85,6 +97,15 @@ if [ ! -d "$source_root" ]; then
   printf 'source archive root is %s, expected %s\n' "$actual_root" "$archive_stem" >&2
   exit 1
 fi
+while IFS= read -r entry; do
+  case "$entry" in
+    "$archive_stem"|"$archive_stem/"|"$archive_stem/"*) ;;
+    *)
+      printf 'source archive contains entry outside its root: %s\n' "$entry" >&2
+      exit 1
+      ;;
+  esac
+done <<< "$archive_listing"
 
 if [ ! -f "$source_root/VERSION" ]; then
   printf 'source archive is missing VERSION\n' >&2
