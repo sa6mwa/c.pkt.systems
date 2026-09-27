@@ -343,11 +343,39 @@ The facade adds explicit conversion status to distinguish representation
 failure from native service and per-operation status. Native data-change/event
 batch creation share a typed entry point with an explicit event selector;
 no event fields or nested values are discarded. Single-item monitored-item
-creation helpers remain pending. Complete async attribute/header bindings are
-described below. Other core
-client configuration/helpers remain separate pending entries.
+creation helpers and native default factories are also exposed; their ownership
+rules are described below. Complete async attribute/header bindings are
+described below. Other core client configuration/helpers remain separate
+pending entries.
 Existing native-peer, integration, allocation-failure and destruction tests
 exercise these bindings; coverage classification does not add new behavior.
+
+### Single monitored items and native defaults
+
+`cpkt_opcua_client_MonitoredItems_createDataChange_typed` and
+`cpkt_opcua_client_MonitoredItems_createEvent_typed` invoke the exact native
+single-item helpers. Inputs borrow during the call; nested result fields are
+owned and must be cleared. Function return reports C89 conversion errors;
+`result.statusCode` reports the native operation status. All callbacks are
+optional. The original context remains borrowed until native deletion. Callback
+data borrows until return and includes complete DataValues or event field maps.
+Reentrant deletion from a notification uses the native asynchronous delete
+operation; synchronous service calls cannot recursively run the native loop.
+If result conversion fails after native creation, delete the known subscription
+to release its items before freeing contexts. The facade does not manufacture a
+deletion callback when native code rejects an unknown subscription before
+registering an item.
+
+`cpkt_opcua_CreateSubscriptionRequest_default` obtains actual upstream defaults.
+`cpkt_opcua_MonitoredItemCreateRequest_default` also preserves the native factory's
+shallow assignment of the supplied node ID. Its string/byte-string storage stays
+borrowed: copy the request to obtain ownership, or detach the node ID before
+clearing the original. These factories require empty outputs and allocate
+nothing. Tests compare their binary encodings with independent native factories,
+including string node ownership, and compare single-helper failure statuses and
+deletion timing with direct native calls.
+Rejected event filters retain their complete owned diagnostic arrays, including
+partial conversion cleanup when allocation fails after native results exist.
 
 ### Synchronous high-level client bindings
 

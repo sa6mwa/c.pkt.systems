@@ -12,6 +12,17 @@ struct cpkt_opcua_KeyValueMap {
   size_t mapSize;
   cpkt_opcua_KeyValuePair *map;
 };
+/** Fill an empty output with the native subscription defaults. The output owns
+ * its fields and can be cleared normally; no allocation is needed. */
+cpkt_opcua_StatusCode cpkt_opcua_CreateSubscriptionRequest_default(
+    cpkt_opcua_CreateSubscriptionRequest *request);
+/** Fill an empty output with the native monitored-item defaults. As upstream,
+ * node_id is assigned shallowly: string/byte-string storage remains borrowed
+ * from the caller. Copy the request to obtain an independently owned request.
+ * Do not clear borrowed node storage; detach nodeId before clearing this
+ * output. All other fields start empty or contain native scalar defaults. */
+cpkt_opcua_StatusCode cpkt_opcua_MonitoredItemCreateRequest_default(
+    cpkt_opcua_NodeId node_id, cpkt_opcua_MonitoredItemCreateRequest *request);
 /** Receives the complete status notification. Nonzero conversion status means
  * notification is NULL. Context is exactly the caller's subscription context.
  */
@@ -99,6 +110,33 @@ typedef struct {
   cpkt_opcua_event_typed_fn event;
   cpkt_opcua_monitored_delete_fn deleted;
 } cpkt_opcua_MonitoredItemCallbacks;
+/** Invoke the native single-item data-change helper. item borrows during the
+ * call. context is the original application pointer and remains borrowed until
+ * native deletion; callbacks are optional. Output must start empty and owns
+ * nested fields. Function return reports conversion/submission errors; inspect
+ * result->statusCode for native errors. Native failure deletion callbacks
+ * retain their original timing and zero item ID. If output conversion fails
+ * after native creation, delete the known subscription before releasing
+ * context. */
+cpkt_opcua_StatusCode cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+    cpkt_opcua_client *client, cpkt_opcua_UInt32 subscription_id,
+    cpkt_opcua_TimestampsToReturn timestamps,
+    const cpkt_opcua_MonitoredItemCreateRequest *item, void *context,
+    cpkt_opcua_data_change_typed_fn callback,
+    cpkt_opcua_monitored_delete_fn delete_callback,
+    cpkt_opcua_MonitoredItemCreateResult *result);
+/** Invoke the native single-item event helper, with the same ownership,
+ * callback lifetime and error rules as createDataChange_typed. Notifications
+ * preserve the complete native field map; they borrow until callback return.
+ * Submit async service operations from notifications: synchronous service
+ * calls cannot recursively run the native client EventLoop. */
+cpkt_opcua_StatusCode cpkt_opcua_client_MonitoredItems_createEvent_typed(
+    cpkt_opcua_client *client, cpkt_opcua_UInt32 subscription_id,
+    cpkt_opcua_TimestampsToReturn timestamps,
+    const cpkt_opcua_MonitoredItemCreateRequest *item, void *context,
+    cpkt_opcua_event_typed_fn callback,
+    cpkt_opcua_monitored_delete_fn delete_callback,
+    cpkt_opcua_MonitoredItemCreateResult *result);
 /** Create data or event monitored items with the complete request/response.
  * event_monitoring chooses upstream createEvents versus createDataChanges;
  * registrations has exactly itemsToCreateSize entries. Requests and

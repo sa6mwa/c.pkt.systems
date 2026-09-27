@@ -199,7 +199,8 @@
     },
     "UA_Client_MonitoredItems_createDataChange": {
       "declaration": "UA_MonitoredItemCreateResult UA_Client_MonitoredItems_createDataChange ( UA_Client * client , UA_UInt32 subscriptionId , UA_TimestampsToReturn timestampsToReturn , const UA_MonitoredItemCreateRequest item , void * context , UA_Client_DataChangeNotificationCallback callback , UA_Client_DeleteMonitoredItemCallback deleteCallback )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_MonitoredItems_createDataChange_typed"
     },
     "UA_Client_MonitoredItems_createDataChanges": {
       "declaration": "UA_CreateMonitoredItemsResponse UA_Client_MonitoredItems_createDataChanges ( UA_Client * client , const UA_CreateMonitoredItemsRequest request , void * * contexts , UA_Client_DataChangeNotificationCallback * callbacks , UA_Client_DeleteMonitoredItemCallback * deleteCallbacks )",
@@ -213,7 +214,8 @@
     },
     "UA_Client_MonitoredItems_createEvent": {
       "declaration": "UA_MonitoredItemCreateResult UA_Client_MonitoredItems_createEvent ( UA_Client * client , UA_UInt32 subscriptionId , UA_TimestampsToReturn timestampsToReturn , const UA_MonitoredItemCreateRequest item , void * context , UA_Client_EventNotificationCallback callback , UA_Client_DeleteMonitoredItemCallback deleteCallback )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_MonitoredItems_createEvent_typed"
     },
     "UA_Client_MonitoredItems_createEvents": {
       "declaration": "UA_CreateMonitoredItemsResponse UA_Client_MonitoredItems_createEvents ( UA_Client * client , const UA_CreateMonitoredItemsRequest request , void * * contexts , UA_Client_EventNotificationCallback * callback , UA_Client_DeleteMonitoredItemCallback * deleteCallback )",
@@ -1191,7 +1193,8 @@
     },
     "UA_CreateSubscriptionRequest_default": {
       "declaration": "UA_CreateSubscriptionRequest UA_CreateSubscriptionRequest_default ( void )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_CreateSubscriptionRequest_default"
     },
     "UA_DATETIME": {
       "declaration": "UA_DateTime UA_DATETIME ( const char * chars )",
@@ -1575,7 +1578,8 @@
     },
     "UA_MonitoredItemCreateRequest_default": {
       "declaration": "UA_MonitoredItemCreateRequest UA_MonitoredItemCreateRequest_default ( UA_NodeId nodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_MonitoredItemCreateRequest_default"
     },
     "UA_NODEID": {
       "declaration": "UA_NodeId UA_NODEID ( const char * chars )",

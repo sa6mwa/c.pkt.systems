@@ -16,6 +16,12 @@ unsigned int cpkt_types_peer_client_timeout(void *client, unsigned int timeout);
 void cpkt_types_peer_pause(void *peer, int pause);
 void cpkt_types_peer_client_fail_conversion(int kind, size_t count);
 unsigned int cpkt_types_peer_event(void *peer);
+unsigned int cpkt_types_peer_defaults(int monitored, unsigned char **bytes,
+                                      size_t *length);
+unsigned int cpkt_types_peer_single_error(void *client,
+                                          unsigned int subscription_id,
+                                          int events, int missing,
+                                          unsigned int *deleted);
 unsigned int cpkt_types_peer_access_control(void *native_server);
 unsigned int cpkt_types_peer_history(void *native_server);
 unsigned int cpkt_types_peer_history_failure(void *native_server);

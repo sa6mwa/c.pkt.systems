@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <open62541/client_highlevel.h>
 #include <open62541/client_highlevel_async.h>
+#include <open62541/client_subscriptions.h>
 #include <open62541/plugin/accesscontrol.h>
 #include <open62541/plugin/historydatabase.h>
 #include <open62541/plugin/nodestore.h>
@@ -34,6 +35,59 @@ unsigned int cpkt_types_native_empty(size_t index, unsigned char **bytes,
   return status;
 }
 void cpkt_types_native_free(unsigned char *bytes) { UA_free(bytes); }
+unsigned int cpkt_types_peer_defaults(int monitored, unsigned char **bytes,
+                                      size_t *length) {
+  UA_ByteString output = UA_BYTESTRING_NULL;
+  UA_StatusCode status;
+  if (monitored) {
+    UA_MonitoredItemCreateRequest request =
+        UA_MonitoredItemCreateRequest_default(
+            UA_NODEID_STRING(1, "borrowed-node"));
+    status = UA_encodeBinary(&request,
+                             &UA_TYPES[UA_TYPES_MONITOREDITEMCREATEREQUEST],
+                             &output, NULL);
+  } else {
+    UA_CreateSubscriptionRequest request =
+        UA_CreateSubscriptionRequest_default();
+    status = UA_encodeBinary(
+        &request, &UA_TYPES[UA_TYPES_CREATESUBSCRIPTIONREQUEST], &output, NULL);
+  }
+  *bytes = output.data;
+  *length = output.length;
+  return status;
+}
+static void single_error_deleted(UA_Client *client, UA_UInt32 sub,
+                                 void *sub_context, UA_UInt32 id,
+                                 void *context) {
+  unsigned int *deleted = context;
+  (void)client;
+  (void)sub;
+  (void)sub_context;
+  if (id)
+    abort();
+  ++*deleted;
+}
+unsigned int cpkt_types_peer_single_error(void *client,
+                                          unsigned int subscription_id,
+                                          int events, int missing,
+                                          unsigned int *deleted) {
+  UA_MonitoredItemCreateRequest request = UA_MonitoredItemCreateRequest_default(
+      UA_NODEID_NUMERIC(1, missing ? 0xffffffffU : 6001));
+  UA_MonitoredItemCreateResult result;
+  request.requestedParameters.samplingInterval = 10;
+  *deleted = 0;
+  if (events)
+    result = UA_Client_MonitoredItems_createEvent(
+        client, subscription_id, UA_TIMESTAMPSTORETURN_BOTH, request, deleted,
+        NULL, single_error_deleted);
+  else
+    result = UA_Client_MonitoredItems_createDataChange(
+        client, subscription_id, UA_TIMESTAMPSTORETURN_BOTH, request, deleted,
+        NULL, single_error_deleted);
+  UA_StatusCode status = result.statusCode;
+  UA_MonitoredItemCreateResult_clear(&result);
+  return status;
+}
 unsigned int cpkt_types_peer_access_control(void *arg) {
   UA_Server *server = (UA_Server *)arg;
   UA_AccessControl *ac = &UA_Server_getConfig(server)->accessControl;
@@ -1757,6 +1811,22 @@ static void client_conversion_arm(int kind, UA_StatusCode status) {
     client_failure_kind = 0;
     cpkt_types_fail_after(client_failure_count);
   }
+}
+UA_MonitoredItemCreateResult __real_UA_Client_MonitoredItems_createEvent(
+    UA_Client *, UA_UInt32, UA_TimestampsToReturn,
+    UA_MonitoredItemCreateRequest, void *, UA_Client_EventNotificationCallback,
+    UA_Client_DeleteMonitoredItemCallback);
+UA_MonitoredItemCreateResult __wrap_UA_Client_MonitoredItems_createEvent(
+    UA_Client *client, UA_UInt32 sub, UA_TimestampsToReturn timestamps,
+    UA_MonitoredItemCreateRequest item, void *context,
+    UA_Client_EventNotificationCallback callback,
+    UA_Client_DeleteMonitoredItemCallback deleted) {
+  UA_MonitoredItemCreateResult result =
+      __real_UA_Client_MonitoredItems_createEvent(client, sub, timestamps, item,
+                                                  context, callback, deleted);
+  /* Error results may also carry owned filter diagnostics. */
+  client_conversion_arm(6, UA_STATUSCODE_GOOD);
+  return result;
 }
 UA_StatusCode __real_UA_Client_readValueAttribute(UA_Client *, UA_NodeId,
                                                   UA_Variant *);

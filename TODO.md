@@ -49,6 +49,9 @@ behind a callback interface.
   types, preserving native IDs, header updates, callback/NULL semantics,
   cancellation, timeout and session-close cleanup, with exact 64-bit,
   reentrant, independent native parity and allocation-failure tests.
+- [x] Expose native single-item data/event monitoring and subscription/item
+  defaults, preserving complete notifications, reentrant deletion and the
+  native default factory's shallow node ownership with native parity tests.
 - [x] Expose native server timers and child-node iteration with C89 callback
   arguments, complete 64-bit IDs and reentrant cancellation/cleanup tests.
 - [x] Generate full AccessControl and HistoryDatabase callback records, including

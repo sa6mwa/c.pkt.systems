@@ -1,5 +1,33 @@
 /* Private callback bridge, included by opcua_types.c so conversion helpers and
  * bookkeeping stay private in both static and shared libraries. */
+/** Forward native defaults through the shared schema conversion. */
+cpkt_opcua_StatusCode cpkt_opcua_CreateSubscriptionRequest_default(
+    cpkt_opcua_CreateSubscriptionRequest *request) {
+  UA_CreateSubscriptionRequest native;
+  if (!request)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  memset(request, 0, sizeof(*request));
+  native = UA_CreateSubscriptionRequest_default();
+  return cpkt_convert(&native, request,
+                      &cpkt_types[CPKT_OPCUA_TYPES_CREATESUBSCRIPTIONREQUEST],
+                      0, 0);
+}
+/** Preserve upstream's shallow node-ID assignment in this default factory. */
+cpkt_opcua_StatusCode cpkt_opcua_MonitoredItemCreateRequest_default(
+    cpkt_opcua_NodeId node_id, cpkt_opcua_MonitoredItemCreateRequest *request) {
+  UA_MonitoredItemCreateRequest native;
+  UA_StatusCode status;
+  if (!request)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  memset(request, 0, sizeof(*request));
+  native = UA_MonitoredItemCreateRequest_default(UA_NODEID_NULL);
+  status = cpkt_convert(
+      &native, request,
+      &cpkt_types[CPKT_OPCUA_TYPES_MONITOREDITEMCREATEREQUEST], 0, 0);
+  if (!status)
+    request->itemToMonitor.nodeId = node_id;
+  return status;
+}
 struct cpkt_typed_subscription {
   struct cpkt_typed_subscription *next;
   cpkt_opcua_client *owner;
@@ -18,6 +46,21 @@ struct cpkt_typed_monitor {
   unsigned int references;
   int deleted;
 };
+static struct cpkt_typed_monitor *
+cpkt_monitor_new(cpkt_opcua_client *client, UA_UInt32 subscription_id,
+                 const cpkt_opcua_MonitoredItemCallbacks *callbacks) {
+  struct cpkt_typed_monitor *mon =
+      (struct cpkt_typed_monitor *)UA_calloc(1, sizeof(*mon));
+  if (!mon)
+    return NULL;
+  mon->owner = client;
+  mon->sub_id = subscription_id;
+  mon->callbacks = *callbacks;
+  mon->references = 2; /* Native lifetime plus pending creator. */
+  mon->next = client->typed_monitors;
+  client->typed_monitors = mon;
+  return mon;
+}
 static struct cpkt_typed_subscription *
 cpkt_find_subscription(cpkt_opcua_client *client, UA_UInt32 id) {
   struct cpkt_typed_subscription *sub;
@@ -362,17 +405,11 @@ cpkt_monitor_batch_new(cpkt_monitor_batch *batch, cpkt_opcua_client *client,
   }
   for (i = 0; i < count; ++i) {
     struct cpkt_typed_monitor *mon =
-        (struct cpkt_typed_monitor *)UA_calloc(1, sizeof(*mon));
+        cpkt_monitor_new(client, request->subscriptionId, &registrations[i]);
     if (!mon) {
       cpkt_monitor_batch_finish(batch, NULL);
       return UA_STATUSCODE_BADOUTOFMEMORY;
     }
-    mon->owner = client;
-    mon->sub_id = request->subscriptionId;
-    mon->callbacks = registrations[i];
-    mon->references = 2;
-    mon->next = client->typed_monitors;
-    client->typed_monitors = mon;
     batch->monitors[i] = mon;
     batch->count = i + 1;
     batch->contexts[i] = mon;
@@ -383,6 +420,89 @@ cpkt_monitor_batch_new(cpkt_monitor_batch *batch, cpkt_opcua_client *client,
       batch->data_callbacks[i] = cpkt_monitor_changed;
   }
   return 0;
+}
+static UA_StatusCode
+cpkt_monitor_single_create(cpkt_opcua_client *client, UA_UInt32 subscription_id,
+                           cpkt_opcua_TimestampsToReturn timestamps,
+                           const cpkt_opcua_MonitoredItemCreateRequest *item,
+                           int events,
+                           const cpkt_opcua_MonitoredItemCallbacks *callbacks,
+                           cpkt_opcua_MonitoredItemCreateResult *result) {
+  UA_MonitoredItemCreateRequest native_item;
+  UA_MonitoredItemCreateResult native_result;
+  struct cpkt_typed_monitor *mon;
+  UA_StatusCode status;
+  if (!client || !client->client || !item || !result)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  memset(result, 0, sizeof(*result));
+  UA_MonitoredItemCreateRequest_init(&native_item);
+  status = cpkt_convert(
+      item, &native_item,
+      &cpkt_types[CPKT_OPCUA_TYPES_MONITOREDITEMCREATEREQUEST], 1, 0);
+  if (status) {
+    UA_MonitoredItemCreateRequest_clear(&native_item);
+    return status;
+  }
+  mon = cpkt_monitor_new(client, subscription_id, callbacks);
+  if (!mon) {
+    UA_MonitoredItemCreateRequest_clear(&native_item);
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  }
+  if (events)
+    native_result = UA_Client_MonitoredItems_createEvent(
+        client->client, subscription_id, (UA_TimestampsToReturn)timestamps,
+        native_item, mon, cpkt_monitor_event, cpkt_monitor_deleted);
+  else
+    native_result = UA_Client_MonitoredItems_createDataChange(
+        client->client, subscription_id, (UA_TimestampsToReturn)timestamps,
+        native_item, mon, cpkt_monitor_changed, cpkt_monitor_deleted);
+  if (!native_result.statusCode)
+    mon->id = native_result.monitoredItemId;
+  else if (!mon->deleted) {
+    mon->deleted = 1;
+    cpkt_monitor_unref(mon);
+  }
+  status = cpkt_convert(&native_result, result,
+                        &cpkt_types[CPKT_OPCUA_TYPES_MONITOREDITEMCREATERESULT],
+                        0, 0);
+  if (status)
+    cpkt_opcua_MonitoredItemCreateResult_clear(result);
+  cpkt_monitor_unref(mon);
+  UA_MonitoredItemCreateRequest_clear(&native_item);
+  UA_MonitoredItemCreateResult_clear(&native_result);
+  return status;
+}
+/** Bind the exact native single-item data-change helper and its callbacks. */
+cpkt_opcua_StatusCode cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+    cpkt_opcua_client *client, cpkt_opcua_UInt32 subscription_id,
+    cpkt_opcua_TimestampsToReturn timestamps,
+    const cpkt_opcua_MonitoredItemCreateRequest *item, void *context,
+    cpkt_opcua_data_change_typed_fn callback,
+    cpkt_opcua_monitored_delete_fn delete_callback,
+    cpkt_opcua_MonitoredItemCreateResult *result) {
+  cpkt_opcua_MonitoredItemCallbacks callbacks;
+  memset(&callbacks, 0, sizeof(callbacks));
+  callbacks.context = context;
+  callbacks.data_change = callback;
+  callbacks.deleted = delete_callback;
+  return cpkt_monitor_single_create(client, subscription_id, timestamps, item,
+                                    0, &callbacks, result);
+}
+/** Bind the exact native single-item event helper and its callbacks. */
+cpkt_opcua_StatusCode cpkt_opcua_client_MonitoredItems_createEvent_typed(
+    cpkt_opcua_client *client, cpkt_opcua_UInt32 subscription_id,
+    cpkt_opcua_TimestampsToReturn timestamps,
+    const cpkt_opcua_MonitoredItemCreateRequest *item, void *context,
+    cpkt_opcua_event_typed_fn callback,
+    cpkt_opcua_monitored_delete_fn delete_callback,
+    cpkt_opcua_MonitoredItemCreateResult *result) {
+  cpkt_opcua_MonitoredItemCallbacks callbacks;
+  memset(&callbacks, 0, sizeof(callbacks));
+  callbacks.context = context;
+  callbacks.event = callback;
+  callbacks.deleted = delete_callback;
+  return cpkt_monitor_single_create(client, subscription_id, timestamps, item,
+                                    1, &callbacks, result);
 }
 /** Implements complete native monitored-item creation and notifications. */
 cpkt_opcua_StatusCode cpkt_opcua_client_monitored_items_create_typed(

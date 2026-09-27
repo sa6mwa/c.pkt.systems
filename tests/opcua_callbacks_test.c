@@ -11,6 +11,10 @@ static void check(int ok, const char *expression, int line) {
   }
 }
 #define CHECK(expression) check(!!(expression), #expression, __LINE__)
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+void cpkt_types_fail_after(size_t count);
+int cpkt_types_fail_stop(void);
+#endif
 typedef struct {
   unsigned int changes, events, deleted, completed, subscription_deleted;
   cpkt_opcua_UInt32 sub_id, item_id;
@@ -118,6 +122,283 @@ subscription_created(cpkt_opcua_client *client, void *user,
   CHECK(subscription_id && subscription_id == result->subscriptionId);
   state->sub_id = result->subscriptionId;
   ++state->completed;
+}
+static void default_parity(void) {
+  cpkt_opcua_CreateSubscriptionRequest subscription;
+  cpkt_opcua_MonitoredItemCreateRequest item, owned;
+  cpkt_opcua_NodeId node;
+  cpkt_opcua_ByteString bytes;
+  unsigned char *native;
+  size_t native_length;
+  const char *text = "borrowed-node";
+  cpkt_opcua_NodeId_init(&node);
+  node.namespaceIndex = 1;
+  node.identifierType = CPKT_OPCUA_NODEIDTYPE_STRING;
+  node.identifier.string.data = (cpkt_opcua_Byte *)text;
+  node.identifier.string.length = strlen(text);
+  CHECK(cpkt_opcua_CreateSubscriptionRequest_default(NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_MonitoredItemCreateRequest_default(node, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  cpkt_types_fail_after(0);
+#endif
+  CHECK(!cpkt_opcua_CreateSubscriptionRequest_default(&subscription));
+  CHECK(!cpkt_opcua_MonitoredItemCreateRequest_default(node, &item));
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  CHECK(!cpkt_types_fail_stop());
+#endif
+  CHECK(item.itemToMonitor.nodeId.identifier.string.data ==
+        node.identifier.string.data);
+  cpkt_opcua_ByteString_init(&bytes);
+  CHECK(!cpkt_opcua_type_encode_binary(
+      &subscription,
+      cpkt_opcua_type_at(CPKT_OPCUA_TYPES_CREATESUBSCRIPTIONREQUEST), &bytes));
+  CHECK(!cpkt_types_peer_defaults(0, &native, &native_length));
+  CHECK(bytes.length == native_length &&
+        !memcmp(bytes.data, native, native_length));
+  cpkt_types_native_free(native);
+  cpkt_opcua_ByteString_clear(&bytes);
+  CHECK(!cpkt_opcua_type_encode_binary(
+      &item, cpkt_opcua_type_at(CPKT_OPCUA_TYPES_MONITOREDITEMCREATEREQUEST),
+      &bytes));
+  CHECK(!cpkt_types_peer_defaults(1, &native, &native_length));
+  CHECK(bytes.length == native_length &&
+        !memcmp(bytes.data, native, native_length));
+  cpkt_types_native_free(native);
+  cpkt_opcua_ByteString_clear(&bytes);
+  cpkt_opcua_MonitoredItemCreateRequest_init(&owned);
+  CHECK(!cpkt_opcua_MonitoredItemCreateRequest_copy(&item, &owned));
+  CHECK(owned.itemToMonitor.nodeId.identifier.string.data !=
+            node.identifier.string.data &&
+        owned.itemToMonitor.nodeId.identifier.string.length == strlen(text) &&
+        !memcmp(owned.itemToMonitor.nodeId.identifier.string.data, text,
+                strlen(text)));
+  cpkt_opcua_MonitoredItemCreateRequest_clear(&owned);
+  cpkt_opcua_NodeId_init(&item.itemToMonitor.nodeId);
+  cpkt_opcua_MonitoredItemCreateRequest_clear(&item);
+  cpkt_opcua_CreateSubscriptionRequest_clear(&subscription);
+}
+struct single_probe {
+  unsigned int sub, status, deleted;
+  int events, missing;
+};
+static cpkt_opcua_status single_native_error(void *client, void *user) {
+  struct single_probe *probe = user;
+  probe->status = cpkt_types_peer_single_error(
+      client, probe->sub, probe->events, probe->missing, &probe->deleted);
+  return 0;
+}
+static void single_changed(cpkt_opcua_client *client, cpkt_opcua_UInt32 sub,
+                           void *sub_context, cpkt_opcua_UInt32 id, void *user,
+                           cpkt_opcua_StatusCode status,
+                           const cpkt_opcua_DataValue *value) {
+  callback_state *state = user;
+  cpkt_opcua_DeleteMonitoredItemsRequest request;
+  changed(client, sub, sub_context, id, user, status, value);
+  state->item_id = id;
+  cpkt_opcua_DeleteMonitoredItemsRequest_init(&request);
+  request.subscriptionId = sub;
+  request.monitoredItemIdsSize = 1;
+  request.monitoredItemIds = &id;
+  CHECK(!cpkt_opcua_client_service_MonitoredItems_delete_async(
+      client, &request, items_deleted, state, NULL));
+}
+static void single_items(cpkt_opcua_client *client, void *peer) {
+  callback_state state, failed, events;
+  cpkt_opcua_CreateSubscriptionRequest subscription;
+  cpkt_opcua_CreateSubscriptionResponse subscription_response;
+  cpkt_opcua_MonitoredItemCreateRequest item;
+  cpkt_opcua_MonitoredItemCreateResult result;
+  cpkt_opcua_NodeId node;
+  cpkt_opcua_EventFilter filter;
+  cpkt_opcua_SimpleAttributeOperand operands[4];
+  cpkt_opcua_QualifiedName names[4];
+  const char *field_names[4] = {"Message", "Severity", "Time", "EventId"};
+  struct single_probe probe;
+  void *context;
+  size_t i;
+  memset(&state, 0, sizeof(state));
+  memset(&failed, 0, sizeof(failed));
+  memset(&events, 0, sizeof(events));
+  CHECK(!cpkt_opcua_CreateSubscriptionRequest_default(&subscription));
+  subscription.requestedPublishingInterval = 10;
+  CHECK(!cpkt_opcua_client_subscription_create_typed(
+      client, &subscription, &state, NULL, subscription_deleted,
+      &subscription_response));
+  CHECK(!subscription_response.responseHeader.serviceResult);
+  state.sub_id = subscription_response.subscriptionId;
+  state.expected_sub_context = &state;
+  failed.sub_id = events.sub_id = state.sub_id;
+  failed.expected_sub_context = events.expected_sub_context = &state;
+  cpkt_opcua_CreateSubscriptionResponse_clear(&subscription_response);
+  cpkt_opcua_NodeId_init(&node);
+  node.namespaceIndex = 1;
+  node.identifier.numeric = 6001;
+  CHECK(!cpkt_opcua_MonitoredItemCreateRequest_default(node, &item));
+  item.requestedParameters.samplingInterval = 10;
+  item.requestedParameters.clientHandle = 1234;
+  CHECK(cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+            NULL, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item,
+            &state, changed, monitored_deleted,
+            &result) == CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_client_MonitoredItems_createEvent_typed(
+            client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, NULL,
+            &state, NULL, NULL,
+            &result) == CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+            client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item,
+            &state, NULL, NULL,
+            NULL) == CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  cpkt_types_fail_after(0);
+  CHECK(cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+            client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item,
+            &state, changed, monitored_deleted,
+            &result) == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY);
+  CHECK(cpkt_types_fail_stop() && !state.deleted && !result.monitoredItemId);
+  item.itemToMonitor.nodeId.identifierType = CPKT_OPCUA_NODEIDTYPE_STRING;
+  item.itemToMonitor.nodeId.identifier.string.data = (cpkt_opcua_Byte *)"input";
+  item.itemToMonitor.nodeId.identifier.string.length = 5;
+  cpkt_types_fail_after(0);
+  CHECK(cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+            client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item,
+            &state, changed, monitored_deleted,
+            &result) == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY);
+  CHECK(cpkt_types_fail_stop() && !state.deleted && !result.monitoredItemId);
+  item.itemToMonitor.nodeId = node;
+#endif
+  CHECK(!cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+      client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item, &state,
+      single_changed, monitored_deleted, &result));
+  CHECK(!result.statusCode && result.monitoredItemId &&
+        result.revisedSamplingInterval >= 10 && result.revisedQueueSize == 1);
+  state.item_id = result.monitoredItemId;
+  CHECK(item.requestedParameters.clientHandle == 1234);
+  CHECK(!cpkt_opcua_client_monitored_item_get_context(
+            client, state.sub_id, state.item_id, &context) &&
+        context == &state);
+  cpkt_opcua_MonitoredItemCreateResult_clear(&result);
+  for (i = 0; i < 200 && !state.completed; ++i)
+    CHECK(cpkt_opcua_client_run_iterate(client, 10, NULL) == CPKT_OPCUA_OK);
+  CHECK(state.changes == 1 && state.deleted == 1 && state.completed == 1 &&
+        state.copy.hasValue);
+  cpkt_opcua_DataValue_clear(&state.copy);
+  /* Compare rejection status and deletion timing with the exact native helper.
+   */
+  for (i = 0; i < 4; ++i) {
+    probe.events = (int)(i & 1);
+    probe.missing = i < 2;
+    probe.sub = probe.missing ? state.sub_id : 0xffffffffU;
+    CHECK(cpkt_opcua_client_native(client, single_native_error, &probe) ==
+          CPKT_OPCUA_OK);
+    failed.sub_id = probe.sub;
+    item.itemToMonitor.nodeId.identifier.numeric =
+        probe.missing ? 0xffffffffU : 6001;
+    failed.deleted = 0;
+    if (probe.events)
+      CHECK(!cpkt_opcua_client_MonitoredItems_createEvent_typed(
+          client, probe.sub, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item, &failed,
+          NULL, monitored_deleted, &result));
+    else
+      CHECK(!cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+          client, probe.sub, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item, &failed,
+          NULL, monitored_deleted, &result));
+    CHECK(result.statusCode == probe.status && !result.monitoredItemId &&
+          failed.deleted == probe.deleted && probe.status);
+    cpkt_opcua_MonitoredItemCreateResult_clear(&result);
+  }
+  item.itemToMonitor.nodeId.identifier.numeric = 6001;
+  CHECK(!cpkt_opcua_client_MonitoredItems_createDataChange_typed(
+      client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_NEITHER, &item, NULL,
+      NULL, NULL, &result));
+  CHECK(!result.statusCode);
+  CHECK(!cpkt_opcua_client_monitored_item_delete_single(
+      client, state.sub_id, result.monitoredItemId));
+  cpkt_opcua_MonitoredItemCreateResult_clear(&result);
+  cpkt_opcua_EventFilter_init(&filter);
+  filter.selectClausesSize = 4;
+  filter.selectClauses = operands;
+  for (i = 0; i < 4; ++i) {
+    cpkt_opcua_SimpleAttributeOperand_init(&operands[i]);
+    cpkt_opcua_QualifiedName_init(&names[i]);
+    names[i].name.length = strlen(field_names[i]);
+    names[i].name.data = (cpkt_opcua_Byte *)field_names[i];
+    operands[i].typeDefinitionId.identifier.numeric = 2041;
+    operands[i].attributeId = 13;
+    operands[i].browsePathSize = 1;
+    operands[i].browsePath = &names[i];
+  }
+  item.itemToMonitor.nodeId.namespaceIndex = 0;
+  item.itemToMonitor.nodeId.identifier.numeric = 2253;
+  item.itemToMonitor.attributeId = 12;
+  item.requestedParameters.filter.encoding =
+      CPKT_OPCUA_EXTENSIONOBJECT_DECODED_NODELETE;
+  item.requestedParameters.filter.content.decoded.type =
+      cpkt_opcua_type_at(CPKT_OPCUA_TYPES_EVENTFILTER);
+  item.requestedParameters.filter.content.decoded.data = &filter;
+  CHECK(!cpkt_opcua_client_MonitoredItems_createEvent_typed(
+      client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item, &events,
+      event_received, monitored_deleted, &result));
+  CHECK(!result.statusCode && result.monitoredItemId);
+  events.item_id = result.monitoredItemId;
+  cpkt_opcua_MonitoredItemCreateResult_clear(&result);
+  CHECK(!cpkt_types_peer_event(peer));
+  for (i = 0; i < 200 && !events.events; ++i)
+    CHECK(cpkt_opcua_client_run_iterate(client, 10, NULL) == CPKT_OPCUA_OK);
+  CHECK(events.events == 1);
+  CHECK(!cpkt_opcua_client_monitored_item_delete_single(client, events.sub_id,
+                                                        events.item_id));
+  CHECK(events.deleted == 1);
+  /* A rejected event filter carries owned diagnostic arrays. Prove the facade
+   * retains all diagnostics and clears partial conversion allocations. */
+  operands[0].attributeId = 0xffffffffU;
+  failed.sub_id = state.sub_id;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  for (i = 0; i < 32; ++i) {
+    cpkt_opcua_StatusCode status;
+    int injected;
+    failed.deleted = 0;
+    cpkt_types_peer_client_fail_conversion(6, i);
+    status = cpkt_opcua_client_MonitoredItems_createEvent_typed(
+        client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item,
+        &failed, NULL, monitored_deleted, &result);
+    injected = cpkt_types_fail_stop();
+    CHECK(failed.deleted == 1);
+    if (injected) {
+      CHECK(status == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY &&
+            !result.monitoredItemId &&
+            result.filterResult.encoding ==
+                CPKT_OPCUA_EXTENSIONOBJECT_ENCODED_NOBODY);
+      continue;
+    }
+    CHECK(!status);
+    break;
+  }
+  CHECK(i > 0 && i < 32);
+#else
+  failed.deleted = 0;
+  CHECK(!cpkt_opcua_client_MonitoredItems_createEvent_typed(
+      client, state.sub_id, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &item, &failed,
+      NULL, monitored_deleted, &result));
+  CHECK(failed.deleted == 1);
+#endif
+  CHECK(result.statusCode && !result.monitoredItemId &&
+        result.filterResult.encoding == CPKT_OPCUA_EXTENSIONOBJECT_DECODED &&
+        result.filterResult.content.decoded.type ==
+            cpkt_opcua_type_at(CPKT_OPCUA_TYPES_EVENTFILTERRESULT));
+  {
+    cpkt_opcua_EventFilterResult *diagnostic =
+        result.filterResult.content.decoded.data;
+    CHECK(diagnostic && diagnostic->selectClauseResultsSize == 4 &&
+          diagnostic->selectClauseResults[0] &&
+          !diagnostic->selectClauseResults[1] &&
+          !diagnostic->selectClauseResults[2] &&
+          !diagnostic->selectClauseResults[3]);
+  }
+  cpkt_opcua_MonitoredItemCreateResult_clear(&result);
+  CHECK(!cpkt_opcua_client_subscription_delete_single(client, state.sub_id));
+  CHECK(state.subscription_deleted == 1);
 }
 void cpkt_types_test_callbacks(cpkt_opcua_client *client, void *peer) {
   callback_state state, failed, events, second;
@@ -291,4 +572,6 @@ void cpkt_types_test_callbacks(cpkt_opcua_client *client, void *peer) {
   CHECK(second.subscription_deleted == 1);
   cpkt_opcua_DataValue_clear(&state.copy);
   cpkt_opcua_CreateMonitoredItemsResponse_clear(&events.response);
+  default_parity();
+  single_items(client, peer);
 }
