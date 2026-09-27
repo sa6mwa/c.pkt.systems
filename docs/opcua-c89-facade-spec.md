@@ -345,10 +345,63 @@ batch creation share a typed entry point with an explicit event selector;
 no event fields or nested values are discarded. Single-item monitored-item
 creation helpers and native default factories are also exposed; their ownership
 rules are described below. Complete async attribute/header bindings are
-described below. Other core client configuration/helpers remain separate
-pending entries.
+described below. Client configuration and remaining datatype/connection-attribute
+helpers remain separate pending entries.
 Existing native-peer, integration, allocation-failure and destruction tests
 exercise these bindings; coverage classification does not add new behavior.
+
+### Core client connections, discovery, sessions and timers
+
+The generated `cpkt_opcua_client_<native suffix>_typed` bindings expose 24
+public core client operations: synchronous/asynchronous connection and
+disconnection, SecureChannel-only operations, current-session activation,
+session transfer, authentication-token retrieval, full client state, iteration,
+interrupt-driven execution, reverse connection listening, endpoint/server
+discovery, and namespace lookup/registration. They call the corresponding
+native operations without adding discovery or changing authentication policy.
+`connectUsername_typed` preserves `allowNonePolicyPassword`; unlike the older
+convenience connection helper, it does not enable cleartext password policies.
+Only `connect_typed` and `connectAsync_typed` inherit native NULL-URL reuse.
+
+`SecureChannelState` and `SessionState` expose every native enum value; all
+`getState_typed` outputs are optional. A valid state query returns Good while
+reporting native connection status separately. `run_iterate_typed` preserves
+native errors, including BadConnectionClosed during asynchronous disconnect.
+
+Discovery returns complete owned arrays and nested records. Required outputs
+must be empty before use; release them with `cpkt_opcua_array_delete` and the
+matching generated descriptor. A native or conversion failure leaves the
+array NULL and count zero. Namespace URI and session-token outputs are owned
+and use their corresponding type clear operations. Namespace index outputs
+remain unchanged on failure; counted URI inputs preserve embedded NUL bytes.
+
+Session transfer copies the authentication token and nonce before returning,
+including asynchronous submission. The recipient must have no session and use
+the original user identity and matching endpoint/token policies. Native
+SecureChannel-only asynchronous connection does not discover those policies;
+the caller must configure them explicitly. The integration test prepares that
+public native endpoint configuration, then transfers and reads through both
+synchronous and asynchronous paths. Configuration bindings are still separate
+pending coverage; this test setup does not count as a C89 configuration API.
+
+The four timer bindings retain native names, all 64 bits of DateTime/IDs, the
+original facade client, and application context. The native EventLoop is the
+only scheduler. One-shot context lives until dispatch, removal or destruction;
+repeated context lives until removal or destruction. Changing a one-shot to a
+repeated timer retains that context. Callbacks may change/remove timers and
+submit async work, but must not destroy their client or recursively iterate its
+EventLoop. Equal deadlines have no insertion-order guarantee. Client destruction
+preserves native due-callback dispatch while disconnecting, then frees bridge
+state. With a caller-owned external EventLoop it removes only its remaining
+timers, retaining the loop and unrelated application timers.
+
+Strict C89 static/shared and deterministic allocation-failure tests cover full
+endpoint/application discovery records, server-network discovery status parity,
+namespace ownership, session transfer and reactivation, reverse connections,
+timer reentrancy, complete IDs, interrupt registration/cleanup, and native
+destruction timing. The peer does not enable multicast discovery, so
+FindServersOnNetwork exercises native rejection/status behavior there. Schema
+tests separately cover complete ServerOnNetwork record conversion.
 
 ### Single monitored items and native defaults
 

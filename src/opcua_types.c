@@ -939,6 +939,7 @@ cpkt_opcua_server_write_typed(cpkt_opcua_server *server,
 }
 
 #include "opcua_callbacks_impl.h"
+#include "opcua_client_impl.h"
 #include "opcua_plugins_impl.h"
 
 #include "opcua_util_impl.h"

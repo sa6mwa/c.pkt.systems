@@ -87,4 +87,17 @@ struct cpkt_external_observed {
 };
 unsigned int cpkt_types_peer_external(void *server, unsigned int id,
                                       struct cpkt_external_observed *out);
+void cpkt_types_peer_state(void *client, unsigned int *values);
+unsigned int cpkt_types_peer_session_endpoint(void *recipient, void *donor,
+                                              const char *url);
+unsigned int cpkt_types_peer_discovery(void *client, const char *url, int kind,
+                                       unsigned char **bytes, size_t *length,
+                                       size_t *count);
+unsigned int cpkt_types_peer_username_status(const char *url);
+unsigned int cpkt_types_peer_delete_timer(const char *url, unsigned int *calls);
+void *cpkt_types_peer_external_loop(void *client, unsigned int *calls);
+void cpkt_types_peer_external_loop_free(void *loop);
+unsigned short cpkt_types_peer_port(void);
+unsigned int cpkt_types_peer_reverse(void *peer, unsigned short port,
+                                     int remove);
 #endif

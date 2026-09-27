@@ -165,6 +165,7 @@ for required in \
   include/cpkt/opcua_callbacks.h \
   src/opcua_internal.h \
   src/opcua_callbacks_impl.h \
+  src/opcua_client_impl.h \
   src/opcua_map_impl.h \
   src/opcua_util_impl.h \
   src/opcua_identifiers_impl.h \
@@ -185,6 +186,7 @@ for required in \
   tools/opcua/producer_emitter.py \
   tools/opcua/creation_emitter.py \
   tools/opcua/async_client_emitter.py \
+  tools/opcua/core_client_emitter.py \
   tools/opcua/client_emitter.py \
   tools/opcua/node_emitter.py \
   tools/opcua/public_api.py \
@@ -201,6 +203,7 @@ for required in \
   tests/opcua_creation_test.c \
   tests/opcua_external_test.c \
   tests/opcua_async_client_test.c \
+  tests/opcua_core_client_test.c \
   tests/opcua_client_test.c \
   tests/opcua_nodes_test.c \
   tests/opcua_callbacks_test.h \

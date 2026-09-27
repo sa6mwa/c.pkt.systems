@@ -490,6 +490,7 @@ static void test_services(void) {
   CHECK(cpkt_opcua_client_service_read(NULL, &read, &read_response) != 0);
   cpkt_types_test_callbacks(client, peer);
   cpkt_types_test_client(client, peer);
+  cpkt_types_test_core_client(client, peer, endpoint);
   test_async(client, &read);
   cpkt_types_peer_stop(peer);
 }

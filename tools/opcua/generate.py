@@ -38,6 +38,7 @@ shutil.copyfile(Path(__file__).with_name('producer_emitter.py'), scratch / 'prod
 shutil.copyfile(Path(__file__).with_name('creation_emitter.py'), scratch / 'creation_emitter.py')
 shutil.copyfile(Path(__file__).with_name('client_emitter.py'), scratch / 'client_emitter.py')
 shutil.copyfile(Path(__file__).with_name('async_client_emitter.py'), scratch / 'async_client_emitter.py')
+shutil.copyfile(Path(__file__).with_name('core_client_emitter.py'), scratch / 'core_client_emitter.py')
 subprocess.run([sys.executable, str(scratch / 'generate_nodeid_header.py'),
                 str(scratch / 'schema/NodeIds.csv'), str(output / 'nodeids'), 'NS0'], check=True)
 command = [sys.executable, str(script), '--type-bsd',

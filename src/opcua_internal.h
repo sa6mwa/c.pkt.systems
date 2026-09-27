@@ -18,6 +18,8 @@ struct cpkt_opcua_client {
   struct cpkt_opcua_async_context *asyncs;
   struct cpkt_typed_subscription *typed_subscriptions;
   struct cpkt_typed_monitor *typed_monitors;
+  struct cpkt_client_timer *typed_timers;
+  void (*typed_callbacks_clear)(cpkt_opcua_client *, UA_EventLoop *);
 };
 struct cpkt_opcua_server {
   UA_Server *server;

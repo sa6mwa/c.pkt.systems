@@ -52,6 +52,10 @@ behind a callback interface.
 - [x] Expose native single-item data/event monitoring and subscription/item
   defaults, preserving complete notifications, reentrant deletion and the
   native default factory's shallow node ownership with native parity tests.
+- [x] Expose 24 native core client connection, discovery, session and namespace
+  operations, complete state enums, and four native client timer operations;
+  verify synchronous/asynchronous session transfer, reverse connections,
+  complete discovery records, reentrant timers and external-loop cleanup.
 - [x] Expose native server timers and child-node iteration with C89 callback
   arguments, complete 64-bit IDs and reentrant cancellation/cleanup tests.
 - [x] Generate full AccessControl and HistoryDatabase callback records, including

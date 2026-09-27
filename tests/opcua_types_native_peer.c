@@ -5,11 +5,13 @@
 #include <open62541/client_subscriptions.h>
 #include <open62541/plugin/accesscontrol.h>
 #include <open62541/plugin/historydatabase.h>
+#include <open62541/plugin/log_stdout.h>
 #include <open62541/plugin/nodestore.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
 #include <open62541/util.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -311,6 +313,7 @@ struct peer {
   pthread_mutex_t lock;
   int running;
   unsigned int history_pages[3], history_releases[3];
+  UA_UInt64 reverse_id;
 };
 unsigned int cpkt_types_peer_event(void *arg) {
   struct peer *peer = (struct peer *)arg;
@@ -1988,6 +1991,198 @@ UA_StatusCode __wrap_UA_Client_readValueAttribute_async(
     async_conversion_callback = NULL;
     async_conversion_context = NULL;
   }
+  return status;
+}
+#endif
+
+/* Independent native observations for the full core client boundary. */
+void cpkt_types_peer_state(void *client, unsigned int *values) {
+  UA_SecureChannelState channel;
+  UA_SessionState session;
+  UA_StatusCode status;
+  UA_Client_getState(client, &channel, &session, &status);
+  values[0] = (unsigned int)channel;
+  values[1] = (unsigned int)session;
+  values[2] = status;
+}
+unsigned int cpkt_types_peer_discovery(void *client, const char *url, int kind,
+                                       unsigned char **bytes, size_t *length,
+                                       size_t *count) {
+  void *records = NULL;
+  const UA_DataType *type;
+  UA_String missing = UA_STRING("missing-uri");
+  UA_String locale = UA_STRING("en");
+  UA_StatusCode status;
+  *count = 0;
+  *bytes = NULL;
+  *length = 0;
+  if (kind == 0) {
+    type = &UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION];
+    status = UA_Client_getEndpoints(client, url, count,
+                                    (UA_EndpointDescription **)&records);
+  } else if (kind == 1 || kind == 3) {
+    type = &UA_TYPES[UA_TYPES_APPLICATIONDESCRIPTION];
+    status = UA_Client_findServers(
+        client, url, kind == 3 ? 1 : 0, kind == 3 ? &missing : NULL,
+        kind == 3 ? 1 : 0, kind == 3 ? &locale : NULL, count,
+        (UA_ApplicationDescription **)&records);
+  } else {
+    type = &UA_TYPES[UA_TYPES_SERVERONNETWORK];
+    status = UA_Client_findServersOnNetwork(
+        client, url, kind == 4 ? 1 : 0, kind == 4 ? 1 : 0, kind == 4 ? 1 : 0,
+        kind == 4 ? &missing : NULL, count, (UA_ServerOnNetwork **)&records);
+  }
+  if (!status) {
+    UA_Variant value;
+    UA_ByteString encoded = UA_BYTESTRING_NULL;
+    UA_Variant_init(&value);
+    UA_Variant_setArray(&value, records, *count, type);
+    status =
+        UA_encodeBinary(&value, &UA_TYPES[UA_TYPES_VARIANT], &encoded, NULL);
+    *bytes = encoded.data;
+    *length = encoded.length;
+  }
+  if (records)
+    UA_Array_delete(records, *count, type);
+  return status;
+}
+unsigned int cpkt_types_peer_username_status(const char *url) {
+  UA_Client *client = UA_Client_new();
+  if (!client)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  UA_StatusCode status =
+      UA_Client_connectUsername(client, url, "user", "password");
+  UA_Client_delete(client);
+  return status;
+}
+unsigned int cpkt_types_peer_session_endpoint(void *recipient, void *donor,
+                                              const char *url) {
+  UA_ClientConfig *target = UA_Client_getConfig(recipient);
+  UA_EndpointDescription *endpoints = NULL;
+  size_t count = 0;
+  UA_StatusCode status = UA_Client_getEndpoints(donor, url, &count, &endpoints);
+  if (status)
+    return status;
+  status = UA_STATUSCODE_BADNOTFOUND;
+  for (size_t i = 0; i < count; ++i) {
+    if (endpoints[i].securityMode != UA_MESSAGESECURITYMODE_NONE)
+      continue;
+    for (size_t j = 0; j < endpoints[i].userIdentityTokensSize; ++j) {
+      if (endpoints[i].userIdentityTokens[j].tokenType !=
+          UA_USERTOKENTYPE_ANONYMOUS)
+        continue;
+      UA_EndpointDescription_clear(&target->endpoint);
+      status = UA_EndpointDescription_copy(&endpoints[i], &target->endpoint);
+      break;
+    }
+    if (!status)
+      break;
+  }
+  UA_Array_delete(endpoints, count, &UA_TYPES[UA_TYPES_ENDPOINTDESCRIPTION]);
+  return status;
+}
+static void native_delete_timer(UA_Client *client, void *data) {
+  unsigned int *calls = data;
+  if (!client)
+    abort();
+  ++*calls;
+}
+unsigned int cpkt_types_peer_delete_timer(const char *url,
+                                          unsigned int *calls) {
+  UA_Client *client = UA_Client_new();
+  if (!client)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  *calls = 0;
+  UA_StatusCode status = UA_Client_connect(client, url);
+  if (!status)
+    status =
+        UA_Client_addTimedCallback(client, native_delete_timer, calls, 0, NULL);
+  UA_Client_delete(client);
+  return status;
+}
+static void external_independent_timer(void *application, void *data) {
+  (void)application;
+  ++*(unsigned int *)data;
+}
+void *cpkt_types_peer_external_loop(void *client, unsigned int *calls) {
+  UA_ClientConfig *config = UA_Client_getConfig(client);
+  UA_EventLoop *loop = config->eventLoop;
+  config->externalEventLoop = true;
+  loop->logger = UA_Log_Stdout;
+  if (loop->start(loop) ||
+      loop->addTimer(loop, external_independent_timer, NULL, calls, 0.0,
+                     &(UA_DateTime){0}, UA_TIMERPOLICY_ONCE, NULL))
+    abort();
+  return loop;
+}
+void cpkt_types_peer_external_loop_free(void *arg) {
+  UA_EventLoop *loop = arg;
+  if (loop->run(loop, 0))
+    abort();
+  loop->stop(loop);
+  while (loop->state != UA_EVENTLOOPSTATE_STOPPED)
+    if (loop->run(loop, 0))
+      abort();
+  loop->free(loop);
+}
+unsigned short cpkt_types_peer_port(void) {
+  struct sockaddr_in address;
+  socklen_t size = sizeof(address);
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  if (fd < 0 || bind(fd, (struct sockaddr *)&address, size) ||
+      getsockname(fd, (struct sockaddr *)&address, &size))
+    abort();
+  close(fd);
+  return ntohs(address.sin_port);
+}
+unsigned int cpkt_types_peer_reverse(void *arg, unsigned short port,
+                                     int remove) {
+  struct peer *peer = arg;
+  UA_StatusCode status;
+  char endpoint[64];
+  pthread_mutex_lock(&peer->lock);
+  if (remove) {
+    status = UA_Server_removeReverseConnect(peer->server, peer->reverse_id);
+    peer->reverse_id = 0;
+  } else {
+    sprintf(endpoint, "opc.tcp://127.0.0.1:%u", (unsigned int)port);
+    status = UA_Server_addReverseConnect(peer->server, UA_STRING(endpoint),
+                                         NULL, NULL, &peer->reverse_id);
+  }
+  pthread_mutex_unlock(&peer->lock);
+  return status;
+}
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+UA_StatusCode __real_UA_Client_getSessionAuthenticationToken(UA_Client *,
+                                                             UA_NodeId *,
+                                                             UA_ByteString *);
+UA_StatusCode __wrap_UA_Client_getSessionAuthenticationToken(
+    UA_Client *client, UA_NodeId *token, UA_ByteString *nonce) {
+  UA_StatusCode status =
+      __real_UA_Client_getSessionAuthenticationToken(client, token, nonce);
+  client_conversion_arm(7, status);
+  return status;
+}
+UA_StatusCode __real_UA_Client_getEndpoints(UA_Client *, const char *, size_t *,
+                                            UA_EndpointDescription **);
+UA_StatusCode __wrap_UA_Client_getEndpoints(UA_Client *client, const char *url,
+                                            size_t *count,
+                                            UA_EndpointDescription **values) {
+  UA_StatusCode status =
+      __real_UA_Client_getEndpoints(client, url, count, values);
+  client_conversion_arm(8, status);
+  return status;
+}
+UA_StatusCode __real_UA_Client_getNamespaceUri(UA_Client *, UA_UInt16,
+                                               UA_String *);
+UA_StatusCode __wrap_UA_Client_getNamespaceUri(UA_Client *client,
+                                               UA_UInt16 index,
+                                               UA_String *uri) {
+  UA_StatusCode status = __real_UA_Client_getNamespaceUri(client, index, uri);
+  client_conversion_arm(9, status);
   return status;
 }
 #endif

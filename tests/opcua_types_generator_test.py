@@ -25,6 +25,7 @@ import producer_emitter
 import creation_emitter
 import client_emitter
 import async_client_emitter
+import core_client_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -157,6 +158,43 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         else:
             raise AssertionError('Changed asynchronous client signature was accepted')
     asynchronous.write_text(original_async)
+    client_core = changed_headers / 'client.h'
+    client_core.chmod(0o644)
+    original_core = client_core.read_text()
+    core_public, core_private = core_client_emitter.emit_core_client(index, changed_headers)
+    assert len(core_client_emitter.declarations(original_core)) == 28
+    for _, name, _ in core_client_emitter.declarations(original_core):
+        assert 'cpkt_opcua_client_' + name + '_typed' in '\n'.join(core_public)
+        if name not in core_client_emitter.TIMERS:
+            assert 'UA_Client_' + name + '(' in '\n'.join(core_private)
+    for old, new in (
+        ('UA_Client_getEndpoints(', 'UA_Client_getEndpointsChanged('),
+        ('UA_EndpointDescription** endpointDescriptions', 'UA_EndpointDescription* endpointDescriptions'),
+        ('const UA_String *listenHostnames', 'const UA_NodeId *listenHostnames'),
+        ('UA_SecureChannelState *channelState', 'UA_StatusCode *channelState'),
+        ('UA_UInt64 *callbackId', 'UA_UInt32 *callbackId'),
+        ('(*UA_ClientCallback)', '(*UA_ClientCallbackChanged)'),
+    ):
+        assert old in original_core
+        client_core.write_text(original_core.replace(old, new, 1))
+        try:
+            core_client_emitter.emit_core_client(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed core client signature was accepted')
+    client_core.write_text(original_core)
+    common_core = changed_headers / 'common.h'
+    common_core.chmod(0o644)
+    original_common = common_core.read_text()
+    common_core.write_text(original_common.replace('} UA_SessionState;', '} UA_SessionStateChanged;', 1))
+    try:
+        core_client_emitter.emit_core_client(index, changed_headers)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Missing native session-state enum was accepted')
+    common_core.write_text(original_common)
     server = changed_headers / 'server.h'
     server.chmod(0o644)
     original_server = server.read_text()

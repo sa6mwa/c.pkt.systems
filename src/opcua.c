@@ -8903,12 +8903,18 @@ void cpkt_opcua_client_free(cpkt_opcua_client *client) {
   struct cpkt_opcua_monitor_context *next;
   struct cpkt_opcua_async_context *async_context;
   struct cpkt_opcua_async_context *async_next;
+  UA_EventLoop *external_loop = NULL;
 
   if (client == NULL) {
     return;
   }
   if (client->client != NULL) {
+    if (UA_Client_getConfig(client->client)->externalEventLoop)
+      external_loop = UA_Client_getConfig(client->client)->eventLoop;
     UA_Client_delete(client->client);
+    client->client = NULL;
+    if (client->typed_callbacks_clear)
+      client->typed_callbacks_clear(client, external_loop);
   }
   monitor = client->monitors;
   while (monitor != NULL) {
