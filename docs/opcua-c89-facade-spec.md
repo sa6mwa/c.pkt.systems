@@ -126,9 +126,9 @@ does not imply that every such function is already wrapped.
 | Core handles and event loops | `client.h`, `server.h` | First-class wrappers | Small, stable, handle-oriented, already partly covered. |
 | Client connection and discovery | `client.h`, `client_config_default.h` | First-class common wrappers plus native config callback | Endpoint discovery is common; full config is large and security-sensitive. |
 | Read/write attributes | `client_highlevel.h`, `server.h` | First-class generic attribute wrappers | The upstream high-level API maps cleanly to C89 ids, values, and status codes. |
-| Node management | `client_highlevel.h`, `server.h` | First-class wrappers for common node classes; native pass-through for full attributes | Object/variable/method/view/reference helpers are useful; generated attribute structs are large. |
+| Node management | `client_highlevel.h`, `server.h` | Complete typed client node helpers and generated server creation/attribute bindings | Full generated attributes and owned assigned IDs preserve native creation semantics. |
 | Browse and translate | `client.h`, `client_highlevel.h`, `server.h` | First-class wrappers | Browse options and continuation points are central client workflows. |
-| Methods | `client_highlevel.h`, `server.h` | First-class multi-input and multi-output wrappers | Current one-output scalar wrapper is too narrow. |
+| Methods | `client_highlevel.h`, `server.h` | Typed multi-input and multi-output bindings plus full producer callbacks | Generated Variant arrays preserve nested values and exact 64-bit arguments. |
 | Subscriptions | `client_subscriptions.h` | First-class wrappers | Data-change, event, modify, delete, and monitoring-mode APIs are core client workflows. |
 | Value and data model | `types.h`, `types_generated.h` | First-class C89 value layer with native variant escape hatch | Scalars, arrays, strings, byte strings, GUIDs, time, localized text, qualified names, status, data values, and node ids must be usable from C89. |
 | Generated request/response services | `client.h`, `types_generated.h` | Generated C89 types, 14 synchronous/asynchronous public services and specialized subscription service bindings | Reuse upstream parsing and declarations; convert recursively without changing the upstream ABI. |
@@ -346,6 +346,50 @@ no event fields or nested values are discarded. Single-item creation helpers,
 attribute callbacks and other client helpers remain separate pending entries.
 Existing native-peer, integration, allocation-failure and destruction tests
 exercise these bindings; coverage classification does not add new behavior.
+
+### Synchronous high-level client bindings
+
+Every enabled declaration in upstream `client_highlevel.h` is generated as
+`cpkt_opcua_client_<upstream-name>_typed`: 75 functions covering attributes,
+all eight node classes, references, browse/continuations, path translation,
+methods, namespace lookup and raw/modified/event history reads and updates.
+Generation rejects unknown argument shapes and callback signature changes.
+Each binding invokes its corresponding native entry point; service behavior,
+client serialization and remote state remain open62541's responsibility.
+
+Inputs borrow until return. Owned record outputs must start empty and use
+their generated clear function. Array outputs use `cpkt_opcua_array_delete`
+with the matching descriptor. Record-returning native functions instead take
+an owned C89 result pointer and return conversion status; the result retains
+the native service/operation status. Mutable-spelled history update values,
+access-level values and namespace URI arguments are borrowed inputs.
+`NamespaceGetIndex` leaves its index output unchanged on failure.
+
+Method output count and array are optional as a pair: if either pointer is
+NULL, upstream discards outputs and the other caller output is unchanged.
+Non-Bad results such as `GoodClamped` still return owned method outputs.
+Attribute reads retain values for plain Good with lower status-information bits.
+The native read helper rejects other top-16 status codes, including `GoodClamped`
+and Uncertain/Bad: those statuses are returned with no value, as upstream does.
+Node creation accepts an optional assigned-ID output. If conversion of that
+output fails after remote creation, the remote node remains created. Recover
+through the requested ID or browsing; the facade does not invent a rollback
+service or hide this failure behind another network operation.
+
+`cpkt_opcua_HistoricalIteratorCallback` receives the original client/context
+and one converted native page at a time, including full modified-history
+metadata or event fields. Callback arguments borrow until return. Copy them
+to retain data, and do not destroy the client within a callback. The facade
+does not accumulate history pages. Returning false or a conversion failure
+stops through the native iterator and releases continuation points; conversion
+failure skips the application callback and is returned after native cleanup.
+Child iteration similarly preserves native ordering and status-bit aggregation:
+a callback error does not cause native iteration to stop.
+
+Strict C89 static/shared tests exercise every entry point against an independent
+native server. Tests cover exact 64-bit limits, optional outputs, native
+read-only errors, history pages and continuation release, and conversion
+allocation failures after native results have been produced.
 
 ### Value-source and method producers
 

@@ -1,6 +1,7 @@
 #include "opcua_internal.h"
 #include "opcua_types_internal.h"
 #include <limits.h>
+#include <open62541/client_highlevel.h>
 #include <open62541/client_highlevel_async.h>
 #include <open62541/client_subscriptions.h>
 #include <open62541/util.h>
@@ -32,6 +33,9 @@ typedef char cpkt_guid_layout[(sizeof(cpkt_opcua_Guid) == sizeof(UA_Guid) &&
 
 static UA_StatusCode cpkt_convert(const void *, void *, const cpkt_opcua_Type *,
                                   int, unsigned int);
+static const cpkt_opcua_Type *cpkt_valid_type(const cpkt_opcua_Type *);
+static UA_StatusCode cpkt_array(const void *, size_t, void **,
+                                const cpkt_opcua_Type *, int, unsigned int);
 static UA_StatusCode
 cpkt_typed_service(cpkt_opcua_client *, const void *, void *,
                    const cpkt_opcua_Type *, const cpkt_opcua_Type *,

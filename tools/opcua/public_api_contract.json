@@ -154,31 +154,38 @@
     },
     "UA_Client_HistoryRead_events": {
       "declaration": "UA_StatusCode UA_Client_HistoryRead_events ( UA_Client * client , const UA_NodeId * nodeId , const UA_HistoricalIteratorCallback callback , UA_DateTime startTime , UA_DateTime endTime , UA_String indexRange , const UA_EventFilter filter , UA_UInt32 numValuesPerNode , UA_TimestampsToReturn timestampsToReturn , void * callbackContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_HistoryRead_events_typed"
     },
     "UA_Client_HistoryRead_modified": {
       "declaration": "UA_StatusCode UA_Client_HistoryRead_modified ( UA_Client * client , const UA_NodeId * nodeId , const UA_HistoricalIteratorCallback callback , UA_DateTime startTime , UA_DateTime endTime , UA_String indexRange , UA_Boolean returnBounds , UA_UInt32 numValuesPerNode , UA_TimestampsToReturn timestampsToReturn , void * callbackContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_HistoryRead_modified_typed"
     },
     "UA_Client_HistoryRead_raw": {
       "declaration": "UA_StatusCode UA_Client_HistoryRead_raw ( UA_Client * client , const UA_NodeId * nodeId , const UA_HistoricalIteratorCallback callback , UA_DateTime startTime , UA_DateTime endTime , UA_String indexRange , UA_Boolean returnBounds , UA_UInt32 numValuesPerNode , UA_TimestampsToReturn timestampsToReturn , void * callbackContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_HistoryRead_raw_typed"
     },
     "UA_Client_HistoryUpdate_deleteRaw": {
       "declaration": "UA_StatusCode UA_Client_HistoryUpdate_deleteRaw ( UA_Client * client , const UA_NodeId * nodeId , UA_DateTime startTimestamp , UA_DateTime endTimestamp )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_HistoryUpdate_deleteRaw_typed"
     },
     "UA_Client_HistoryUpdate_insert": {
       "declaration": "UA_StatusCode UA_Client_HistoryUpdate_insert ( UA_Client * client , const UA_NodeId * nodeId , UA_DataValue * value )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_HistoryUpdate_insert_typed"
     },
     "UA_Client_HistoryUpdate_replace": {
       "declaration": "UA_StatusCode UA_Client_HistoryUpdate_replace ( UA_Client * client , const UA_NodeId * nodeId , UA_DataValue * value )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_HistoryUpdate_replace_typed"
     },
     "UA_Client_HistoryUpdate_update": {
       "declaration": "UA_StatusCode UA_Client_HistoryUpdate_update ( UA_Client * client , const UA_NodeId * nodeId , UA_DataValue * value )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_HistoryUpdate_update_typed"
     },
     "UA_Client_MonitoredItem_getContext": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItem_getContext ( UA_Client * client , UA_UInt32 subscriptionId , UA_UInt32 monitoredItemId , void * * monContext )",
@@ -265,7 +272,8 @@
     },
     "UA_Client_NamespaceGetIndex": {
       "declaration": "UA_StatusCode UA_Client_NamespaceGetIndex ( UA_Client * client , UA_String * namespaceUri , UA_UInt16 * namespaceIndex )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_NamespaceGetIndex_typed"
     },
     "UA_Client_Service_addNodes": {
       "declaration": "UA_AddNodesResponse UA_Client_Service_addNodes ( UA_Client * client , const UA_AddNodesRequest req )",
@@ -405,7 +413,8 @@
     },
     "UA_Client_addDataTypeNode": {
       "declaration": "UA_StatusCode UA_Client_addDataTypeNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_DataTypeAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addDataTypeNode_typed"
     },
     "UA_Client_addDataTypeNode_async": {
       "declaration": "UA_StatusCode UA_Client_addDataTypeNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_DataTypeAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -413,7 +422,8 @@
     },
     "UA_Client_addMethodNode": {
       "declaration": "UA_StatusCode UA_Client_addMethodNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_MethodAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addMethodNode_typed"
     },
     "UA_Client_addMethodNode_async": {
       "declaration": "UA_StatusCode UA_Client_addMethodNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_MethodAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -425,7 +435,8 @@
     },
     "UA_Client_addObjectNode": {
       "declaration": "UA_StatusCode UA_Client_addObjectNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_NodeId typeDefinition , const UA_ObjectAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addObjectNode_typed"
     },
     "UA_Client_addObjectNode_async": {
       "declaration": "UA_StatusCode UA_Client_addObjectNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_NodeId typeDefinition , const UA_ObjectAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -433,7 +444,8 @@
     },
     "UA_Client_addObjectTypeNode": {
       "declaration": "UA_StatusCode UA_Client_addObjectTypeNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_ObjectTypeAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addObjectTypeNode_typed"
     },
     "UA_Client_addObjectTypeNode_async": {
       "declaration": "UA_StatusCode UA_Client_addObjectTypeNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_ObjectTypeAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -441,11 +453,13 @@
     },
     "UA_Client_addReference": {
       "declaration": "UA_StatusCode UA_Client_addReference ( UA_Client * client , const UA_NodeId sourceNodeId , const UA_NodeId referenceTypeId , UA_Boolean isForward , const UA_String targetServerUri , const UA_ExpandedNodeId targetNodeId , UA_NodeClass targetNodeClass )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addReference_typed"
     },
     "UA_Client_addReferenceTypeNode": {
       "declaration": "UA_StatusCode UA_Client_addReferenceTypeNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_ReferenceTypeAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addReferenceTypeNode_typed"
     },
     "UA_Client_addReferenceTypeNode_async": {
       "declaration": "UA_StatusCode UA_Client_addReferenceTypeNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_ReferenceTypeAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -461,7 +475,8 @@
     },
     "UA_Client_addVariableNode": {
       "declaration": "UA_StatusCode UA_Client_addVariableNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_NodeId typeDefinition , const UA_VariableAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addVariableNode_typed"
     },
     "UA_Client_addVariableNode_async": {
       "declaration": "UA_StatusCode UA_Client_addVariableNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_NodeId typeDefinition , const UA_VariableAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -469,7 +484,8 @@
     },
     "UA_Client_addVariableTypeNode": {
       "declaration": "UA_StatusCode UA_Client_addVariableTypeNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_VariableTypeAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addVariableTypeNode_typed"
     },
     "UA_Client_addVariableTypeNode_async": {
       "declaration": "UA_StatusCode UA_Client_addVariableTypeNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_VariableTypeAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -477,7 +493,8 @@
     },
     "UA_Client_addViewNode": {
       "declaration": "UA_StatusCode UA_Client_addViewNode ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_ViewAttributes attr , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_addViewNode_typed"
     },
     "UA_Client_addViewNode_async": {
       "declaration": "UA_StatusCode UA_Client_addViewNode_async ( UA_Client * client , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_ViewAttributes attr , UA_NodeId * outNewNodeId , UA_ClientAsyncAddNodesCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -485,15 +502,18 @@
     },
     "UA_Client_browse": {
       "declaration": "UA_BrowseResult UA_Client_browse ( UA_Client * client , const UA_ViewDescription * view , UA_UInt32 requestedMaxReferencesPerNode , const UA_BrowseDescription * nodesToBrowse )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_browse_typed"
     },
     "UA_Client_browseNext": {
       "declaration": "UA_BrowseResult UA_Client_browseNext ( UA_Client * client , UA_Boolean releaseContinuationPoint , UA_ByteString continuationPoint )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_browseNext_typed"
     },
     "UA_Client_call": {
       "declaration": "UA_StatusCode UA_Client_call ( UA_Client * client , const UA_NodeId objectId , const UA_NodeId methodId , size_t inputSize , const UA_Variant * input , size_t * outputSize , UA_Variant * * output )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_call_typed"
     },
     "UA_Client_call_async": {
       "declaration": "UA_StatusCode UA_Client_call_async ( UA_Client * client , const UA_NodeId objectId , const UA_NodeId methodId , size_t inputSize , const UA_Variant * input , UA_ClientAsyncCallCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -537,11 +557,13 @@
     },
     "UA_Client_deleteNode": {
       "declaration": "UA_StatusCode UA_Client_deleteNode ( UA_Client * client , const UA_NodeId nodeId , UA_Boolean deleteTargetReferences )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_deleteNode_typed"
     },
     "UA_Client_deleteReference": {
       "declaration": "UA_StatusCode UA_Client_deleteReference ( UA_Client * client , const UA_NodeId sourceNodeId , const UA_NodeId referenceTypeId , UA_Boolean isForward , const UA_ExpandedNodeId targetNodeId , UA_Boolean deleteBidirectional )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_deleteReference_typed"
     },
     "UA_Client_disconnect": {
       "declaration": "UA_StatusCode UA_Client_disconnect ( UA_Client * client )",
@@ -573,7 +595,8 @@
     },
     "UA_Client_forEachChildNodeCall": {
       "declaration": "UA_StatusCode UA_Client_forEachChildNodeCall ( UA_Client * client , UA_NodeId parentNodeId , UA_NodeIteratorCallback callback , void * handle )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_forEachChildNodeCall_typed"
     },
     "UA_Client_getConfig": {
       "declaration": "UA_ClientConfig * UA_Client_getConfig ( UA_Client * client )",
@@ -625,11 +648,13 @@
     },
     "UA_Client_read": {
       "declaration": "UA_DataValue UA_Client_read ( UA_Client * client , const UA_ReadValueId * rvi )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_read_typed"
     },
     "UA_Client_readAccessLevelAttribute": {
       "declaration": "UA_StatusCode UA_Client_readAccessLevelAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Byte * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readAccessLevelAttribute_typed"
     },
     "UA_Client_readAccessLevelAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readAccessLevelAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadAccessLevelAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -637,7 +662,8 @@
     },
     "UA_Client_readAccessLevelExAttribute": {
       "declaration": "UA_StatusCode UA_Client_readAccessLevelExAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_UInt32 * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readAccessLevelExAttribute_typed"
     },
     "UA_Client_readAccessLevelExAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readAccessLevelExAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadAccessLevelExAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -645,7 +671,8 @@
     },
     "UA_Client_readArrayDimensionsAttribute": {
       "declaration": "UA_StatusCode UA_Client_readArrayDimensionsAttribute ( UA_Client * client , const UA_NodeId nodeId , size_t * outArrayDimensionsSize , UA_UInt32 * * outArrayDimensions )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readArrayDimensionsAttribute_typed"
     },
     "UA_Client_readArrayDimensionsAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readArrayDimensionsAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientReadArrayDimensionsAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -657,7 +684,8 @@
     },
     "UA_Client_readBrowseNameAttribute": {
       "declaration": "UA_StatusCode UA_Client_readBrowseNameAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_QualifiedName * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readBrowseNameAttribute_typed"
     },
     "UA_Client_readBrowseNameAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readBrowseNameAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadBrowseNameAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -665,7 +693,8 @@
     },
     "UA_Client_readContainsNoLoopsAttribute": {
       "declaration": "UA_StatusCode UA_Client_readContainsNoLoopsAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Boolean * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readContainsNoLoopsAttribute_typed"
     },
     "UA_Client_readContainsNoLoopsAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readContainsNoLoopsAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadContainsNoLoopsAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -673,7 +702,8 @@
     },
     "UA_Client_readDataTypeAttribute": {
       "declaration": "UA_StatusCode UA_Client_readDataTypeAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_NodeId * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readDataTypeAttribute_typed"
     },
     "UA_Client_readDataTypeAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readDataTypeAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadDataTypeAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -681,11 +711,13 @@
     },
     "UA_Client_readDatatypeDefinitionAttribute": {
       "declaration": "UA_StatusCode UA_Client_readDatatypeDefinitionAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_StructureDefinition * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readDatatypeDefinitionAttribute_typed"
     },
     "UA_Client_readDescriptionAttribute": {
       "declaration": "UA_StatusCode UA_Client_readDescriptionAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_LocalizedText * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readDescriptionAttribute_typed"
     },
     "UA_Client_readDescriptionAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readDescriptionAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadDescriptionAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -693,7 +725,8 @@
     },
     "UA_Client_readDisplayNameAttribute": {
       "declaration": "UA_StatusCode UA_Client_readDisplayNameAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_LocalizedText * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readDisplayNameAttribute_typed"
     },
     "UA_Client_readDisplayNameAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readDisplayNameAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadDisplayNameAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -701,7 +734,8 @@
     },
     "UA_Client_readEventNotifierAttribute": {
       "declaration": "UA_StatusCode UA_Client_readEventNotifierAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Byte * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readEventNotifierAttribute_typed"
     },
     "UA_Client_readEventNotifierAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readEventNotifierAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadEventNotifierAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -709,7 +743,8 @@
     },
     "UA_Client_readExecutableAttribute": {
       "declaration": "UA_StatusCode UA_Client_readExecutableAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Boolean * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readExecutableAttribute_typed"
     },
     "UA_Client_readExecutableAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readExecutableAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadExecutableAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -717,7 +752,8 @@
     },
     "UA_Client_readHistorizingAttribute": {
       "declaration": "UA_StatusCode UA_Client_readHistorizingAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Boolean * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readHistorizingAttribute_typed"
     },
     "UA_Client_readHistorizingAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readHistorizingAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadHistorizingAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -725,7 +761,8 @@
     },
     "UA_Client_readInverseNameAttribute": {
       "declaration": "UA_StatusCode UA_Client_readInverseNameAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_LocalizedText * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readInverseNameAttribute_typed"
     },
     "UA_Client_readInverseNameAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readInverseNameAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadInverseNameAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -733,7 +770,8 @@
     },
     "UA_Client_readIsAbstractAttribute": {
       "declaration": "UA_StatusCode UA_Client_readIsAbstractAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Boolean * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readIsAbstractAttribute_typed"
     },
     "UA_Client_readIsAbstractAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readIsAbstractAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadIsAbstractAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -741,7 +779,8 @@
     },
     "UA_Client_readMinimumSamplingIntervalAttribute": {
       "declaration": "UA_StatusCode UA_Client_readMinimumSamplingIntervalAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Double * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readMinimumSamplingIntervalAttribute_typed"
     },
     "UA_Client_readMinimumSamplingIntervalAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readMinimumSamplingIntervalAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadMinimumSamplingIntervalAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -749,7 +788,8 @@
     },
     "UA_Client_readNodeClassAttribute": {
       "declaration": "UA_StatusCode UA_Client_readNodeClassAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_NodeClass * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readNodeClassAttribute_typed"
     },
     "UA_Client_readNodeClassAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readNodeClassAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadNodeClassAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -757,11 +797,13 @@
     },
     "UA_Client_readNodeIdAttribute": {
       "declaration": "UA_StatusCode UA_Client_readNodeIdAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_NodeId * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readNodeIdAttribute_typed"
     },
     "UA_Client_readSymmetricAttribute": {
       "declaration": "UA_StatusCode UA_Client_readSymmetricAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Boolean * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readSymmetricAttribute_typed"
     },
     "UA_Client_readSymmetricAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readSymmetricAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadSymmetricAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -769,7 +811,8 @@
     },
     "UA_Client_readUserAccessLevelAttribute": {
       "declaration": "UA_StatusCode UA_Client_readUserAccessLevelAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Byte * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readUserAccessLevelAttribute_typed"
     },
     "UA_Client_readUserAccessLevelAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readUserAccessLevelAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadUserAccessLevelAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -777,7 +820,8 @@
     },
     "UA_Client_readUserExecutableAttribute": {
       "declaration": "UA_StatusCode UA_Client_readUserExecutableAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Boolean * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readUserExecutableAttribute_typed"
     },
     "UA_Client_readUserExecutableAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readUserExecutableAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadUserExecutableAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -785,7 +829,8 @@
     },
     "UA_Client_readUserWriteMaskAttribute": {
       "declaration": "UA_StatusCode UA_Client_readUserWriteMaskAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_UInt32 * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readUserWriteMaskAttribute_typed"
     },
     "UA_Client_readUserWriteMaskAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readUserWriteMaskAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadUserWriteMaskAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -793,7 +838,8 @@
     },
     "UA_Client_readValueAttribute": {
       "declaration": "UA_StatusCode UA_Client_readValueAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Variant * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readValueAttribute_typed"
     },
     "UA_Client_readValueAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readValueAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadValueAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -801,7 +847,8 @@
     },
     "UA_Client_readValueRankAttribute": {
       "declaration": "UA_StatusCode UA_Client_readValueRankAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_Int32 * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readValueRankAttribute_typed"
     },
     "UA_Client_readValueRankAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readValueRankAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadValueRankAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -809,7 +856,8 @@
     },
     "UA_Client_readWriteMaskAttribute": {
       "declaration": "UA_StatusCode UA_Client_readWriteMaskAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_UInt32 * out )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_readWriteMaskAttribute_typed"
     },
     "UA_Client_readWriteMaskAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_readWriteMaskAttribute_async ( UA_Client * client , const UA_NodeId nodeId , UA_ClientAsyncReadWriteMaskAttributeCallback callback , void * userdata , UA_UInt32 * requestId )",
@@ -853,15 +901,18 @@
     },
     "UA_Client_translateBrowsePathToNodeIds": {
       "declaration": "UA_BrowsePathResult UA_Client_translateBrowsePathToNodeIds ( UA_Client * client , const UA_BrowsePath * browsePath )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_translateBrowsePathToNodeIds_typed"
     },
     "UA_Client_write": {
       "declaration": "UA_StatusCode UA_Client_write ( UA_Client * client , const UA_WriteValue * wv )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_write_typed"
     },
     "UA_Client_writeAccessLevelAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeAccessLevelAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Byte * newAccessLevel )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeAccessLevelAttribute_typed"
     },
     "UA_Client_writeAccessLevelAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeAccessLevelAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Byte * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -869,7 +920,8 @@
     },
     "UA_Client_writeAccessLevelExAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeAccessLevelExAttribute ( UA_Client * client , const UA_NodeId nodeId , UA_UInt32 * newAccessLevelEx )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeAccessLevelExAttribute_typed"
     },
     "UA_Client_writeAccessLevelExAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeAccessLevelExAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_UInt32 * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -877,11 +929,13 @@
     },
     "UA_Client_writeArrayDimensionsAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeArrayDimensionsAttribute ( UA_Client * client , const UA_NodeId nodeId , size_t newArrayDimensionsSize , const UA_UInt32 * newArrayDimensions )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeArrayDimensionsAttribute_typed"
     },
     "UA_Client_writeBrowseNameAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeBrowseNameAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_QualifiedName * newBrowseName )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeBrowseNameAttribute_typed"
     },
     "UA_Client_writeBrowseNameAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeBrowseNameAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_QualifiedName * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -889,7 +943,8 @@
     },
     "UA_Client_writeContainsNoLoopsAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeContainsNoLoopsAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * newContainsNoLoops )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeContainsNoLoopsAttribute_typed"
     },
     "UA_Client_writeContainsNoLoopsAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeContainsNoLoopsAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -897,7 +952,8 @@
     },
     "UA_Client_writeDataTypeAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeDataTypeAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_NodeId * newDataType )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeDataTypeAttribute_typed"
     },
     "UA_Client_writeDataTypeAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeDataTypeAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_NodeId * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -905,7 +961,8 @@
     },
     "UA_Client_writeDescriptionAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeDescriptionAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_LocalizedText * newDescription )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeDescriptionAttribute_typed"
     },
     "UA_Client_writeDescriptionAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeDescriptionAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_LocalizedText * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -913,7 +970,8 @@
     },
     "UA_Client_writeDisplayNameAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeDisplayNameAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_LocalizedText * newDisplayName )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeDisplayNameAttribute_typed"
     },
     "UA_Client_writeDisplayNameAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeDisplayNameAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_LocalizedText * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -921,7 +979,8 @@
     },
     "UA_Client_writeEventNotifierAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeEventNotifierAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Byte * newEventNotifier )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeEventNotifierAttribute_typed"
     },
     "UA_Client_writeEventNotifierAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeEventNotifierAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Byte * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -929,7 +988,8 @@
     },
     "UA_Client_writeExecutableAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeExecutableAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * newExecutable )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeExecutableAttribute_typed"
     },
     "UA_Client_writeExecutableAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeExecutableAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -937,7 +997,8 @@
     },
     "UA_Client_writeHistorizingAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeHistorizingAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * newHistorizing )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeHistorizingAttribute_typed"
     },
     "UA_Client_writeHistorizingAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeHistorizingAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -945,7 +1006,8 @@
     },
     "UA_Client_writeInverseNameAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeInverseNameAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_LocalizedText * newInverseName )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeInverseNameAttribute_typed"
     },
     "UA_Client_writeInverseNameAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeInverseNameAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_LocalizedText * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -953,7 +1015,8 @@
     },
     "UA_Client_writeIsAbstractAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeIsAbstractAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * newIsAbstract )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeIsAbstractAttribute_typed"
     },
     "UA_Client_writeIsAbstractAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeIsAbstractAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -961,7 +1024,8 @@
     },
     "UA_Client_writeMinimumSamplingIntervalAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeMinimumSamplingIntervalAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Double * newMinInterval )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeMinimumSamplingIntervalAttribute_typed"
     },
     "UA_Client_writeMinimumSamplingIntervalAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeMinimumSamplingIntervalAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Double * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -969,7 +1033,8 @@
     },
     "UA_Client_writeNodeClassAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeNodeClassAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_NodeClass * newNodeClass )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeNodeClassAttribute_typed"
     },
     "UA_Client_writeNodeClassAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeNodeClassAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_NodeClass * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -977,7 +1042,8 @@
     },
     "UA_Client_writeNodeIdAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeNodeIdAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_NodeId * newNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeNodeIdAttribute_typed"
     },
     "UA_Client_writeNodeIdAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeNodeIdAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_NodeId * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -985,7 +1051,8 @@
     },
     "UA_Client_writeSymmetricAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeSymmetricAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * newSymmetric )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeSymmetricAttribute_typed"
     },
     "UA_Client_writeSymmetricAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeSymmetricAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -993,23 +1060,28 @@
     },
     "UA_Client_writeUserAccessLevelAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeUserAccessLevelAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Byte * newUserAccessLevel )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeUserAccessLevelAttribute_typed"
     },
     "UA_Client_writeUserExecutableAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeUserExecutableAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Boolean * newUserExecutable )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeUserExecutableAttribute_typed"
     },
     "UA_Client_writeUserWriteMaskAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeUserWriteMaskAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_UInt32 * newUserWriteMask )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeUserWriteMaskAttribute_typed"
     },
     "UA_Client_writeValueAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeValueAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Variant * newValue )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeValueAttribute_typed"
     },
     "UA_Client_writeValueAttributeEx": {
       "declaration": "UA_StatusCode UA_Client_writeValueAttributeEx ( UA_Client * client , const UA_NodeId nodeId , const UA_DataValue * newValue )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeValueAttributeEx_typed"
     },
     "UA_Client_writeValueAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeValueAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Variant * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -1017,11 +1089,13 @@
     },
     "UA_Client_writeValueAttribute_scalar": {
       "declaration": "UA_StatusCode UA_Client_writeValueAttribute_scalar ( UA_Client * client , const UA_NodeId nodeId , const void * newValue , const UA_DataType * valueType )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeValueAttribute_scalar_typed"
     },
     "UA_Client_writeValueRankAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeValueRankAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_Int32 * newValueRank )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeValueRankAttribute_typed"
     },
     "UA_Client_writeValueRankAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeValueRankAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_Int32 * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -1029,7 +1103,8 @@
     },
     "UA_Client_writeWriteMaskAttribute": {
       "declaration": "UA_StatusCode UA_Client_writeWriteMaskAttribute ( UA_Client * client , const UA_NodeId nodeId , const UA_UInt32 * newWriteMask )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_writeWriteMaskAttribute_typed"
     },
     "UA_Client_writeWriteMaskAttribute_async": {
       "declaration": "UA_StatusCode UA_Client_writeWriteMaskAttribute_async ( UA_Client * client , const UA_NodeId nodeId , const UA_UInt32 * attr , UA_ClientAsyncWriteCallback callback , void * userdata , UA_UInt32 * reqId )",
@@ -3526,7 +3601,8 @@
     },
     "UA_HistoricalIteratorCallback": {
       "declaration": "typedef UA_Boolean ( * UA_HistoricalIteratorCallback ) ( UA_Client * client , const UA_NodeId * nodeId , UA_Boolean moreDataAvailable , const UA_ExtensionObject * data , void * callbackContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_HistoricalIteratorCallback"
     },
     "UA_HistorizingNodeIdSettings": {
       "declaration": "typedef struct { UA_HistoryDataBackend historizingBackend ; size_t maxHistoryDataResponseSize ; UA_HistorizingUpdateStrategy historizingUpdateStrategy ; size_t pollingInterval ; void * userContext ; } UA_HistorizingNodeIdSettings",

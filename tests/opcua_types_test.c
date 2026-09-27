@@ -489,6 +489,7 @@ static void test_services(void) {
   cpkt_opcua_BrowseResponse_clear(&browse_response);
   CHECK(cpkt_opcua_client_service_read(NULL, &read, &read_response) != 0);
   cpkt_types_test_callbacks(client, peer);
+  cpkt_types_test_client(client, peer);
   test_async(client, &read);
   cpkt_types_peer_stop(peer);
 }

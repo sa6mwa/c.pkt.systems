@@ -1,5 +1,6 @@
 #include "opcua_types_peer.h"
 #include <arpa/inet.h>
+#include <open62541/client_highlevel.h>
 #include <open62541/plugin/accesscontrol.h>
 #include <open62541/plugin/historydatabase.h>
 #include <open62541/plugin/nodestore.h>
@@ -254,6 +255,7 @@ struct peer {
   pthread_t thread;
   pthread_mutex_t lock;
   int running;
+  unsigned int history_pages[3], history_releases[3];
 };
 unsigned int cpkt_types_peer_event(void *arg) {
   struct peer *peer = (struct peer *)arg;
@@ -1516,3 +1518,306 @@ unsigned int cpkt_types_peer_external(void *handle, unsigned int id,
   }
   return status;
 }
+
+static UA_StatusCode
+highlevel_echo(UA_Server *server, const UA_NodeId *session,
+               void *sessionContext, const UA_NodeId *method,
+               void *methodContext, const UA_NodeId *object,
+               void *objectContext, size_t inputSize, const UA_Variant *input,
+               size_t outputSize, UA_Variant *output) {
+  (void)server;
+  (void)session;
+  (void)sessionContext;
+  (void)methodContext;
+  (void)object;
+  (void)objectContext;
+  if (method->identifier.numeric == 6101)
+    return inputSize || outputSize ? UA_STATUSCODE_BADINTERNALERROR : 0;
+  if (inputSize != 1 || outputSize != 1)
+    return UA_STATUSCODE_BADINTERNALERROR;
+  UA_StatusCode status = UA_Variant_copy(input, output);
+  return status ? status : UA_STATUSCODE_GOODCLAMPED;
+}
+/* Independent native page producer. Values/date limits are deliberately exact
+ * 64-bit extrema; the client must preserve each page rather than collect them.
+ */
+static void highlevel_history_page(UA_HistoryReadResponse *response,
+                                   const UA_HistoryReadValueId *read,
+                                   UA_Boolean release, size_t count,
+                                   UA_DataValue *value) {
+  if (count != 1 || read->nodeId.namespaceIndex != 1 ||
+      read->nodeId.identifier.numeric != 6001)
+    abort();
+  UA_HistoryReadResult *result = &response->results[0];
+  if (release)
+    return;
+  UA_Int64 integer = read->continuationPoint.length ? INT64_MAX : INT64_MIN;
+  value->hasValue = true;
+  value->hasSourceTimestamp = true;
+  value->sourceTimestamp = integer;
+  if (UA_Variant_setScalarCopy(&value->value, &integer,
+                               &UA_TYPES[UA_TYPES_INT64]))
+    abort();
+  if (!read->continuationPoint.length)
+    result->continuationPoint = UA_BYTESTRING_ALLOC("next");
+}
+#define HISTORY_ARGS(detailsType, payloadType)                                 \
+  UA_Server *server, void *context, const UA_NodeId *session,                  \
+      void *sessionContext, const UA_RequestHeader *header,                    \
+      const detailsType *details, UA_TimestampsToReturn timestamps,            \
+      UA_Boolean release, size_t count, const UA_HistoryReadValueId *read,     \
+      UA_HistoryReadResponse *response, payloadType *const *const payload
+#define IGNORE_HISTORY_ARGS()                                                  \
+  do {                                                                         \
+    (void)server;                                                              \
+    (void)session;                                                             \
+    (void)sessionContext;                                                      \
+    (void)header;                                                              \
+    (void)timestamps;                                                          \
+    (void)context;                                                             \
+  } while (0)
+static void highlevel_raw(HISTORY_ARGS(UA_ReadRawModifiedDetails,
+                                       UA_HistoryData)) {
+  IGNORE_HISTORY_ARGS();
+  struct peer *peer = context;
+  if (release)
+    ++peer->history_releases[0];
+  else
+    ++peer->history_pages[0];
+  if (details->startTime != INT64_MIN || details->endTime != INT64_MAX ||
+      details->isReadModified || details->returnBounds ||
+      details->numValuesPerNode != 1)
+    abort();
+  UA_DataValue value;
+  UA_DataValue_init(&value);
+  highlevel_history_page(response, read, release, count, &value);
+  if (!release) {
+    payload[0]->dataValues = UA_DataValue_new();
+    if (!payload[0]->dataValues)
+      abort();
+    *payload[0]->dataValues = value;
+    payload[0]->dataValuesSize = 1;
+  }
+}
+static void highlevel_modified(HISTORY_ARGS(UA_ReadRawModifiedDetails,
+                                            UA_HistoryModifiedData)) {
+  IGNORE_HISTORY_ARGS();
+  struct peer *peer = context;
+  if (release)
+    ++peer->history_releases[1];
+  else
+    ++peer->history_pages[1];
+  if (details->startTime != INT64_MIN || details->endTime != INT64_MAX ||
+      !details->isReadModified || details->returnBounds ||
+      details->numValuesPerNode != 1)
+    abort();
+  UA_DataValue value;
+  UA_DataValue_init(&value);
+  highlevel_history_page(response, read, release, count, &value);
+  if (!release) {
+    payload[0]->dataValues = UA_DataValue_new();
+    if (!payload[0]->dataValues)
+      abort();
+    *payload[0]->dataValues = value;
+    payload[0]->dataValuesSize = 1;
+    payload[0]->modificationInfos = UA_ModificationInfo_new();
+    if (!payload[0]->modificationInfos)
+      abort();
+    payload[0]->modificationInfosSize = 1;
+    payload[0]->modificationInfos[0].modificationTime = INT64_MAX;
+    payload[0]->modificationInfos[0].updateType = UA_HISTORYUPDATETYPE_REPLACE;
+  }
+}
+static void highlevel_events(HISTORY_ARGS(UA_ReadEventDetails,
+                                          UA_HistoryEvent)) {
+  IGNORE_HISTORY_ARGS();
+  struct peer *peer = context;
+  if (release)
+    ++peer->history_releases[2];
+  else
+    ++peer->history_pages[2];
+  if (details->startTime != INT64_MIN || details->endTime != INT64_MAX ||
+      details->numValuesPerNode != 1 ||
+      details->filter.selectClausesSize != 1 ||
+      details->filter.selectClauses[0].attributeId != UA_ATTRIBUTEID_VALUE)
+    abort();
+  UA_DataValue value;
+  UA_DataValue_init(&value);
+  highlevel_history_page(response, read, release, count, &value);
+  if (!release) {
+    payload[0]->events = UA_HistoryEventFieldList_new();
+    if (!payload[0]->events)
+      abort();
+    payload[0]->eventsSize = 1;
+    payload[0]->events[0].eventFields = UA_Variant_new();
+    if (!payload[0]->events[0].eventFields)
+      abort();
+    payload[0]->events[0].eventFieldsSize = 1;
+    *payload[0]->events[0].eventFields = value.value;
+  }
+}
+static void highlevel_update(UA_Server *server, void *context,
+                             const UA_NodeId *session, void *sessionContext,
+                             const UA_RequestHeader *header,
+                             const UA_UpdateDataDetails *details,
+                             UA_HistoryUpdateResult *result) {
+  (void)server;
+  (void)context;
+  (void)session;
+  (void)sessionContext;
+  (void)header;
+  if (details->nodeId.identifier.numeric != 6001 ||
+      details->updateValuesSize != 1 || !details->updateValues[0].hasValue ||
+      details->updateValues[0].value.type != &UA_TYPES[UA_TYPES_INT64] ||
+      *(UA_Int64 *)details->updateValues[0].value.data != INT64_MIN ||
+      details->performInsertReplace < UA_PERFORMUPDATETYPE_INSERT ||
+      details->performInsertReplace > UA_PERFORMUPDATETYPE_UPDATE)
+    abort();
+  result->operationResults = UA_StatusCode_new();
+  if (!result->operationResults)
+    abort();
+  result->operationResultsSize = 1;
+  *result->operationResults = UA_STATUSCODE_GOODCLAMPED;
+}
+static void highlevel_delete_history(UA_Server *server, void *context,
+                                     const UA_NodeId *session,
+                                     void *sessionContext,
+                                     const UA_RequestHeader *header,
+                                     const UA_DeleteRawModifiedDetails *details,
+                                     UA_HistoryUpdateResult *result) {
+  (void)server;
+  (void)context;
+  (void)session;
+  (void)sessionContext;
+  (void)header;
+  if (details->nodeId.identifier.numeric != 6001 ||
+      details->startTime != INT64_MIN || details->endTime != INT64_MAX ||
+      details->isDeleteModified)
+    abort();
+  result->statusCode = UA_STATUSCODE_GOODCLAMPED;
+}
+unsigned int cpkt_types_peer_highlevel_setup(void *arg) {
+  struct peer *peer = arg;
+  pthread_mutex_lock(&peer->lock);
+  UA_Server *server = peer->server;
+  UA_Argument argument;
+  UA_Argument_init(&argument);
+  argument.dataType = UA_TYPES[UA_TYPES_INT64].typeId;
+  argument.valueRank = -2;
+  UA_MethodAttributes attr = UA_MethodAttributes_default;
+  attr.writeMask = UINT32_MAX;
+  UA_StatusCode status = UA_Server_addMethodNode(
+      server, UA_NODEID_NUMERIC(1, 6100), UA_NS0ID(OBJECTSFOLDER),
+      UA_NS0ID(HASCOMPONENT), UA_QUALIFIEDNAME(1, "echo"), attr, highlevel_echo,
+      1, &argument, 1, &argument, NULL, NULL);
+  if (!status)
+    status = UA_Server_addMethodNode(
+        server, UA_NODEID_NUMERIC(1, 6101), UA_NS0ID(OBJECTSFOLDER),
+        UA_NS0ID(HASCOMPONENT), UA_QUALIFIEDNAME(1, "nooutputs"), attr,
+        highlevel_echo, 0, NULL, 0, NULL, NULL, NULL);
+  if (!status) {
+    UA_ServerConfig *config = UA_Server_getConfig(server);
+    UA_HistoryDatabase *history = &config->historyDatabase;
+    if (history->clear)
+      history->clear(history);
+    memset(history, 0, sizeof(*history));
+    history->context = peer;
+    history->readRaw = highlevel_raw;
+    history->readModified = highlevel_modified;
+    history->readEvent = highlevel_events;
+    history->updateData = highlevel_update;
+    history->deleteRawModified = highlevel_delete_history;
+  }
+  pthread_mutex_unlock(&peer->lock);
+  return status;
+}
+#undef HISTORY_ARGS
+#undef IGNORE_HISTORY_ARGS
+
+void cpkt_types_peer_highlevel_history_counts(void *arg, unsigned int *pages,
+                                              unsigned int *releases) {
+  struct peer *peer = arg;
+  pthread_mutex_lock(&peer->lock);
+  memcpy(pages, peer->history_pages, sizeof(peer->history_pages));
+  memcpy(releases, peer->history_releases, sizeof(peer->history_releases));
+  pthread_mutex_unlock(&peer->lock);
+}
+
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+void cpkt_types_fail_after(size_t count);
+static int client_failure_kind;
+static size_t client_failure_count;
+void cpkt_types_peer_client_fail_conversion(int kind, size_t count) {
+  client_failure_kind = kind;
+  client_failure_count = count;
+}
+static void client_conversion_arm(int kind, UA_StatusCode status) {
+  if (client_failure_kind == kind && !UA_StatusCode_isBad(status)) {
+    client_failure_kind = 0;
+    cpkt_types_fail_after(client_failure_count);
+  }
+}
+UA_StatusCode __real_UA_Client_readValueAttribute(UA_Client *, UA_NodeId,
+                                                  UA_Variant *);
+UA_StatusCode __wrap_UA_Client_readValueAttribute(UA_Client *client,
+                                                  UA_NodeId id,
+                                                  UA_Variant *out) {
+  UA_StatusCode status = __real_UA_Client_readValueAttribute(client, id, out);
+  client_conversion_arm(1, status);
+  return status;
+}
+UA_StatusCode __real_UA_Client_call(UA_Client *, UA_NodeId, UA_NodeId, size_t,
+                                    const UA_Variant *, size_t *,
+                                    UA_Variant **);
+UA_StatusCode __wrap_UA_Client_call(UA_Client *client, UA_NodeId object,
+                                    UA_NodeId method, size_t inputSize,
+                                    const UA_Variant *input, size_t *outputSize,
+                                    UA_Variant **output) {
+  UA_StatusCode status = __real_UA_Client_call(
+      client, object, method, inputSize, input, outputSize, output);
+  client_conversion_arm(2, status);
+  return status;
+}
+UA_StatusCode __real_UA_Client_addVariableNode(UA_Client *, UA_NodeId,
+                                               UA_NodeId, UA_NodeId,
+                                               UA_QualifiedName, UA_NodeId,
+                                               UA_VariableAttributes,
+                                               UA_NodeId *);
+UA_StatusCode __wrap_UA_Client_addVariableNode(
+    UA_Client *client, UA_NodeId requested, UA_NodeId parent,
+    UA_NodeId reference, UA_QualifiedName name, UA_NodeId type,
+    UA_VariableAttributes attributes, UA_NodeId *out) {
+  UA_StatusCode status = __real_UA_Client_addVariableNode(
+      client, requested, parent, reference, name, type, attributes, out);
+  client_conversion_arm(3, status);
+  return status;
+}
+struct client_history_failure {
+  UA_HistoricalIteratorCallback callback;
+  void *context;
+};
+static UA_Boolean client_history_conversion(UA_Client *client,
+                                            const UA_NodeId *id,
+                                            UA_Boolean more,
+                                            const UA_ExtensionObject *data,
+                                            void *context) {
+  struct client_history_failure *state = context;
+  client_conversion_arm(4, UA_STATUSCODE_GOOD);
+  return state->callback(client, id, more, data, state->context);
+}
+UA_StatusCode __real_UA_Client_HistoryRead_raw(UA_Client *, const UA_NodeId *,
+                                               UA_HistoricalIteratorCallback,
+                                               UA_DateTime, UA_DateTime,
+                                               UA_String, UA_Boolean, UA_UInt32,
+                                               UA_TimestampsToReturn, void *);
+UA_StatusCode __wrap_UA_Client_HistoryRead_raw(
+    UA_Client *client, const UA_NodeId *id,
+    UA_HistoricalIteratorCallback callback, UA_DateTime start, UA_DateTime end,
+    UA_String range, UA_Boolean bounds, UA_UInt32 count,
+    UA_TimestampsToReturn timestamps, void *context) {
+  struct client_history_failure state = {callback, context};
+  return __real_UA_Client_HistoryRead_raw(client, id, client_history_conversion,
+                                          start, end, range, bounds, count,
+                                          timestamps, &state);
+}
+#endif

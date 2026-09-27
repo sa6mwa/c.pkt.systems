@@ -8,6 +8,7 @@ import re
 from nodeset_compiler.type_parser import BuiltinType, EnumerationType, OpaqueType, StructType
 from plugin_emitter import emit_plugins
 from server_emitter import emit_server
+from client_emitter import emit_client
 
 
 def emit(generator, output, client_header):
@@ -179,6 +180,8 @@ def emit(generator, output, client_header):
     server_header, server_metadata = emit_server(index, Path(client_header).parent)
     header.extend(server_header)
     metadata.extend(server_metadata)
+    client_header_output, client_metadata = emit_client(index, Path(client_header).parent)
+    metadata.extend(client_metadata)
     header.extend([
         '/** Read all public DataValue fields through the native server read API. */',
         'cpkt_opcua_StatusCode cpkt_opcua_server_read_typed(cpkt_opcua_server *server, const cpkt_opcua_ReadValueId *request, cpkt_opcua_TimestampsToReturn timestamps, cpkt_opcua_DataValue *response);',
@@ -187,6 +190,7 @@ def emit(generator, output, client_header):
         '#include <cpkt/opcua_util.h>',
         '#include <cpkt/opcua_callbacks.h>',
         '#include <cpkt/opcua_plugins.h>',
+        *client_header_output,
         '#ifdef __cplusplus', '}', '#endif', '#endif', ''])
     root = Path(output)
     root.mkdir(parents=True, exist_ok=True)

@@ -23,6 +23,7 @@ import history_emitter
 import node_emitter
 import producer_emitter
 import creation_emitter
+import client_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -105,6 +106,31 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         'resultSize', 'copyDataValues', 'getDataValue', 'boundSupported', 'timestampsToReturnSupported',
         'insertDataValue', 'replaceDataValue', 'updateDataValue', 'removeDataValue',
     }
+    highlevel = changed_headers / 'client_highlevel.h'
+    original_highlevel = highlevel.read_text()
+    highlevel.chmod(0o644)
+    client_public, client_private = client_emitter.emit_client(index, changed_headers)
+    for _, client_name, _ in client_emitter.declarations(original_highlevel):
+        assert 'cpkt_opcua_client_' + client_name + '_typed' in '\n'.join(client_public)
+        assert 'UA_Client_' + client_name + '(' in '\n'.join(client_private)
+    assert len(client_emitter.declarations(original_highlevel)) == 75
+    for old, new in (
+        ('UA_Variant **output', 'UA_Variant *output'),
+        ('const UA_UInt32 *newArrayDimensions', 'const UA_UInt64 *newArrayDimensions'),
+        ('const UA_DataType *valueType', 'const UA_DataType **valueType'),
+        ('UA_HistoricalIteratorCallback)', 'UA_HistoricalIteratorCallbackChanged)'),
+        ('UA_Boolean moreDataAvailable', 'UA_UInt64 moreDataAvailable'),
+        ('UA_NodeIteratorCallback callback', 'UA_ServerCallback callback'),
+    ):
+        assert old in original_highlevel
+        highlevel.write_text(original_highlevel.replace(old, new, 1))
+        try:
+            client_emitter.emit_client(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed high-level client signature was accepted')
+    highlevel.write_text(original_highlevel)
     server = changed_headers / 'server.h'
     server.chmod(0o644)
     original_server = server.read_text()
