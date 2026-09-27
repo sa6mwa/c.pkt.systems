@@ -327,6 +327,37 @@ allocation-failure tests cover past/future deadlines, optional IDs, interval
 changes, reentrant cancellation, shutdown cleanup, inverse references and
 early termination.
 
+### Configuration key/value maps
+
+The full native `KeyValueMap` operation surface is available through
+`cpkt_opcua_KeyValueMap_*` in `<cpkt/opcua_util.h>`. Maps retain the public
+`mapSize`/generated `KeyValuePair` fields and linear, namespace-aware,
+byte-exact key lookup. NULL const maps are empty. `get` and `getScalar` return
+borrowed pointers into actual C89 storage without conversion or a temporary
+native cache. An insertion can reallocate the array; removal moves its last
+entry into the deleted slot. Existing borrowed views must respect these
+native invalidation rules.
+
+`set` and `setScalar` deep-copy inputs. `setShallow` and
+`setScalarShallow` copy the key and borrow the original value payload, forcing
+`DATA_NODELETE` exactly as the upstream implementation does. Caller-owned
+payloads and array dimensions must remain alive until the map stops using them;
+clearing the map does not release them. Do not pass a map-owned value as the
+source of shallow replacement. Deep replacement may use the existing value
+as its source. Notification maps remain borrowed and must not be cleared.
+`copy` needs an empty destination. `merge` stages a complete replacement and
+preserves both maps on allocation failure, including self-merge. Removal still
+succeeds when shrinking its allocation fails, preserving native behavior.
+
+The representation-specific implementation in `src/opcua_map_impl.h` adapts
+open62541's handwritten map operations to C89 record layouts, preserving its
+MPL-2.0 copyright/license notice. It does not duplicate schema definitions.
+Native peer tests compare statuses, shallow pointer identity, lookup type
+checks, key replacement/removal order and empty-array distinctions. C89 tests
+also cover exact signed 64-bit values, namespace and binary keys, alias-safe
+deep overwrite, self-merge, cleanup, and failure at every allocation in deep
+insertion, replacement, shallow insertion, copying and merging.
+
 ### Generated public plugins
 
 Handwritten plugin records have no upstream schema generator. The maintained

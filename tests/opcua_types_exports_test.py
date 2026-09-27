@@ -12,6 +12,7 @@ for header in headers:
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
     text = re.sub(r'^\s*#.*$', '', text, flags=re.M)
     expected.update(re.findall(r'\b(cpkt_opcua_\w+)\s*\((?!\s*\*)', text))
+    expected.update(re.findall(r'\bextern\s+const\s+cpkt_opcua_\w+\s+(cpkt_opcua_\w+)\s*;', text))
 output = subprocess.check_output([nm, '-g', '--defined-only', library], text=True)
 actual = set()
 for line in output.splitlines():

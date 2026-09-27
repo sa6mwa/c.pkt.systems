@@ -379,13 +379,207 @@ static void failures(void) {
         status == CPKT_OPCUA_STATUSCODE_BADINTERNALERROR && !bytes.data);
 }
 #endif
+
+static cpkt_opcua_QualifiedName map_key(unsigned int ns, const char *key) {
+  cpkt_opcua_QualifiedName result;
+  result.namespaceIndex = (cpkt_opcua_UInt16)ns;
+  result.name = text(key);
+  return result;
+}
+static void maps(void) {
+  cpkt_opcua_KeyValueMap map = {0, NULL}, other = {0, NULL}, copy = {0, NULL},
+                         *allocated;
+  cpkt_opcua_QualifiedName key = map_key(1, "option"),
+                           second = map_key(2, "option");
+  cpkt_opcua_QualifiedName binary = map_key(1, "a\0b");
+  cpkt_opcua_Int64 value, changed;
+  const cpkt_opcua_Type *type = cpkt_opcua_type_at(CPKT_OPCUA_TYPES_INT64);
+  const cpkt_opcua_Variant *borrowed;
+  const cpkt_opcua_Int64 *number;
+  cpkt_opcua_Variant array;
+  cpkt_opcua_UInt32 dimension = 1;
+  unsigned int results[24], expected[24];
+  size_t i;
+  value.high32 = 0x80000000U;
+  value.low32 = 1;
+  changed.high32 = 0x7fffffffU;
+  changed.low32 = 0xffffffffU;
+  results[0] = cpkt_opcua_KeyValueMap_isEmpty(NULL);
+  results[1] = cpkt_opcua_KeyValueMap_contains(NULL, key);
+  results[2] = cpkt_opcua_KeyValueMap_remove(NULL, key);
+  results[3] = cpkt_opcua_KeyValueMap_remove(&map, key);
+  results[4] = cpkt_opcua_KeyValueMap_setScalarShallow(&map, key, &value, type);
+  borrowed = cpkt_opcua_KeyValueMap_get(&map, key);
+  results[5] = borrowed && borrowed->data == &value;
+  results[6] = borrowed ? (unsigned int)borrowed->storageType : 99;
+  results[7] = cpkt_opcua_KeyValueMap_contains(&map, second);
+  results[8] = cpkt_opcua_KeyValueMap_copy(&map, &copy);
+  results[9] = cpkt_opcua_KeyValueMap_getScalar(&copy, key, type) != &value;
+  CHECK(results[4] == 0 && results[8] == 0 && borrowed == &map.map[0].value);
+  number = (const cpkt_opcua_Int64 *)cpkt_opcua_KeyValueMap_getScalar(
+      &copy, key, type);
+  CHECK(number && number->high32 == value.high32 && number->low32 == 1);
+  value.low32 = 3;
+  CHECK(((const cpkt_opcua_Int64 *)borrowed->data)->low32 == 3 &&
+        number->low32 == 1);
+  results[10] = cpkt_opcua_KeyValueMap_setScalar(&other, second, &value, type);
+  results[11] = cpkt_opcua_KeyValueMap_merge(&map, &other);
+  results[12] = (unsigned int)map.mapSize;
+  results[13] = cpkt_opcua_KeyValueMap_remove(&map, key);
+  results[14] = cpkt_opcua_QualifiedName_equal(&map.map[0].key, &second);
+  results[15] = cpkt_opcua_KeyValueMap_remove(&map, second);
+  results[16] = map.map == CPKT_OPCUA_EMPTY_ARRAY_SENTINEL;
+  cpkt_opcua_Variant_init(&array);
+  cpkt_opcua_Variant_setArray(&array, &value, 1, type);
+  array.storageType = CPKT_OPCUA_VARIANT_DATA_NODELETE;
+  results[17] = cpkt_opcua_KeyValueMap_setShallow(&map, key, &array);
+  results[18] = cpkt_opcua_KeyValueMap_getScalar(&map, key, type) == NULL;
+  results[19] = cpkt_opcua_KeyValueMap_set(NULL, key, &array);
+  results[20] = cpkt_opcua_KeyValueMap_setScalar(&map, key, NULL, type);
+  results[21] = cpkt_opcua_KeyValueMap_merge(NULL, &map);
+  results[22] = cpkt_opcua_KeyValueMap_merge(&map, NULL);
+  cpkt_opcua_KeyValueMap_clear(&copy);
+  results[23] = cpkt_opcua_KeyValueMap_copy(NULL, &copy);
+  array.arrayDimensions = &dimension;
+  array.arrayDimensionsSize = 1;
+  CHECK(cpkt_opcua_KeyValueMap_setShallow(&map, key, &array) == 0);
+  CHECK(cpkt_opcua_KeyValueMap_get(&map, key)->data == &value &&
+        cpkt_opcua_KeyValueMap_get(&map, key)->arrayDimensions == &dimension);
+  cpkt_types_peer_maps(expected);
+  for (i = 0; i < 24; ++i)
+    CHECK(results[i] == expected[i]);
+  /* Deep overwrites accept the current map value as the source. */
+  borrowed = cpkt_opcua_KeyValueMap_get(&map, key);
+  CHECK(cpkt_opcua_KeyValueMap_set(&map, key, borrowed) == 0);
+  CHECK(cpkt_opcua_KeyValueMap_get(&map, key)->data != &value);
+  CHECK(cpkt_opcua_KeyValueMap_setScalar(&map, key, &changed, type) == 0);
+  number = (const cpkt_opcua_Int64 *)cpkt_opcua_KeyValueMap_getScalar(&map, key,
+                                                                      type);
+  CHECK(number && number->high32 == changed.high32 &&
+        number->low32 == changed.low32);
+  CHECK(!cpkt_opcua_KeyValueMap_getScalar(
+      &map, key, cpkt_opcua_type_at(CPKT_OPCUA_TYPES_UINT64)));
+  CHECK(cpkt_opcua_KeyValueMap_merge(&map, &map) == 0);
+  CHECK(cpkt_opcua_KeyValueMap_setScalarShallow(&map, key, &value, type) == 0);
+  CHECK(cpkt_opcua_KeyValueMap_getScalar(&map, key, type) == &value);
+  /* Namespace and embedded-NUL bytes are part of key identity. */
+  binary.name.length = 3;
+  CHECK(cpkt_opcua_KeyValueMap_setScalar(&map, binary, &changed, type) == 0);
+  CHECK(!cpkt_opcua_KeyValueMap_contains(&map, map_key(1, "a")));
+  CHECK(cpkt_opcua_KeyValueMap_contains(&map, binary));
+  cpkt_opcua_KeyValueMap_clear(&map);
+  cpkt_opcua_KeyValueMap_clear(&other);
+  cpkt_opcua_KeyValueMap_clear(&copy);
+  CHECK(value.low32 == 3 && array.data == &value);
+  allocated = cpkt_opcua_KeyValueMap_new();
+  CHECK(allocated);
+  CHECK(cpkt_opcua_KeyValueMap_isEmpty(allocated) &&
+        !cpkt_opcua_KEYVALUEMAP_NULL.mapSize);
+  cpkt_opcua_KeyValueMap_delete(allocated);
+  cpkt_opcua_KeyValueMap_delete(NULL);
+  cpkt_opcua_KeyValueMap_clear(NULL);
+  CHECK(cpkt_opcua_KeyValueMap_copy(NULL, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_KeyValueMap_setScalar(&map, key, &value, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_KeyValueMap_setShallow(&map, key, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_KeyValueMap_set(&map, key, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+}
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+static void map_failures(void) {
+  cpkt_opcua_KeyValueMap map, other, copy;
+  cpkt_opcua_KeyValuePair *original;
+  cpkt_opcua_QualifiedName key = map_key(1, "existing"),
+                           added = map_key(1, "new");
+  const cpkt_opcua_Type *type = cpkt_opcua_type_at(CPKT_OPCUA_TYPES_INT64);
+  cpkt_opcua_Int64 value, changed;
+  cpkt_opcua_StatusCode status;
+  const cpkt_opcua_Int64 *result;
+  cpkt_opcua_Variant variant;
+  size_t countdown;
+  int mode, failed;
+  value.high32 = 0x80000000U;
+  value.low32 = 1;
+  changed.high32 = 0x7fffffffU;
+  changed.low32 = 0xffffffffU;
+  for (mode = 0; mode < 6; ++mode) {
+    for (countdown = 0; countdown < 200; ++countdown) {
+      memset(&map, 0, sizeof(map));
+      memset(&other, 0, sizeof(other));
+      memset(&copy, 0, sizeof(copy));
+      CHECK(cpkt_opcua_KeyValueMap_setScalar(&map, key, &value, type) == 0);
+      CHECK(cpkt_opcua_KeyValueMap_setScalar(&other, key, &changed, type) == 0);
+      CHECK(cpkt_opcua_KeyValueMap_setScalar(&other, added, &changed, type) ==
+            0);
+      original = map.map;
+      cpkt_opcua_Variant_init(&variant);
+      variant.type = type;
+      variant.data = &changed;
+      variant.storageType = CPKT_OPCUA_VARIANT_DATA_NODELETE;
+      cpkt_types_fail_after(countdown);
+      switch (mode) {
+      case 0:
+        status = cpkt_opcua_KeyValueMap_setScalar(&map, added, &changed, type);
+        break;
+      case 1:
+        status = cpkt_opcua_KeyValueMap_setScalar(&map, key, &changed, type);
+        break;
+      case 2:
+        status = cpkt_opcua_KeyValueMap_setShallow(&map, added, &variant);
+        break;
+      case 3:
+        status = cpkt_opcua_KeyValueMap_copy(&map, &copy);
+        break;
+      case 4:
+        status = cpkt_opcua_KeyValueMap_merge(&map, &other);
+        break;
+      default:
+        status = cpkt_opcua_KeyValueMap_merge(&map, &map);
+        break;
+      }
+      failed = cpkt_types_fail_stop();
+      if (failed) {
+        CHECK(status == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY);
+        CHECK(map.map == original && map.mapSize == 1);
+        result = (const cpkt_opcua_Int64 *)cpkt_opcua_KeyValueMap_getScalar(
+            &map, key, type);
+        CHECK(result && result->high32 == value.high32 && result->low32 == 1);
+        CHECK(other.mapSize == 2 && copy.map == NULL && !copy.mapSize);
+      } else
+        CHECK(status == 0);
+      cpkt_opcua_KeyValueMap_clear(&map);
+      cpkt_opcua_KeyValueMap_clear(&other);
+      cpkt_opcua_KeyValueMap_clear(&copy);
+      if (!failed)
+        break;
+    }
+    CHECK(countdown > 0 && countdown < 200);
+  }
+  memset(&map, 0, sizeof(map));
+  CHECK(cpkt_opcua_KeyValueMap_setScalarShallow(&map, key, &value, type) == 0);
+  CHECK(cpkt_opcua_KeyValueMap_setScalarShallow(&map, added, &changed, type) ==
+        0);
+  cpkt_types_fail_after(0);
+  status = cpkt_opcua_KeyValueMap_remove(&map, key);
+  CHECK(cpkt_types_fail_stop() && status == 0 && map.mapSize == 1);
+  CHECK(cpkt_opcua_KeyValueMap_getScalar(&map, added, type) == &changed);
+  cpkt_opcua_KeyValueMap_clear(&map);
+  cpkt_types_fail_after(0);
+  CHECK(cpkt_opcua_KeyValueMap_new() == NULL);
+  CHECK(cpkt_types_fail_stop());
+}
+#endif
 void cpkt_types_test_utilities(void) {
   predicates();
   values();
   arrays();
   strings();
   statuses();
+  maps();
 #ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
   failures();
+  map_failures();
 #endif
 }

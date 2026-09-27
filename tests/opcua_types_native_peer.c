@@ -1260,3 +1260,50 @@ unsigned int cpkt_types_peer_nodes_parallel(void *first, void *second) {
   (void)pthread_join(threads[1], NULL);
   return states[0].status ? states[0].status : states[1].status;
 }
+
+void cpkt_types_peer_maps(unsigned int *results) {
+  UA_KeyValueMap map = UA_KEYVALUEMAP_NULL, other = UA_KEYVALUEMAP_NULL;
+  UA_KeyValueMap copy = UA_KEYVALUEMAP_NULL;
+  UA_QualifiedName key = UA_QUALIFIEDNAME(1, "option");
+  UA_QualifiedName second = UA_QUALIFIEDNAME(2, "option");
+  UA_Int64 value = (UA_Int64)0x8000000000000001ULL;
+  const UA_Variant *borrowed;
+  UA_Variant array;
+  results[0] = UA_KeyValueMap_isEmpty(NULL);
+  results[1] = UA_KeyValueMap_contains(NULL, key);
+  results[2] = UA_KeyValueMap_remove(NULL, key);
+  results[3] = UA_KeyValueMap_remove(&map, key);
+  results[4] = UA_KeyValueMap_setScalarShallow(&map, key, &value,
+                                               &UA_TYPES[UA_TYPES_INT64]);
+  borrowed = UA_KeyValueMap_get(&map, key);
+  results[5] = borrowed && borrowed->data == &value;
+  results[6] = borrowed ? (unsigned int)borrowed->storageType : 99;
+  results[7] = UA_KeyValueMap_contains(&map, second);
+  results[8] = UA_KeyValueMap_copy(&map, &copy);
+  results[9] =
+      UA_KeyValueMap_getScalar(&copy, key, &UA_TYPES[UA_TYPES_INT64]) != &value;
+  results[10] = UA_KeyValueMap_setScalar(&other, second, &value,
+                                         &UA_TYPES[UA_TYPES_INT64]);
+  results[11] = UA_KeyValueMap_merge(&map, &other);
+  results[12] = (unsigned int)map.mapSize;
+  results[13] = UA_KeyValueMap_remove(&map, key);
+  results[14] = UA_QualifiedName_equal(&map.map[0].key, &second);
+  results[15] = UA_KeyValueMap_remove(&map, second);
+  results[16] = map.map == UA_EMPTY_ARRAY_SENTINEL;
+  UA_Variant_init(&array);
+  UA_Variant_setArray(&array, &value, 1, &UA_TYPES[UA_TYPES_INT64]);
+  array.storageType = UA_VARIANT_DATA_NODELETE;
+  results[17] = UA_KeyValueMap_setShallow(&map, key, &array);
+  results[18] =
+      UA_KeyValueMap_getScalar(&map, key, &UA_TYPES[UA_TYPES_INT64]) == NULL;
+  results[19] = UA_KeyValueMap_set(NULL, key, &array);
+  results[20] =
+      UA_KeyValueMap_setScalar(&map, key, NULL, &UA_TYPES[UA_TYPES_INT64]);
+  results[21] = UA_KeyValueMap_merge(NULL, &map);
+  results[22] = UA_KeyValueMap_merge(&map, NULL);
+  UA_KeyValueMap_clear(&copy);
+  results[23] = UA_KeyValueMap_copy(NULL, &copy);
+  UA_KeyValueMap_clear(&map);
+  UA_KeyValueMap_clear(&other);
+  UA_KeyValueMap_clear(&copy);
+}

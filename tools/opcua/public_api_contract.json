@@ -1272,59 +1272,73 @@
     },
     "UA_KeyValueMap_clear": {
       "declaration": "void UA_KeyValueMap_clear ( UA_KeyValueMap * map )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_clear"
     },
     "UA_KeyValueMap_contains": {
       "declaration": "UA_Boolean UA_KeyValueMap_contains ( const UA_KeyValueMap * map , const UA_QualifiedName key )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_contains"
     },
     "UA_KeyValueMap_copy": {
       "declaration": "UA_StatusCode UA_KeyValueMap_copy ( const UA_KeyValueMap * src , UA_KeyValueMap * dst )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_copy"
     },
     "UA_KeyValueMap_delete": {
       "declaration": "void UA_KeyValueMap_delete ( UA_KeyValueMap * map )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_delete"
     },
     "UA_KeyValueMap_get": {
       "declaration": "const UA_Variant * UA_KeyValueMap_get ( const UA_KeyValueMap * map , const UA_QualifiedName key )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_get"
     },
     "UA_KeyValueMap_getScalar": {
       "declaration": "const void * UA_KeyValueMap_getScalar ( const UA_KeyValueMap * map , const UA_QualifiedName key , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_getScalar"
     },
     "UA_KeyValueMap_isEmpty": {
       "declaration": "UA_Boolean UA_KeyValueMap_isEmpty ( const UA_KeyValueMap * map )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_isEmpty"
     },
     "UA_KeyValueMap_merge": {
       "declaration": "UA_StatusCode UA_KeyValueMap_merge ( UA_KeyValueMap * lhs , const UA_KeyValueMap * rhs )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_merge"
     },
     "UA_KeyValueMap_new": {
       "declaration": "UA_KeyValueMap * UA_KeyValueMap_new ( void )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_new"
     },
     "UA_KeyValueMap_remove": {
       "declaration": "UA_StatusCode UA_KeyValueMap_remove ( UA_KeyValueMap * map , const UA_QualifiedName key )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_remove"
     },
     "UA_KeyValueMap_set": {
       "declaration": "UA_StatusCode UA_KeyValueMap_set ( UA_KeyValueMap * map , const UA_QualifiedName key , const UA_Variant * value )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_set"
     },
     "UA_KeyValueMap_setScalar": {
       "declaration": "UA_StatusCode UA_KeyValueMap_setScalar ( UA_KeyValueMap * map , const UA_QualifiedName key , const void * __restrict__ p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_setScalar"
     },
     "UA_KeyValueMap_setScalarShallow": {
       "declaration": "UA_StatusCode UA_KeyValueMap_setScalarShallow ( UA_KeyValueMap * map , const UA_QualifiedName key , void * __restrict__ p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_setScalarShallow"
     },
     "UA_KeyValueMap_setShallow": {
       "declaration": "UA_StatusCode UA_KeyValueMap_setShallow ( UA_KeyValueMap * map , const UA_QualifiedName key , UA_Variant * value )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KeyValueMap_setShallow"
     },
     "UA_LOCALIZEDTEXT": {
       "declaration": "UA_LocalizedText UA_LOCALIZEDTEXT ( char * locale , char * text )",
@@ -3888,7 +3902,8 @@
     },
     "UA_KEYVALUEMAP_NULL": {
       "declaration": "const UA_KeyValueMap UA_KEYVALUEMAP_NULL",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_KEYVALUEMAP_NULL"
     },
     "UA_Log_Stdout": {
       "declaration": "const UA_Logger * UA_Log_Stdout",

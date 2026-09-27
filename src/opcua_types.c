@@ -940,3 +940,5 @@ cpkt_opcua_server_write_typed(cpkt_opcua_server *server,
 #include "opcua_util_impl.h"
 
 #include "opcua_identifiers_impl.h"
+
+#include "opcua_map_impl.h"

@@ -60,6 +60,7 @@ include/cpkt/opcua_util.h
 include/cpkt/opcua_callbacks.h
 src/opcua_internal.h
 src/opcua_callbacks_impl.h
+src/opcua_map_impl.h
 src/opcua_util_impl.h
 src/opcua_identifiers_impl.h
 src/opcua_plugins_impl.h

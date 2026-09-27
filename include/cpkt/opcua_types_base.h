@@ -92,6 +92,9 @@ typedef struct {
 /** Opaque TYPE descriptor; payloads remain ordinary, generated C89 structs. */
 /** Public schema type. */
 typedef struct cpkt_opcua_Type cpkt_opcua_Type;
+/** Public configuration map; full generated-entry record is in
+ * opcua_callbacks.h. */
+typedef struct cpkt_opcua_KeyValueMap cpkt_opcua_KeyValueMap;
 #define CPKT_OPCUA_EMPTY_ARRAY_SENTINEL ((void *)1)
 /** DATA owns payload and dimensions; NODELETE borrows both. */
 typedef enum {

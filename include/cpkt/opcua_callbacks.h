@@ -8,10 +8,10 @@ extern "C" {
 /** Same fields as upstream's event/configuration map. Entries are full
  * generated KeyValuePairs. Notification storage is borrowed until callback
  * return. */
-typedef struct {
+struct cpkt_opcua_KeyValueMap {
   size_t mapSize;
   cpkt_opcua_KeyValuePair *map;
-} cpkt_opcua_KeyValueMap;
+};
 /** Receives the complete status notification. Nonzero conversion status means
  * notification is NULL. Context is exactly the caller's subscription context.
  */

@@ -134,6 +134,70 @@ void cpkt_opcua_ByteString_memZero(cpkt_opcua_ByteString *value);
 cpkt_opcua_UInt32 cpkt_opcua_ByteString_hash(cpkt_opcua_UInt32 initial,
                                              const cpkt_opcua_Byte *bytes,
                                              size_t length);
+/** Empty map constant; never clear/delete this const object. */
+extern const cpkt_opcua_KeyValueMap cpkt_opcua_KEYVALUEMAP_NULL;
+/** Allocate an empty owned map; NULL means allocation failure. */
+cpkt_opcua_KeyValueMap *cpkt_opcua_KeyValueMap_new(void);
+/** Clear owned entries and reset fields. Shallow value payloads remain
+ * caller-owned. Do not clear borrowed notification maps. NULL is harmless. */
+void cpkt_opcua_KeyValueMap_clear(cpkt_opcua_KeyValueMap *map);
+/** Clear and free a map returned by new; NULL is harmless. */
+void cpkt_opcua_KeyValueMap_delete(cpkt_opcua_KeyValueMap *map);
+/** Native empty predicate; NULL is an empty map. No allocation. */
+cpkt_opcua_Boolean
+cpkt_opcua_KeyValueMap_isEmpty(const cpkt_opcua_KeyValueMap *map);
+/** Native linear lookup with namespace and byte-exact key comparison. */
+cpkt_opcua_Boolean
+cpkt_opcua_KeyValueMap_contains(const cpkt_opcua_KeyValueMap *map,
+                                cpkt_opcua_QualifiedName key);
+/** Borrow the actual C89 Variant in the map; NULL if absent. No
+ * conversion/copy. Insertion can reallocate the array; removal, replacement and
+ * clear invalidate affected views. Do not clear a borrowed result. */
+const cpkt_opcua_Variant *
+cpkt_opcua_KeyValueMap_get(const cpkt_opcua_KeyValueMap *map,
+                           cpkt_opcua_QualifiedName key);
+/** Borrow the scalar payload; NULL for absent, array or different type. */
+const void *cpkt_opcua_KeyValueMap_getScalar(const cpkt_opcua_KeyValueMap *map,
+                                             cpkt_opcua_QualifiedName key,
+                                             const cpkt_opcua_Type *type);
+/** Upsert a deep copy of key/value; failure preserves the old map. The source
+ * may be an existing map value. Caller retains source ownership. */
+cpkt_opcua_StatusCode
+cpkt_opcua_KeyValueMap_set(cpkt_opcua_KeyValueMap *map,
+                           cpkt_opcua_QualifiedName key,
+                           const cpkt_opcua_Variant *value);
+/** Upsert a copied key and borrowed Variant payload, forcing DATA_NODELETE as
+ * the native implementation does. Caller retains payload/dimensions ownership
+ * and keeps them alive through use. Value must not alias the map's own slots.
+ */
+cpkt_opcua_StatusCode
+cpkt_opcua_KeyValueMap_setShallow(cpkt_opcua_KeyValueMap *map,
+                                  cpkt_opcua_QualifiedName key,
+                                  cpkt_opcua_Variant *value);
+/** Deep-copy a borrowed scalar into the map; source remains caller-owned. */
+cpkt_opcua_StatusCode cpkt_opcua_KeyValueMap_setScalar(
+    cpkt_opcua_KeyValueMap *map, cpkt_opcua_QualifiedName key,
+    const void *value, const cpkt_opcua_Type *type);
+/** Borrow scalar storage with native DATA_NODELETE semantics; keep it alive. */
+cpkt_opcua_StatusCode cpkt_opcua_KeyValueMap_setScalarShallow(
+    cpkt_opcua_KeyValueMap *map, cpkt_opcua_QualifiedName key, void *value,
+    const cpkt_opcua_Type *type);
+/** Remove and clear an entry, moving the last entry into its slot. Missing key
+ * returns BadNotFound. Native shrink allocation failure still removes the key
+ * and returns Good; the surviving array remains valid. */
+cpkt_opcua_StatusCode
+cpkt_opcua_KeyValueMap_remove(cpkt_opcua_KeyValueMap *map,
+                              cpkt_opcua_QualifiedName key);
+/** Deep-copy into an empty owned destination. NULL source is empty. */
+cpkt_opcua_StatusCode
+cpkt_opcua_KeyValueMap_copy(const cpkt_opcua_KeyValueMap *src,
+                            cpkt_opcua_KeyValueMap *dst);
+/** Deep-copy right-hand entries into left, upserting matches. On any allocation
+ * failure both maps remain untouched. NULL right is empty; self-merge is valid.
+ */
+cpkt_opcua_StatusCode
+cpkt_opcua_KeyValueMap_merge(cpkt_opcua_KeyValueMap *lhs,
+                             const cpkt_opcua_KeyValueMap *rhs);
 /** Public namespace mapping fields. URI/index arrays may be borrowed for use;
  * clear/delete require independently owned facade-allocated arrays and strings.
  * URI lookup marshals String records, borrowing their bytes; allocation failure

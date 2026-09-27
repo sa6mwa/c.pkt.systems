@@ -31,3 +31,9 @@ copyright notices. Generated service/server bindings also derive their
 declarations from open62541 public headers. The original MPL license and
 upstream source are shipped with open62541; the maintained generator backends
 and conversion implementation ship in the c.pkt.systems source archive.
+
+`src/opcua_map_impl.h` adapts open62541's handwritten key/value map operations
+from `src/util/ua_util.c` to the generated C89 record representation. That file
+retains the original MPL-2.0 terms and copyright notices. Its modified source
+is included in the c.pkt.systems source archive; the upstream MPL-2.0 license
+is shipped with the open62541 notices.
