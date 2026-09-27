@@ -10,7 +10,7 @@ cpkt_opcua_history_value_new(const cpkt_opcua_DataValue *value,
   *out = NULL;
   if (!value)
     return UA_STATUSCODE_BADINVALIDARGUMENT;
-  stored = (cpkt_opcua_history_value *)UA_calloc(1, sizeof(*stored));
+  stored = (cpkt_opcua_history_value *)UA_calloc(1, sizeof(UA_DataValue));
   if (!stored)
     return UA_STATUSCODE_BADOUTOFMEMORY;
   status = cpkt_opcua_history_value_set(stored, value);
@@ -33,8 +33,8 @@ cpkt_opcua_history_value_set(cpkt_opcua_history_value *stored,
   status = cpkt_convert(value, &staged, &cpkt_types[CPKT_OPCUA_TYPES_DATAVALUE],
                         1, 0);
   if (!status) {
-    UA_DataValue_clear(&stored->native);
-    stored->native = staged;
+    UA_DataValue_clear(cpkt_history_native(stored));
+    *cpkt_history_native(stored) = staged;
   } else
     UA_DataValue_clear(&staged);
   return status;
@@ -49,7 +49,7 @@ cpkt_opcua_history_value_get(const cpkt_opcua_history_value *stored,
   memset(out, 0, sizeof(*out));
   if (!stored)
     return UA_STATUSCODE_BADINVALIDARGUMENT;
-  status = cpkt_convert(&stored->native, out,
+  status = cpkt_convert(cpkt_history_native_const(stored), out,
                         &cpkt_types[CPKT_OPCUA_TYPES_DATAVALUE], 0, 0);
   if (status)
     cpkt_opcua_DataValue_clear(out);
@@ -58,7 +58,7 @@ cpkt_opcua_history_value_get(const cpkt_opcua_history_value *stored,
 /** Releases persistent storage once native borrowers have finished. */
 void cpkt_opcua_history_value_free(cpkt_opcua_history_value *stored) {
   if (stored) {
-    UA_DataValue_clear(&stored->native);
+    UA_DataValue_clear(cpkt_history_native(stored));
     UA_free(stored);
   }
 }

@@ -767,7 +767,7 @@ Native `getDataValue` returns a **borrowed native DataValue pointer**. A convert
 stack record, temporary allocation freed at callback return, or one shared slot
 replaced by the next callback cannot meet that contract. The C89 callback instead
 returns a backend-owned `const cpkt_opcua_history_value *`. The facade forwards
-the stable native address embedded in that object directly to open62541. It does
+that actual native public DataValue address directly to open62541. It does
 not convert/cache the returned value per call or release it after the callback.
 The input NodeIds borrow their byte payloads, so this pointer-return trampoline
 performs no allocation.
@@ -797,6 +797,36 @@ existing storage on realloc failure, and NodeId-copy failures are propagated. Pa
 after either backend read path, including failure.
 The facade turns empty constructors into BADOUTOFMEMORY and retains the prior
 installed database. These guards do not change native history behavior on success.
+
+### Stock memory backend factories
+
+`cpkt_opcua_HistoryDataBackend_Memory` and `_Memory_Circular` wrap the native
+factories and expose every available callback slot with C89 arguments. Zero
+capacities retain native defaults; constructor allocation failure returns an
+empty record. The growable backend retains its NULL `getHistoryData` slot. The
+circular backend retains native capacities, overwrite order, and history reads.
+Replacing callback slots on a returned record is supported: the native circular
+high-level reader calls those replacements through the same C89 bridges.
+
+Callback inputs borrow until return. Calling a factory-returned callback produces
+caller-owned output records, arrays and continuation points; initialize them
+empty and clear them even on failure. This differs from implementing a custom
+callback, whose outputs the bridge consumes and clears after conversion.
+`providedValues` is optional when calling a stock `copyDataValues` slot.
+
+Stock `getDataValue` returns a const opaque handle to the actual native stored
+DataValue, with no copy, cache, or per-value allocation. Other lookup calls do not
+invalidate it. Replacement, removal, circular overwrite and backend destruction
+retain their native lifetime effects. Only objects created by `history_value_new`
+may be set or freed; never cast away const on a stock borrow. `history_value_get`
+can copy either kind into owned C89 storage. Finish all borrowers before mutation.
+
+A factory record owns one context. Copies alias that context and cannot be
+destroyed independently. `_Memory_clear` invokes native cleanup, releases the
+facade context and resets the record; NULL and empty records are safe. The native
+`deleteMembers` callback also releases the context, leaving an invalid record as
+upstream does. Call exactly one destructor per context. Successful installation
+through `server_register_history_backend` transfers that ownership to the server.
 
 ### Collection policy and polling
 

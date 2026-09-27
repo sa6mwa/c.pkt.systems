@@ -320,3 +320,89 @@ void cpkt_types_test_memory_backend(void) {
   queries();
   circular_pages();
 }
+
+/* The facade handle must be the native public object itself, not a snapshot. */
+int cpkt_types_peer_stock_borrow(const void *stored, const unsigned char *text,
+                                 size_t length, unsigned int timestamp) {
+  const UA_DataValue *value = (const UA_DataValue *)stored;
+  const UA_String *actual;
+  if (!value || !value->hasValue || !value->hasSourceTimestamp ||
+      value->sourceTimestamp != ((UA_DateTime)1 << 32) + timestamp ||
+      !UA_Variant_hasScalarType(&value->value, &UA_TYPES[UA_TYPES_STRING]))
+    return 0;
+  actual = (const UA_String *)value->value.data;
+  return actual->length == length && !memcmp(actual->data, text, length);
+}
+
+/* Compare the upstream endpoint behavior, rather than infer inclusive removal.
+ */
+size_t cpkt_types_peer_stock_remove_end(void) {
+  UA_HistoryDataBackend backend = UA_HistoryDataBackend_Memory(1, 1);
+  UA_NodeId node = UA_NODEID_NUMERIC(1, 1);
+  UA_String text = UA_STRING("parity");
+  for (unsigned int stamp = 100; stamp <= 500; stamp += 100) {
+    UA_DataValue value = sample(&text, ((UA_DateTime)1 << 32) + stamp);
+    CHECK(!backend.insertDataValue(NULL, backend.context, NULL, NULL, &node,
+                                   &value));
+  }
+  CHECK(!backend.removeDataValue(NULL, backend.context, NULL, NULL, &node,
+                                 ((UA_DateTime)1 << 32) + 100,
+                                 ((UA_DateTime)1 << 32) + 200));
+  size_t count = backend.getEnd(NULL, backend.context, NULL, NULL, &node);
+  UA_HistoryDataBackend_Memory_clear(&backend);
+  return count;
+}
+
+/* Read factory-backed values through the installed default HistoryDatabase. */
+unsigned int cpkt_types_peer_stock_history(void *native_server) {
+  UA_Server *server = (UA_Server *)native_server;
+  UA_HistoryDatabase *database = &UA_Server_getConfig(server)->historyDatabase;
+  UA_NodeId node = UA_NODEID_NUMERIC(1, 7775);
+  UA_VariableAttributes attributes = UA_VariableAttributes_default;
+  UA_String text = UA_STRING("stock history");
+  attributes.historizing = true;
+  attributes.accessLevel =
+      UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_HISTORYREAD;
+  attributes.dataType = UA_TYPES[UA_TYPES_STRING].typeId;
+  UA_Variant_setScalar(&attributes.value, &text, &UA_TYPES[UA_TYPES_STRING]);
+  UA_StatusCode status = UA_Server_addVariableNode(
+      server, node, UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+      UA_QUALIFIEDNAME(1, "stock history"),
+      UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), attributes, NULL,
+      NULL);
+  if (status)
+    return status;
+  UA_RequestHeader header;
+  UA_RequestHeader_init(&header);
+  UA_HistoryReadValueId read;
+  UA_HistoryReadValueId_init(&read);
+  read.nodeId = node;
+  UA_ReadRawModifiedDetails details;
+  UA_ReadRawModifiedDetails_init(&details);
+  details.startTime = ((UA_DateTime)1 << 32) + 100;
+  /* Native growable reads use an exclusive end when returnBounds is false. */
+  details.endTime = ((UA_DateTime)1 << 32) + 301;
+  details.numValuesPerNode = 3;
+  UA_HistoryReadResponse response;
+  UA_HistoryReadResponse_init(&response);
+  response.results = (UA_HistoryReadResult *)UA_Array_new(
+      1, &UA_TYPES[UA_TYPES_HISTORYREADRESULT]);
+  CHECK(response.results);
+  response.resultsSize = 1;
+  UA_HistoryData data, *pointer = &data;
+  UA_HistoryData_init(&data);
+  database->readRaw(server, database->context, NULL, NULL, &header, &details,
+                    UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
+                    &pointer);
+  status = response.results[0].statusCode;
+  CHECK(!status && data.dataValuesSize == 3);
+  unsigned char payload[] = {'a', 0, 'b', 'c'};
+  for (size_t i = 0; i < data.dataValuesSize; ++i)
+    CHECK(cpkt_types_peer_stock_borrow(&data.dataValues[i], payload,
+                                       sizeof(payload),
+                                       (unsigned int)(100 + i * 100)));
+  UA_HistoryData_clear(&data);
+  UA_HistoryReadResponse_clear(&response);
+  return status;
+}

@@ -10,11 +10,44 @@ typedef struct {
   cpkt_opcua_HistoryDatabase plugin;
 } cpkt_hdb_bridge;
 #include <open62541/plugin/historydata/history_data_backend.h>
+#include <open62541/plugin/historydata/history_data_backend_memory.h>
 #include <open62541/plugin/historydata/history_data_gathering_default.h>
 #include <open62541/plugin/historydata/history_database_default.h>
-struct cpkt_opcua_history_value {
-  UA_DataValue native;
-};
+/* An opaque history value denotes the actual public native DataValue object.
+ * Owned allocations and const borrowed values use the same handle without a
+ * snapshot, cache or incompatible struct access. Only owned handles may be
+ * set/freed; const handles from stock backends retain native lifetimes. */
+static UA_DataValue *cpkt_history_native(cpkt_opcua_history_value *stored) {
+  return (UA_DataValue *)(void *)stored;
+}
+static const UA_DataValue *
+cpkt_history_native_const(const cpkt_opcua_history_value *stored) {
+  return (const UA_DataValue *)(const void *)stored;
+}
+typedef struct {
+  UA_HistoryDataBackend native;
+} cpkt_stock_hb;
+/* Optional session ids may be NULL; byte payloads borrow through the call. */
+static int cpkt_stock_node_valid(const cpkt_opcua_NodeId *node) {
+  const cpkt_opcua_String *bytes;
+  if (!node)
+    return 1;
+  switch (node->identifierType) {
+  case CPKT_OPCUA_NODEIDTYPE_NUMERIC:
+  case CPKT_OPCUA_NODEIDTYPE_GUID:
+    return 1;
+  case CPKT_OPCUA_NODEIDTYPE_STRING:
+    bytes = &node->identifier.string;
+    break;
+  case CPKT_OPCUA_NODEIDTYPE_BYTESTRING:
+    bytes = &node->identifier.byteString;
+    break;
+  default:
+    return 0;
+  }
+  return !bytes->length ||
+         (bytes->data && bytes->data != CPKT_OPCUA_EMPTY_ARRAY_SENTINEL);
+}
 /* The node borrows this pointer slot, not a converted snapshot. Storage and
  * the slot are independently caller-owned and must outlive every native use. */
 struct cpkt_opcua_external_value {
@@ -28,6 +61,13 @@ struct cpkt_hb_bridge {
   UA_NodeId node;
   cpkt_hb_bridge *next;
 };
+/* Stock circular reads inspect their native storage context directly. The
+ * synchronous callback dispatch travels in sessionContext and restores the
+ * user's original session context before entering each facade callback. */
+typedef struct {
+  cpkt_hb_bridge forwarded;
+  void *session_context;
+} cpkt_stock_hb_dispatch;
 typedef struct cpkt_gather_bridge cpkt_gather_bridge;
 struct cpkt_gather_bridge {
   cpkt_opcua_server *owner;

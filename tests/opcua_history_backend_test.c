@@ -474,6 +474,365 @@ static void allocation_failures(void) {
   CHECK(state.cleared == 1);
 }
 #endif
+/* Exercise stock callbacks from strict C89, including output ownership and
+ * native borrowed pointer identity. No upstream private record is inspected. */
+static cpkt_opcua_DateTime stock_time(unsigned int low) {
+  cpkt_opcua_DateTime t;
+  t.high32 = 1;
+  t.low32 = low;
+  return t;
+}
+static cpkt_opcua_DataValue stock_sample(cpkt_opcua_String *text,
+                                         unsigned int stamp) {
+  cpkt_opcua_DataValue value;
+  cpkt_opcua_DataValue_init(&value);
+  value.hasValue = value.hasSourceTimestamp = 1;
+  value.sourceTimestamp = stock_time(stamp);
+  value.value.type = cpkt_opcua_type_at(CPKT_OPCUA_TYPES_STRING);
+  value.value.storageType = CPKT_OPCUA_VARIANT_DATA_NODELETE;
+  value.value.data = text;
+  return value;
+}
+static void stock_value(const cpkt_opcua_DataValue *value,
+                        const cpkt_opcua_String *text, unsigned int stamp) {
+  const cpkt_opcua_String *actual;
+  CHECK(value->hasValue && value->hasSourceTimestamp);
+  CHECK(value->sourceTimestamp.high32 == 1 &&
+        value->sourceTimestamp.low32 == stamp);
+  CHECK(value->value.type == cpkt_opcua_type_at(CPKT_OPCUA_TYPES_STRING));
+  actual = (const cpkt_opcua_String *)value->value.data;
+  CHECK(actual && actual->length == text->length &&
+        !memcmp(actual->data, text->data, text->length));
+}
+static void stock_borrow(cpkt_opcua_HistoryDataBackend *backend,
+                         const cpkt_opcua_NodeId *node, size_t index,
+                         const cpkt_opcua_String *text, unsigned int stamp) {
+  const cpkt_opcua_history_value *stored, *again;
+  cpkt_opcua_DataValue copy;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  cpkt_types_fail_after(0);
+#endif
+  stored =
+      backend->getDataValue(NULL, backend->context, NULL, NULL, node, index);
+  again =
+      backend->getDataValue(NULL, backend->context, NULL, NULL, node, index);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  CHECK(!cpkt_types_fail_stop());
+#endif
+  CHECK(stored && stored == again);
+  CHECK(cpkt_types_peer_stock_borrow(stored, text->data, text->length, stamp));
+  CHECK(!cpkt_opcua_history_value_get(stored, &copy));
+  stock_value(&copy, text, stamp);
+  cpkt_opcua_DataValue_clear(&copy);
+}
+static size_t (*stock_original_end)(cpkt_opcua_server *, void *,
+                                    const cpkt_opcua_NodeId *, void *,
+                                    const cpkt_opcua_NodeId *);
+static unsigned int stock_override_calls;
+static void *stock_expected_session;
+static size_t stock_override_end(cpkt_opcua_server *server, void *context,
+                                 const cpkt_opcua_NodeId *session,
+                                 void *session_context,
+                                 const cpkt_opcua_NodeId *node) {
+  CHECK(session_context == stock_expected_session);
+  ++stock_override_calls;
+  return stock_original_end(server, context, session, session_context, node);
+}
+static cpkt_opcua_status stock_native_history(void *native, void *context) {
+  (void)context;
+  return cpkt_types_peer_stock_history(native);
+}
+static void stock_backend_tests(void) {
+  cpkt_opcua_HistoryDataBackend backend, empty;
+  cpkt_opcua_NodeId node, invalid;
+  cpkt_opcua_server *server;
+  cpkt_opcua_HistorizingNodeIdSettings settings;
+  cpkt_opcua_String text;
+  cpkt_opcua_DataValue value, outputs[3];
+  cpkt_opcua_HistoryData history;
+  cpkt_opcua_NumericRange range;
+  cpkt_opcua_NumericRangeDimension dimension;
+  cpkt_opcua_ByteString input, output, next;
+  const cpkt_opcua_history_value *first_borrow, *second_borrow;
+  cpkt_opcua_StatusCode status;
+  size_t i, count, position;
+  int circular, reverse, strategy, injected, operation;
+  unsigned char payload[] = {'a', 0, 'b', 'c'};
+  memset(&empty, 0, sizeof(empty));
+  cpkt_opcua_HistoryDataBackend_Memory_clear(NULL);
+  cpkt_opcua_HistoryDataBackend_Memory_clear(&empty);
+  CHECK(!empty.context && !empty.deleteMembers);
+  backend = cpkt_opcua_HistoryDataBackend_Memory((size_t)-1, 1);
+  CHECK(!backend.context);
+  backend = cpkt_opcua_HistoryDataBackend_Memory(1, (size_t)-1);
+  CHECK(!backend.context);
+  cpkt_opcua_NodeId_init(&node);
+  node.namespaceIndex = 65535;
+  node.identifierType = CPKT_OPCUA_NODEIDTYPE_STRING;
+  node.identifier.string.length = sizeof(payload);
+  node.identifier.string.data = payload;
+  text.length = sizeof(payload);
+  text.data = payload;
+  memset(&range, 0, sizeof(range));
+  memset(&input, 0, sizeof(input));
+  for (circular = 0; circular < 2; ++circular) {
+    for (position = 0; position < 5; ++position) {
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+      cpkt_types_fail_after(position);
+#endif
+      backend = circular ? cpkt_opcua_HistoryDataBackend_Memory_Circular(0, 0)
+                         : cpkt_opcua_HistoryDataBackend_Memory(0, 0);
+      injected = 0;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+      injected = cpkt_types_fail_stop();
+#endif
+      CHECK(injected ? !backend.context : !!backend.context);
+      cpkt_opcua_HistoryDataBackend_Memory_clear(&backend);
+    }
+    backend = circular ? cpkt_opcua_HistoryDataBackend_Memory_Circular(1, 3)
+                       : cpkt_opcua_HistoryDataBackend_Memory(1, 1);
+    CHECK(backend.context && backend.deleteMembers &&
+          backend.serverSetHistoryData && backend.getDateTimeMatch &&
+          backend.getEnd && backend.firstIndex && backend.lastIndex &&
+          backend.resultSize && backend.copyDataValues &&
+          backend.getDataValue && backend.boundSupported &&
+          backend.timestampsToReturnSupported && backend.insertDataValue &&
+          backend.replaceDataValue && backend.updateDataValue &&
+          backend.removeDataValue);
+    CHECK(circular ? !!backend.getHistoryData : !backend.getHistoryData);
+    for (i = 0; i < 3; ++i) {
+      value = stock_sample(&text, (unsigned int)(100 + i * 100));
+      CHECK(!backend.serverSetHistoryData(NULL, backend.context, NULL, NULL,
+                                          &node, 1, &value));
+    }
+    CHECK(backend.getEnd(NULL, backend.context, NULL, NULL, &node) == 3);
+    CHECK(backend.firstIndex(NULL, backend.context, NULL, NULL, &node) == 0);
+    CHECK(backend.lastIndex(NULL, backend.context, NULL, NULL, &node) == 2);
+    CHECK(backend.resultSize(NULL, backend.context, NULL, NULL, &node, 0, 2) ==
+          3);
+    for (strategy = CPKT_OPCUA_MATCH_EQUAL;
+         strategy <= CPKT_OPCUA_MATCH_EQUAL_OR_BEFORE; ++strategy) {
+      size_t expected = strategy == CPKT_OPCUA_MATCH_AFTER    ? 2
+                        : strategy == CPKT_OPCUA_MATCH_BEFORE ? 0
+                                                              : 1;
+      CHECK(backend.getDateTimeMatch(
+                NULL, backend.context, NULL, NULL, &node, stock_time(200),
+                (cpkt_opcua_MatchStrategy)strategy) == expected);
+    }
+    CHECK(backend.boundSupported(NULL, backend.context, NULL, NULL, &node));
+    for (i = 0; i < 5; ++i)
+      CHECK(!!backend.timestampsToReturnSupported(
+                NULL, backend.context, NULL, NULL, &node,
+                (cpkt_opcua_TimestampsToReturn)i) == (i < 3));
+    first_borrow =
+        backend.getDataValue(NULL, backend.context, NULL, NULL, &node, 0);
+    second_borrow =
+        backend.getDataValue(NULL, backend.context, NULL, NULL, &node, 1);
+    CHECK(first_borrow && second_borrow && first_borrow != second_borrow);
+    stock_borrow(&backend, &node, 0, &text, 100);
+    stock_borrow(&backend, &node, 1, &text, 200);
+    CHECK(first_borrow ==
+          backend.getDataValue(NULL, backend.context, NULL, NULL, &node, 0));
+    CHECK(!backend.getDataValue(NULL, backend.context, NULL, NULL, &node, 3));
+    invalid = node;
+    invalid.identifier.string.data = NULL;
+    CHECK(
+        !backend.getDataValue(NULL, backend.context, NULL, NULL, &invalid, 0));
+    for (reverse = 0; reverse < 2; ++reverse) {
+      memset(outputs, 0, sizeof(outputs));
+      memset(&output, 0, sizeof(output));
+      count = 0;
+      CHECK(!backend.copyDataValues(NULL, backend.context, NULL, NULL, &node,
+                                    reverse ? 2 : 0, reverse ? 0 : 2,
+                                    (cpkt_opcua_Boolean)reverse, 1, range, 0,
+                                    &input, &output, &count, outputs));
+      CHECK(count == 1 && output.length == sizeof(size_t));
+      stock_value(&outputs[0], &text, reverse ? 300 : 100);
+      cpkt_opcua_DataValue_clear(&outputs[0]);
+      memset(&next, 0, sizeof(next));
+      CHECK(!backend.copyDataValues(NULL, backend.context, NULL, NULL, &node,
+                                    reverse ? 2 : 0, reverse ? 0 : 2,
+                                    (cpkt_opcua_Boolean)reverse, 3, range, 0,
+                                    &output, &next, &count, outputs));
+      CHECK(count == 2 && !next.length);
+      stock_value(&outputs[0], &text, 200);
+      stock_value(&outputs[1], &text, reverse ? 100 : 300);
+      for (i = 0; i < count; ++i)
+        cpkt_opcua_DataValue_clear(&outputs[i]);
+      cpkt_opcua_ByteString_clear(&output);
+      cpkt_opcua_ByteString_clear(&next);
+    }
+    dimension.min = 1;
+    dimension.max = 2;
+    range.dimensionsSize = 1;
+    range.dimensions = &dimension;
+    memset(outputs, 0, sizeof(outputs));
+    memset(&output, 0, sizeof(output));
+    CHECK(!backend.copyDataValues(NULL, backend.context, NULL, NULL, &node, 0,
+                                  0, 0, 1, range, 0, &input, &output, NULL,
+                                  outputs));
+    CHECK(((cpkt_opcua_String *)outputs[0].value.data)->length == 2);
+    CHECK(!memcmp(((cpkt_opcua_String *)outputs[0].value.data)->data,
+                  payload + 1, 2));
+    cpkt_opcua_DataValue_clear(&outputs[0]);
+    cpkt_opcua_ByteString_clear(&output);
+    memset(&range, 0, sizeof(range));
+    if (circular) {
+      stock_override_calls = 0;
+      stock_expected_session = &stock_override_calls;
+      stock_original_end = backend.getEnd;
+      backend.getEnd = stock_override_end;
+      cpkt_opcua_HistoryData_init(&history);
+      memset(&output, 0, sizeof(output));
+      CHECK(!backend.getHistoryData(
+          NULL, NULL, stock_expected_session, &backend, stock_time(100),
+          stock_time(300), &node, 3, 3, 0, cpkt_opcua_TIMESTAMPSTORETURN_BOTH,
+          range, 0, &input, &output, &history));
+      CHECK(stock_override_calls > 0 && history.dataValuesSize == 3);
+      for (i = 0; i < 3; ++i)
+        stock_value(&history.dataValues[i], &text,
+                    (unsigned int)(100 + i * 100));
+      cpkt_opcua_HistoryData_clear(&history);
+      cpkt_opcua_ByteString_clear(&output);
+      backend.getEnd = stock_original_end;
+      value = stock_sample(&text, 400);
+      CHECK(!backend.serverSetHistoryData(NULL, backend.context, NULL, NULL,
+                                          &node, 1, &value));
+      CHECK(backend.getEnd(NULL, backend.context, NULL, NULL, &node) == 3);
+      stock_borrow(&backend, &node, 0, &text, 400);
+    } else {
+      value = stock_sample(&text, 200);
+      CHECK(backend.insertDataValue(NULL, backend.context, NULL, NULL, &node,
+                                    &value) ==
+            CPKT_OPCUA_STATUSCODE_BADENTRYEXISTS);
+      value = stock_sample(&text, 400);
+      CHECK(!backend.insertDataValue(NULL, backend.context, NULL, NULL, &node,
+                                     &value));
+      value = stock_sample(&text, 500);
+      CHECK(backend.replaceDataValue(NULL, backend.context, NULL, NULL, &node,
+                                     &value) ==
+            CPKT_OPCUA_STATUSCODE_BADNOENTRYEXISTS);
+      CHECK(backend.updateDataValue(NULL, backend.context, NULL, NULL, &node,
+                                    &value) ==
+            CPKT_OPCUA_STATUSCODE_GOODENTRYINSERTED);
+      CHECK(!backend.replaceDataValue(NULL, backend.context, NULL, NULL, &node,
+                                      &value));
+      CHECK(!backend.removeDataValue(NULL, backend.context, NULL, NULL, &node,
+                                     stock_time(100), stock_time(200)));
+      CHECK(backend.getEnd(NULL, backend.context, NULL, NULL, &node) ==
+            cpkt_types_peer_stock_remove_end());
+    }
+    cpkt_opcua_HistoryDataBackend_Memory_clear(&backend);
+    CHECK(!memcmp(&backend, &empty, sizeof(backend)));
+  }
+  cpkt_opcua_NodeId_init(&node);
+  node.namespaceIndex = 1;
+  node.identifier.numeric = 7775;
+  for (circular = 0; circular < 2; ++circular) {
+    CHECK(cpkt_opcua_server_new(&server, 0) == CPKT_OPCUA_OK);
+    CHECK(!cpkt_opcua_server_set_default_history_database(server, 1));
+    backend = circular ? cpkt_opcua_HistoryDataBackend_Memory_Circular(1, 3)
+                       : cpkt_opcua_HistoryDataBackend_Memory(1, 3);
+    for (i = 0; i < 3; ++i) {
+      value = stock_sample(&text, (unsigned int)(100 + i * 100));
+      CHECK(!backend.serverSetHistoryData(server, backend.context, NULL, NULL,
+                                          &node, 1, &value));
+    }
+    memset(&settings, 0, sizeof(settings));
+    settings.historizingBackend = backend;
+    settings.maxHistoryDataResponseSize = 3;
+    settings.historizingUpdateStrategy =
+        CPKT_OPCUA_HISTORIZINGUPDATESTRATEGY_USER;
+    CHECK(
+        !cpkt_opcua_server_register_history_backend(server, &node, &settings));
+    CHECK(cpkt_opcua_server_native(server, stock_native_history, NULL) ==
+          CPKT_OPCUA_OK);
+    /* Successful registration transfers the sole context ownership. */
+    cpkt_opcua_server_free(server);
+  }
+  /* Fail each allocation in stock input/output conversion and native storage.
+   * Clear partial outputs on error; retained storage must remain usable. */
+  for (position = 0; position < 32; ++position) {
+    backend = cpkt_opcua_HistoryDataBackend_Memory(1, 1);
+    value = stock_sample(&text, 100);
+    CHECK(!backend.serverSetHistoryData(NULL, backend.context, NULL, NULL,
+                                        &node, 1, &value));
+    memset(outputs, 0, sizeof(outputs));
+    memset(&output, 0, sizeof(output));
+    count = 99;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+    cpkt_types_fail_after(position);
+#endif
+    status = backend.copyDataValues(NULL, backend.context, NULL, NULL, &node, 0,
+                                    0, 0, 1, range, 0, &input, &output, &count,
+                                    outputs);
+    injected = 0;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+    injected = cpkt_types_fail_stop();
+#endif
+    CHECK(injected ? status == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY : !status);
+    if (!status) {
+      CHECK(count == 1);
+      stock_value(&outputs[0], &text, 100);
+    }
+    cpkt_opcua_DataValue_clear(&outputs[0]);
+    cpkt_opcua_ByteString_clear(&output);
+    stock_borrow(&backend, &node, 0, &text, 100);
+    cpkt_opcua_HistoryDataBackend_Memory_clear(&backend);
+    if (!injected)
+      break;
+  }
+  CHECK(position < 32);
+  for (operation = 0; operation < 3; ++operation) {
+    for (position = 0; position < 128; ++position) {
+      backend = cpkt_opcua_HistoryDataBackend_Memory_Circular(1, 3);
+      for (i = 0; i < 3; ++i) {
+        value = stock_sample(&text, (unsigned int)(100 + i * 100));
+        CHECK(!backend.serverSetHistoryData(NULL, backend.context, NULL, NULL,
+                                            &node, 1, &value));
+      }
+      if (operation == 2) {
+        stock_original_end = backend.getEnd;
+        backend.getEnd = stock_override_end;
+        stock_expected_session = &stock_override_calls;
+      }
+      value = stock_sample(&text, 100);
+      cpkt_opcua_HistoryData_init(&history);
+      memset(&output, 0, sizeof(output));
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+      cpkt_types_fail_after(position);
+#endif
+      status = operation == 0
+                   ? backend.replaceDataValue(NULL, backend.context, NULL, NULL,
+                                              &node, &value)
+                   : backend.getHistoryData(
+                         NULL, NULL, stock_expected_session, &backend,
+                         stock_time(100), stock_time(300), &node, 3, 3, 0,
+                         cpkt_opcua_TIMESTAMPSTORETURN_BOTH, range, 0, &input,
+                         &output, &history);
+      injected = 0;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+      injected = cpkt_types_fail_stop();
+#endif
+      CHECK(injected ? status == CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY
+                     : !status);
+      if (!status && operation) {
+        CHECK(history.dataValuesSize == 3);
+        for (i = 0; i < 3; ++i)
+          stock_value(&history.dataValues[i], &text,
+                      (unsigned int)(100 + i * 100));
+      }
+      cpkt_opcua_HistoryData_clear(&history);
+      cpkt_opcua_ByteString_clear(&output);
+      stock_borrow(&backend, &node, 0, &text, 100);
+      backend.deleteMembers(&backend);
+      if (!injected)
+        break;
+    }
+    CHECK(position < 128);
+  }
+}
+
 void cpkt_types_test_history_backend(void) {
   history_state low, high;
   cpkt_opcua_HistorizingNodeIdSettings settings;
@@ -488,6 +847,7 @@ void cpkt_types_test_history_backend(void) {
   polling();
   memset(&low, 0, sizeof(low));
   memset(&high, 0, sizeof(high));
+  stock_backend_tests();
   CHECK(cpkt_opcua_history_value_new(NULL, &bad) ==
             CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT &&
         !bad);

@@ -103,12 +103,40 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
     history_public, history_private = history_emitter.emit_backend(index, changed_headers, (changed_headers / 'config.h').read_text())
     assert 'const cpkt_opcua_history_value*' in '\n'.join(history_public)
     assert re.match(r'/\*.*?\*/', (native_headers / 'types.h').read_text(), re.S)[0] in '\n'.join(history_public)
-    assert any('return stored ? &stored->native : NULL;' in line for line in history_private)
+    assert any('return cpkt_history_native_const(stored);' in line for line in history_private)
     assert {name for _, name, _ in plugin_emitter.callbacks(plugin_emitter.public_body(history_header, 'HistoryDataBackend', (changed_headers / 'config.h').read_text()))} == {
         'deleteMembers', 'serverSetHistoryData', 'getHistoryData', 'getDateTimeMatch', 'getEnd', 'lastIndex', 'firstIndex',
         'resultSize', 'copyDataValues', 'getDataValue', 'boundSupported', 'timestampsToReturnSupported',
         'insertDataValue', 'replaceDataValue', 'updateDataValue', 'removeDataValue',
     }
+    stock_header = changed_headers / 'plugin/historydata/history_data_backend_memory.h'
+    original_stock = stock_header.read_text()
+    stock_header.chmod(0o644)
+    for broken in (
+        original_stock.replace('size_t initialDataStoreSize', 'UA_UInt64 initialDataStoreSize'),
+        original_stock.replace('UA_HistoryDataBackend_Memory_clear', 'UA_HistoryDataBackend_Memory_destroy'),
+        original_stock.replace('_UA_END_DECLS', 'void UA_EXPORT UA_HistoryDataBackend_Memory_new(void);\n_UA_END_DECLS'),
+    ):
+        stock_header.write_text(broken)
+        try:
+            history_emitter.emit_backend(index, changed_headers, (changed_headers / 'config.h').read_text())
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Unsupported stock history factory was accepted')
+    stock_header.write_text(original_stock)
+    stock_private = '\n'.join(history_private)
+    for name in ('serverSetHistoryData', 'getHistoryData', 'getDateTimeMatch', 'getEnd',
+                 'lastIndex', 'firstIndex', 'resultSize', 'copyDataValues', 'getDataValue',
+                 'boundSupported', 'timestampsToReturnSupported', 'insertDataValue',
+                 'replaceDataValue', 'updateDataValue', 'removeDataValue'):
+        assert 'cpkt_stock_hb_' + name + '(' in stock_private
+        assert 'out.' + name + ' = native.' + name + ' ? cpkt_stock_hb_' + name + ' : NULL;' in stock_private
+    assert 'cpkt_stock_hb_record(backend, server, sessionContext, &dispatch, &n_backend)' in stock_private
+    assert '(const cpkt_opcua_history_value *)(const void *)answer' in stock_private
+    assert '*native = bridge->native;' in stock_private
+    assert 'native->context = forwarded' not in stock_private
+    assert 'dispatch->session_context' in stock_private
     highlevel = changed_headers / 'client_highlevel.h'
     original_highlevel = highlevel.read_text()
     highlevel.chmod(0o644)

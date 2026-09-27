@@ -136,7 +136,7 @@ static cpkt_producer *cpkt_producer_find(cpkt_opcua_server *server,
 static UA_StatusCode cpkt_producer_read_value(cpkt_producer *op,
                                               UA_DataValue *out) {
   if (op->borrowed) {
-    *out = op->borrowed->native;
+    *out = *cpkt_history_native_const(op->borrowed);
     out->value.storageType = UA_VARIANT_DATA_NODELETE;
     return 0;
   }
@@ -267,7 +267,7 @@ static UA_StatusCode cpkt_producer_outputs(cpkt_producer *op,
     return UA_STATUSCODE_BADOUTOFMEMORY;
   for (i = 0; !status && i < op->output_count; ++i) {
     if (op->borrowed_outputs && op->borrowed_outputs[i]) {
-      staged[i] = op->borrowed_outputs[i]->native.value;
+      staged[i] = cpkt_history_native_const(op->borrowed_outputs[i])->value;
       staged[i].storageType = UA_VARIANT_DATA_NODELETE;
     } else
       status = cpkt_convert(&op->outputs[i], &staged[i],

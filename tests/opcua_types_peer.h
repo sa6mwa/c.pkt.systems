@@ -2,6 +2,10 @@
 #define CPKT_OPCUA_TYPES_PEER_H
 #include <stddef.h>
 void cpkt_types_test_memory_backend(void);
+size_t cpkt_types_peer_stock_remove_end(void);
+unsigned int cpkt_types_peer_stock_history(void *native_server);
+int cpkt_types_peer_stock_borrow(const void *stored, const unsigned char *text,
+                                 size_t length, unsigned int timestamp);
 unsigned int cpkt_types_native_empty(size_t index, unsigned char **bytes,
                                      size_t *length);
 unsigned int cpkt_types_native_populated(size_t index, unsigned char **bytes,

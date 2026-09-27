@@ -61,7 +61,7 @@ cpkt_opcua_external_value_new(cpkt_opcua_history_value *stored,
   value = (cpkt_opcua_external_value *)UA_calloc(1, sizeof(*value));
   if (!value)
     return UA_STATUSCODE_BADOUTOFMEMORY;
-  value->native = &stored->native;
+  value->native = cpkt_history_native(stored);
   value->selected = stored;
   *out = value;
   return 0;
@@ -71,7 +71,7 @@ cpkt_opcua_external_value_set(cpkt_opcua_external_value *value,
                               cpkt_opcua_history_value *stored) {
   if (!value || !stored)
     return UA_STATUSCODE_BADINVALIDARGUMENT;
-  value->native = &stored->native;
+  value->native = cpkt_history_native(stored);
   value->selected = stored;
   return 0;
 }

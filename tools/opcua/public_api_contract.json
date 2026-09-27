@@ -1442,15 +1442,18 @@
     },
     "UA_HistoryDataBackend_Memory": {
       "declaration": "UA_HistoryDataBackend UA_HistoryDataBackend_Memory ( size_t initialNodeIdStoreSize , size_t initialDataStoreSize )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_HistoryDataBackend_Memory"
     },
     "UA_HistoryDataBackend_Memory_Circular": {
       "declaration": "UA_HistoryDataBackend UA_HistoryDataBackend_Memory_Circular ( size_t initialNodeIdStoreSize , size_t initialDataStoreSize )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_HistoryDataBackend_Memory_Circular"
     },
     "UA_HistoryDataBackend_Memory_clear": {
       "declaration": "void UA_HistoryDataBackend_Memory_clear ( UA_HistoryDataBackend * backend )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_HistoryDataBackend_Memory_clear"
     },
     "UA_HistoryDataGathering_Circular": {
       "declaration": "UA_HistoryDataGathering UA_HistoryDataGathering_Circular ( size_t initialNodeIdStoreSize )",

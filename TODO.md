@@ -93,8 +93,10 @@ behind a callback interface.
 - [x] Expose external value sources through stable borrowed native pointer slots,
   preserving selection changes during read notifications, shared storage,
   native writes, and caller-owned lifetime with native pointer/OOM tests.
+- [x] Expose stock memory/circular history backend factories and every callable
+  callback slot, preserving native borrowed values and callback overrides.
 - [ ] Use generated typed records at remaining PubSub component configuration,
-  custom history gathering and stock memory/circular backend factories, and
+  custom history gathering and stock gathering/database factories, and
   custom security/event-loop/nodestore plugin boundaries. Preserve the upstream
   behavior and ownership rules; no C99-only native callback substitutes for
   a promised C89 binding. Custom native datatype registration is still separate.
