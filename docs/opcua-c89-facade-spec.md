@@ -342,8 +342,10 @@ retain their public data and original application contexts through C89 types.
 The facade adds explicit conversion status to distinguish representation
 failure from native service and per-operation status. Native data-change/event
 batch creation share a typed entry point with an explicit event selector;
-no event fields or nested values are discarded. Single-item creation helpers,
-attribute callbacks and other client helpers remain separate pending entries.
+no event fields or nested values are discarded. Single-item monitored-item
+creation helpers remain pending. Complete async attribute/header bindings are
+described below. Other core
+client configuration/helpers remain separate pending entries.
 Existing native-peer, integration, allocation-failure and destruction tests
 exercise these bindings; coverage classification does not add new behavior.
 
@@ -390,6 +392,53 @@ Strict C89 static/shared tests exercise every entry point against an independent
 native server. Tests cover exact 64-bit limits, optional outputs, native
 read-only errors, history pages and continuation release, and conversion
 allocation failures after native results have been produced.
+
+### Complete asynchronous high-level client bindings
+
+All 59 public operations and 31 callback types in `client_highlevel_async.h`
+are generated from that header, including its write-declaration macro.
+`cpkt_opcua_client_<upstream-name>_typed` preserves the async suffix and invokes
+that exact native helper. The generalized `AsyncService_typed` accepts genuine
+service request/response descriptors beyond the 14 convenience service pairs;
+request/response header roles are checked before entering native code.
+
+Callbacks retain their original client, application context and native request
+ID. An extra conversion status distinguishes C89 representation failure from
+native status: failure gives NULL converted data and still invokes completion.
+Native NULL results stay NULL. Converted data borrows until callback return;
+copy it to retain it. Reentrant submissions use the native client mechanism.
+Do not destroy a client from its callback. Service-style helpers accept NULL
+callbacks without allocating facade callback state; typed attribute reads
+require callbacks, as their native helpers do. Request ID output is optional
+and starts zero before an attempt. Submission errors release bridge state and
+produce no callback; accepted state lasts until one native completion.
+
+Requests borrow during submission only. The native function encodes each
+request before returning; the facade adds no queue or scheduler. Mutable
+`sendAsync*Request` inputs retain native updates to the header's timestamp,
+request handle and timeout hint. Nested input ownership and the restored
+authentication token remain with the caller. Const generalized inputs remain
+borrowed inputs. Method completion carries the full CallResponse, including
+multiple outputs and per-method statuses such as `GoodClamped`.
+
+Native behavior is preserved even where helpers differ. A value-attribute read
+receives a complete DataValue and its per-operation status; the native typed
+NodeClass helper returns `BadInternalError` with NULL when a missing node gives
+no value. Async array-dimension reads return a Variant. Async node helpers do
+not use their `outNewNodeId` argument: it remains unchanged, and complete
+assigned IDs are received in the AddNodesResponse callback. Direct native
+probes lock these behaviors into the tests; the facade does not synthesize
+another output or translate native errors into different ones.
+
+Native cancellation and secure-channel renewal retain their IDs, counts and
+statuses. Timed-out operations complete through the native event loop. Native
+client deletion closes the session before clearing it, so pending requests may
+complete with `BadSessionClosed` (or time out first); the facade forwards that
+status and frees each bridge exactly once. Tests pause the independent peer to
+prove timeout/session-close completion, exercise cancellation and reentrant
+submission, and inject conversion failure after native callback data exists.
+Overflowing method input counts are rejected without attempting native cleanup
+on a nonexistent conversion buffer, for both sync and async helpers.
 
 ### Value-source and method producers
 

@@ -526,6 +526,10 @@ void cpkt_types_test_client(cpkt_opcua_client *client, void *peer) {
   CHECK(cpkt_opcua_client_writeArrayDimensionsAttribute_typed(
             client, variable, (size_t)-1, &dimension) ==
         CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY);
+  CHECK(cpkt_opcua_client_call_typed(client, object, node(1, 6100), (size_t)-1,
+                                     &value, &count, &outputs) ==
+            CPKT_OPCUA_STATUSCODE_BADOUTOFMEMORY &&
+        !count && !outputs);
   CHECK(cpkt_opcua_client_readValueAttribute_typed(NULL, variable, &output) ==
         CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
   CHECK(cpkt_opcua_client_readValueAttribute_typed(client, variable, NULL) ==
@@ -601,6 +605,7 @@ void cpkt_types_test_client(cpkt_opcua_client *client, void *peer) {
     cpkt_opcua_VariableAttributes_clear(&va);
   }
 #endif
+  cpkt_types_test_async_client(client, peer);
   /* Delete children before their parent: native deletion removes owned
    * aggregate children together with the object. */
   for (i = 8; i > 0; --i)

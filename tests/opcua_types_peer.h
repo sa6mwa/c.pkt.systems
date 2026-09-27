@@ -11,6 +11,9 @@ int cpkt_types_peer_check(void *peer);
 unsigned int cpkt_types_peer_highlevel_setup(void *peer);
 void cpkt_types_peer_highlevel_history_counts(void *peer, unsigned int *pages,
                                               unsigned int *releases);
+unsigned int cpkt_types_peer_async_add_output(void *client);
+unsigned int cpkt_types_peer_client_timeout(void *client, unsigned int timeout);
+void cpkt_types_peer_pause(void *peer, int pause);
 void cpkt_types_peer_client_fail_conversion(int kind, size_t count);
 unsigned int cpkt_types_peer_event(void *peer);
 unsigned int cpkt_types_peer_access_control(void *native_server);

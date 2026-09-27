@@ -24,6 +24,7 @@ import node_emitter
 import producer_emitter
 import creation_emitter
 import client_emitter
+import async_client_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -131,6 +132,31 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         else:
             raise AssertionError('Changed high-level client signature was accepted')
     highlevel.write_text(original_highlevel)
+    asynchronous = changed_headers / 'client_highlevel_async.h'
+    asynchronous.chmod(0o644)
+    original_async = asynchronous.read_text()
+    async_public, async_private = async_client_emitter.emit_async_client(index, changed_headers)
+    assert len(async_client_emitter.declarations(original_async)) == 59
+    assert len(async_client_emitter.callback_declarations(original_async)) == 31
+    for _, native_name, _ in async_client_emitter.declarations(original_async):
+        assert 'cpkt_opcua_client_' + native_name.split('UA_Client_', 1)[1] + '_typed' in '\n'.join(async_public)
+        assert native_name + '(' in '\n'.join(async_private)
+    for old, new in (
+        ('UA_UInt32 requestId, UA_ReadResponse *rr', 'UA_UInt64 requestId, UA_ReadResponse *rr'),
+        ('const ATTR_TYPE *attr', 'const ATTR_TYPE **attr'),
+        ('UA_ClientAsyncCallCallback callback', 'UA_ClientAsyncOperationCallback callback'),
+        ('size_t inputSize', 'UA_UInt32 inputSize'),
+        ('UA_NodeId *outNewNodeId', 'UA_NodeId **outNewNodeId'),
+    ):
+        assert old in original_async
+        asynchronous.write_text(original_async.replace(old, new, 1))
+        try:
+            async_client_emitter.emit_async_client(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed asynchronous client signature was accepted')
+    asynchronous.write_text(original_async)
     server = changed_headers / 'server.h'
     server.chmod(0o644)
     original_server = server.read_text()

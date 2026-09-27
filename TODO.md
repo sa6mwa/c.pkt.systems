@@ -44,7 +44,11 @@ behind a callback interface.
 - [x] Generate every synchronous high-level client entry point with complete
   C89 arguments, owned outputs, native method/status semantics and history page
   callbacks; verify continuation release and conversion failures with a native
-  network peer. Asynchronous attribute helpers remain pending.
+  network peer.
+- [x] Generate the complete async client header: 59 operations and 31 callback
+  types, preserving native IDs, header updates, callback/NULL semantics,
+  cancellation, timeout and session-close cleanup, with exact 64-bit,
+  reentrant, independent native parity and allocation-failure tests.
 - [x] Expose native server timers and child-node iteration with C89 callback
   arguments, complete 64-bit IDs and reentrant cancellation/cleanup tests.
 - [x] Generate full AccessControl and HistoryDatabase callback records, including

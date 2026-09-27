@@ -79,6 +79,7 @@ tools/opcua/history_emitter.py
 tools/opcua/server_emitter.py
 tools/opcua/producer_emitter.py
 tools/opcua/creation_emitter.py
+tools/opcua/async_client_emitter.py
 tools/opcua/client_emitter.py
 tools/opcua/node_emitter.py
 tools/opcua/public_api.py
@@ -94,6 +95,7 @@ tests/opcua_identifiers_test.c
 tests/opcua_producers_test.c
 tests/opcua_creation_test.c
 tests/opcua_external_test.c
+tests/opcua_async_client_test.c
 tests/opcua_client_test.c
 tests/opcua_nodes_test.c
 tests/opcua_callbacks_test.h

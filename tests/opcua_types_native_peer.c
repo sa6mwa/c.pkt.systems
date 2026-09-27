@@ -1,6 +1,7 @@
 #include "opcua_types_peer.h"
 #include <arpa/inet.h>
 #include <open62541/client_highlevel.h>
+#include <open62541/client_highlevel_async.h>
 #include <open62541/plugin/accesscontrol.h>
 #include <open62541/plugin/historydatabase.h>
 #include <open62541/plugin/nodestore.h>
@@ -1819,5 +1820,104 @@ UA_StatusCode __wrap_UA_Client_HistoryRead_raw(
   return __real_UA_Client_HistoryRead_raw(client, id, client_history_conversion,
                                           start, end, range, bounds, count,
                                           timestamps, &state);
+}
+#endif
+
+static void async_output_probe(UA_Client *client, void *user, UA_UInt32 id,
+                               UA_AddNodesResponse *response) {
+  int *calls = user;
+  (void)client;
+  if (!id || *calls || response->responseHeader.serviceResult ||
+      response->resultsSize != 1 || response->results[0].statusCode ||
+      response->results[0].addedNodeId.identifier.numeric != 6599)
+    abort();
+  ++*calls;
+}
+static void async_class_probe(UA_Client *client, void *user, UA_UInt32 id,
+                              UA_StatusCode status, UA_NodeClass *value) {
+  int *calls = user;
+  (void)client;
+  if (!id || *calls || status != UA_STATUSCODE_BADINTERNALERROR || value)
+    abort();
+  ++*calls;
+}
+unsigned int cpkt_types_peer_async_add_output(void *arg) {
+  UA_Client *client = arg;
+  UA_NodeId ignored = UA_NODEID_NUMERIC(1, 999);
+  int calls = 0;
+  UA_StatusCode status = UA_Client_addObjectNode_async(
+      client, UA_NODEID_NUMERIC(1, 6599), UA_NS0ID(OBJECTSFOLDER),
+      UA_NS0ID(ORGANIZES), UA_QUALIFIEDNAME(1, "native-output-probe"),
+      UA_NS0ID(BASEOBJECTTYPE), UA_ObjectAttributes_default, &ignored,
+      async_output_probe, &calls, NULL);
+  for (size_t i = 0; !status && !calls && i < 200; ++i)
+    status = UA_Client_run_iterate(client, 10);
+  if (!status && (calls != 1 || ignored.namespaceIndex != 1 ||
+                  ignored.identifier.numeric != 999))
+    status = UA_STATUSCODE_BADINTERNALERROR;
+  if (!status)
+    status = UA_Client_deleteNode(client, UA_NODEID_NUMERIC(1, 6599), true);
+  calls = 0;
+  if (!status)
+    status = UA_Client_readNodeClassAttribute_async(
+        client, UA_NODEID_NUMERIC(1, 0xffffffU), async_class_probe, &calls,
+        NULL);
+  for (size_t i = 0; !status && !calls && i < 200; ++i)
+    status = UA_Client_run_iterate(client, 10);
+  if (!status && calls != 1)
+    status = UA_STATUSCODE_BADTIMEOUT;
+  return status;
+}
+unsigned int cpkt_types_peer_client_timeout(void *arg, unsigned int timeout) {
+  UA_ClientConfig *config = UA_Client_getConfig(arg);
+  unsigned int previous = config->timeout;
+  config->timeout = timeout;
+  return previous;
+}
+void cpkt_types_peer_pause(void *arg, int pause) {
+  struct peer *peer = arg;
+  if (pause)
+    pthread_mutex_lock(&peer->lock);
+  else
+    pthread_mutex_unlock(&peer->lock);
+}
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+int cpkt_types_fail_stop(void);
+static UA_ClientAsyncReadValueAttributeCallback async_conversion_callback;
+static void *async_conversion_context;
+static void async_conversion_complete(UA_Client *client, void *context,
+                                      UA_UInt32 id, UA_StatusCode status,
+                                      UA_DataValue *value) {
+  UA_ClientAsyncReadValueAttributeCallback callback = async_conversion_callback;
+  void *user = async_conversion_context;
+  (void)context;
+  async_conversion_callback = NULL;
+  async_conversion_context = NULL;
+  client_conversion_arm(5, UA_STATUSCODE_GOOD);
+  callback(client, user, id, status, value);
+  (void)cpkt_types_fail_stop();
+}
+UA_StatusCode __real_UA_Client_readValueAttribute_async(
+    UA_Client *, UA_NodeId, UA_ClientAsyncReadValueAttributeCallback, void *,
+    UA_UInt32 *);
+UA_StatusCode __wrap_UA_Client_readValueAttribute_async(
+    UA_Client *client, UA_NodeId nodeId,
+    UA_ClientAsyncReadValueAttributeCallback callback, void *context,
+    UA_UInt32 *id) {
+  if (client_failure_kind != 5)
+    return __real_UA_Client_readValueAttribute_async(client, nodeId, callback,
+                                                     context, id);
+  if (async_conversion_callback)
+    abort();
+  async_conversion_callback = callback;
+  async_conversion_context = context;
+  UA_StatusCode status = __real_UA_Client_readValueAttribute_async(
+      client, nodeId, async_conversion_complete, NULL, id);
+  if (status) {
+    client_failure_kind = 0;
+    async_conversion_callback = NULL;
+    async_conversion_context = NULL;
+  }
+  return status;
 }
 #endif

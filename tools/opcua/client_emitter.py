@@ -121,7 +121,7 @@ def emit_client(index, native_headers):
                     invoke += [count]; continue
                 locals_ += [f'  void *native_{array} = NULL;']
                 convert += [f'  if(!status) status = cpkt_array({array}, {count}, &native_{array}, &cpkt_types[{index[typename]}], 1, 0);']
-                clear += [f'  UA_Array_delete(native_{array}, {count}, cpkt_types[{index[typename]}].native);']
+                clear += [f'  if(native_{array}) UA_Array_delete(native_{array}, {count}, cpkt_types[{index[typename]}].native);']
                 invoke += [f'(const UA_{typename} *)native_{array}']; continue
             if array_output and param in array_output[:2]:
                 array, count, typename = array_output
