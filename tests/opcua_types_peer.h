@@ -33,5 +33,22 @@ unsigned int cpkt_types_peer_bytes_hash(unsigned int initial,
                                         const unsigned char *bytes,
                                         size_t length);
 unsigned int cpkt_types_peer_status_predicates(unsigned int status);
+struct cpkt_identifier_peer {
+  unsigned int parse_status, print_status, hash;
+  int predicate, order;
+  unsigned char output[256];
+  size_t output_length;
+  unsigned char *encoded;
+  size_t encoded_length;
+};
+void cpkt_types_peer_identifier(int kind, int extended, const char *text,
+                                size_t capacity,
+                                struct cpkt_identifier_peer *result);
+void cpkt_types_peer_offset(unsigned int *high, unsigned int *low);
+void cpkt_types_peer_random(unsigned int high, unsigned int low,
+                            unsigned char *guid, unsigned int *number);
+void cpkt_types_peer_time(unsigned int high, unsigned int low,
+                          unsigned int *unix_high, unsigned int *unix_low,
+                          unsigned short *fields, short *year);
 void cpkt_types_peer_stop(void *peer);
 #endif

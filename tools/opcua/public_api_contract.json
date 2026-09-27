@@ -1037,7 +1037,8 @@
     },
     "UA_DATETIME": {
       "declaration": "UA_DateTime UA_DATETIME ( const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DATETIME"
     },
     "UA_DataSetFieldConfig_clear": {
       "declaration": "void UA_DataSetFieldConfig_clear ( UA_DataSetFieldConfig * dataSetFieldConfig )",
@@ -1089,35 +1090,43 @@
     },
     "UA_DateTime_fromStruct": {
       "declaration": "UA_DateTime UA_DateTime_fromStruct ( UA_DateTimeStruct ts )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_fromStruct"
     },
     "UA_DateTime_fromUnixTime": {
       "declaration": "UA_DateTime UA_DateTime_fromUnixTime ( UA_Int64 unixDate )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_fromUnixTime"
     },
     "UA_DateTime_localTimeUtcOffset": {
       "declaration": "UA_Int64 UA_DateTime_localTimeUtcOffset ( void )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_localTimeUtcOffset"
     },
     "UA_DateTime_now": {
       "declaration": "UA_DateTime UA_DateTime_now ( void )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_now"
     },
     "UA_DateTime_nowMonotonic": {
       "declaration": "UA_DateTime UA_DateTime_nowMonotonic ( void )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_nowMonotonic"
     },
     "UA_DateTime_parse": {
       "declaration": "UA_StatusCode UA_DateTime_parse ( UA_DateTime * dst , const UA_String str )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_parse"
     },
     "UA_DateTime_toStruct": {
       "declaration": "UA_DateTimeStruct UA_DateTime_toStruct ( UA_DateTime t )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_toStruct"
     },
     "UA_DateTime_toUnixTime": {
       "declaration": "UA_Int64 UA_DateTime_toUnixTime ( UA_DateTime date )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTime_toUnixTime"
     },
     "UA_EXPANDEDNODEID": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID ( const char * chars )",
@@ -1161,31 +1170,38 @@
     },
     "UA_ExpandedNodeId_hash": {
       "declaration": "UA_UInt32 UA_ExpandedNodeId_hash ( const UA_ExpandedNodeId * n )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExpandedNodeId_hash"
     },
     "UA_ExpandedNodeId_isLocal": {
       "declaration": "UA_Boolean UA_ExpandedNodeId_isLocal ( const UA_ExpandedNodeId * n )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExpandedNodeId_isLocal"
     },
     "UA_ExpandedNodeId_order": {
       "declaration": "UA_Order UA_ExpandedNodeId_order ( const UA_ExpandedNodeId * n1 , const UA_ExpandedNodeId * n2 )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExpandedNodeId_order"
     },
     "UA_ExpandedNodeId_parse": {
       "declaration": "UA_StatusCode UA_ExpandedNodeId_parse ( UA_ExpandedNodeId * id , const UA_String str )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExpandedNodeId_parse"
     },
     "UA_ExpandedNodeId_parseEx": {
       "declaration": "UA_StatusCode UA_ExpandedNodeId_parseEx ( UA_ExpandedNodeId * id , const UA_String str , const UA_NamespaceMapping * nsMapping , size_t serverUrisSize , const UA_String * serverUris )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExpandedNodeId_parseEx"
     },
     "UA_ExpandedNodeId_print": {
       "declaration": "UA_StatusCode UA_ExpandedNodeId_print ( const UA_ExpandedNodeId * id , UA_String * output )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExpandedNodeId_print"
     },
     "UA_ExpandedNodeId_printEx": {
       "declaration": "UA_StatusCode UA_ExpandedNodeId_printEx ( const UA_ExpandedNodeId * id , UA_String * output , const UA_NamespaceMapping * nsMapping , size_t serverUrisSize , const UA_String * serverUris )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExpandedNodeId_printEx"
     },
     "UA_ExtensionObject_hasDecodedType": {
       "declaration": "UA_Boolean UA_ExtensionObject_hasDecodedType ( const UA_ExtensionObject * eo , const UA_DataType * type )",
@@ -1213,15 +1229,18 @@
     },
     "UA_Guid_parse": {
       "declaration": "UA_StatusCode UA_Guid_parse ( UA_Guid * guid , const UA_String str )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Guid_parse"
     },
     "UA_Guid_print": {
       "declaration": "UA_StatusCode UA_Guid_print ( const UA_Guid * guid , UA_String * output )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Guid_print"
     },
     "UA_Guid_random": {
       "declaration": "UA_Guid UA_Guid_random ( void )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Guid_random"
     },
     "UA_HistoryDataBackend_Memory": {
       "declaration": "UA_HistoryDataBackend UA_HistoryDataBackend_Memory ( size_t initialNodeIdStoreSize , size_t initialDataStoreSize )",
@@ -1420,27 +1439,33 @@
     },
     "UA_NamespaceMapping_clear": {
       "declaration": "void UA_NamespaceMapping_clear ( UA_NamespaceMapping * nm )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NamespaceMapping_clear"
     },
     "UA_NamespaceMapping_delete": {
       "declaration": "void UA_NamespaceMapping_delete ( UA_NamespaceMapping * nm )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NamespaceMapping_delete"
     },
     "UA_NamespaceMapping_index2Uri": {
       "declaration": "UA_StatusCode UA_NamespaceMapping_index2Uri ( const UA_NamespaceMapping * nm , UA_UInt16 index , UA_String * uri )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NamespaceMapping_index2Uri"
     },
     "UA_NamespaceMapping_local2Remote": {
       "declaration": "UA_UInt16 UA_NamespaceMapping_local2Remote ( const UA_NamespaceMapping * nm , UA_UInt16 localIndex )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NamespaceMapping_local2Remote"
     },
     "UA_NamespaceMapping_remote2Local": {
       "declaration": "UA_UInt16 UA_NamespaceMapping_remote2Local ( const UA_NamespaceMapping * nm , UA_UInt16 remoteIndex )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NamespaceMapping_remote2Local"
     },
     "UA_NamespaceMapping_uri2Index": {
       "declaration": "UA_StatusCode UA_NamespaceMapping_uri2Index ( const UA_NamespaceMapping * nm , UA_String uri , UA_UInt16 * index )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NamespaceMapping_uri2Index"
     },
     "UA_NetworkMessage_calcSizeBinary": {
       "declaration": "size_t UA_NetworkMessage_calcSizeBinary ( const UA_NetworkMessage * p , const UA_NetworkMessage_EncodingOptions * eo )",
@@ -1476,31 +1501,38 @@
     },
     "UA_NodeId_hash": {
       "declaration": "UA_UInt32 UA_NodeId_hash ( const UA_NodeId * n )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeId_hash"
     },
     "UA_NodeId_isNull": {
       "declaration": "UA_Boolean UA_NodeId_isNull ( const UA_NodeId * p )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeId_isNull"
     },
     "UA_NodeId_order": {
       "declaration": "UA_Order UA_NodeId_order ( const UA_NodeId * n1 , const UA_NodeId * n2 )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeId_order"
     },
     "UA_NodeId_parse": {
       "declaration": "UA_StatusCode UA_NodeId_parse ( UA_NodeId * id , const UA_String str )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeId_parse"
     },
     "UA_NodeId_parseEx": {
       "declaration": "UA_StatusCode UA_NodeId_parseEx ( UA_NodeId * id , const UA_String str , const UA_NamespaceMapping * nsMapping )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeId_parseEx"
     },
     "UA_NodeId_print": {
       "declaration": "UA_StatusCode UA_NodeId_print ( const UA_NodeId * id , UA_String * output )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeId_print"
     },
     "UA_NodeId_printEx": {
       "declaration": "UA_StatusCode UA_NodeId_printEx ( const UA_NodeId * id , UA_String * output , const UA_NamespaceMapping * nsMapping )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeId_printEx"
     },
     "UA_NodePointer_clear": {
       "declaration": "void UA_NodePointer_clear ( UA_NodePointer * np )",
@@ -1656,27 +1688,33 @@
     },
     "UA_QualifiedName_hash": {
       "declaration": "UA_UInt32 UA_QualifiedName_hash ( const UA_QualifiedName * q )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QualifiedName_hash"
     },
     "UA_QualifiedName_isNull": {
       "declaration": "UA_Boolean UA_QualifiedName_isNull ( const UA_QualifiedName * q )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QualifiedName_isNull"
     },
     "UA_QualifiedName_parse": {
       "declaration": "UA_StatusCode UA_QualifiedName_parse ( UA_QualifiedName * qn , const UA_String str )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QualifiedName_parse"
     },
     "UA_QualifiedName_parseEx": {
       "declaration": "UA_StatusCode UA_QualifiedName_parseEx ( UA_QualifiedName * qn , const UA_String str , const UA_NamespaceMapping * nsMapping )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QualifiedName_parseEx"
     },
     "UA_QualifiedName_print": {
       "declaration": "UA_StatusCode UA_QualifiedName_print ( const UA_QualifiedName * qn , UA_String * output )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QualifiedName_print"
     },
     "UA_QualifiedName_printEx": {
       "declaration": "UA_StatusCode UA_QualifiedName_printEx ( const UA_QualifiedName * qn , UA_String * output , const UA_NamespaceMapping * nsMapping )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QualifiedName_printEx"
     },
     "UA_REFTYPESET": {
       "declaration": "UA_ReferenceTypeSet UA_REFTYPESET ( UA_Byte index )",
@@ -2813,7 +2851,8 @@
     },
     "UA_UInt32_random": {
       "declaration": "UA_UInt32 UA_UInt32_random ( void )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_UInt32_random"
     },
     "UA_UNLOCK": {
       "declaration": "void UA_UNLOCK ( UA_Lock * lock )",
@@ -2997,11 +3036,13 @@
     },
     "UA_random_seed": {
       "declaration": "void UA_random_seed ( UA_UInt64 seed )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_random_seed"
     },
     "UA_random_seed_deterministic": {
       "declaration": "void UA_random_seed_deterministic ( UA_UInt64 seed )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_random_seed_deterministic"
     },
     "UA_readNumber": {
       "declaration": "size_t UA_readNumber ( const UA_Byte * buf , size_t buflen , UA_UInt32 * number )",
@@ -3338,7 +3379,8 @@
     },
     "UA_DateTimeStruct": {
       "declaration": "typedef struct UA_DateTimeStruct { UA_UInt16 nanoSec ; UA_UInt16 microSec ; UA_UInt16 milliSec ; UA_UInt16 sec ; UA_UInt16 min ; UA_UInt16 hour ; UA_UInt16 day ; UA_UInt16 month ; UA_Int16 year ; } UA_DateTimeStruct",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_DateTimeStruct"
     },
     "UA_DecodeBinaryOptions": {
       "declaration": "typedef struct { const UA_DataTypeArray * customTypes ; UA_NamespaceMapping * namespaceMapping ; void * callocContext ; void * ( * calloc ) ( void * callocContext , size_t nelem , size_t elsize ) ; size_t decodedLength ; } UA_DecodeBinaryOptions",
@@ -3499,7 +3541,8 @@
     },
     "UA_NamespaceMapping": {
       "declaration": "struct UA_NamespaceMapping { UA_String * namespaceUris ; size_t namespaceUrisSize ; UA_UInt16 * local2remote ; size_t local2remoteSize ; UA_UInt16 * remote2local ; size_t remote2localSize ; }",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NamespaceMapping"
     },
     "UA_NetworkMessage": {
       "declaration": "typedef struct { UA_Byte version ; UA_Boolean publisherIdEnabled ; UA_PublisherId publisherId ; UA_Boolean groupHeaderEnabled ; UA_NetworkMessageGroupHeader groupHeader ; UA_Boolean dataSetClassIdEnabled ; UA_Guid dataSetClassId ; UA_Boolean securityEnabled ; UA_NetworkMessageSecurityHeader securityHeader ; UA_Boolean timestampEnabled ; UA_DateTime timestamp ; UA_Boolean picosecondsEnabled ; UA_UInt16 picoseconds ; UA_Boolean chunkMessage ; UA_Boolean promotedFieldsEnabled ; UA_UInt16 promotedFieldsSize ; UA_Variant * promotedFields ; UA_Boolean messageIdEnabled ; UA_String messageId ; UA_Boolean payloadHeaderEnabled ; UA_Byte messageCount ; UA_UInt16 dataSetWriterIds [ 32 ] ; UA_NetworkMessageType networkMessageType ; union { UA_DataSetMessage * dataSetMessages ; } payload ; UA_ByteString securityFooter ; } UA_NetworkMessage",

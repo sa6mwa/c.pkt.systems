@@ -134,6 +134,173 @@ void cpkt_opcua_ByteString_memZero(cpkt_opcua_ByteString *value);
 cpkt_opcua_UInt32 cpkt_opcua_ByteString_hash(cpkt_opcua_UInt32 initial,
                                              const cpkt_opcua_Byte *bytes,
                                              size_t length);
+/** Public namespace mapping fields. URI/index arrays may be borrowed for use;
+ * clear/delete require independently owned facade-allocated arrays and strings.
+ * URI lookup marshals String records, borrowing their bytes; allocation failure
+ * is reported without changing caller storage. */
+typedef struct {
+  cpkt_opcua_String *namespaceUris;
+  size_t namespaceUrisSize;
+  cpkt_opcua_UInt16 *local2remote;
+  size_t local2remoteSize;
+  cpkt_opcua_UInt16 *remote2local;
+  size_t remote2localSize;
+} cpkt_opcua_NamespaceMapping;
+/** Native calendar fields, including fractional seconds and signed year. */
+typedef struct {
+  cpkt_opcua_UInt16 nanoSec, microSec, milliSec, sec, min, hour, day, month;
+  cpkt_opcua_Int16 year;
+} cpkt_opcua_DateTimeStruct;
+/** Initialize without freeing previous storage. */
+void cpkt_opcua_NamespaceMapping_init(cpkt_opcua_NamespaceMapping *mapping);
+/** Allocate an empty mapping; NULL indicates allocation failure. */
+cpkt_opcua_NamespaceMapping *cpkt_opcua_NamespaceMapping_new(void);
+/** Release owned arrays/URI bytes and reset all fields; NULL is harmless. */
+void cpkt_opcua_NamespaceMapping_clear(cpkt_opcua_NamespaceMapping *mapping);
+/** Clear and release a mapping created with new; NULL is harmless. */
+void cpkt_opcua_NamespaceMapping_delete(cpkt_opcua_NamespaceMapping *mapping);
+/** Native index translation; unknown indices return UINT16_MAX - index.
+ * NULL mapping is treated as an empty mapping. No allocation. */
+cpkt_opcua_UInt16 cpkt_opcua_NamespaceMapping_local2Remote(
+    const cpkt_opcua_NamespaceMapping *mapping, cpkt_opcua_UInt16 index);
+/** Native reverse translation with the same unknown-index convention. */
+cpkt_opcua_UInt16 cpkt_opcua_NamespaceMapping_remote2Local(
+    const cpkt_opcua_NamespaceMapping *mapping, cpkt_opcua_UInt16 index);
+/** Borrow mapping and URI during lookup; failure leaves index unchanged. */
+cpkt_opcua_StatusCode cpkt_opcua_NamespaceMapping_uri2Index(
+    const cpkt_opcua_NamespaceMapping *mapping, cpkt_opcua_String uri,
+    cpkt_opcua_UInt16 *index);
+/** Return a borrowed URI, valid only while its mapping bytes remain alive.
+ * Never clear this borrowed result. Failure leaves the output unchanged. */
+cpkt_opcua_StatusCode cpkt_opcua_NamespaceMapping_index2Uri(
+    const cpkt_opcua_NamespaceMapping *mapping, cpkt_opcua_UInt16 index,
+    cpkt_opcua_String *uri);
+/** Native parsing into an empty destination. Result retains native failure
+ * state; clear after use, including failed parses. Text is borrowed. */
+cpkt_opcua_StatusCode cpkt_opcua_NodeId_parse(cpkt_opcua_NodeId *value,
+                                              cpkt_opcua_String text);
+/** Extended native parsing with a borrowed namespace mapping.
+ * Unknown-URI behavior, escaping, and errors remain native. */
+cpkt_opcua_StatusCode
+cpkt_opcua_NodeId_parseEx(cpkt_opcua_NodeId *value, cpkt_opcua_String text,
+                          const cpkt_opcua_NamespaceMapping *mapping);
+/** Native printing. Empty output allocates an owned string; otherwise data
+ * is writable caller storage and length is capacity. Native length/error
+ * changes are preserved. Do not clear a stack/borrowed output buffer. */
+cpkt_opcua_StatusCode cpkt_opcua_NodeId_print(const cpkt_opcua_NodeId *value,
+                                              cpkt_opcua_String *output);
+/** Native extended printing with a borrowed namespace mapping. */
+cpkt_opcua_StatusCode
+cpkt_opcua_NodeId_printEx(const cpkt_opcua_NodeId *value,
+                          cpkt_opcua_String *output,
+                          const cpkt_opcua_NamespaceMapping *mapping);
+/** Native hash without allocation; NULL value is treated as initialized. */
+cpkt_opcua_UInt32 cpkt_opcua_NodeId_hash(const cpkt_opcua_NodeId *value);
+/** Native isNull predicate without allocation; NULL is initialized. */
+cpkt_opcua_Boolean cpkt_opcua_NodeId_isNull(const cpkt_opcua_NodeId *value);
+/** Native total order without cloning identifier bytes or allocating. */
+cpkt_opcua_Order cpkt_opcua_NodeId_order(const cpkt_opcua_NodeId *a,
+                                         const cpkt_opcua_NodeId *b);
+/** Native parsing into an empty destination. Result retains native failure
+ * state; clear after use, including failed parses. Text is borrowed. */
+cpkt_opcua_StatusCode
+cpkt_opcua_ExpandedNodeId_parse(cpkt_opcua_ExpandedNodeId *value,
+                                cpkt_opcua_String text);
+/** Extended native parsing with borrowed namespace/server URI records.
+ * Unknown-URI behavior, escaping, and errors remain native. */
+cpkt_opcua_StatusCode cpkt_opcua_ExpandedNodeId_parseEx(
+    cpkt_opcua_ExpandedNodeId *value, cpkt_opcua_String text,
+    const cpkt_opcua_NamespaceMapping *mapping, size_t server_uris_size,
+    const cpkt_opcua_String *server_uris);
+/** Native printing. Empty output allocates an owned string; otherwise data
+ * is writable caller storage and length is capacity. Native length/error
+ * changes are preserved. Do not clear a stack/borrowed output buffer. */
+cpkt_opcua_StatusCode
+cpkt_opcua_ExpandedNodeId_print(const cpkt_opcua_ExpandedNodeId *value,
+                                cpkt_opcua_String *output);
+/** Native extended printing with borrowed mapping/server URIs. */
+cpkt_opcua_StatusCode cpkt_opcua_ExpandedNodeId_printEx(
+    const cpkt_opcua_ExpandedNodeId *value, cpkt_opcua_String *output,
+    const cpkt_opcua_NamespaceMapping *mapping, size_t server_uris_size,
+    const cpkt_opcua_String *server_uris);
+/** Native hash without allocation; NULL value is treated as initialized. */
+cpkt_opcua_UInt32
+cpkt_opcua_ExpandedNodeId_hash(const cpkt_opcua_ExpandedNodeId *value);
+/** Native isLocal predicate without allocation; NULL is initialized. */
+cpkt_opcua_Boolean
+cpkt_opcua_ExpandedNodeId_isLocal(const cpkt_opcua_ExpandedNodeId *value);
+/** Native total order without cloning identifier bytes or allocating. */
+cpkt_opcua_Order
+cpkt_opcua_ExpandedNodeId_order(const cpkt_opcua_ExpandedNodeId *a,
+                                const cpkt_opcua_ExpandedNodeId *b);
+/** Native parsing into an empty destination. Result retains native failure
+ * state; clear after use, including failed parses. Text is borrowed. */
+cpkt_opcua_StatusCode
+cpkt_opcua_QualifiedName_parse(cpkt_opcua_QualifiedName *value,
+                               cpkt_opcua_String text);
+/** Extended native parsing with a borrowed namespace mapping.
+ * Unknown-URI behavior, escaping, and errors remain native. */
+cpkt_opcua_StatusCode
+cpkt_opcua_QualifiedName_parseEx(cpkt_opcua_QualifiedName *value,
+                                 cpkt_opcua_String text,
+                                 const cpkt_opcua_NamespaceMapping *mapping);
+/** Native printing. Empty output allocates an owned string; otherwise data
+ * is writable caller storage and length is capacity. Native length/error
+ * changes are preserved. Do not clear a stack/borrowed output buffer. */
+cpkt_opcua_StatusCode
+cpkt_opcua_QualifiedName_print(const cpkt_opcua_QualifiedName *value,
+                               cpkt_opcua_String *output);
+/** Native extended printing with a borrowed namespace mapping. */
+cpkt_opcua_StatusCode
+cpkt_opcua_QualifiedName_printEx(const cpkt_opcua_QualifiedName *value,
+                                 cpkt_opcua_String *output,
+                                 const cpkt_opcua_NamespaceMapping *mapping);
+/** Native hash without allocation; NULL value is treated as initialized. */
+cpkt_opcua_UInt32
+cpkt_opcua_QualifiedName_hash(const cpkt_opcua_QualifiedName *value);
+/** Native isNull predicate without allocation; NULL is initialized. */
+cpkt_opcua_Boolean
+cpkt_opcua_QualifiedName_isNull(const cpkt_opcua_QualifiedName *value);
+/** Native GUID parser. Input bytes are borrowed; output receives native state.
+ */
+cpkt_opcua_StatusCode cpkt_opcua_Guid_parse(cpkt_opcua_Guid *guid,
+                                            cpkt_opcua_String text);
+/** Native GUID print with the same allocated/caller-buffer contract as NodeId.
+ */
+cpkt_opcua_StatusCode cpkt_opcua_Guid_print(const cpkt_opcua_Guid *guid,
+                                            cpkt_opcua_String *output);
+/** Generate through the configured native random facility. */
+cpkt_opcua_Guid cpkt_opcua_Guid_random(void);
+/** Native wall-clock timestamp, preserving both 32-bit words. */
+cpkt_opcua_DateTime cpkt_opcua_DateTime_now(void);
+/** Native monotonic timestamp, intended only for measuring durations. */
+cpkt_opcua_DateTime cpkt_opcua_DateTime_nowMonotonic(void);
+/** Native local UTC offset in 100ns units, as a signed 64-bit bit pattern. */
+cpkt_opcua_Int64 cpkt_opcua_DateTime_localTimeUtcOffset(void);
+/** Native Unix seconds to OPC UA timestamp conversion. Caller must keep input
+ * in upstream's representable arithmetic range; no new saturation policy. */
+cpkt_opcua_DateTime cpkt_opcua_DateTime_fromUnixTime(cpkt_opcua_Int64 seconds);
+/** Native timestamp to signed Unix seconds, with native rounding/range rules.
+ */
+cpkt_opcua_Int64 cpkt_opcua_DateTime_toUnixTime(cpkt_opcua_DateTime time);
+/** Parse through the native date parser; output receives native parser state.
+ */
+cpkt_opcua_StatusCode cpkt_opcua_DateTime_parse(cpkt_opcua_DateTime *time,
+                                                cpkt_opcua_String text);
+/** Native shorthand parser; invalid text or NULL returns zero. */
+cpkt_opcua_DateTime cpkt_opcua_DATETIME(const char *text);
+/** Extract native UTC calendar fields and fractional seconds. */
+cpkt_opcua_DateTimeStruct
+cpkt_opcua_DateTime_toStruct(cpkt_opcua_DateTime time);
+/** Native calendar conversion, retaining upstream normalization/range rules. */
+cpkt_opcua_DateTime
+cpkt_opcua_DateTime_fromStruct(cpkt_opcua_DateTimeStruct time);
+/** Seed the native per-thread RNG using all 64 seed bits and native time. */
+void cpkt_opcua_random_seed(cpkt_opcua_UInt64 seed);
+/** Seed the native per-thread RNG deterministically, retaining all 64 bits. */
+void cpkt_opcua_random_seed_deterministic(cpkt_opcua_UInt64 seed);
+/** Native random UInt32; not a cryptographic entropy source. */
+cpkt_opcua_UInt32 cpkt_opcua_UInt32_random(void);
 #ifdef __cplusplus
 }
 #endif

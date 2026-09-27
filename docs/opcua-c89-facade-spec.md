@@ -799,3 +799,36 @@ status severities, and raw-byte hashing. C89 tests verify exact signed 64-bit
 ordering, ownership transfer, nested deep copies, array-element aliasing in
 copy-append, shrink/growth, base64 byte fidelity, secure zeroing, invalid inputs,
 and injected allocation failures preserving the documented state.
+
+### Identifiers, namespace mappings and time
+
+The utility header exposes full NodeId, ExpandedNodeId, QualifiedName and Guid
+parse/print operations, including extended namespace/server URI forms. Native
+parsers own their result payloads; supply an empty destination and clear it after
+use, even after a failed parse. The facade transfers native output ownership
+without cloning strings. Unknown URI handling, escaping, hashing, predicates and
+ordering use native implementations. NULL query values represent initialized
+empty values. Namespace/server URI views marshal record arrays while borrowing
+all byte buffers, and may report allocation failure.
+
+An empty print output requests native allocation and owns the result. A nonempty
+output supplies a writable buffer with length as capacity. Native length changes
+and error statuses are retained, including insufficient-capacity failures. Do
+not clear stack or borrowed output buffers. NamespaceMapping URI lookup returns
+borrowed bytes, which remain valid only while the mapping storage does; do not
+clear the lookup result. A mapping may borrow arrays for lookups, but clear/delete
+require ownership of all populated arrays and their URI payloads.
+
+DateTime parsing and calendar/Unix conversions delegate to upstream. Signed
+64-bit timestamps and Unix seconds retain their complete high/low bit patterns
+on 32-bit targets. Keep arithmetic within upstream's representable range; no
+saturation or replacement calendar implementation is introduced. Monotonic
+values are for durations. Native random functions retain per-thread state and
+all 64 seed bits; UInt32_random is not cryptographic entropy.
+
+Independent native peers compare parse statuses, allocated and preallocated
+printing, binary encodings, hashes, predicates, ordering, calendar fields, Unix
+seconds, local offsets and seeded GUID/random values. C89 tests cover namespace
+translation, borrowed URI identity, owned mapping cleanup and injected allocation
+failures. A tracked native date-parser patch fixes overflow-guard reversal at
+the Unix epoch and the next second, verified by exact timestamp regressions.

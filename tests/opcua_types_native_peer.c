@@ -4,6 +4,7 @@
 #include <open62541/plugin/historydatabase.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
+#include <open62541/util.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -945,4 +946,127 @@ unsigned int cpkt_types_peer_status_predicates(unsigned int status) {
   return UA_StatusCode_isGood(status) |
          (UA_StatusCode_isUncertain(status) << 1) |
          (UA_StatusCode_isBad(status) << 2);
+}
+
+/* Independent native parser/printer and binary encoder, with matching borrowed
+ * URI fixtures. No C89 facade headers or conversion code participate. */
+void cpkt_types_peer_identifier(int kind, int extended, const char *text,
+                                size_t capacity,
+                                struct cpkt_identifier_peer *result) {
+  UA_NodeId node = UA_NODEID_NULL, null_node = UA_NODEID_NULL;
+  UA_ExpandedNodeId expanded = UA_EXPANDEDNODEID_NULL,
+                    null_expanded = UA_EXPANDEDNODEID_NULL;
+  UA_QualifiedName name;
+  UA_Guid guid = UA_GUID_NULL;
+  UA_String uris[2] = {UA_STRING("urn:local"), UA_STRING("urn:widgets")};
+  UA_String servers[2] = {UA_STRING("urn:server:local"),
+                          UA_STRING("urn:server:remote")};
+  UA_NamespaceMapping mapping;
+  UA_String input = UA_STRING((char *)text), output;
+  UA_ByteString encoded = UA_BYTESTRING_NULL;
+  const UA_NamespaceMapping *map = extended ? &mapping : NULL;
+  const UA_DataType *type;
+  void *value;
+  UA_QualifiedName_init(&name);
+  memset(&mapping, 0, sizeof(mapping));
+  mapping.namespaceUris = uris;
+  mapping.namespaceUrisSize = 2;
+  memset(result, 0, sizeof(*result));
+  memset(result->output, 0xa5, sizeof(result->output));
+  output.length = capacity;
+  output.data = capacity ? result->output : NULL;
+  switch (kind) {
+  case 0:
+    result->parse_status = extended ? UA_NodeId_parseEx(&node, input, map)
+                                    : UA_NodeId_parse(&node, input);
+    result->print_status = extended ? UA_NodeId_printEx(&node, &output, map)
+                                    : UA_NodeId_print(&node, &output);
+    result->hash = UA_NodeId_hash(&node);
+    result->predicate = UA_NodeId_isNull(&node);
+    result->order = UA_NodeId_order(&node, &null_node);
+    value = &node;
+    type = &UA_TYPES[UA_TYPES_NODEID];
+    break;
+  case 1:
+    result->parse_status =
+        extended ? UA_ExpandedNodeId_parseEx(&expanded, input, map, 2, servers)
+                 : UA_ExpandedNodeId_parse(&expanded, input);
+    result->print_status =
+        extended
+            ? UA_ExpandedNodeId_printEx(&expanded, &output, map, 2, servers)
+            : UA_ExpandedNodeId_print(&expanded, &output);
+    result->hash = UA_ExpandedNodeId_hash(&expanded);
+    result->predicate = UA_ExpandedNodeId_isLocal(&expanded);
+    result->order = UA_ExpandedNodeId_order(&expanded, &null_expanded);
+    value = &expanded;
+    type = &UA_TYPES[UA_TYPES_EXPANDEDNODEID];
+    break;
+  case 2:
+    result->parse_status = extended
+                               ? UA_QualifiedName_parseEx(&name, input, map)
+                               : UA_QualifiedName_parse(&name, input);
+    result->print_status = extended
+                               ? UA_QualifiedName_printEx(&name, &output, map)
+                               : UA_QualifiedName_print(&name, &output);
+    result->hash = UA_QualifiedName_hash(&name);
+    result->predicate = UA_QualifiedName_isNull(&name);
+    value = &name;
+    type = &UA_TYPES[UA_TYPES_QUALIFIEDNAME];
+    break;
+  default:
+    result->parse_status = UA_Guid_parse(&guid, input);
+    result->print_status = UA_Guid_print(&guid, &output);
+    value = &guid;
+    type = &UA_TYPES[UA_TYPES_GUID];
+    break;
+  }
+  result->output_length = output.length;
+  if (!capacity && output.length)
+    memcpy(result->output, output.data, output.length);
+  if (!capacity)
+    UA_String_clear(&output);
+  if (!result->parse_status && !UA_encodeBinary(value, type, &encoded, NULL)) {
+    result->encoded = encoded.data;
+    result->encoded_length = encoded.length;
+  }
+  UA_clear(value, type);
+}
+void cpkt_types_peer_time(unsigned int high, unsigned int low,
+                          unsigned int *unix_high, unsigned int *unix_low,
+                          unsigned short *fields, short *year) {
+  UA_UInt64 bits = ((UA_UInt64)high << 32) | low;
+  UA_DateTime native;
+  UA_DateTimeStruct calendar;
+  UA_Int64 seconds;
+  memcpy(&native, &bits, sizeof(native));
+  seconds = UA_DateTime_toUnixTime(native);
+  memcpy(&bits, &seconds, sizeof(bits));
+  *unix_high = (unsigned int)(bits >> 32);
+  *unix_low = (unsigned int)bits;
+  calendar = UA_DateTime_toStruct(native);
+  fields[0] = calendar.nanoSec;
+  fields[1] = calendar.microSec;
+  fields[2] = calendar.milliSec;
+  fields[3] = calendar.sec;
+  fields[4] = calendar.min;
+  fields[5] = calendar.hour;
+  fields[6] = calendar.day;
+  fields[7] = calendar.month;
+  *year = calendar.year;
+}
+
+void cpkt_types_peer_offset(unsigned int *high, unsigned int *low) {
+  UA_Int64 offset = UA_DateTime_localTimeUtcOffset();
+  UA_UInt64 bits;
+  memcpy(&bits, &offset, sizeof(bits));
+  *high = (unsigned int)(bits >> 32);
+  *low = (unsigned int)bits;
+}
+void cpkt_types_peer_random(unsigned int high, unsigned int low,
+                            unsigned char *guid, unsigned int *number) {
+  UA_Guid native;
+  UA_random_seed_deterministic(((UA_UInt64)high << 32) | low);
+  native = UA_Guid_random();
+  memcpy(guid, &native, sizeof(native));
+  *number = UA_UInt32_random();
 }

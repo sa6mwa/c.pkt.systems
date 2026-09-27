@@ -96,3 +96,10 @@ live queue links; normal ready processing takes the current queue head each
 time. This preserves native result dispatch and introduces no response queue,
 public type layout, symbol, or ABI change. C89 local-operation regression tests
 exercise nested cancellation under Valgrind.
+
+The open62541 patch `0008-preserve-date-parser-overflow-guard-direction.patch`
+retains the original sign while applying and reverting the DateTime parser's
+one-second overflow protection. Without it, the Unix epoch and the immediately
+following second parse two seconds late/early. Native-peer and C89 facade tests
+cover both boundaries, a negative Unix second, calendar fractions, and dates
+requiring more than 32 bits of Unix seconds. It changes no public API or ABI.

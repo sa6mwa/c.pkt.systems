@@ -61,6 +61,7 @@ include/cpkt/opcua_callbacks.h
 src/opcua_internal.h
 src/opcua_callbacks_impl.h
 src/opcua_util_impl.h
+src/opcua_identifiers_impl.h
 src/opcua_plugins_impl.h
 src/opcua_history_impl.h
 src/opcua_types.c
@@ -79,6 +80,7 @@ tests/opcua_plugins_test.c
 tests/opcua_history_backend_test.c
 tests/opcua_server_types_test.c
 tests/opcua_util_test.c
+tests/opcua_identifiers_test.c
 tests/opcua_callbacks_test.h
 tests/opcua_types_native_peer.c
 tests/opcua_types_peer.h
@@ -134,6 +136,7 @@ vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch
 vendor/open62541/patches/0005-route-key-derivation-errors-through-logger.patch
 vendor/open62541/patches/0006-check-default-history-allocations.patch
 vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch
+vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch
 '
 
 make_archive() {
