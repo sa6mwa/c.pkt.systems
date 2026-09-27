@@ -327,6 +327,69 @@ allocation-failure tests cover past/future deadlines, optional IDs, interval
 changes, reentrant cancellation, shutdown cleanup, inverse references and
 early termination.
 
+### Value-source and method producers
+
+The generated `cpkt_opcua_CallbackValueSource` and `cpkt_opcua_MethodCallback`
+retain the full upstream signatures with C89 records. Install copied source
+slots with `cpkt_opcua_server_setVariableNode_callbackValueSource_typed` and
+method callbacks with `cpkt_opcua_server_setMethodNodeCallback_typed`. Original
+node, method, object and session contexts pass through unchanged. Get returns
+the original typed method pointer; callbacks installed outside this full C89
+interface return BadNotSupported rather than an ABI-incompatible cast.
+Callback replacement is safe inside a running callback. Callback NodeIds,
+ranges and input arrays are borrowed until return. Do not retain or clear them.
+Read/method outputs own C89 allocations; write input values remain borrowed.
+
+Returning GoodCompletesAsynchronously keeps the original C89 read/write value
+address or method output-array address alive. Use the corresponding
+`setAsyncReadResult_typed`, `setAsyncWriteResult_typed` or
+`setAsyncCallMethodResult_typed` after returning. Native open62541 owns the
+actual operation queue, completion scheduling, timeouts and cancellation.
+The facade owns representation/identity metadata only. A Good completion
+invalidates the C89 address immediately. Conversion failure during completion
+preserves it for retry. Method output count is fixed, including zero-output
+methods whose addresses remain distinct. Do not complete an active callback,
+resize the output array, or access it after cancellation/completion.
+
+Set `cpkt_opcua_server_set_async_operation_cancel_callback_typed` before
+startup. It receives the producer's original C89 address until callback return;
+required cleanup still runs with a NULL hook. An existing native cancellation
+hook also receives its original native address. Initial async output conversion
+failure invokes cancellation before releasing the C89 address and reports that
+conversion status instead of queuing the operation. Do not clear/complete the
+cancelled output or recursively cancel the same operation/context. Destruction
+already cancels all native work; facade cancel requests during destruction are
+no-ops. All calls on a server must be serialized, and callbacks must not destroy
+that server.
+
+Open62541 adds/filters timestamps after read producers return. Typed local
+submissions and `server_iterate` synchronize this metadata once into newly
+pending C89 results before returning to their caller. Later application edits
+are retained. Native escape-hatch event-loop callers can explicitly invoke
+`cpkt_opcua_server_refresh_async_producer_metadata` after native processing.
+Partial async outputs are converted before upstream continues, retaining the
+native cancellation/result behavior for values prepared before deferral.
+
+For direct native borrowing, use `valueSourceBorrow_typed` for a read or
+`methodResultBorrow_typed` for a selected method slot. Both borrow the stable
+native storage already provided by `cpkt_opcua_history_value`; its name reflects
+its first history-backend use, but the same holder supports these producers.
+The bridge passes native payload/dimension addresses with NODELETE and makes
+no payload copy. Normal C89 outputs require representation conversion. The
+holder must remain unchanged and alive through every native use, including
+encoding and local completion callbacks; quiesce all borrowers before set/free.
+Upstream controls any subsequent copying: this open62541 version copies a
+synchronous borrowed read value inside its native read implementation. The
+facade preserves that mechanism. NULL holder resumes normal C89 conversion.
+
+Native-peer and C89 tests cover full inputs/contexts/ranges, exact signed 64-bit
+outputs, synchronous/deferred/error results, timestamp synchronization,
+reentrant callback replacement, cancellation/shutdown, partial preparation
+failure, every allocation during registration/conversion/completion, zero-output
+identities, and native borrowing without a facade payload clone. Complete
+creation APIs for callback-source variables/methods and external double-pointer
+value sources remain tracked separately in the public API coverage contract.
+
 ### Configuration key/value maps
 
 The full native `KeyValueMap` operation surface is available through

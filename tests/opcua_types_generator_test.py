@@ -21,6 +21,7 @@ import plugin_emitter
 import server_emitter
 import history_emitter
 import node_emitter
+import producer_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -123,6 +124,32 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
             pass
         else:
             raise AssertionError('Changed node callback declaration was accepted')
+    server.write_text(original_server)
+    producer_public, producer_private = producer_emitter.emit_producers(index, changed_headers)
+    assert 'cpkt_opcua_CallbackValueSource' in '\n'.join(producer_public)
+    assert 'cpkt_opcua_MethodCallback' in '\n'.join(producer_public)
+    for old, new in (
+        ('} UA_CallbackValueSource;', 'UA_UInt32 unexpected; } UA_CallbackValueSource;'),
+        ('(*UA_MethodCallback)', '(*UA_MethodCallbackChanged)'),
+        ('UA_Boolean includeSourceTimeStamp,', 'UA_UInt64 includeSourceTimeStamp,'),
+        ('const UA_DataValue *value);', 'UA_DataValue **value);'),
+    ):
+        assert old in original_server
+        if old == 'const UA_DataValue *value);':
+            end = original_server.index('} UA_CallbackValueSource;')
+            start = original_server.rfind('typedef struct {', 0, end)
+            scope = original_server[start:end]
+            assert old in scope
+            changed = original_server[:start] + scope.replace(old, new, 1) + original_server[end:]
+        else:
+            changed = original_server.replace(old, new, 1)
+        server.write_text(changed)
+        try:
+            producer_emitter.emit_producers(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed producer signature was accepted')
     server.write_text(original_server)
     server.write_text(server.read_text().replace('UA_NodeId *out);', 'UA_NodeId **out);', 1))
     try:

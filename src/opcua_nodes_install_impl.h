@@ -26,6 +26,8 @@ static UA_StatusCode cpkt_nodes_stage(cpkt_opcua_server *server,
   if (previous) {
     entry->notifications = previous->notifications;
     entry->lifecycle = previous->lifecycle;
+    entry->source = previous->source;
+    entry->method = previous->method;
     cpkt_nodes_release(previous);
   }
   *out = entry;

@@ -58,8 +58,10 @@ static void cpkt_hb_borrow_node(const UA_NodeId *native,
 }
 /* clang-format off */
 #include "opcua_nodes_impl.h"
+#include "opcua_producers_impl.h"
 #include "opcua_plugins_metadata.inc"
 #include "opcua_nodes_install_impl.h"
+#include "opcua_producers_install_impl.h"
 /* clang-format on */
 static void cpkt_ac_clear(UA_AccessControl *native) {
   cpkt_ac_bridge *bridge = (cpkt_ac_bridge *)native->context;

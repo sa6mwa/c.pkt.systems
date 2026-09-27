@@ -505,6 +505,7 @@ int main(void) {
   cpkt_types_test_plugins();
   cpkt_types_test_server();
   cpkt_types_test_nodes();
+  cpkt_types_test_producers();
   cpkt_types_test_history_backend();
   test_services();
   puts("All public schema types, nested conversions and real typed services "

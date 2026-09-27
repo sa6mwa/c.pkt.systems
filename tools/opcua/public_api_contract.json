@@ -2301,7 +2301,8 @@
     },
     "UA_Server_getMethodNodeCallback": {
       "declaration": "UA_StatusCode UA_Server_getMethodNodeCallback ( UA_Server * server , const UA_NodeId methodNodeId , UA_MethodCallback * outMethodCallback )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_getMethodNodeCallback_typed"
     },
     "UA_Server_getNamespaceByIndex": {
       "declaration": "UA_StatusCode UA_Server_getNamespaceByIndex ( UA_Server * server , const size_t namespaceIndex , UA_String * foundUri )",
@@ -2585,15 +2586,18 @@
     },
     "UA_Server_setAsyncCallMethodResult": {
       "declaration": "UA_StatusCode UA_Server_setAsyncCallMethodResult ( UA_Server * server , UA_Variant * output , UA_StatusCode result )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_setAsyncCallMethodResult_typed"
     },
     "UA_Server_setAsyncReadResult": {
       "declaration": "UA_StatusCode UA_Server_setAsyncReadResult ( UA_Server * server , UA_DataValue * result )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_setAsyncReadResult_typed"
     },
     "UA_Server_setAsyncWriteResult": {
       "declaration": "UA_StatusCode UA_Server_setAsyncWriteResult ( UA_Server * server , const UA_DataValue * value , UA_StatusCode result )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_setAsyncWriteResult_typed"
     },
     "UA_Server_setDataSetReaderTargetVariables": {
       "declaration": "UA_StatusCode UA_Server_setDataSetReaderTargetVariables ( UA_Server * server , const UA_NodeId dsrId , size_t targetVariablesSize , const UA_FieldTargetDataType * targetVariables )",
@@ -2601,7 +2605,8 @@
     },
     "UA_Server_setMethodNodeCallback": {
       "declaration": "UA_StatusCode UA_Server_setMethodNodeCallback ( UA_Server * server , const UA_NodeId methodNodeId , UA_MethodCallback methodCallback )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_setMethodNodeCallback_typed"
     },
     "UA_Server_setNodeContext": {
       "declaration": "UA_StatusCode UA_Server_setNodeContext ( UA_Server * server , UA_NodeId nodeId , void * nodeContext )",
@@ -2633,7 +2638,8 @@
     },
     "UA_Server_setVariableNode_callbackValueSource": {
       "declaration": "UA_StatusCode UA_Server_setVariableNode_callbackValueSource ( UA_Server * server , const UA_NodeId nodeId , const UA_CallbackValueSource evs )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_setVariableNode_callbackValueSource_typed"
     },
     "UA_Server_setVariableNode_externalValueSource": {
       "declaration": "UA_StatusCode UA_Server_setVariableNode_externalValueSource ( UA_Server * server , const UA_NodeId nodeId , UA_DataValue * * value , const UA_ValueSourceNotifications * notifications )",
@@ -3106,7 +3112,8 @@
     },
     "UA_CallbackValueSource": {
       "declaration": "typedef struct { UA_StatusCode ( * read ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * nodeId , void * nodeContext , UA_Boolean includeSourceTimeStamp , const UA_NumericRange * range , UA_DataValue * value ) ; UA_StatusCode ( * write ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * nodeId , void * nodeContext , const UA_NumericRange * range , const UA_DataValue * value ) ; } UA_CallbackValueSource",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_CallbackValueSource"
     },
     "UA_CertificateFormat": {
       "declaration": "typedef enum { UA_CERTIFICATEFORMAT_DER , UA_CERTIFICATEFORMAT_PEM } UA_CertificateFormat",
@@ -3371,7 +3378,8 @@
     },
     "UA_DataSource": {
       "declaration": "typedef UA_CallbackValueSource UA_DataSource",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_CallbackValueSource"
     },
     "UA_DataType": {
       "declaration": "struct UA_DataType { const char * typeName ; UA_NodeId typeId ; UA_NodeId binaryEncodingId ; UA_NodeId xmlEncodingId ; UA_UInt32 memSize : 16 ; UA_UInt32 typeKind : 6 ; UA_UInt32 pointerFree : 1 ; UA_UInt32 overlayable : 1 ; UA_UInt32 membersSize : 8 ; UA_DataTypeMember * members ; }",
@@ -3546,7 +3554,8 @@
     },
     "UA_MethodCallback": {
       "declaration": "typedef UA_StatusCode ( * UA_MethodCallback ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * methodId , void * methodContext , const UA_NodeId * objectId , void * objectContext , size_t inputSize , const UA_Variant * input , size_t outputSize , UA_Variant * output )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_MethodCallback"
     },
     "UA_MethodNode": {
       "declaration": "typedef struct { UA_NodeHead head ; UA_Boolean executable ; UA_MethodCallback method ; } UA_MethodNode",

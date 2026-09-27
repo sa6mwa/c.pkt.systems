@@ -64,6 +64,8 @@ src/opcua_map_impl.h
 src/opcua_util_impl.h
 src/opcua_identifiers_impl.h
 src/opcua_plugins_impl.h
+src/opcua_producers_impl.h
+src/opcua_producers_install_impl.h
 src/opcua_nodes_impl.h
 src/opcua_history_impl.h
 src/opcua_nodes_install_impl.h
@@ -74,6 +76,7 @@ tools/opcua/c89_emitter.py
 tools/opcua/plugin_emitter.py
 tools/opcua/history_emitter.py
 tools/opcua/server_emitter.py
+tools/opcua/producer_emitter.py
 tools/opcua/node_emitter.py
 tools/opcua/public_api.py
 tools/opcua/public_api_contract.json
@@ -85,6 +88,7 @@ tests/opcua_history_backend_test.c
 tests/opcua_server_types_test.c
 tests/opcua_util_test.c
 tests/opcua_identifiers_test.c
+tests/opcua_producers_test.c
 tests/opcua_nodes_test.c
 tests/opcua_callbacks_test.h
 tests/opcua_types_native_peer.c

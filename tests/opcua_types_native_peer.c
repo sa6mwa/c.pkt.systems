@@ -1307,3 +1307,106 @@ void cpkt_types_peer_maps(unsigned int *results) {
   UA_KeyValueMap_clear(&other);
   UA_KeyValueMap_clear(&copy);
 }
+
+unsigned int
+cpkt_types_peer_producer_direct(void *native, int kind, void *context,
+                                struct cpkt_producer_observed *out) {
+  UA_Server *server = native;
+  UA_NodeId session = UA_NODEID_STRING(2, "session");
+  UA_NodeId variable = UA_NODEID_NUMERIC(1, 6200),
+            method = UA_NODEID_NUMERIC(1, 6201);
+  UA_NodeId object = UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER);
+  UA_NumericRangeDimension dimensions[2] = {{1, 3}, {2, 4}};
+  UA_NumericRange range = {2, dimensions};
+  UA_DataValue value;
+  UA_MethodCallback callback = NULL;
+  UA_StatusCode status;
+  UA_CallbackValueSource source;
+  const UA_Node *node;
+  UA_Variant input[2], output[2];
+  UA_Int64 minimum = INT64_MIN;
+  UA_String string = {3, (UA_Byte *)"a\0b"};
+  size_t i;
+  memset(out, 0, sizeof(*out));
+  UA_DataValue_init(&value);
+  if (kind < 2) {
+    UA_ServerConfig *config = UA_Server_getConfig(server);
+    node = config->nodestore->getNode(config->nodestore, &variable, 0xffffffffU,
+                                      UA_REFERENCETYPESET_ALL,
+                                      UA_BROWSEDIRECTION_BOTH);
+    if (!node || node->head.nodeClass != UA_NODECLASS_VARIABLE)
+      return UA_STATUSCODE_BADNODEIDUNKNOWN;
+    source = node->variableNode.valueSource.callback;
+    config->nodestore->releaseNode(config->nodestore, node);
+    if (kind == 1) {
+      UA_Variant_setScalar(&value.value, &minimum, &UA_TYPES[UA_TYPES_INT64]);
+      value.value.storageType = UA_VARIANT_DATA_NODELETE;
+      value.hasValue = true;
+      value.hasStatus = true;
+      value.status = UA_STATUSCODE_UNCERTAINSUBNORMAL;
+      value.hasSourceTimestamp = true;
+      value.sourceTimestamp = INT64_MAX;
+      value.hasSourcePicoseconds = true;
+      value.sourcePicoseconds = 123;
+      status = source.write(server, &session, context, &variable, context,
+                            &range, &value);
+    } else
+      status = source.read(server, &session, context, &variable, context, true,
+                           &range, &value);
+    if (!status && kind == 0 && value.hasValue &&
+        UA_Variant_hasScalarType(&value.value, &UA_TYPES[UA_TYPES_INT64])) {
+      UA_UInt64 bits = (UA_UInt64) * (UA_Int64 *)value.value.data;
+      out->high[0] = (unsigned int)(bits >> 32);
+      out->low[0] = (unsigned int)bits;
+      out->address = value.value.data;
+      out->borrowed = value.value.storageType == UA_VARIANT_DATA_NODELETE;
+      if (!value.hasSourceTimestamp || value.sourceTimestamp != INT64_MAX ||
+          !value.hasStatus ||
+          value.status != UA_STATUSCODE_UNCERTAINSUBNORMAL ||
+          !value.hasSourcePicoseconds || value.sourcePicoseconds != 123)
+        status = UA_STATUSCODE_BADUNEXPECTEDERROR;
+    }
+    UA_DataValue_clear(&value);
+    return status;
+  }
+  status = UA_Server_getMethodNodeCallback(server, method, &callback);
+  if (status || !callback)
+    return status ? status : UA_STATUSCODE_BADNOTSUPPORTED;
+  memset(input, 0, sizeof(input));
+  memset(output, 0, sizeof(output));
+  UA_Variant_setScalar(&input[0], &minimum, &UA_TYPES[UA_TYPES_INT64]);
+  input[0].storageType = UA_VARIANT_DATA_NODELETE;
+  UA_Variant_setScalar(&input[1], &string, &UA_TYPES[UA_TYPES_STRING]);
+  input[1].storageType = UA_VARIANT_DATA_NODELETE;
+  status = callback(server, &session, context, &method, context, &object,
+                    context, 2, input, 2, output);
+  out->address = output[0].data;
+  out->borrowed = output[0].storageType == UA_VARIANT_DATA_NODELETE;
+  for (i = 0; i < 2; ++i) {
+    if (!status &&
+        UA_Variant_hasScalarType(&output[i], &UA_TYPES[UA_TYPES_INT64])) {
+      UA_UInt64 bits = (UA_UInt64) * (UA_Int64 *)output[i].data;
+      out->high[i] = (unsigned int)(bits >> 32);
+      out->low[i] = (unsigned int)bits;
+    }
+    UA_Variant_clear(&output[i]);
+  }
+  return status;
+}
+
+unsigned int cpkt_types_peer_producer_zero_methods(void *native,
+                                                   void *context) {
+  UA_Server *server = native;
+  UA_MethodAttributes attr = UA_MethodAttributes_default;
+  UA_StatusCode status = 0;
+  unsigned int i;
+  attr.executable = attr.userExecutable = true;
+  for (i = 0; i < 2 && !status; ++i)
+    status = UA_Server_addMethodNode(
+        server, UA_NODEID_NUMERIC(1, 6202 + i),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT),
+        UA_QUALIFIEDNAME(1, i ? "zeroSecond" : "zeroFirst"), attr,
+        peer_async_method, 0, NULL, 0, NULL, context, NULL);
+  return status;
+}

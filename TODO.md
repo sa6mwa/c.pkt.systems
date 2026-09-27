@@ -60,13 +60,16 @@ behind a callback interface.
 - [x] Expose typed server-local async read/write/call submissions and context
   cancellation with synchronous completion, native pending results, timeout,
   shutdown, and conversion/allocation error coverage. Producer-side async
-  completion tokens remain part of the value-source/method callback work.
+  completion is now exposed through the producer bindings below.
+- [x] Expose full value-source and method callback signatures, setters/getters,
+  native async result identities, cancellation hooks, timestamp synchronization,
+  partial results and persistent native borrowing with C89/native/OOM tests.
 - [x] Generate full value notifications and node/global lifecycle callbacks,
   preserving original mutable contexts, reentrant replacement, destruction and
   owned child IDs with native-engine parity and allocation/logging coverage.
 - [ ] Use generated typed records at remaining PubSub component configuration,
-  custom history gathering and stock memory/circular backend factories, server method/value-source
-  callbacks, producer-side async completion tokens, and custom
+  custom history gathering and stock memory/circular backend factories, complete
+  method/callback-source node creation and external value sources, and custom
   security/event-loop/nodestore plugin boundaries. Preserve the upstream
   behavior and ownership rules; no C99-only native callback substitutes for
   a promised C89 binding. Custom native datatype registration is still separate.

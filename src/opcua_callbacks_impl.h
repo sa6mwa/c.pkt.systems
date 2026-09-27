@@ -808,6 +808,8 @@ cpkt_server_async_new(cpkt_opcua_server *server, void *context) {
 static void cpkt_server_async_submitted(struct cpkt_server_async *operation,
                                         UA_StatusCode status) {
   struct cpkt_server_async **slot;
+  if (operation->owner->typed_producers_refresh)
+    operation->owner->typed_producers_refresh(operation->owner);
   if (!operation->completed) {
     if (status) {
       cpkt_server_async_unref(operation);
@@ -960,7 +962,8 @@ void cpkt_opcua_server_cancelAsync_typed(
     cpkt_opcua_server *server, void *context, cpkt_opcua_StatusCode status,
     cpkt_opcua_Boolean synchronous_result_callback) {
   struct cpkt_server_async *operation, *last, *next;
-  if (!server)
+  /* Native destruction already owns cancellation of every remaining entry. */
+  if (!server || !server->server || server->destroying)
     return;
   /* Pin the existing registry before invoking callbacks. Completed entries
    * cannot disappear underneath a reentrant cancellation, and operations

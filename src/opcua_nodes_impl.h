@@ -5,12 +5,17 @@
 #include <pthread.h>
 typedef struct cpkt_nodes_owner cpkt_nodes_owner;
 typedef struct cpkt_nodes_entry cpkt_nodes_entry;
+struct cpkt_producer;
 struct cpkt_nodes_owner {
   cpkt_nodes_owner *next;
   cpkt_opcua_server *owner;
   cpkt_nodes_entry *entries;
   cpkt_opcua_GlobalNodeLifecycle global;
   UA_GlobalNodeLifecycle native_global;
+  struct cpkt_producer *producers;
+  void (*producer_cleanup)(cpkt_nodes_owner *);
+  void (*cancel)(cpkt_opcua_server *, const void *);
+  void (*native_cancel)(UA_Server *, const void *);
 };
 struct cpkt_nodes_entry {
   cpkt_nodes_entry *next;
@@ -18,6 +23,8 @@ struct cpkt_nodes_entry {
   UA_NodeId node;
   cpkt_opcua_ValueSourceNotifications notifications;
   cpkt_opcua_NodeTypeLifecycle lifecycle;
+  cpkt_opcua_CallbackValueSource source;
+  cpkt_opcua_MethodCallback method;
   unsigned int references;
 };
 static pthread_mutex_t cpkt_nodes_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -66,8 +73,11 @@ static void cpkt_nodes_clear(cpkt_opcua_server *server) {
     next = entry->next;
     cpkt_nodes_release(entry);
   }
+  if (owner->producer_cleanup)
+    owner->producer_cleanup(owner);
   UA_free(owner);
   server->typed_nodes = NULL;
+  server->typed_producers_refresh = NULL;
 }
 static cpkt_nodes_owner *cpkt_nodes_owner_new(cpkt_opcua_server *server) {
   cpkt_nodes_owner *owner;

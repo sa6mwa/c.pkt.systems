@@ -4908,6 +4908,8 @@ cpkt_opcua_result cpkt_opcua_server_iterate(cpkt_opcua_server *server,
     return CPKT_OPCUA_ERR_ARG;
   }
   wait_ms = UA_Server_run_iterate(server->server, wait_internal ? true : false);
+  if (server->typed_producers_refresh)
+    server->typed_producers_refresh(server);
   if (wait_ms_out != NULL) {
     *wait_ms_out = (unsigned short)wait_ms;
   }

@@ -225,6 +225,7 @@ cpkt_opcua_StatusCode cpkt_opcua_server_call_async_typed(
  * synchronous_result_callback requests immediate native result callbacks;
  * otherwise drive the EventLoop until completion before releasing context.
  * Already-ready results retain their native status. NULL server is harmless.
+ * During destruction this is a no-op; native shutdown already cancels all work.
  * Callbacks may submit new operations; those require their own cancellation. */
 void cpkt_opcua_server_cancelAsync_typed(
     cpkt_opcua_server *server, void *context, cpkt_opcua_StatusCode status,

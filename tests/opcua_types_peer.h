@@ -52,6 +52,14 @@ void cpkt_types_peer_time(unsigned int high, unsigned int low,
                           unsigned short *fields, short *year);
 unsigned int cpkt_types_peer_nodes(void *server, int action, void *context);
 unsigned int cpkt_types_peer_nodes_parallel(void *first, void *second);
+struct cpkt_producer_observed {
+  const void *address;
+  unsigned int high[2], low[2], borrowed;
+};
+unsigned int
+cpkt_types_peer_producer_direct(void *server, int kind, void *context,
+                                struct cpkt_producer_observed *out);
 void cpkt_types_peer_maps(unsigned int *results);
 void cpkt_types_peer_stop(void *peer);
+unsigned int cpkt_types_peer_producer_zero_methods(void *server, void *context);
 #endif

@@ -25,7 +25,8 @@ result is verified against the bundled native catalogue. These standard
 catalogues share the OPC Foundation schema provenance above.
 
 Generated `cpkt/opcua_plugins.h` reproduces the public open62541 access-control
-and history-database/backend, historizing-settings and numeric-range declarations
+and history-database/backend, historizing-settings, numeric-range, node
+notification/lifecycle, value-source and method callback declarations
 under MPL-2.0, retaining the basysKom GmbH and full upstream `types.h`
 copyright notices. Generated service/server bindings also derive their
 declarations from open62541 public headers. The original MPL license and
