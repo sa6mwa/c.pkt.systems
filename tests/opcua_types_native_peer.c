@@ -1410,3 +1410,62 @@ unsigned int cpkt_types_peer_producer_zero_methods(void *native,
         peer_async_method, 0, NULL, 0, NULL, context, NULL);
   return status;
 }
+
+static UA_StatusCode
+creation_failure_read(UA_Server *server, const UA_NodeId *session,
+                      void *session_context, const UA_NodeId *id, void *context,
+                      UA_Boolean timestamp, const UA_NumericRange *range,
+                      UA_DataValue *value) {
+  UA_Int64 number = INT64_MIN;
+  (void)server;
+  (void)session;
+  (void)session_context;
+  (void)id;
+  (void)context;
+  (void)timestamp;
+  (void)range;
+  value->hasValue = true;
+  return UA_Variant_setScalarCopy(&value->value, &number,
+                                  &UA_TYPES[UA_TYPES_INT64]);
+}
+void cpkt_types_peer_creation_failure(int kind,
+                                      struct cpkt_creation_observed *out) {
+  UA_Server *server = UA_Server_new();
+  UA_NodeId id = UA_NODEID_NULL;
+  void *context = NULL;
+  memset(out, 0, sizeof(*out));
+  if (!server)
+    abort();
+  if (UA_ServerConfig_setMinimal(UA_Server_getConfig(server), 0, NULL))
+    abort();
+  if (!kind) {
+    UA_VariableAttributes attr = UA_VariableAttributes_default;
+    UA_CallbackValueSource source = {creation_failure_read, NULL};
+    UA_Int64 number = INT64_MIN;
+    attr.dataType = UA_NS0ID(INT64);
+    attr.valueRank = -1;
+    attr.accessLevel = 1;
+    UA_Variant_setScalar(&attr.value, &number, &UA_TYPES[UA_TYPES_INT64]);
+    out->status = UA_Server_addCallbackValueSourceVariableNode(
+        server, UA_NODEID_STRING(1, "badVariable"),
+        UA_NODEID_NUMERIC(1, 9999999), UA_NS0ID(ORGANIZES),
+        UA_QUALIFIEDNAME(1, "creation"), UA_NS0ID(BASEDATAVARIABLETYPE), attr,
+        source, NULL, &id);
+  } else {
+    UA_MethodAttributes attr = UA_MethodAttributes_default;
+    UA_Argument argument;
+    UA_Argument_init(&argument);
+    argument.dataType = UA_NS0ID(INT64);
+    argument.valueRank = -1;
+    attr.executable = true;
+    attr.userExecutable = true;
+    out->status = UA_Server_addMethodNode(
+        server, UA_NODEID_STRING(1, "badMethod"), UA_NODEID_NUMERIC(1, 9999999),
+        UA_NS0ID(HASCOMPONENT), UA_QUALIFIEDNAME(1, "creation"), attr, NULL, 1,
+        &argument, 1, &argument, NULL, &id);
+  }
+  out->assigned = !UA_NodeId_isNull(&id);
+  out->exists = !UA_Server_getNodeContext(server, id, &context);
+  UA_NodeId_clear(&id);
+  UA_Server_delete(server);
+}

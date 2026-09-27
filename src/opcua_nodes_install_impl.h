@@ -35,6 +35,11 @@ static UA_StatusCode cpkt_nodes_stage(cpkt_opcua_server *server,
 }
 static void cpkt_nodes_commit(cpkt_nodes_entry *entry) {
   cpkt_nodes_entry **slot, *previous;
+  cpkt_creation *creation;
+  for (creation = entry->owner->creations; creation;
+       creation = creation->previous)
+    if (UA_NodeId_equal(creation->id, &entry->node))
+      creation->superseded = 1;
   for (slot = &entry->owner->entries; *slot; slot = &(*slot)->next)
     if (UA_NodeId_equal(&(*slot)->node, &entry->node))
       break;

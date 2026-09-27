@@ -6,10 +6,12 @@
 typedef struct cpkt_nodes_owner cpkt_nodes_owner;
 typedef struct cpkt_nodes_entry cpkt_nodes_entry;
 struct cpkt_producer;
+struct cpkt_creation;
 struct cpkt_nodes_owner {
   cpkt_nodes_owner *next;
   cpkt_opcua_server *owner;
   cpkt_nodes_entry *entries;
+  struct cpkt_creation *creations;
   cpkt_opcua_GlobalNodeLifecycle global;
   UA_GlobalNodeLifecycle native_global;
   struct cpkt_producer *producers;
@@ -17,6 +19,17 @@ struct cpkt_nodes_owner {
   void (*cancel)(cpkt_opcua_server *, const void *);
   void (*native_cancel)(UA_Server *, const void *);
 };
+/* The native out-ID is populated before construction callbacks. Borrow that
+ * address during the actual native call, including automatically assigned IDs.
+ * Reentrant replacement supersedes this scoped record without losing the
+ * already-running callback's reference. */
+typedef struct cpkt_creation {
+  struct cpkt_creation *previous;
+  cpkt_nodes_owner *owner;
+  cpkt_nodes_entry *entry;
+  const UA_NodeId *id;
+  int superseded;
+} cpkt_creation;
 struct cpkt_nodes_entry {
   cpkt_nodes_entry *next;
   cpkt_nodes_owner *owner;
@@ -48,8 +61,15 @@ static cpkt_nodes_entry *cpkt_nodes_acquire(UA_Server *server,
                                             const UA_NodeId *node) {
   cpkt_nodes_owner *owner = cpkt_nodes_find_owner(server);
   cpkt_nodes_entry *entry;
+  cpkt_creation *creation;
   if (!owner || !node)
     return NULL;
+  for (creation = owner->creations; creation; creation = creation->previous)
+    if (!creation->superseded && !UA_NodeId_isNull(creation->id) &&
+        UA_NodeId_equal(creation->id, node)) {
+      ++creation->entry->references;
+      return creation->entry;
+    }
   for (entry = owner->entries; entry; entry = entry->next)
     if (UA_NodeId_equal(&entry->node, node)) {
       ++entry->references;

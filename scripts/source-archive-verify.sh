@@ -171,6 +171,7 @@ for required in \
   src/opcua_plugins_impl.h \
   src/opcua_producers_impl.h \
   src/opcua_producers_install_impl.h \
+  src/opcua_creation_impl.h \
   src/opcua_nodes_impl.h \
   src/opcua_history_impl.h \
   src/opcua_nodes_install_impl.h \
@@ -182,6 +183,7 @@ for required in \
   tools/opcua/history_emitter.py \
   tools/opcua/server_emitter.py \
   tools/opcua/producer_emitter.py \
+  tools/opcua/creation_emitter.py \
   tools/opcua/node_emitter.py \
   tools/opcua/public_api.py \
   tools/opcua/public_api_contract.json \
@@ -194,6 +196,7 @@ for required in \
   tests/opcua_util_test.c \
   tests/opcua_identifiers_test.c \
   tests/opcua_producers_test.c \
+  tests/opcua_creation_test.c \
   tests/opcua_nodes_test.c \
   tests/opcua_callbacks_test.h \
   tests/opcua_types_native_peer.c \
@@ -250,7 +253,8 @@ for required in \
   vendor/open62541/patches/0005-route-key-derivation-errors-through-logger.patch \
   vendor/open62541/patches/0006-check-default-history-allocations.patch \
   vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch \
-  vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch
+  vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch \
+  vendor/open62541/patches/0009-release-method-argument-ownership.patch
 do
   if [ ! -f "$source_root/$required" ]; then
     printf 'source archive is missing required payload: %s\n' "$required" >&2

@@ -7,6 +7,7 @@ void cpkt_types_test_identifiers(void);
 void cpkt_types_test_utilities(void);
 void cpkt_types_test_producers(void);
 void cpkt_types_test_nodes(void);
+void cpkt_types_test_creation(void);
 void cpkt_types_test_server(void);
 void cpkt_types_test_history_backend(void);
 #endif

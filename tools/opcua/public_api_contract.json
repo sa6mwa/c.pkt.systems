@@ -2009,7 +2009,8 @@
     },
     "UA_Server_addCallbackValueSourceVariableNode": {
       "declaration": "UA_StatusCode UA_Server_addCallbackValueSourceVariableNode ( UA_Server * server , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_NodeId typeDefinition , const UA_VariableAttributes attr , const UA_CallbackValueSource evs , void * nodeContext , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_addCallbackValueSourceVariableNode_typed"
     },
     "UA_Server_addCertificates": {
       "declaration": "UA_StatusCode UA_Server_addCertificates ( UA_Server * server , const UA_NodeId certificateGroupId , UA_ByteString * certificates , size_t certificatesSize , UA_ByteString * crls , size_t crlsSize , const UA_Boolean isTrusted , const UA_Boolean appendCertificates )",
@@ -2042,15 +2043,18 @@
     },
     "UA_Server_addMethodNode": {
       "declaration": "UA_StatusCode UA_Server_addMethodNode ( UA_Server * server , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_MethodAttributes attr , UA_MethodCallback method , size_t inputArgumentsSize , const UA_Argument * inputArguments , size_t outputArgumentsSize , const UA_Argument * outputArguments , void * nodeContext , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_addMethodNode_typed"
     },
     "UA_Server_addMethodNodeEx": {
       "declaration": "UA_StatusCode UA_Server_addMethodNodeEx ( UA_Server * server , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_MethodAttributes attr , UA_MethodCallback method , size_t inputArgumentsSize , const UA_Argument * inputArguments , const UA_NodeId inputArgumentsRequestedNewNodeId , UA_NodeId * inputArgumentsOutNewNodeId , size_t outputArgumentsSize , const UA_Argument * outputArguments , const UA_NodeId outputArgumentsRequestedNewNodeId , UA_NodeId * outputArgumentsOutNewNodeId , void * nodeContext , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_addMethodNodeEx_typed"
     },
     "UA_Server_addMethodNode_finish": {
       "declaration": "UA_StatusCode UA_Server_addMethodNode_finish ( UA_Server * server , const UA_NodeId nodeId , UA_MethodCallback method , size_t inputArgumentsSize , const UA_Argument * inputArguments , size_t outputArgumentsSize , const UA_Argument * outputArguments )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_addMethodNode_finish_typed"
     },
     "UA_Server_addNamespace": {
       "declaration": "UA_UInt16 UA_Server_addNamespace ( UA_Server * server , const char * name )",
@@ -2058,11 +2062,13 @@
     },
     "UA_Server_addNode_begin": {
       "declaration": "UA_StatusCode UA_Server_addNode_begin ( UA_Server * server , const UA_NodeClass nodeClass , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_NodeId typeDefinition , const void * attr , const UA_DataType * attributeType , void * nodeContext , UA_NodeId * outNewNodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_addNode_begin_typed"
     },
     "UA_Server_addNode_finish": {
       "declaration": "UA_StatusCode UA_Server_addNode_finish ( UA_Server * server , const UA_NodeId nodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_addNode_finish_typed"
     },
     "UA_Server_addObjectNode": {
       "declaration": "UA_StatusCode UA_Server_addObjectNode ( UA_Server * server , const UA_NodeId requestedNewNodeId , const UA_NodeId parentNodeId , const UA_NodeId referenceTypeId , const UA_QualifiedName browseName , const UA_NodeId typeDefinition , const UA_ObjectAttributes attr , void * nodeContext , UA_NodeId * outNewNodeId )",

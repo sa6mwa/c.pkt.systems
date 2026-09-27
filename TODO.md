@@ -64,12 +64,15 @@ behind a callback interface.
 - [x] Expose full value-source and method callback signatures, setters/getters,
   native async result identities, cancellation hooks, timestamp synchronization,
   partial results and persistent native borrowing with C89/native/OOM tests.
+- [x] Expose complete native callback-source/method creation and generic node
+  begin/finish interfaces with assigned-ID dispatch during constructors,
+  reentrant replacement, native failure parity and output rollback tests.
 - [x] Generate full value notifications and node/global lifecycle callbacks,
   preserving original mutable contexts, reentrant replacement, destruction and
   owned child IDs with native-engine parity and allocation/logging coverage.
 - [ ] Use generated typed records at remaining PubSub component configuration,
   custom history gathering and stock memory/circular backend factories, complete
-  method/callback-source node creation and external value sources, and custom
+  external value sources, and custom
   security/event-loop/nodestore plugin boundaries. Preserve the upstream
   behavior and ownership rules; no C99-only native callback substitutes for
   a promised C89 binding. Custom native datatype registration is still separate.

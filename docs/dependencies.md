@@ -104,6 +104,17 @@ following second parse two seconds late/early. Native-peer and C89 facade tests
 cover both boundaries, a negative Unix second, calendar fractions, and dates
 requiring more than 32 bits of Unix seconds. It changes no public API or ABI.
 
+## OPC UA method argument ownership
+
+`0009-release-method-argument-ownership.patch` releases owned argument NodeIds
+created by the extended method factory while retaining borrowed IDs from browse
+results. It propagates requested output-ID copy failures and clears partial
+outputs through the existing native error path. Native method invocation now
+also releases its borrowed OutputArguments node if output-array allocation
+fails. The creation/constructor allocation sweep and string argument-ID tests
+run under Valgrind and catch both leaks. Native creation/call algorithms and
+public API/ABI identities remain unchanged.
+
 ## OPC UA runtime warning in local package checks
 
 The strict C89 package consumer constructs a server from a minimal JSON

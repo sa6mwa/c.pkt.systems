@@ -62,4 +62,10 @@ cpkt_types_peer_producer_direct(void *server, int kind, void *context,
 void cpkt_types_peer_maps(unsigned int *results);
 void cpkt_types_peer_stop(void *peer);
 unsigned int cpkt_types_peer_producer_zero_methods(void *server, void *context);
+struct cpkt_creation_observed {
+  unsigned int status;
+  int assigned, exists;
+};
+void cpkt_types_peer_creation_failure(int kind,
+                                      struct cpkt_creation_observed *out);
 #endif

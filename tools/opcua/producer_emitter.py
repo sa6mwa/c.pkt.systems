@@ -90,4 +90,8 @@ def emit_producers(index, native_headers):
               ' * that slot. Other C89 slot fields are ignored while selected. Allocation',
               ' * failure preserves selections. Valid during the callback or while pending. */',
               'cpkt_opcua_StatusCode cpkt_opcua_server_methodResultBorrow_typed(cpkt_opcua_server *server, cpkt_opcua_Variant *outputs, size_t index, const cpkt_opcua_history_value *stored);']
+    from creation_emitter import emit_creation
+    creation_header, creation_metadata = emit_creation(index, native_headers)
+    header += creation_header
+    metadata += creation_metadata
     return header, metadata

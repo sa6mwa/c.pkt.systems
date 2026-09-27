@@ -3597,6 +3597,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0006-check-default-history-allocations.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0009-release-method-argument-ownership.patch"
     RECIPE_FUNCTIONS cpkt_add_open62541)
   cpkt_prepare_dependency_component(
     NAME krb5

@@ -22,6 +22,7 @@ import server_emitter
 import history_emitter
 import node_emitter
 import producer_emitter
+import creation_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -150,6 +151,28 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
             pass
         else:
             raise AssertionError('Changed producer signature was accepted')
+    server.write_text(original_server)
+    creation_public, creation_private = creation_emitter.emit_creation(index, changed_headers)
+    for creation_name in creation_emitter.NAMES:
+        assert 'cpkt_opcua_server_' + creation_name + '_typed' in '\n'.join(creation_public)
+        assert 'UA_Server_' + creation_name + '(' in '\n'.join(creation_private)
+    for creation_name, old, new in (
+        ('addCallbackValueSourceVariableNode', 'const UA_CallbackValueSource evs', 'const UA_CallbackValueSource *evs'),
+        ('addMethodNodeEx', 'const UA_Argument *inputArguments', 'const UA_Argument **inputArguments'),
+        ('addNode_begin', 'const UA_DataType *attributeType', 'const UA_DataType **attributeType'),
+        ('addMethodNode_finish', 'UA_MethodCallback method', 'UA_ServerCallback method'),
+    ):
+        start = original_server.index('UA_Server_' + creation_name + '(')
+        end = original_server.index(');', start) + 2
+        scope = original_server[start:end]
+        assert old in scope
+        server.write_text(original_server[:start] + scope.replace(old, new, 1) + original_server[end:])
+        try:
+            creation_emitter.emit_creation(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed creation signature was accepted')
     server.write_text(original_server)
     server.write_text(server.read_text().replace('UA_NodeId *out);', 'UA_NodeId **out);', 1))
     try:

@@ -406,9 +406,38 @@ Native-peer and C89 tests cover full inputs/contexts/ranges, exact signed 64-bit
 outputs, synchronous/deferred/error results, timestamp synchronization,
 reentrant callback replacement, cancellation/shutdown, partial preparation
 failure, every allocation during registration/conversion/completion, zero-output
-identities, and native borrowing without a facade payload clone. Complete
-creation APIs for callback-source variables/methods and external double-pointer
-value sources remain tracked separately in the public API coverage contract.
+identities, and native borrowing without a facade payload clone. External
+double-pointer value sources remain tracked separately in the coverage contract.
+
+### Native node creation
+
+The complete typed callback-source variable and method creation interfaces are
+available: `addCallbackValueSourceVariableNode_typed`, `addMethodNode_typed`,
+`addMethodNodeEx_typed`, `addMethodNode_finish_typed`, `addNode_begin_typed` and
+`addNode_finish_typed`. They call the corresponding native public function;
+the facade does not substitute its own creation or begin/finish algorithm.
+All attributes and Argument arrays use generated C89 types, including exact
+64-bit/nested values. The generic begin function takes a C89 Type descriptor
+for its attribute record. Requested/assigned method argument IDs and optional
+output IDs retain the public native behavior.
+
+Scoped dispatch metadata follows the actual native out-ID address, populated
+before constructors/value-source callbacks run. Automatically assigned IDs,
+recursive creation, original contexts, and reentrant callback replacement work
+during the native call. Replacement wins over the original staged registration.
+After return, live nodes retain their dispatch record without another metadata
+allocation. Native failure may leave an assigned callback-source node alive;
+the facade preserves its ID and callbacks rather than silently changing that
+native rollback behavior. Output IDs own storage and must be cleared even on
+failure. Output conversion failure after successful native creation clears all
+C89 outputs and rolls back the new node; method argument properties are removed
+before their method. Existing native failures use upstream's own cleanup rules.
+
+C89/native tests cover all six functions, constructors that immediately read
+or call newly created nodes, automatic and string IDs, explicit argument IDs,
+optional outputs, nested creation, reentrant replacement, rejected constructors,
+independent native failure parity, dynamic attribute validation, every
+allocation-failure position, and failed output conversion/property rollback.
 
 ### Configuration key/value maps
 
