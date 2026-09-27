@@ -1,0 +1,367 @@
+--- a/plugins/historydata/ua_history_data_backend_memory.c
++++ b/plugins/historydata/ua_history_data_backend_memory.c
+@@ -39,6 +39,7 @@
+         UA_free(item->dataStore[i]);
+     }
+     UA_free(item->dataStore);
++    memset(item, 0, sizeof(*item));
+ }
+ 
+ typedef struct {
+@@ -63,18 +64,23 @@
+                                    const UA_NodeId *nodeId) {
+     UA_MemoryStoreContext *ctx = (UA_MemoryStoreContext*)context;
+     if (ctx->storeEnd >= ctx->storeSize) {
+-        size_t newStoreSize = ctx->storeSize * 2;
+-        if (newStoreSize == 0)
++        if(ctx->storeSize > (size_t)-1 / 2 / sizeof(*ctx->dataStore))
+             return NULL;
+-        ctx->dataStore = (UA_NodeIdStoreContextItem_backend_memory*)UA_realloc(ctx->dataStore,  (newStoreSize * sizeof(UA_NodeIdStoreContextItem_backend_memory)));
+-        if (!ctx->dataStore) {
+-            ctx->storeSize = 0;
++        size_t newStoreSize = ctx->storeSize ? ctx->storeSize * 2 : 1;
++        UA_NodeIdStoreContextItem_backend_memory *grown =
++            (UA_NodeIdStoreContextItem_backend_memory*)
++            UA_realloc(ctx->dataStore, newStoreSize * sizeof(*ctx->dataStore));
++        if(!grown)
+             return NULL;
+-        }
++        ctx->dataStore = grown;
++        memset(&grown[ctx->storeSize], 0,
++               (newStoreSize - ctx->storeSize) * sizeof(*grown));
+         ctx->storeSize = newStoreSize;
+     }
+     UA_NodeIdStoreContextItem_backend_memory *item = &ctx->dataStore[ctx->storeEnd];
+-    UA_NodeId_copy(nodeId, &item->nodeId);
++    memset(item, 0, sizeof(*item));
++    if(UA_NodeId_copy(nodeId, &item->nodeId) != UA_STATUSCODE_GOOD)
++        return NULL;
+     UA_DataValueMemoryStoreItem ** store = (UA_DataValueMemoryStoreItem **)UA_calloc(ctx->initialStoreSize, sizeof(UA_DataValueMemoryStoreItem*));
+     if (!store) {
+         UA_NodeIdStoreContextItem_clear(item);
+@@ -140,6 +146,8 @@
+                           size_t startIndex,
+                           size_t endIndex) {
+     const UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return 0;
+     if (item->storeEnd == 0
+             || startIndex == item->storeEnd
+             || endIndex == item->storeEnd)
+@@ -156,6 +164,8 @@
+                                 const UA_DateTime timestamp,
+                                 const MatchStrategy strategy) {
+     const UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return 0;
+     size_t current;
+     UA_Boolean retval = binarySearch_backend_memory(item, timestamp, &current);
+ 
+@@ -196,14 +206,20 @@
+                                     const UA_DataValue *value)
+ {
+     UA_NodeIdStoreContextItem_backend_memory *item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+ 
+     if (item->storeEnd >= item->storeSize) {
+-        size_t newStoreSize = item->storeSize == 0 ? INITIAL_MEMORY_STORE_SIZE : item->storeSize * 2;
+-        item->dataStore = (UA_DataValueMemoryStoreItem **)UA_realloc(item->dataStore,  (newStoreSize * sizeof(UA_DataValueMemoryStoreItem*)));
+-        if (!item->dataStore) {
+-            item->storeSize = 0;
++        if(item->storeSize > (size_t)-1 / 2 / sizeof(*item->dataStore))
+             return UA_STATUSCODE_BADOUTOFMEMORY;
+-        }
++        size_t newStoreSize = item->storeSize ? item->storeSize * 2 : INITIAL_MEMORY_STORE_SIZE;
++        if(newStoreSize > (size_t)-1 / sizeof(*item->dataStore))
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        UA_DataValueMemoryStoreItem **grown = (UA_DataValueMemoryStoreItem**)
++            UA_realloc(item->dataStore, newStoreSize * sizeof(*item->dataStore));
++        if(!grown)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        item->dataStore = grown;
+         item->storeSize = newStoreSize;
+     }
+     UA_DateTime timestamp = 0;
+@@ -215,8 +231,15 @@
+         timestamp = UA_DateTime_now();
+     }
+     UA_DataValueMemoryStoreItem *newItem = (UA_DataValueMemoryStoreItem *)UA_calloc(1, sizeof(UA_DataValueMemoryStoreItem));
++    if(!newItem)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+     newItem->timestamp = timestamp;
+-    UA_DataValue_copy(value, &newItem->value);
++    UA_StatusCode copyStatus = UA_DataValue_copy(value, &newItem->value);
++    if(copyStatus != UA_STATUSCODE_GOOD) {
++        UA_DataValueMemoryStoreItem_clear(newItem);
++        UA_free(newItem);
++        return copyStatus;
++    }
+     if(!newItem->value.hasServerTimestamp) {
+         newItem->value.serverTimestamp = timestamp;
+         newItem->value.hasServerTimestamp = true;
+@@ -249,6 +272,8 @@
+                       void *sessionContext,
+                       const UA_NodeId * nodeId) {
+     const UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return 0;
+     return item->storeEnd;
+ }
+ 
+@@ -259,6 +284,8 @@
+                          void *sessionContext,
+                          const UA_NodeId * nodeId) {
+     const UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return 0;
+     if (item->storeEnd == 0)
+         return 0;
+     return item->storeEnd - 1;
+@@ -290,6 +317,8 @@
+                                            const UA_NodeId *nodeId,
+                                            const UA_TimestampsToReturn timestampsToReturn) {
+     const UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return false;
+     if (item->storeEnd == 0) {
+         return true;
+     }
+@@ -314,6 +343,10 @@
+                             void *sessionContext,
+                             const UA_NodeId * nodeId, size_t index) {
+     const UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return NULL;
++    if(index >= item->storeEnd)
++        return NULL;
+     return &item->dataStore[index]->value;
+ }
+ 
+@@ -353,12 +386,14 @@
+     size_t skip = 0;
+     if (continuationPoint->length > 0) {
+         if (continuationPoint->length == sizeof(size_t)) {
+-            skip = *((size_t*)(continuationPoint->data));
++            memcpy(&skip, continuationPoint->data, sizeof(skip));
+         } else {
+             return UA_STATUSCODE_BADCONTINUATIONPOINTINVALID;
+         }
+     }
+     const UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)context, server, nodeId);
++    if(!item)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+     size_t index = startIndex;
+     size_t counter = 0;
+     size_t skipedValues = 0;
+@@ -403,10 +438,12 @@
+         *providedValues = counter;
+ 
+     if ((!reverse && (endIndex-startIndex-skip+1) > counter) || (reverse && (startIndex-endIndex-skip+1) > counter)) {
+-        outContinuationPoint->length = sizeof(size_t);
+-        size_t t = sizeof(size_t);
+-        outContinuationPoint->data = (UA_Byte*)UA_malloc(t);
+-        *((size_t*)(outContinuationPoint->data)) = skip + counter;
++        UA_StatusCode allocationStatus =
++            UA_ByteString_allocBuffer(outContinuationPoint, sizeof(size_t));
++        if(allocationStatus != UA_STATUSCODE_GOOD)
++            return allocationStatus;
++        size_t next = skip + counter;
++        memcpy(outContinuationPoint->data, &next, sizeof(next));
+     }
+ 
+     return UA_STATUSCODE_GOOD;
+@@ -424,6 +461,8 @@
+         return UA_STATUSCODE_BADINVALIDTIMESTAMP;
+     const UA_DateTime timestamp = value->hasSourceTimestamp ? value->sourceTimestamp : value->serverTimestamp;
+     UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)hdbContext, server, nodeId);
++    if(!item)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+ 
+     size_t index = getDateTimeMatch_backend_memory(server,
+                                     hdbContext,
+@@ -436,17 +475,28 @@
+         return UA_STATUSCODE_BADENTRYEXISTS;
+ 
+     if (item->storeEnd >= item->storeSize) {
+-        size_t newStoreSize = item->storeSize == 0 ? INITIAL_MEMORY_STORE_SIZE : item->storeSize * 2;
+-        item->dataStore = (UA_DataValueMemoryStoreItem **)UA_realloc(item->dataStore,  (newStoreSize * sizeof(UA_DataValueMemoryStoreItem*)));
+-        if (!item->dataStore) {
+-            item->storeSize = 0;
++        if(item->storeSize > (size_t)-1 / 2 / sizeof(*item->dataStore))
+             return UA_STATUSCODE_BADOUTOFMEMORY;
+-        }
++        size_t newStoreSize = item->storeSize ? item->storeSize * 2 : INITIAL_MEMORY_STORE_SIZE;
++        if(newStoreSize > (size_t)-1 / sizeof(*item->dataStore))
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        UA_DataValueMemoryStoreItem **grown = (UA_DataValueMemoryStoreItem**)
++            UA_realloc(item->dataStore, newStoreSize * sizeof(*item->dataStore));
++        if(!grown)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        item->dataStore = grown;
+         item->storeSize = newStoreSize;
+     }
+     UA_DataValueMemoryStoreItem *newItem = (UA_DataValueMemoryStoreItem *)UA_calloc(1, sizeof(UA_DataValueMemoryStoreItem));
++    if(!newItem)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+     newItem->timestamp = timestamp;
+-    UA_DataValue_copy(value, &newItem->value);
++    UA_StatusCode copyStatus = UA_DataValue_copy(value, &newItem->value);
++    if(copyStatus != UA_STATUSCODE_GOOD) {
++        UA_DataValueMemoryStoreItem_clear(newItem);
++        UA_free(newItem);
++        return copyStatus;
++    }
+     if(!newItem->value.hasServerTimestamp) {
+         newItem->value.serverTimestamp = timestamp;
+         newItem->value.hasServerTimestamp = true;
+@@ -472,6 +522,8 @@
+         return UA_STATUSCODE_BADINVALIDTIMESTAMP;
+     const UA_DateTime timestamp = value->hasSourceTimestamp ? value->sourceTimestamp : value->serverTimestamp;
+     UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)hdbContext, server, nodeId);
++    if(!item)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+ 
+     size_t index = getDateTimeMatch_backend_memory(server,
+                                     hdbContext,
+@@ -482,8 +534,15 @@
+                                     MATCH_EQUAL);
+     if (index == item->storeEnd)
+         return UA_STATUSCODE_BADNOENTRYEXISTS;
++    UA_DataValue staged;
++    UA_DataValue_init(&staged);
++    UA_StatusCode copyStatus = UA_DataValue_copy(value, &staged);
++    if(copyStatus != UA_STATUSCODE_GOOD) {
++        UA_DataValue_clear(&staged);
++        return copyStatus;
++    }
+     UA_DataValue_clear(&item->dataStore[index]->value);
+-    UA_DataValue_copy(value, &item->dataStore[index]->value);
++    item->dataStore[index]->value = staged;
+     if(!item->dataStore[index]->value.hasServerTimestamp) {
+         item->dataStore[index]->value.serverTimestamp = timestamp;
+         item->dataStore[index]->value.hasServerTimestamp = true;
+@@ -508,6 +567,8 @@
+                                                         value);
+     if (ret == UA_STATUSCODE_GOOD)
+         return UA_STATUSCODE_GOODENTRYREPLACED;
++    if(ret != UA_STATUSCODE_BADNOENTRYEXISTS)
++        return ret;
+ 
+     ret = insertDataValue_backend_memory(server,
+                                           hdbContext,
+@@ -531,6 +592,8 @@
+                                UA_DateTime endTimestamp)
+ {
+     UA_NodeIdStoreContextItem_backend_memory* item = getNodeIdStoreContextItem_backend_memory((UA_MemoryStoreContext*)hdbContext, server, nodeId);
++    if(!item)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+     size_t storeEnd = item->storeEnd;
+     // The first index which will be deleted
+     size_t index1;
+@@ -605,7 +668,16 @@
+     UA_MemoryStoreContext *ctx = (UA_MemoryStoreContext *)UA_calloc(1, sizeof(UA_MemoryStoreContext));
+     if (!ctx)
+         return result;
++    if(initialNodeIdStoreSize > (size_t)-1 / sizeof(*ctx->dataStore) ||
++       initialDataStoreSize > (size_t)-1 / sizeof(UA_DataValueMemoryStoreItem*)) {
++        UA_free(ctx);
++        return result;
++    }
+     ctx->dataStore = (UA_NodeIdStoreContextItem_backend_memory*)UA_calloc(initialNodeIdStoreSize, sizeof(UA_NodeIdStoreContextItem_backend_memory));
++    if(!ctx->dataStore) {
++        UA_free(ctx);
++        return result;
++    }
+     ctx->initialStoreSize = initialDataStoreSize;
+     ctx->storeSize = initialNodeIdStoreSize;
+     ctx->storeEnd = 0;
+@@ -632,8 +704,11 @@
+ void
+ UA_HistoryDataBackend_Memory_clear(UA_HistoryDataBackend *backend)
+ {
++    if(!backend)
++        return;
+     UA_MemoryStoreContext *ctx = (UA_MemoryStoreContext*)backend->context;
+-    UA_MemoryStoreContext_delete(ctx);
++    if(ctx)
++        UA_MemoryStoreContext_delete(ctx);
+     memset(backend, 0, sizeof(UA_HistoryDataBackend));
+ }
+ 
+@@ -648,7 +723,9 @@
+         return NULL;
+     }
+     UA_NodeIdStoreContextItem_backend_memory *item = &ctx->dataStore[ctx->storeEnd];
+-    UA_NodeId_copy(nodeId, &item->nodeId);
++    memset(item, 0, sizeof(*item));
++    if(UA_NodeId_copy(nodeId, &item->nodeId) != UA_STATUSCODE_GOOD)
++        return NULL;
+     UA_DataValueMemoryStoreItem **store = (UA_DataValueMemoryStoreItem **)UA_calloc(ctx->initialStoreSize, sizeof(UA_DataValueMemoryStoreItem *));
+     if(!store) {
+         UA_NodeIdStoreContextItem_clear(item);
+@@ -698,8 +775,15 @@
+         timestamp = UA_DateTime_now();
+     }
+     UA_DataValueMemoryStoreItem *newItem = (UA_DataValueMemoryStoreItem *)UA_calloc(1, sizeof(UA_DataValueMemoryStoreItem));
++    if(!newItem)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+     newItem->timestamp = timestamp;
+-    UA_DataValue_copy(value, &newItem->value);
++    UA_StatusCode copyStatus = UA_DataValue_copy(value, &newItem->value);
++    if(copyStatus != UA_STATUSCODE_GOOD) {
++        UA_DataValueMemoryStoreItem_clear(newItem);
++        UA_free(newItem);
++        return copyStatus;
++    }
+     if(!newItem->value.hasServerTimestamp) {
+         newItem->value.serverTimestamp = timestamp;
+         newItem->value.hasServerTimestamp = true;
+@@ -777,7 +861,7 @@
+     if(continuationPoint->length > 0) {
+         if(continuationPoint->length < sizeof(size_t))
+             return UA_STATUSCODE_BADCONTINUATIONPOINTINVALID;
+-        skip = *((size_t *)(continuationPoint->data));
++        memcpy(&skip, continuationPoint->data, sizeof(skip));
+         backendContinuationPoint.length = continuationPoint->length - sizeof(size_t);
+         backendContinuationPoint.data = continuationPoint->data + sizeof(size_t);
+     }
+@@ -801,6 +885,8 @@
+                                                         &addFirst,
+                                                         &addLast,
+                                                         &reverse);
++    if(skip > _resultSize)
++        return UA_STATUSCODE_BADCONTINUATIONPOINTINVALID;
+     *resultSize = _resultSize - skip;
+     if(*resultSize > maxSize) {
+         *resultSize = maxSize;
+@@ -858,6 +944,7 @@
+             UA_Array_delete(outResult, *resultSize, &UA_TYPES[UA_TYPES_DATAVALUE]);
+             *result = NULL;
+             *resultSize = 0;
++            UA_ByteString_clear(&backendOutContinuationPoint);
+             return ret;
+         }
+         counter += retval;
+@@ -882,9 +969,11 @@
+        // we deliver just one value which is a FIRST/LAST value
+        || (skip == 0 && addFirst == true && *resultSize == 1)) {
+         if(UA_ByteString_allocBuffer(outContinuationPoint, backendOutContinuationPoint.length + sizeof(size_t)) != UA_STATUSCODE_GOOD) {
++            UA_ByteString_clear(&backendOutContinuationPoint);
+             return UA_STATUSCODE_BADOUTOFMEMORY;
+         }
+-        *((size_t *)(outContinuationPoint->data)) = skip + *resultSize;
++        size_t next = skip + *resultSize;
++        memcpy(outContinuationPoint->data, &next, sizeof(next));
+         if(backendOutContinuationPoint.length > 0)
+             memcpy(outContinuationPoint->data + sizeof(size_t), backendOutContinuationPoint.data, backendOutContinuationPoint.length);
+     }
+@@ -895,6 +984,8 @@
+ UA_HistoryDataBackend
+ UA_HistoryDataBackend_Memory_Circular(size_t initialNodeIdStoreSize, size_t initialDataStoreSize) {
+     UA_HistoryDataBackend result = UA_HistoryDataBackend_Memory(initialNodeIdStoreSize, initialDataStoreSize);
++    if(!result.context)
++        return result;
+     result.serverSetHistoryData = &serverSetHistoryData_backend_memory_Circular;
+     result.getHistoryData = &getHistoryData_service_Circular;
+     return result;

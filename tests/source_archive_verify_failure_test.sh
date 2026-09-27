@@ -92,6 +92,7 @@ tests/opcua_types_test.c
 tests/opcua_callbacks_test.c
 tests/opcua_plugins_test.c
 tests/opcua_history_backend_test.c
+tests/opcua_memory_backend_test.c
 tests/opcua_server_types_test.c
 tests/opcua_util_test.c
 tests/opcua_identifiers_test.c
@@ -160,6 +161,7 @@ vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch
 vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch
 vendor/open62541/patches/0009-release-method-argument-ownership.patch
 vendor/open62541/patches/0010-use-external-source-notification-slots.patch
+vendor/open62541/patches/0011-check-memory-history-backend-allocations.patch
 '
 
 make_archive() {

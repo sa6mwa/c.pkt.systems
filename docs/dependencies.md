@@ -86,6 +86,26 @@ constructor records to BADOUTOFMEMORY without replacing the installed plugin.
 Its registration is closed after polling first starts so native monitored-item
 contexts are never moved by later gathering growth.
 
+## Native OPC UA memory history allocation safety
+
+The bundled `0011-check-memory-history-backend-allocations.patch` checks stock
+memory and circular-backend constructor, node-store, value-store, value-copy
+and continuation allocations. Failed growth retains existing storage; failed
+replacement retains the previous value. Upsert propagates allocation failure
+instead of retrying insertion after a failed replacement. Successful storage,
+sorting and circular replacement continue through the upstream implementation.
+Methods without a status return use their zero/false/NULL failure result.
+
+The patch also reads/writes counted continuation bytes with `memcpy`, avoiding
+alignment-dependent `size_t` access, rejects a circular continuation offset
+beyond the available records, and releases temporary continuation buffers on
+failed reads. Native regression tests inject each allocation failure, retry
+writes and node registration, check previous values and borrowed addresses,
+exercise unaligned continuation input, and clear both partial and complete
+outputs. These tests run alongside C89 facade tests in static/shared and
+allocation-failure suites; they do not classify the remaining C89 history
+factory bindings as complete.
+
 ## OPC UA reentrant async result callbacks
 
 `0007-safe-reentrant-async-result-callbacks.patch` prevents the native async

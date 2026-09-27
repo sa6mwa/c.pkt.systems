@@ -1,6 +1,7 @@
 #ifndef CPKT_OPCUA_TYPES_PEER_H
 #define CPKT_OPCUA_TYPES_PEER_H
 #include <stddef.h>
+void cpkt_types_test_memory_backend(void);
 unsigned int cpkt_types_native_empty(size_t index, unsigned char **bytes,
                                      size_t *length);
 unsigned int cpkt_types_native_populated(size_t index, unsigned char **bytes,

@@ -7,3 +7,4 @@
 0008-preserve-date-parser-overflow-guard-direction.patch
 0009-release-method-argument-ownership.patch
 0010-use-external-source-notification-slots.patch
+0011-check-memory-history-backend-allocations.patch
