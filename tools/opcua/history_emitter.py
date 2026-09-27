@@ -82,9 +82,10 @@ def emit_backend(index, native_headers, configuration):
               'struct cpkt_opcua_HistoryDataBackend {',
               public_backend, '};',
               '/** Per-node history settings. The backend record is copied on registration.',
-              ' * Each registration transfers context to deleteMembers only on success.',
-              ' * Shared contexts require caller-managed references; userContext is borrowed.',
-              ' * maxHistoryDataResponseSize must be nonzero. Polling starts explicitly. */',
+              ' * Native gathering borrows backend contexts; userContext is borrowed.',
+              ' * The server_register_history_backend convenience API instead transfers',
+              ' * context on success and requires nonzero maxHistoryDataResponseSize.',
+              ' * Native polling and settings lifetimes remain upstream-defined. */',
               translate(settings[0]).replace('cpkt_opcua_HISTORIZING', 'CPKT_OPCUA_HISTORIZING'),
               '/** Install upstream default gathering/database before server startup.',
               ' * initial capacity must be nonzero. Failure preserves the previous plugin.',
@@ -113,7 +114,7 @@ def emit_backend(index, native_headers, configuration):
             bare = spelling.replace('const ', '').replace('*', '').strip()
             typename = bare[3:] if bare.startswith('UA_') else None
             if param == 'server':
-                callargs.append('bridge->owner')
+                callargs.append('server ? bridge->owner : NULL')
             elif param == 'hdbContext':
                 callargs.append('bridge->plugin.context')
             elif param == 'backend':
@@ -199,7 +200,8 @@ def emit_backend(index, native_headers, configuration):
     metadata += ['static void cpkt_hb_assign(UA_HistoryDataBackend *native, const cpkt_opcua_HistoryDataBackend *plugin) {',
                  '  memset(native, 0, sizeof(*native));', *assignments, '}']
     stock_header, stock_metadata = emit_stock_backend(index, native_headers, methods)
-    return header + stock_header, metadata + stock_metadata
+    gathering_header, gathering_metadata = emit_gathering(index, native_headers, configuration)
+    return header + stock_header + gathering_header, metadata + stock_metadata + gathering_metadata
 
 
 def emit_stock_backend(index, native_headers, methods):
@@ -389,4 +391,381 @@ def emit_stock_backend(index, native_headers, methods):
         '  cpkt_stock_hb *bridge;', '  if(!backend) return;',
         '  if(backend->context) { bridge = (cpkt_stock_hb *)backend->context; UA_HistoryDataBackend_Memory_clear(&bridge->native); UA_free(bridge); }',
         '  memset(backend, 0, sizeof(*backend));', '}']
+    return header, metadata
+
+
+def emit_gathering(index, native_headers, configuration):
+    path = native_headers / 'plugin/historydata/history_data_gathering.h'
+    body = public_body(path, 'HistoryDataGathering', configuration)
+    validate_fields(body, ['void *context'])
+    methods = callbacks(body)
+    expected = {'deleteMembers', 'registerNodeId', 'stopPoll', 'startPoll',
+                'updateNodeIdSetting', 'getHistorizingSetting', 'setValue'}
+    if {name for _, name, _ in methods} != expected:
+        raise ValueError('Adapt history gathering callbacks')
+    returns = {'deleteMembers': 'void', 'registerNodeId': 'UA_StatusCode',
+               'stopPoll': 'UA_StatusCode', 'startPoll': 'UA_StatusCode',
+               'updateNodeIdSetting': 'UA_Boolean',
+               'getHistorizingSetting': 'const UA_HistorizingNodeIdSettings*',
+               'setValue': 'void'}
+    for result, name, signature in methods:
+        args = parameters(signature)
+        if result != returns[name] or (name == 'deleteMembers' and args != [('UA_HistoryDataGathering *', 'gathering')]) or (
+                name != 'deleteMembers' and args[:2] != [('UA_Server *', 'server'), ('void *', 'hdgContext')]):
+            raise ValueError('Adapt history gathering signature: ' + name)
+    public = translate(body).replace('const cpkt_opcua_HistorizingNodeIdSettings*',
+                                    'const cpkt_opcua_history_settings*')
+    header = [re.match(r'/\*.*?\*/', path.read_text(), re.S)[0],
+        '/** Actual native public settings storage. Owned new/set records preserve',
+        ' * their address; gathering getters return const native borrows. No lookup',
+        ' * snapshot/cache is maintained. Backend contexts and userContext are borrowed.',
+        ' * Finish native borrowers before set/free; never free a stock const borrow. */',
+        'typedef struct cpkt_opcua_history_settings cpkt_opcua_history_settings;',
+        '/** Create owned native settings and callback conversion metadata. Copies',
+        ' * scalar fields and callback slots, borrowing backend context/userContext.',
+        ' * Failure leaves *out NULL. No backend ownership transfers. */',
+        'cpkt_opcua_StatusCode cpkt_opcua_history_settings_new(const cpkt_opcua_HistorizingNodeIdSettings *setting, cpkt_opcua_history_settings **out);',
+        '/** Replace quiescent owned settings. Failure preserves the previous record.',
+        ' * Native settings/backend copies must finish borrowing before replacement. */',
+        'cpkt_opcua_StatusCode cpkt_opcua_history_settings_set(cpkt_opcua_history_settings *stored, const cpkt_opcua_HistorizingNodeIdSettings *setting);',
+        '/** Read owned or stock-borrowed native settings into a C89 field copy.',
+        ' * No allocation; backend callbacks/context and userContext remain aliases.',
+        ' * The copy has no additional ownership. Failure leaves out empty. */',
+        'cpkt_opcua_StatusCode cpkt_opcua_history_settings_get(const cpkt_opcua_history_settings *stored, cpkt_opcua_HistorizingNodeIdSettings *out);',
+        '/** Free quiescent owned settings and conversion metadata only. Backend',
+        ' * contexts/userContext remain caller-owned; NULL is safe. */',
+        'void cpkt_opcua_history_settings_free(cpkt_opcua_history_settings *stored);',
+        '/** Full native gathering record. Inputs borrow through the callback; native',
+        ' * registration copies settings but borrows their backend context. A custom',
+        ' * getHistorizingSetting returns persistent owned settings created above.',
+        ' * Return distinct objects for distinct retained records, not a temporary.',
+        ' * Native callbacks may continue borrowing after getter return. deleteMembers',
+        ' * releases the gathering context and owned settings, after polling is stopped. */',
+        'typedef struct cpkt_opcua_HistoryDataGathering cpkt_opcua_HistoryDataGathering;',
+        '/** Generated native gathering callbacks, including persistent settings. */',
+        'struct cpkt_opcua_HistoryDataGathering {', public, '};']
+    metadata = []
+    for result, name, signature in methods:
+        if name == 'deleteMembers':
+            continue
+        declarations, setup, conversion, cleanup, callargs = [], [], [], [], []
+        for spelling, param in parameters(signature):
+            bare = spelling.replace('const ', '').replace('*', '').strip()
+            typename = bare[3:] if bare.startswith('UA_') else None
+            if param == 'server':
+                callargs.append('bridge->owner')
+            elif param == 'hdgContext':
+                callargs.append('bridge->plugin.context')
+            elif spelling == 'void *':
+                callargs.append(param)
+            elif typename == 'HistorizingNodeIdSettings' and spelling == 'const UA_HistorizingNodeIdSettings':
+                declarations += ['  cpkt_opcua_HistorizingNodeIdSettings c_setting;']
+                conversion += ['  if(!status) status = cpkt_history_settings_load(&setting, &c_setting);']
+                callargs.append('c_setting')
+            elif typename == 'NodeId' and spelling == 'const UA_NodeId *':
+                declarations += [f'  cpkt_opcua_NodeId c_{param};']
+                conversion += [f'  if({param}) cpkt_hb_borrow_node({param}, &c_{param});']
+                callargs.append(f'{param} ? &c_{param} : NULL')
+            elif typename in index and spelling.count('*') <= 1:
+                declarations += [f'  cpkt_opcua_{typename} c_{param};']
+                setup += [f'  memset(&c_{param}, 0, sizeof(c_{param}));']
+                pointer = param if '*' in spelling else '&' + param
+                conversion += [f'  if(!status{f" && {param}" if "*" in spelling else ""}) status = cpkt_convert({pointer}, &c_{param}, &cpkt_types[{index[typename]}], 0, 0);']
+                cleanup += [f'  cpkt_opcua_type_clear(&c_{param}, &cpkt_types[{index[typename]}]);']
+                callargs.append(f'{param} ? &c_{param} : NULL' if '*' in spelling else 'c_' + param)
+            else:
+                raise ValueError(f'Adapt gathering argument {name}.{param}: {spelling}')
+        if result not in ('void', 'UA_StatusCode', 'UA_Boolean', 'const UA_HistorizingNodeIdSettings*'):
+            raise ValueError('Adapt gathering result: ' + name)
+        if name == 'getHistorizingSetting':
+            declarations += ['  const cpkt_opcua_history_settings *answer = NULL;']
+            invoke = f'  if(!status) answer = bridge->plugin.{name}({", ".join(callargs)});'
+            ret = '  return status ? NULL : cpkt_history_settings_borrow(answer, bridge->owner);'
+        elif result == 'void':
+            invoke = f'  if(!status) bridge->plugin.{name}({", ".join(callargs)});'
+            ret = ''
+        else:
+            declarations += [f'  {result} answer = 0;']
+            invoke = f'  if(!status) answer = bridge->plugin.{name}({", ".join(callargs)});'
+            ret = '  return status ? status : answer;' if result == 'UA_StatusCode' else '  return status ? 0 : answer;'
+        metadata += [f'static {result} cpkt_hg_{name}({signature}) {{',
+                     '  cpkt_hg_bridge *bridge = (cpkt_hg_bridge *)hdgContext;',
+                     '  UA_StatusCode status = 0;', *declarations, '  (void)server;', *setup, *conversion,
+                     invoke, *cleanup,
+                     *([f'  if(status && server) UA_LOG_ERROR(UA_Server_getConfig(server)->logging, UA_LOGCATEGORY_SERVER, "C89 gathering {name} conversion failed: %08lx", (unsigned long)status);'] if result != 'UA_StatusCode' else []),
+                     *([ret] if ret else []), '}']
+    metadata += ['static void cpkt_hg_delete(UA_HistoryDataGathering *native) {',
+                 '  cpkt_hg_bridge *bridge = (cpkt_hg_bridge *)native->context;',
+                 '  if(bridge->plugin.deleteMembers) bridge->plugin.deleteMembers(&bridge->plugin);',
+                 '  UA_free(bridge);', '}',
+                 'static void cpkt_hg_assign(UA_HistoryDataGathering *native, const cpkt_opcua_HistoryDataGathering *plugin) {',
+                 '  memset(native, 0, sizeof(*native));',
+                 '  native->deleteMembers = cpkt_hg_delete;',
+                 *[f'  native->{name} = plugin->{name} ? cpkt_hg_{name} : NULL;' for _, name, _ in methods if name != 'deleteMembers'], '}']
+    stock_header, stock_metadata = emit_stock_gathering(index, native_headers, methods)
+    database_header, database_metadata = emit_stock_database(index, native_headers, configuration)
+    return header + stock_header + database_header, metadata + stock_metadata + database_metadata
+
+
+def emit_stock_gathering(index, native_headers, methods):
+    path = native_headers / 'plugin/historydata/history_data_gathering_default.h'
+    text = path.read_text()
+    names = re.findall(r'\b(\w+)\s+(?:UA_EXPORT\s+)?(UA_HistoryDataGathering_\w+|gathering_default_\w+)\s*\((.*?)\)\s*;', uncomment(text), re.S)
+    expected = {
+        'UA_HistoryDataGathering_Default': [('size_t', 'initialNodeIdStoreSize')],
+        'UA_HistoryDataGathering_Circular': [('size_t', 'initialNodeIdStoreSize')],
+        'gathering_default_pauseRecording': [('UA_HistoryDataGathering *', 'gathering'), ('const UA_NodeId *', 'nodeId'), ('UA_Boolean', 'pause')],
+    }
+    if {name for _, name, _ in names} != set(expected):
+        raise ValueError('Adapt stock gathering factories')
+    for result, name, signature in names:
+        native_result = 'void' if name == 'gathering_default_pauseRecording' else 'UA_HistoryDataGathering'
+        if result != native_result or parameters(signature) != expected[name]:
+            raise ValueError('Adapt stock gathering signature: ' + name)
+    header = [re.match(r'/\*.*?\*/', text, re.S)[0],
+        '/** Native default gathering, with callable C89 callback slots. Owns its',
+        ' * gathering context and conversion metadata; all backend contexts remain',
+        ' * caller-owned. Zero capacity retains native grow-on-registration behavior.',
+        ' * Stop all polling before destruction. Registration/growth may invalidate',
+        ' * native borrowed settings and polling contexts; finish borrows first and',
+        ' * register all nodes before starting polling when growth can occur.',
+        ' * Start polling with the facade server containing that node; registration',
+        ' * may use NULL when native permits it. NULL lookup leaves polling intact.',
+        ' * Copies alias one context. Call exactly one deleteMembers per context.',
+        ' * It releases context without resetting the record, as native does.',
+        ' * Empty record indicates allocation failure. Output settings are actual',
+        ' * const native borrows; never free/set them or cast away const. */',
+        'cpkt_opcua_HistoryDataGathering cpkt_opcua_HistoryDataGathering_Default(size_t initialNodeIdStoreSize);',
+        '/** Native fixed-capacity gathering. The capacity is a node limit, with',
+        ' * native failure when exceeded; no facade growth policy is added.',
+        ' * Same context/backend ownership and callback rules as Default. */',
+        'cpkt_opcua_HistoryDataGathering cpkt_opcua_HistoryDataGathering_Circular(size_t initialNodeIdStoreSize);',
+        '/** Pause/resume native value-set recording for an existing node. Stock',
+        ' * Default/Circular records only. Retains native polling behavior; this',
+        ' * does not stop polling or discard existing values. */',
+        'void cpkt_opcua_gathering_default_pauseRecording(cpkt_opcua_HistoryDataGathering *gathering, const cpkt_opcua_NodeId *nodeId, cpkt_opcua_Boolean pause);']
+    metadata = []
+    for result, name, signature in methods:
+        if name == 'deleteMembers':
+            continue
+        c_result = 'const cpkt_opcua_history_settings *' if name == 'getHistorizingSetting' else translate(result)
+        c_signature = translate(signature)
+        declarations, setup, conversion, cleanup, callargs = [], [], [], [], []
+        for spelling, param in parameters(signature):
+            bare = spelling.replace('const ', '').replace('*', '').strip()
+            typename = bare[3:] if bare.startswith('UA_') else None
+            if param == 'server':
+                callargs.append('server ? server->server : NULL')
+            elif param == 'hdgContext':
+                callargs.append('bridge->native.context')
+            elif spelling == 'void *':
+                callargs.append(param)
+            elif typename == 'HistorizingNodeIdSettings':
+                continue
+            elif typename == 'NodeId' and spelling == 'const UA_NodeId *':
+                if name in ('registerNodeId', 'updateNodeIdSetting'):
+                    continue
+                declarations += [f'  UA_NodeId n_{param};']
+                conversion += [f'  if(!cpkt_stock_node_valid({param}){f" || !{param}" if param == "nodeId" else ""}) status = UA_STATUSCODE_BADINVALIDARGUMENT;',
+                               f'  n_{param} = cpkt_nodeid_view({param});']
+                callargs.append(f'{param} ? &n_{param} : NULL')
+            elif typename in index and spelling.count('*') <= 1:
+                declarations += [f'  UA_{typename} n_{param};']
+                setup += [f'  UA_{typename}_init(&n_{param});']
+                pointer = param if '*' in spelling else '&' + param
+                conversion += [f'  if(!status{f" && {param}" if "*" in spelling else ""}) status = cpkt_convert({pointer}, &n_{param}, &cpkt_types[{index[typename]}], 1, 0);']
+                cleanup += [f'  UA_{typename}_clear(&n_{param});']
+                callargs.append('&n_' + param if '*' in spelling else 'n_' + param)
+            else:
+                raise ValueError(f'Adapt stock gathering argument {name}.{param}: {spelling}')
+        if name in ('registerNodeId', 'updateNodeIdSetting'):
+            declarations += ['  UA_Boolean changed = false;']
+            invoke = f'  if(!status) status = cpkt_stock_hg_setting(bridge, server, nodeId, &setting, {int(name == "updateNodeIdSetting")}, &changed);'
+            ret = '  return status;' if result == 'UA_StatusCode' else '  return status ? 0 : changed;'
+        elif name == 'getHistorizingSetting':
+            declarations += ['  const UA_HistorizingNodeIdSettings *answer = NULL;']
+            invoke = f'  if(!status) answer = bridge->native.{name}({", ".join(callargs)});'
+            invoke += '\n  (void)cpkt_history_settings_borrow((const cpkt_opcua_history_settings *)(const void *)answer, server);'
+            ret = '  return status ? NULL : (const cpkt_opcua_history_settings *)(const void *)answer;'
+        elif result == 'void':
+            declarations += ['  const UA_HistorizingNodeIdSettings *stored;']
+            invoke = '  if(!status) { stored = bridge->native.getHistorizingSetting(server ? server->server : NULL, bridge->native.context, &n_nodeId);\n'
+            invoke += '    (void)cpkt_history_settings_borrow((const cpkt_opcua_history_settings *)(const void *)stored, server);\n'
+            invoke += f'    bridge->native.{name}({", ".join(callargs)}); }}'
+            ret = ''
+        elif name == 'startPoll':
+            declarations += ['  const UA_HistorizingNodeIdSettings *stored;',
+                             '  cpkt_hb_bridge *binding = NULL;',
+                             '  cpkt_opcua_server *previous_owner = NULL;']
+            invoke = '  if(!status) { stored = bridge->native.getHistorizingSetting(server ? server->server : NULL, bridge->native.context, &n_nodeId);\n'
+            invoke += '    if(stored && stored->historizingBackend.deleteMembers == cpkt_history_settings_backend_delete) {\n'
+            invoke += '      binding = (cpkt_hb_bridge *)stored->historizingBackend.context; previous_owner = binding->owner;\n'
+            invoke += '      binding->owner = server; }\n'
+            invoke += f'    status = bridge->native.{name}({", ".join(callargs)});\n'
+            invoke += '    if(status && binding) binding->owner = previous_owner; }'
+            ret = '  return status;'
+        elif result == 'UA_StatusCode':
+            invoke = f'  if(!status) status = bridge->native.{name}({", ".join(callargs)});'
+            ret = '  return status;'
+        else:
+            raise ValueError('Adapt stock gathering method: ' + name)
+        metadata += [f'static {c_result} cpkt_stock_hg_{name}({c_signature}) {{',
+                     '  cpkt_stock_hg *bridge = (cpkt_stock_hg *)hdgContext;',
+                     '  UA_StatusCode status = 0;', *declarations, *setup,
+                     f'  if(!bridge || !bridge->native.{name} || (server && !server->server)) status = UA_STATUSCODE_BADINVALIDARGUMENT;',
+                     *conversion, invoke, *cleanup,
+                     *([f'  if(status && server && server->server) UA_LOG_ERROR(UA_Server_getConfig(server->server)->logging, UA_LOGCATEGORY_SERVER, "C89 stock gathering {name} conversion failed: %08lx", (unsigned long)status);'] if result != 'UA_StatusCode' else []),
+                     *([ret] if ret else []), '}']
+    metadata += ['static void cpkt_stock_hg_delete(cpkt_opcua_HistoryDataGathering *gathering) {',
+                 '  cpkt_stock_hg *bridge = (cpkt_stock_hg *)gathering->context;',
+                 '  cpkt_hb_bridge *binding, *next;',
+                 '  bridge->native.deleteMembers(&bridge->native);',
+                 '  for(binding = bridge->bindings; binding; binding = next) { next = binding->next; UA_free(binding); }',
+                 '  UA_free(bridge);', '}',
+                 'static cpkt_opcua_HistoryDataGathering cpkt_stock_hg_new(size_t capacity, int circular) {',
+                 '  cpkt_opcua_HistoryDataGathering out;', '  cpkt_stock_hg *bridge;',
+                 '  UA_HistoryDataGathering native = circular ? UA_HistoryDataGathering_Circular(capacity) : UA_HistoryDataGathering_Default(capacity);',
+                 '  memset(&out, 0, sizeof(out)); if(!native.context) return out;',
+                 '  bridge = (cpkt_stock_hg *)UA_calloc(1, sizeof(*bridge));',
+                 '  if(!bridge) { native.deleteMembers(&native); return out; }',
+                 '  bridge->native = native; out.context = bridge; out.deleteMembers = cpkt_stock_hg_delete;',
+                 *[f'  out.{name} = native.{name} ? cpkt_stock_hg_{name} : NULL;' for _, name, _ in methods if name != 'deleteMembers'],
+                 '  return out;', '}',
+                 'cpkt_opcua_HistoryDataGathering cpkt_opcua_HistoryDataGathering_Default(size_t capacity) { return cpkt_stock_hg_new(capacity, 0); }',
+                 'cpkt_opcua_HistoryDataGathering cpkt_opcua_HistoryDataGathering_Circular(size_t capacity) { return cpkt_stock_hg_new(capacity, 1); }',
+                 'void cpkt_opcua_gathering_default_pauseRecording(cpkt_opcua_HistoryDataGathering *gathering, const cpkt_opcua_NodeId *nodeId, cpkt_opcua_Boolean pause) {',
+                 '  cpkt_stock_hg *bridge;', '  UA_NodeId node;',
+                 '  if(!gathering || !gathering->context || !nodeId || !cpkt_stock_node_valid(nodeId)) return;',
+                 '  bridge = (cpkt_stock_hg *)gathering->context; node = cpkt_nodeid_view(nodeId);',
+                 '  gathering_default_pauseRecording(&bridge->native, &node, (UA_Boolean)pause);', '}']
+    return header, metadata
+
+
+def emit_stock_database(index, native_headers, configuration):
+    path = native_headers / 'plugin/historydata/history_database_default.h'
+    text = path.read_text()
+    declaration = re.search(r'UA_HistoryDatabase\s+UA_EXPORT\s+UA_HistoryDatabase_default\s*\((.*?)\)\s*;', uncomment(text), re.S)
+    if not declaration or parameters(declaration[1]) != [('UA_HistoryDataGathering', 'gathering')]:
+        raise ValueError('Adapt default history database factory')
+    methods = callbacks(public_body(native_headers / 'plugin/historydatabase.h', 'HistoryDatabase', configuration))
+    header = [re.match(r'/\*.*?\*/', text, re.S)[0],
+        '/** Native default history database with callable C89 slots. Success takes',
+        ' * ownership of gathering context; failure leaves it with the caller.',
+        ' * Copies alias one context: call exactly one clear after stopping polling.',
+        ' * clear releases gathering/context without resetting the record, as native.',
+        ' * Backend ownership remains the gathering implementation\'s native policy.',
+        ' * Unsupported native slots remain NULL. Callback inputs borrow until return.',
+        ' * Initialize mutable outputs before use and clear them even on failure.',
+        ' * For reads, prepare response.results with decoded empty HistoryData payloads',
+        ' * and historyData pointers that alias those payloads, as native requires.',
+        ' * Retained payload roots keep their addresses; re-read response.results after',
+        ' * return because conversion may replace its array. Conversion failure can',
+        ' * follow a completed native update; it does not roll back backend mutation. */',
+        'cpkt_opcua_HistoryDatabase cpkt_opcua_HistoryDatabase_default(cpkt_opcua_HistoryDataGathering gathering);']
+    metadata = []
+    for result, name, signature in methods:
+        if name == 'clear':
+            continue
+        if result != 'void':
+            raise ValueError('Adapt stock history database return: ' + name)
+        declarations, setup, conversion, outputs, cleanup, callargs = [], [], [], [], [], []
+        error_target = None
+        history_type = None
+        mutable = []
+        for spelling, param in parameters(signature):
+            bare = spelling.replace('const ', '').replace('*', '').strip()
+            typename = bare[3:] if bare.startswith('UA_') else None
+            if param == 'server':
+                callargs.append('server ? server->server : NULL')
+            elif param == 'hdbContext':
+                callargs.append('bridge->native.context')
+            elif spelling in ('void *', 'size_t'):
+                callargs.append(param)
+            elif param == 'historyData':
+                match = re.fullmatch(r'UA_(\w+) \* const \* const', spelling)
+                if not match or match[1] not in index:
+                    raise ValueError('Adapt stock history pointer array: ' + spelling)
+                history_type = match[1]
+                declarations += [f'  UA_{history_type} **n_historyData = NULL;', '  size_t history_index;']
+                conversion += ['  if(!status && (n_response.resultsSize != nodesToReadSize || (nodesToReadSize && !historyData))) status = UA_STATUSCODE_BADINVALIDARGUMENT;',
+                    '  if(!status && nodesToReadSize > (size_t)-1 / sizeof(*n_historyData)) status = UA_STATUSCODE_BADOUTOFMEMORY;',
+                    f'  if(!status && nodesToReadSize) {{ n_historyData = (UA_{history_type} **)UA_calloc(nodesToReadSize, sizeof(*n_historyData));',
+                    '    if(!n_historyData) status = UA_STATUSCODE_BADOUTOFMEMORY; }',
+                    '  for(history_index = 0; !status && history_index < nodesToReadSize; ++history_index) {',
+                    '    const cpkt_opcua_ExtensionObject *eo = &response->results[history_index].historyData;',
+                    f'    if(eo->encoding < CPKT_OPCUA_EXTENSIONOBJECT_DECODED || eo->content.decoded.type != &cpkt_types[{index[history_type]}] ||',
+                    '        !historyData[history_index] || historyData[history_index] != eo->content.decoded.data) status = UA_STATUSCODE_BADTYPEMISMATCH;',
+                    f'    else n_historyData[history_index] = (UA_{history_type} *)n_response.results[history_index].historyData.content.decoded.data;', '  }']
+                cleanup += ['  UA_free(n_historyData);']
+                callargs.append('n_historyData')
+            elif param == 'nodesToRead':
+                if spelling != 'const UA_HistoryReadValueId *':
+                    raise ValueError('Adapt stock history input array')
+                declarations += ['  void *n_nodesToRead = NULL;']
+                conversion += [f'  if(!status) status = cpkt_array(nodesToRead, nodesToReadSize, &n_nodesToRead, &cpkt_types[{index[typename]}], 1, 0);']
+                cleanup += [f'  if(n_nodesToRead) UA_Array_delete(n_nodesToRead, nodesToReadSize, cpkt_types[{index[typename]}].native);']
+                callargs.append('(const UA_HistoryReadValueId *)n_nodesToRead')
+            elif typename == 'NodeId' and spelling == 'const UA_NodeId *':
+                declarations += [f'  UA_NodeId n_{param};']
+                conversion += [f'  if(!cpkt_stock_node_valid({param})) status = UA_STATUSCODE_BADINVALIDARGUMENT;',
+                               f'  n_{param} = cpkt_nodeid_view({param});']
+                callargs.append(f'{param} ? &n_{param} : NULL')
+            elif typename in index and spelling.count('*') <= 1:
+                declarations += [f'  UA_{typename} n_{param};']
+                setup += [f'  UA_{typename}_init(&n_{param});']
+                pointer = param if '*' in spelling else '&' + param
+                conversion += [f'  if(!status{f" && {param}" if "*" in spelling else ""}) status = cpkt_convert({pointer}, &n_{param}, &cpkt_types[{index[typename]}], 1, 0);']
+                if '*' in spelling and not spelling.startswith('const '):
+                    conversion += [f'  if(!{param}) status = UA_STATUSCODE_BADINVALIDARGUMENT;']
+                    declarations += [f'  cpkt_opcua_{typename} staged_{param};']
+                    setup += [f'  memset(&staged_{param}, 0, sizeof(staged_{param}));']
+                    outputs += [f'  if(!status) status = cpkt_convert(&n_{param}, &staged_{param}, &cpkt_types[{index[typename]}], 0, 0);']
+                    mutable.append((param, typename))
+                    cleanup += [f'  cpkt_opcua_type_clear(&staged_{param}, &cpkt_types[{index[typename]}]);']
+                    if param in ('response', 'result'):
+                        error_target = param
+                cleanup += [f'  UA_{typename}_clear(&n_{param});']
+                callargs.append('&n_' + param if '*' in spelling else 'n_' + param)
+            else:
+                raise ValueError(f'Adapt stock database argument {name}.{param}: {spelling}')
+        if history_type:
+            outputs += ['  if(!status && staged_response.resultsSize == nodesToReadSize) {',
+                '    for(history_index = 0; history_index < nodesToReadSize; ++history_index) {',
+                '      cpkt_opcua_ExtensionObject *old = &response->results[history_index].historyData;',
+                '      cpkt_opcua_ExtensionObject *staged = &staged_response.results[history_index].historyData;',
+                '      const UA_ExtensionObject *n = &n_response.results[history_index].historyData;',
+                f'      if(n->encoding >= UA_EXTENSIONOBJECT_DECODED && n->content.decoded.data == n_historyData[history_index] && staged->encoding >= CPKT_OPCUA_EXTENSIONOBJECT_DECODED && staged->content.decoded.type == &cpkt_types[{index[history_type]}]) {{',
+                f'        cpkt_opcua_{history_type}_clear(historyData[history_index]);',
+                f'        *historyData[history_index] = *(cpkt_opcua_{history_type} *)staged->content.decoded.data;',
+                f'        cpkt_opcua_{history_type}_init((cpkt_opcua_{history_type} *)staged->content.decoded.data);',
+                f'        cpkt_opcua_{history_type}_delete((cpkt_opcua_{history_type} *)staged->content.decoded.data);',
+                '        staged->content.decoded.data = historyData[history_index]; staged->encoding = old->encoding;',
+                '        old->encoding = CPKT_OPCUA_EXTENSIONOBJECT_DECODED_NODELETE;', '      }', '    }', '  }']
+        for param, typename in mutable:
+            outputs += [f'  if(!status) {{ cpkt_opcua_{typename}_clear({param}); *{param} = staged_{param}; memset(&staged_{param}, 0, sizeof(staged_{param})); }}']
+        error = (f'  if(status && {error_target}) {error_target}->' +
+                 ('responseHeader.serviceResult' if error_target == 'response' else 'statusCode') + ' = status;'
+                 if error_target else
+                 f'  if(status && server && server->server) UA_LOG_ERROR(UA_Server_getConfig(server->server)->logging, UA_LOGCATEGORY_SERVER, "C89 stock database {name} conversion failed: %08lx", (unsigned long)status);')
+        metadata += [f'static void cpkt_stock_hdb_{name}({translate(signature)}) {{',
+                     '  cpkt_stock_hdb *bridge = (cpkt_stock_hdb *)hdbContext;',
+                     '  UA_StatusCode status = 0;', *declarations, *setup,
+                     f'  if(!bridge || !bridge->native.{name} || (server && !server->server){" || !server" if name not in ("setValue", "setEvent") else ""}) status = UA_STATUSCODE_BADINVALIDARGUMENT;',
+                     *conversion, f'  if(!status) {{ bridge->gathering->owner = server; bridge->native.{name}({", ".join(callargs)}); }}',
+                     *outputs, error, *cleanup, '}']
+    metadata += ['static void cpkt_stock_hdb_clear(cpkt_opcua_HistoryDatabase *database) {',
+                 '  cpkt_stock_hdb *bridge = (cpkt_stock_hdb *)database->context;',
+                 '  bridge->native.clear(&bridge->native); UA_free(bridge);', '}',
+                 'cpkt_opcua_HistoryDatabase cpkt_opcua_HistoryDatabase_default(cpkt_opcua_HistoryDataGathering gathering) {',
+                 '  cpkt_opcua_HistoryDatabase out;', '  cpkt_stock_hdb *bridge;', '  UA_HistoryDataGathering native_gathering;',
+                 '  memset(&out, 0, sizeof(out));',
+                 '  bridge = (cpkt_stock_hdb *)UA_calloc(1, sizeof(*bridge)); if(!bridge) return out;',
+                 '  bridge->gathering = (cpkt_hg_bridge *)UA_calloc(1, sizeof(*bridge->gathering));',
+                 '  if(!bridge->gathering) { UA_free(bridge); return out; }',
+                 '  bridge->gathering->plugin = gathering; cpkt_hg_assign(&native_gathering, &gathering); native_gathering.context = bridge->gathering;',
+                 '  bridge->native = UA_HistoryDatabase_default(native_gathering);',
+                 '  if(!bridge->native.context) { UA_free(bridge->gathering); UA_free(bridge); return out; }',
+                 '  out.context = bridge; out.clear = cpkt_stock_hdb_clear;',
+                 *[f'  out.{name} = bridge->native.{name} ? cpkt_stock_hdb_{name} : NULL;' for _, name, _ in methods if name != 'clear'],
+                 '  return out;', '}']
     return header, metadata

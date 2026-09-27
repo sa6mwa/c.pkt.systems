@@ -361,8 +361,9 @@ unsigned int cpkt_types_peer_stock_history(void *native_server) {
   UA_VariableAttributes attributes = UA_VariableAttributes_default;
   UA_String text = UA_STRING("stock history");
   attributes.historizing = true;
-  attributes.accessLevel =
-      UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_HISTORYREAD;
+  attributes.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE |
+                           UA_ACCESSLEVELMASK_HISTORYREAD |
+                           UA_ACCESSLEVELMASK_HISTORYWRITE;
   attributes.dataType = UA_TYPES[UA_TYPES_STRING].typeId;
   UA_Variant_setScalar(&attributes.value, &text, &UA_TYPES[UA_TYPES_STRING]);
   UA_StatusCode status = UA_Server_addVariableNode(
@@ -392,11 +393,19 @@ unsigned int cpkt_types_peer_stock_history(void *native_server) {
   response.resultsSize = 1;
   UA_HistoryData data, *pointer = &data;
   UA_HistoryData_init(&data);
+  response.results[0].historyData.encoding =
+      UA_EXTENSIONOBJECT_DECODED_NODELETE;
+  response.results[0].historyData.content.decoded.type =
+      &UA_TYPES[UA_TYPES_HISTORYDATA];
+  response.results[0].historyData.content.decoded.data = &data;
   database->readRaw(server, database->context, NULL, NULL, &header, &details,
                     UA_TIMESTAMPSTORETURN_BOTH, false, 1, &read, &response,
                     &pointer);
   status = response.results[0].statusCode;
   CHECK(!status && data.dataValuesSize == 3);
+  CHECK(response.results[0].historyData.content.decoded.data == pointer);
+  CHECK(response.results[0].historyData.encoding ==
+        UA_EXTENSIONOBJECT_DECODED_NODELETE);
   unsigned char payload[] = {'a', 0, 'b', 'c'};
   for (size_t i = 0; i < data.dataValuesSize; ++i)
     CHECK(cpkt_types_peer_stock_borrow(&data.dataValues[i], payload,
@@ -405,4 +414,61 @@ unsigned int cpkt_types_peer_stock_history(void *native_server) {
   UA_HistoryData_clear(&data);
   UA_HistoryReadResponse_clear(&response);
   return status;
+}
+
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+#include <open62541/plugin/historydata/history_database_default.h>
+static UA_HistoryDataGathering captured_gathering;
+UA_HistoryDatabase __real_UA_HistoryDatabase_default(UA_HistoryDataGathering);
+UA_HistoryDatabase
+__wrap_UA_HistoryDatabase_default(UA_HistoryDataGathering gathering) {
+  UA_HistoryDatabase database = __real_UA_HistoryDatabase_default(gathering);
+  memset(&captured_gathering, 0, sizeof(captured_gathering));
+  if (database.context)
+    captured_gathering = gathering;
+  return database;
+}
+#endif
+/* Capture the public constructor argument, never the private database context.
+ */
+unsigned int cpkt_types_peer_custom_gathering(void *native_server,
+                                              const void *owned_setting) {
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  UA_Server *server = (UA_Server *)native_server;
+  const UA_HistorizingNodeIdSettings *setting = owned_setting;
+  UA_NodeId first = UA_NODEID_NUMERIC(1, 7775),
+            second = UA_NODEID_NUMERIC(1, 7776);
+  UA_String text = UA_STRING("native callback");
+  UA_DataValue value = sample(&text, ((UA_DateTime)1 << 32) + 200);
+  CHECK(captured_gathering.context);
+  cpkt_types_fail_after(0);
+  const UA_HistorizingNodeIdSettings *actual =
+      captured_gathering.getHistorizingSetting(
+          server, captured_gathering.context, &first);
+  CHECK(!cpkt_types_fail_stop() && actual == setting);
+  CHECK(!captured_gathering.registerNodeId(server, captured_gathering.context,
+                                           &second, *setting));
+  CHECK(!captured_gathering.startPoll(server, captured_gathering.context,
+                                      &second));
+  CHECK(!captured_gathering.stopPoll(server, captured_gathering.context,
+                                     &second));
+  CHECK(captured_gathering.updateNodeIdSetting(
+      server, captured_gathering.context, &second, *setting));
+  cpkt_types_fail_after(0);
+  const UA_HistorizingNodeIdSettings *other =
+      captured_gathering.getHistorizingSetting(
+          server, captured_gathering.context, &second);
+  CHECK(!cpkt_types_fail_stop() && other && other != actual);
+  CHECK(actual->maxHistoryDataResponseSize == 3 &&
+        other->maxHistoryDataResponseSize == 3);
+  captured_gathering.setValue(server, captured_gathering.context, NULL, NULL,
+                              &first, true, &value);
+  CHECK(!actual->historizingBackend.serverSetHistoryData(
+      NULL, actual->historizingBackend.context, NULL, NULL, &second, true,
+      &value));
+#else
+  (void)native_server;
+  (void)owned_setting;
+#endif
+  return 0;
 }

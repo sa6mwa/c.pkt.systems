@@ -137,6 +137,46 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
     assert '*native = bridge->native;' in stock_private
     assert 'native->context = forwarded' not in stock_private
     assert 'dispatch->session_context' in stock_private
+    configuration = (changed_headers / 'config.h').read_text()
+    for name in ('registerNodeId', 'stopPoll', 'startPoll', 'updateNodeIdSetting',
+                 'getHistorizingSetting', 'setValue'):
+        assert 'cpkt_hg_' + name + '(' in stock_private
+        assert 'cpkt_stock_hg_' + name + '(' in stock_private
+    for name in ('readRaw', 'updateData', 'deleteRawModified', 'setValue'):
+        assert 'cpkt_stock_hdb_' + name + '(' in stock_private
+    for relative, replacements in (
+        ('plugin/historydata/history_data_gathering.h', (
+            ('void *context;', 'void *context; UA_UInt32 unexpected;'),
+            ('(*startPoll)', '(*startPollChanged)'),
+            ('void *hdgContext', 'void *unknownContext'),
+            ('const UA_HistorizingNodeIdSettings*', 'UA_HistorizingNodeIdSettings*'),
+            ('UA_HistoryDataGathering *gathering', 'UA_HistoryDataGathering **gathering'),
+            ('const UA_DataValue *value', 'const UA_DataValue **value'),
+        )),
+        ('plugin/historydata/history_data_gathering_default.h', (
+            ('size_t initialNodeIdStoreSize', 'UA_UInt64 initialNodeIdStoreSize'),
+            ('UA_HistoryDataGathering UA_EXPORT', 'UA_StatusCode UA_EXPORT'),
+            ('_UA_END_DECLS', 'void gathering_default_unknown(void);\n_UA_END_DECLS'),
+            ('UA_Boolean pause', 'UA_UInt64 pause'),
+        )),
+        ('plugin/historydata/history_database_default.h', (
+            ('UA_HistoryDataGathering gathering', 'UA_HistoryDataGathering *gathering'),
+            ('UA_HistoryDatabase UA_EXPORT', 'UA_StatusCode UA_EXPORT'),
+        )),
+    ):
+        path = changed_headers / relative
+        path.chmod(0o644)
+        original = path.read_text()
+        for old, new in replacements:
+            assert old in original, (relative, old)
+            path.write_text(original.replace(old, new, 1))
+            try:
+                history_emitter.emit_backend(index, changed_headers, configuration)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('Changed history gathering/database declaration was accepted: ' + old)
+        path.write_text(original)
     highlevel = changed_headers / 'client_highlevel.h'
     original_highlevel = highlevel.read_text()
     highlevel.chmod(0o644)

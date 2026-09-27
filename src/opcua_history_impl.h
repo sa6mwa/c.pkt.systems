@@ -235,3 +235,173 @@ cpkt_opcua_server_history_stop_poll(cpkt_opcua_server *server,
                                     const cpkt_opcua_NodeId *node) {
   return cpkt_history_poll(server, node, 0);
 }
+
+/* Conversion metadata borrows the caller's backend. Native gathering owns only
+ * its settings copies; it must never acquire the backend's context ownership.
+ */
+static void
+cpkt_history_settings_backend_delete(UA_HistoryDataBackend *native) {
+  cpkt_hb_bridge *bridge = (cpkt_hb_bridge *)native->context;
+  if (bridge->plugin.deleteMembers)
+    bridge->plugin.deleteMembers(&bridge->plugin);
+}
+static UA_StatusCode
+cpkt_history_settings_load(const UA_HistorizingNodeIdSettings *native,
+                           cpkt_opcua_HistorizingNodeIdSettings *out) {
+  cpkt_hb_bridge *bridge;
+  memset(out, 0, sizeof(*out));
+  if (!native ||
+      native->historizingBackend.deleteMembers !=
+          cpkt_history_settings_backend_delete ||
+      !native->historizingBackend.context)
+    return UA_STATUSCODE_BADTYPEMISMATCH;
+  bridge = (cpkt_hb_bridge *)native->historizingBackend.context;
+  out->historizingBackend = bridge->plugin;
+  out->maxHistoryDataResponseSize = native->maxHistoryDataResponseSize;
+  out->historizingUpdateStrategy =
+      (cpkt_opcua_HistorizingUpdateStrategy)native->historizingUpdateStrategy;
+  out->pollingInterval = native->pollingInterval;
+  out->userContext = native->userContext;
+  return 0;
+}
+static const UA_HistorizingNodeIdSettings *
+cpkt_history_settings_borrow(const cpkt_opcua_history_settings *stored,
+                             cpkt_opcua_server *server) {
+  const UA_HistorizingNodeIdSettings *native =
+      (const UA_HistorizingNodeIdSettings *)(const void *)stored;
+  if (native && server &&
+      native->historizingBackend.deleteMembers ==
+          cpkt_history_settings_backend_delete)
+    ((cpkt_hb_bridge *)native->historizingBackend.context)->owner = server;
+  return native;
+}
+cpkt_opcua_StatusCode cpkt_opcua_history_settings_set(
+    cpkt_opcua_history_settings *stored,
+    const cpkt_opcua_HistorizingNodeIdSettings *setting) {
+  UA_HistorizingNodeIdSettings *native =
+      (UA_HistorizingNodeIdSettings *)(void *)stored;
+  UA_HistorizingNodeIdSettings staged;
+  cpkt_hb_bridge *bridge;
+  if (!stored || !setting)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  bridge = (cpkt_hb_bridge *)UA_calloc(1, sizeof(*bridge));
+  if (!bridge)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  bridge->plugin = setting->historizingBackend;
+  memset(&staged, 0, sizeof(staged));
+  cpkt_hb_assign(&staged.historizingBackend, &bridge->plugin);
+  staged.historizingBackend.context = bridge;
+  staged.historizingBackend.deleteMembers =
+      cpkt_history_settings_backend_delete;
+  staged.maxHistoryDataResponseSize = setting->maxHistoryDataResponseSize;
+  staged.historizingUpdateStrategy =
+      (UA_HistorizingUpdateStrategy)setting->historizingUpdateStrategy;
+  staged.pollingInterval = setting->pollingInterval;
+  staged.userContext = setting->userContext;
+  if (native->historizingBackend.deleteMembers ==
+      cpkt_history_settings_backend_delete)
+    UA_free(native->historizingBackend.context);
+  *native = staged;
+  return 0;
+}
+cpkt_opcua_StatusCode cpkt_opcua_history_settings_new(
+    const cpkt_opcua_HistorizingNodeIdSettings *setting,
+    cpkt_opcua_history_settings **out) {
+  UA_StatusCode status;
+  if (!out)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  *out = NULL;
+  if (!setting)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  *out = (cpkt_opcua_history_settings *)UA_calloc(
+      1, sizeof(UA_HistorizingNodeIdSettings));
+  if (!*out)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  status = cpkt_opcua_history_settings_set(*out, setting);
+  if (status) {
+    UA_free(*out);
+    *out = NULL;
+  }
+  return status;
+}
+cpkt_opcua_StatusCode
+cpkt_opcua_history_settings_get(const cpkt_opcua_history_settings *stored,
+                                cpkt_opcua_HistorizingNodeIdSettings *out) {
+  if (!out)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  memset(out, 0, sizeof(*out));
+  if (!stored)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  return cpkt_history_settings_load(
+      (const UA_HistorizingNodeIdSettings *)(const void *)stored, out);
+}
+void cpkt_opcua_history_settings_free(cpkt_opcua_history_settings *stored) {
+  UA_HistorizingNodeIdSettings *native =
+      (UA_HistorizingNodeIdSettings *)(void *)stored;
+  if (native) {
+    UA_free(native->historizingBackend.context);
+    UA_free(native);
+  }
+}
+
+/* Own callback conversions separately from the borrowed backend contexts. */
+static UA_StatusCode
+cpkt_stock_hg_setting(cpkt_stock_hg *bridge, cpkt_opcua_server *server,
+                      const cpkt_opcua_NodeId *node,
+                      const cpkt_opcua_HistorizingNodeIdSettings *setting,
+                      int update, UA_Boolean *changed) {
+  cpkt_opcua_history_settings *owned = NULL;
+  UA_HistorizingNodeIdSettings *native;
+  const UA_HistorizingNodeIdSettings *old;
+  cpkt_hb_bridge *binding, *previous = NULL, **slot;
+  UA_NodeId n_node;
+  UA_StatusCode status;
+  if (changed)
+    *changed = false;
+  if (!bridge || !node || !cpkt_stock_node_valid(node) || !setting ||
+      (server && !server->server))
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  n_node = cpkt_nodeid_view(node);
+  if (update) {
+    old = bridge->native.getHistorizingSetting(server ? server->server : NULL,
+                                               bridge->native.context, &n_node);
+    if (!old)
+      return 0;
+    previous = (cpkt_hb_bridge *)old->historizingBackend.context;
+  }
+  status = cpkt_opcua_history_settings_new(setting, &owned);
+  if (status)
+    return status;
+  native = (UA_HistorizingNodeIdSettings *)(void *)owned;
+  binding = (cpkt_hb_bridge *)native->historizingBackend.context;
+  binding->owner = server;
+  if (update) {
+    *changed = bridge->native.updateNodeIdSetting(
+        server ? server->server : NULL, bridge->native.context, &n_node,
+        *native);
+    if (!*changed) {
+      cpkt_opcua_history_settings_free(owned);
+      return 0;
+    }
+  } else {
+    status =
+        bridge->native.registerNodeId(server ? server->server : NULL,
+                                      bridge->native.context, &n_node, *native);
+    if (status) {
+      cpkt_opcua_history_settings_free(owned);
+      return status;
+    }
+  }
+  UA_free(owned);
+  if (previous) {
+    for (slot = &bridge->bindings; *slot; slot = &(*slot)->next)
+      if (*slot == previous) {
+        *slot = previous->next;
+        UA_free(previous);
+        break;
+      }
+  }
+  binding->next = bridge->bindings;
+  bridge->bindings = binding;
+  return 0;
+}

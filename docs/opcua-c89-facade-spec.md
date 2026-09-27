@@ -211,9 +211,9 @@ The standard graph and its indices are part of the new public facade surface.
 Dependency upgrade review must compare generated layouts, indices and semantics
 against the last released bundle alongside the existing ABI checks. Generated
 model coverage does not imply that every handwritten public interface has a C89
-binding. PubSub component configuration, custom history gathering, custom
-security/event-loop/nodestore plugins, full server method/value-source/lifecycle
-callbacks and asynchronous value-source completion tokens remain distinct coverage work.
+binding. PubSub component configuration, custom security/event-loop/nodestore
+plugins, full configuration records and custom datatype registration remain
+distinct coverage work.
 
 ### Typed services and subscriptions
 
@@ -795,8 +795,9 @@ The bundle includes a small upstream allocation-safety patch: default history
 constructors report empty records on allocation failure, gathering growth keeps
 existing storage on realloc failure, and NodeId-copy failures are propagated. Parsed numeric ranges are released
 after either backend read path, including failure.
-The facade turns empty constructors into BADOUTOFMEMORY and retains the prior
-installed database. These guards do not change native history behavior on success.
+Convenience installation turns empty constructors into BADOUTOFMEMORY and
+retains the prior installed database. Stock facade factories retain the native
+empty-record result. These guards do not change successful native history behavior.
 
 ### Stock memory backend factories
 
@@ -827,6 +828,65 @@ facade context and resets the record; NULL and empty records are safe. The nativ
 `deleteMembers` callback also releases the context, leaving an invalid record as
 upstream does. Call exactly one destructor per context. Successful installation
 through `server_register_history_backend` transfers that ownership to the server.
+
+### Gathering callbacks and stock database factories
+
+`cpkt_opcua_HistoryDataGathering` exposes all seven native slots, including
+registration, settings lookup/update, polling, value notifications and cleanup.
+`cpkt_opcua_HistoryDataGathering_Default` and `_Circular` return records with
+callable C89 slots. Default grows when registering nodes, including from zero
+capacity. Circular retains its fixed native node capacity; it does not overwrite
+registered nodes. Constructor allocation failure returns an empty record.
+
+These stock gatherings **borrow backend contexts**. Registration copies scalar
+settings and callback slots, and owns the conversion metadata only. Deleting the
+gathering never deletes a backend context. Stop every active poll before deleting
+it; register nodes before starting polls if registration can grow native storage.
+Growth can invalidate native settings pointers and polling contexts. An update
+changes the native settings in place and retains native polling stop behavior.
+`cpkt_opcua_gathering_default_pauseRecording` affects native VALUESET recording;
+it neither stops polling nor removes stored values. Record copies alias one
+context: call one `deleteMembers`, which leaves the record invalid as upstream does.
+The server convenience registration described above has a separate, explicit
+backend ownership transfer and automatic polling cleanup.
+Stock registration accepts a NULL server when the native operation permits it.
+Starting polling binds that node's callbacks to the supplied facade server; a
+failed start preserves its previous association. NULL settings lookup and ignored
+notifications for unregistered nodes do not retarget active polling callbacks.
+Native backend callbacks with a NULL server retain NULL at the C89 boundary.
+
+A gathering settings getter returns `const cpkt_opcua_history_settings *`, an
+opaque borrow of the **actual native public settings record**, without allocating
+or caching a snapshot. Never set/free a stock borrow or cast away its constness.
+`cpkt_opcua_history_settings_get` reads its five public fields into a C89 record
+without allocating; backend callbacks, backend context and userContext remain
+aliases. Custom gathering implementations create persistent owned settings with
+`history_settings_new`, replace quiescent settings with `history_settings_set`,
+and release them with `history_settings_free`. Distinct retained settings require
+distinct objects. Replacement preserves the root address and preserves the old
+record on allocation failure. Finish all borrowers before replacement/free:
+conversion metadata can be borrowed through native settings copies. These helpers
+never acquire or release backend context ownership.
+
+`cpkt_opcua_HistoryDatabase_default(gathering)` returns the native database with
+callable C89 slots; unavailable native slots remain NULL. Success transfers the
+gathering context to database `clear`; constructor failure leaves it with the
+caller. Backend ownership remains the gathering implementation's policy. Copies
+alias one context, and exactly one `clear` is required after stopping polling.
+Installing it with `server_set_history_database_plugin` transfers database
+cleanup to the server only on successful installation.
+
+Initialize mutable outputs and clear them even on failure. Direct reads require
+the native alias arrangement: `response.results` contains decoded empty
+HistoryData payloads, and each `historyData[i]` points to its corresponding
+payload. Owned DECODED payloads and borrowed DECODED_NODELETE payloads are both
+supported. Conversion preserves retained payload root addresses and their
+ownership encoding; the result array itself may be replaced, so obtain its
+address again after return. Custom database callbacks preserve the same native
+payload aliases when returning their output. No facade history queue or storage
+mechanism is introduced. A conversion failure after a native update does not
+undo that update. Native attribute-read allocation failures can surface as
+BadUserAccessDenied or BadHistoryOperationInvalid; the facade preserves them.
 
 ### Collection policy and polling
 

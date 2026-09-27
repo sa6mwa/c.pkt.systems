@@ -68,6 +68,28 @@ typedef struct {
   cpkt_hb_bridge forwarded;
   void *session_context;
 } cpkt_stock_hb_dispatch;
+typedef struct {
+  cpkt_opcua_server *owner;
+  cpkt_opcua_HistoryDataGathering plugin;
+} cpkt_hg_bridge;
+typedef struct {
+  UA_HistoryDataGathering native;
+  cpkt_hb_bridge *bindings;
+} cpkt_stock_hg;
+typedef struct {
+  UA_HistoryDatabase native;
+  cpkt_hg_bridge *gathering;
+} cpkt_stock_hdb;
+static UA_StatusCode cpkt_stock_hg_setting(
+    cpkt_stock_hg *, cpkt_opcua_server *, const cpkt_opcua_NodeId *,
+    const cpkt_opcua_HistorizingNodeIdSettings *, int, UA_Boolean *);
+static void cpkt_history_settings_backend_delete(UA_HistoryDataBackend *);
+static UA_StatusCode
+cpkt_history_settings_load(const UA_HistorizingNodeIdSettings *,
+                           cpkt_opcua_HistorizingNodeIdSettings *);
+static const UA_HistorizingNodeIdSettings *
+cpkt_history_settings_borrow(const cpkt_opcua_history_settings *,
+                             cpkt_opcua_server *);
 typedef struct cpkt_gather_bridge cpkt_gather_bridge;
 struct cpkt_gather_bridge {
   cpkt_opcua_server *owner;

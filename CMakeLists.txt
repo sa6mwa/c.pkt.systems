@@ -2051,7 +2051,7 @@ if(CPKT_BUILD_TESTS)
     target_compile_definitions(cpkt_opcua_types_alloc_test PRIVATE CPKT_OPCUA_TYPES_ALLOC_FAILURE)
     target_compile_options(cpkt_opcua_types_alloc_test PRIVATE -UNDEBUG)
     target_link_options(cpkt_opcua_types_alloc_test PRIVATE -Wl,--wrap=calloc,--wrap=malloc,--wrap=realloc
-      -Wl,--wrap=UA_Client_readValueAttribute,--wrap=UA_Client_call,--wrap=UA_Client_addVariableNode,--wrap=UA_Client_HistoryRead_raw,--wrap=UA_Client_readValueAttribute_async,--wrap=UA_Client_MonitoredItems_createEvent,--wrap=UA_Client_getSessionAuthenticationToken,--wrap=UA_Client_getEndpoints,--wrap=UA_Client_getNamespaceUri)
+      -Wl,--wrap=UA_Client_readValueAttribute,--wrap=UA_Client_call,--wrap=UA_Client_addVariableNode,--wrap=UA_Client_HistoryRead_raw,--wrap=UA_Client_readValueAttribute_async,--wrap=UA_Client_MonitoredItems_createEvent,--wrap=UA_Client_getSessionAuthenticationToken,--wrap=UA_Client_getEndpoints,--wrap=UA_Client_getNamespaceUri,--wrap=UA_HistoryDatabase_default)
     target_link_libraries(cpkt_opcua_types_alloc_test PRIVATE cpkt_opcua_static Threads::Threads)
     if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
       add_test(NAME opcua_types_allocation_failure COMMAND cpkt_opcua_types_alloc_test)

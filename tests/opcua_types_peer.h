@@ -4,6 +4,8 @@
 void cpkt_types_test_memory_backend(void);
 size_t cpkt_types_peer_stock_remove_end(void);
 unsigned int cpkt_types_peer_stock_history(void *native_server);
+unsigned int cpkt_types_peer_custom_gathering(void *native_server,
+                                              const void *owned_setting);
 int cpkt_types_peer_stock_borrow(const void *stored, const unsigned char *text,
                                  size_t length, unsigned int timestamp);
 unsigned int cpkt_types_native_empty(size_t index, unsigned char **bytes,

@@ -196,6 +196,7 @@ def emit_history(index, native_headers, configuration):
         declarations, conversion, cleanup, out, callargs = [], [], [], [], []
         error_target = None
         has_history_data = False
+        history_data_type = None
         for spelling, param in args:
             if param == 'server':
                 callargs.append('bridge->owner')
@@ -209,6 +210,7 @@ def emit_history(index, native_headers, configuration):
                     raise ValueError(f'Adapt history result pointer array: {spelling}')
                 typename = match[1]
                 has_history_data = True
+                history_data_type = typename
                 declarations += [f'  cpkt_opcua_{typename} **c_historyData = NULL;', '  size_t history_index;']
                 conversion += [
                     '  if(!status && nodesToReadSize > (size_t)-1 / sizeof(*c_historyData)) status = UA_STATUSCODE_BADOUTOFMEMORY;',
@@ -253,6 +255,23 @@ def emit_history(index, native_headers, configuration):
                         error_target = param
         if name.startswith('read') and not has_history_data:
             raise ValueError(f'Adapt history pointer views: {name}')
+        if has_history_data:
+            typename = history_data_type
+            preserve = ['  if(!status && response && staged_response.resultsSize == nodesToReadSize && c_response.resultsSize == nodesToReadSize) {',
+                '    for(history_index = 0; history_index < nodesToReadSize; ++history_index) {',
+                '      UA_ExtensionObject *old = &response->results[history_index].historyData;',
+                '      UA_ExtensionObject *staged = &staged_response.results[history_index].historyData;',
+                '      const cpkt_opcua_ExtensionObject *c = &c_response.results[history_index].historyData;',
+                f'      if(c->encoding >= CPKT_OPCUA_EXTENSIONOBJECT_DECODED && c->content.decoded.data == c_historyData[history_index] && staged->encoding >= UA_EXTENSIONOBJECT_DECODED && staged->content.decoded.type == cpkt_types[{index[typename]}].native) {{',
+                f'        UA_{typename}_clear((UA_{typename} *)old->content.decoded.data);',
+                f'        *(UA_{typename} *)old->content.decoded.data = *(UA_{typename} *)staged->content.decoded.data;',
+                f'        UA_{typename}_init((UA_{typename} *)staged->content.decoded.data);',
+                f'        UA_{typename}_delete((UA_{typename} *)staged->content.decoded.data);',
+                '        staged->content.decoded.data = old->content.decoded.data; staged->encoding = old->encoding;',
+                '        old->encoding = UA_EXTENSIONOBJECT_DECODED_NODELETE;', '      }', '    }', '  }']
+            commit = '  if(!status && response) { UA_HistoryReadResponse_clear(response); *response = staged_response; UA_HistoryReadResponse_init(&staged_response); }'
+            position = out.index(commit)
+            out[position:position] = preserve
         error = (f'  if(status && {error_target}) {error_target}->' +
                  ('responseHeader.serviceResult' if error_target == 'response' else 'statusCode') + ' = status;'
                  if error_target else
