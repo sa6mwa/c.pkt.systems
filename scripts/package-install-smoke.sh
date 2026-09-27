@@ -916,6 +916,7 @@ int main(void) {
 EOF
 cat > "$cmake_source_dir/cpkt_opcua_facade_strict.c" <<'EOF'
 #include <cpkt/opcua.h>
+#include <cpkt/opcua_types.h>
 
 #include <string.h>
 
@@ -973,6 +974,10 @@ int main(void) {
   static const unsigned char json_config[] =
       "{ applicationDescription: { applicationUri: \"urn:cpkt:package:opcua-json\" } }";
   cpkt_opcua_server *server;
+  cpkt_opcua_GlobalNodeLifecycle global_lifecycle;
+  cpkt_opcua_NodeTypeLifecycle type_lifecycle;
+  cpkt_opcua_ValueSourceNotifications notifications;
+  cpkt_opcua_NodeId missing_node;
   cpkt_opcua_node_id node_id;
   cpkt_opcua_node_id object_id;
   cpkt_opcua_node_id child_id;
@@ -998,6 +1003,21 @@ int main(void) {
   if (cpkt_opcua_server_set_endpoint(server, "127.0.0.1", 4840) != CPKT_OPCUA_OK) {
     cpkt_opcua_server_free(server);
     return 16;
+  }
+  memset(&global_lifecycle, 0, sizeof(global_lifecycle));
+  memset(&type_lifecycle, 0, sizeof(type_lifecycle));
+  memset(&notifications, 0, sizeof(notifications));
+  cpkt_opcua_NodeId_init(&missing_node);
+  missing_node.namespaceIndex = 1;
+  missing_node.identifier.numeric = 99999;
+  if (cpkt_opcua_server_set_global_node_lifecycle(server, &global_lifecycle) != 0 ||
+      cpkt_opcua_server_set_global_node_lifecycle(server, 0) != 0 ||
+      cpkt_opcua_server_setVariableNode_internalValueSource_typed(
+          server, missing_node, 0, &notifications) != CPKT_OPCUA_STATUSCODE_BADNODEIDUNKNOWN ||
+      cpkt_opcua_server_setNodeTypeLifecycle_typed(
+          server, missing_node, type_lifecycle) != CPKT_OPCUA_STATUSCODE_BADNODEIDUNKNOWN) {
+    cpkt_opcua_server_free(server);
+    return 51;
   }
   node_id = cpkt_opcua_node_id_numeric(1, 7001);
   object_id = cpkt_opcua_node_id_numeric(1, 7002);

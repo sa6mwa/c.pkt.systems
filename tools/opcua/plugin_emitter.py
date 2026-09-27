@@ -151,6 +151,10 @@ def emit_plugins(index, native_headers, output):
     backend_header, backend_metadata = emit_backend(index, native_headers, configuration)
     header += backend_header
     metadata += backend_metadata
+    from node_emitter import emit_nodes
+    node_header, node_metadata = emit_nodes(index, native_headers)
+    header += node_header
+    metadata += node_metadata
     header += ['#ifdef __cplusplus', '}', '#endif', '#endif', '']
     (output / 'cpkt/opcua_plugins.h').write_text('\n'.join(header))
     (output / 'opcua_plugins_metadata.inc').write_text('\n'.join(metadata) + '\n')

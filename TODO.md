@@ -58,8 +58,11 @@ behind a callback interface.
   cancellation with synchronous completion, native pending results, timeout,
   shutdown, and conversion/allocation error coverage. Producer-side async
   completion tokens remain part of the value-source/method callback work.
+- [x] Generate full value notifications and node/global lifecycle callbacks,
+  preserving original mutable contexts, reentrant replacement, destruction and
+  owned child IDs with native-engine parity and allocation/logging coverage.
 - [ ] Use generated typed records at remaining PubSub component configuration,
-  custom history gathering and stock memory/circular backend factories, server method/value-source/lifecycle
+  custom history gathering and stock memory/circular backend factories, server method/value-source
   callbacks, producer-side async completion tokens, and custom
   security/event-loop/nodestore plugin boundaries. Preserve the upstream
   behavior and ownership rules; no C99-only native callback substitutes for

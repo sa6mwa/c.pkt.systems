@@ -2596,7 +2596,8 @@
     },
     "UA_Server_setNodeTypeLifecycle": {
       "declaration": "UA_StatusCode UA_Server_setNodeTypeLifecycle ( UA_Server * server , UA_NodeId nodeId , UA_NodeTypeLifecycle lifecycle )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_setNodeTypeLifecycle_typed"
     },
     "UA_Server_setReaderGroupEncryptionKeys": {
       "declaration": "UA_StatusCode UA_Server_setReaderGroupEncryptionKeys ( UA_Server * server , const UA_NodeId rgId , UA_UInt32 securityTokenId , const UA_ByteString signingKey , const UA_ByteString encryptingKey , const UA_ByteString keyNonce )",
@@ -2626,7 +2627,8 @@
     },
     "UA_Server_setVariableNode_internalValueSource": {
       "declaration": "UA_StatusCode UA_Server_setVariableNode_internalValueSource ( UA_Server * server , const UA_NodeId nodeId , const UA_DataValue * value , const UA_ValueSourceNotifications * notifications )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_server_setVariableNode_internalValueSource_typed"
     },
     "UA_Server_setWriterGroupEncryptionKeys": {
       "declaration": "UA_StatusCode UA_Server_setWriterGroupEncryptionKeys ( UA_Server * server , const UA_NodeId wgId , UA_UInt32 securityTokenId , const UA_ByteString signingKey , const UA_ByteString encryptingKey , const UA_ByteString keyNonce )",
@@ -3453,7 +3455,8 @@
     },
     "UA_GlobalNodeLifecycle": {
       "declaration": "typedef struct { UA_StatusCode ( * constructor ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * nodeId , void * * nodeContext ) ; void ( * destructor ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * nodeId , void * nodeContext ) ; UA_Boolean ( * createOptionalChild ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * sourceNodeId , const UA_NodeId * targetParentNodeId , const UA_NodeId * referenceTypeId ) ; UA_StatusCode ( * generateChildNodeId ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * sourceNodeId , const UA_NodeId * targetParentNodeId , const UA_NodeId * referenceTypeId , UA_NodeId * targetNodeId ) ; } UA_GlobalNodeLifecycle",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_GlobalNodeLifecycle"
     },
     "UA_HistoricalIteratorCallback": {
       "declaration": "typedef UA_Boolean ( * UA_HistoricalIteratorCallback ) ( UA_Client * client , const UA_NodeId * nodeId , UA_Boolean moreDataAvailable , const UA_ExtensionObject * data , void * callbackContext )",
@@ -3596,7 +3599,8 @@
     },
     "UA_NodeTypeLifecycle": {
       "declaration": "typedef struct { UA_StatusCode ( * constructor ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * typeNodeId , void * typeNodeContext , const UA_NodeId * nodeId , void * * nodeContext ) ; void ( * destructor ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * typeNodeId , void * typeNodeContext , const UA_NodeId * nodeId , void * * nodeContext ) ; } UA_NodeTypeLifecycle",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NodeTypeLifecycle"
     },
     "UA_Nodestore": {
       "declaration": "struct UA_Nodestore { void ( * free ) ( UA_Nodestore * ns ) ; UA_Node * ( * newNode ) ( UA_Nodestore * ns , UA_NodeClass nodeClass ) ; void ( * deleteNode ) ( UA_Nodestore * ns , UA_Node * node ) ; const UA_Node * ( * getNode ) ( UA_Nodestore * ns , const UA_NodeId * nodeId , UA_UInt32 attributeMask , UA_ReferenceTypeSet references , UA_BrowseDirection referenceDirections ) ; const UA_Node * ( * getNodeFromPtr ) ( UA_Nodestore * ns , UA_NodePointer ptr , UA_UInt32 attributeMask , UA_ReferenceTypeSet references , UA_BrowseDirection referenceDirections ) ; UA_Node * ( * getEditNode ) ( UA_Nodestore * ns , const UA_NodeId * nodeId , UA_UInt32 attributeMask , UA_ReferenceTypeSet references , UA_BrowseDirection referenceDirections ) ; UA_Node * ( * getEditNodeFromPtr ) ( UA_Nodestore * ns , UA_NodePointer ptr , UA_UInt32 attributeMask , UA_ReferenceTypeSet references , UA_BrowseDirection referenceDirections ) ; void ( * releaseNode ) ( UA_Nodestore * ns , const UA_Node * node ) ; UA_StatusCode ( * getNodeCopy ) ( UA_Nodestore * ns , const UA_NodeId * nodeId , UA_Node * * outNode ) ; UA_StatusCode ( * insertNode ) ( UA_Nodestore * ns , UA_Node * node , UA_NodeId * addedNodeId ) ; UA_StatusCode ( * replaceNode ) ( UA_Nodestore * ns , UA_Node * node ) ; UA_StatusCode ( * removeNode ) ( UA_Nodestore * ns , const UA_NodeId * nodeId ) ; const UA_NodeId * ( * getReferenceTypeId ) ( UA_Nodestore * ns , UA_Byte refTypeIndex ) ; void ( * iterate ) ( UA_Nodestore * ns , UA_NodestoreVisitor visitor , void * visitorCtx ) ; }",
@@ -3832,7 +3836,8 @@
     },
     "UA_ValueSourceNotifications": {
       "declaration": "typedef struct { void ( * onRead ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * nodeid , void * nodeContext , const UA_NumericRange * range , const UA_DataValue * value ) ; void ( * onWrite ) ( UA_Server * server , const UA_NodeId * sessionId , void * sessionContext , const UA_NodeId * nodeId , void * nodeContext , const UA_NumericRange * range , const UA_DataValue * data ) ; } UA_ValueSourceNotifications",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ValueSourceNotifications"
     },
     "UA_ValueSourceType": {
       "declaration": "typedef enum { UA_VALUESOURCETYPE_INTERNAL = 0 , UA_VALUESOURCETYPE_EXTERNAL = 1 , UA_VALUESOURCETYPE_CALLBACK = 2 } UA_ValueSourceType",

@@ -103,3 +103,16 @@ one-second overflow protection. Without it, the Unix epoch and the immediately
 following second parse two seconds late/early. Native-peer and C89 facade tests
 cover both boundaries, a negative Unix second, calendar fractions, and dates
 requiring more than 32 bits of Unix seconds. It changes no public API or ABI.
+
+## OPC UA runtime warning in local package checks
+
+The strict C89 package consumer constructs a server from a minimal JSON
+application description and exercises local APIs without starting a listener.
+Its native default access control includes an X509 token policy while the
+fixture has no encrypting security policy, so open62541 reports that mismatch
+through its logger. The warning originates in `ua_accesscontrol_default.c`
+when the token policy uses SecurityPolicy None. This is an intentionally
+unconfigured local fixture, not missing encryption support:
+`UA_ENABLE_ENCRYPTION_OPENSSL` is enabled in the shipped native configuration.
+Applications choosing certificate authentication must configure its encrypting
+security policy; the facade preserves the native diagnostic.

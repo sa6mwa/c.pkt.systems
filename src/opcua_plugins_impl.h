@@ -56,7 +56,11 @@ static void cpkt_hb_borrow_node(const UA_NodeId *native,
     break;
   }
 }
+/* clang-format off */
+#include "opcua_nodes_impl.h"
 #include "opcua_plugins_metadata.inc"
+#include "opcua_nodes_install_impl.h"
+/* clang-format on */
 static void cpkt_ac_clear(UA_AccessControl *native) {
   cpkt_ac_bridge *bridge = (cpkt_ac_bridge *)native->context;
   cpkt_opcua_UserTokenPolicy *policies = bridge->plugin.userTokenPolicies;

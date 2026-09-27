@@ -1055,6 +1055,7 @@ add_custom_command(
     "${CMAKE_SOURCE_DIR}/tools/opcua/plugin_emitter.py"
     "${CMAKE_SOURCE_DIR}/tools/opcua/history_emitter.py"
     "${CMAKE_SOURCE_DIR}/tools/opcua/server_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/node_emitter.py"
   VERBATIM)
 add_custom_target(cpkt_opcua_types_generate DEPENDS
   "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
@@ -1089,7 +1090,7 @@ target_include_directories(cpkt_opcua_static
     "$<BUILD_INTERFACE:${CPKT_OPCUA_GENERATED_DIR}>"
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
-target_link_libraries(cpkt_opcua_static PUBLIC cpkt::open62541_static)
+target_link_libraries(cpkt_opcua_static PUBLIC cpkt::open62541_static Threads::Threads)
 target_compile_definitions(cpkt_opcua_static PRIVATE CPKT_OPCUA_FACADE_VERSION="${CPKT_OPCUA_ABI_VERSION}")
 set_target_properties(cpkt_opcua_static PROPERTIES
   OUTPUT_NAME cpkt_opcua
@@ -1108,7 +1109,7 @@ target_include_directories(cpkt_opcua_shared
     "$<BUILD_INTERFACE:${CPKT_OPCUA_GENERATED_DIR}>"
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
 )
-target_link_libraries(cpkt_opcua_shared PUBLIC cpkt::open62541_shared)
+target_link_libraries(cpkt_opcua_shared PUBLIC cpkt::open62541_shared Threads::Threads)
 target_compile_definitions(cpkt_opcua_shared PRIVATE CPKT_OPCUA_FACADE_VERSION="${CPKT_OPCUA_ABI_VERSION}")
 set_target_properties(cpkt_opcua_shared PROPERTIES
   OUTPUT_NAME cpkt_opcua
@@ -2013,7 +2014,7 @@ if(CPKT_BUILD_TESTS)
       --output "${_cpkt_fixture_dir}"
       --extra-bsd "${CMAKE_SOURCE_DIR}/tests/opcua_types_fixture.bsd" --fixture-table
     DEPENDS cpkt::open62541_static tools/opcua/generate.py tools/opcua/c89_emitter.py
-      tools/opcua/plugin_emitter.py tools/opcua/history_emitter.py tools/opcua/server_emitter.py tests/opcua_types_fixture.bsd VERBATIM)
+      tools/opcua/plugin_emitter.py tools/opcua/history_emitter.py tools/opcua/server_emitter.py tools/opcua/node_emitter.py tests/opcua_types_fixture.bsd VERBATIM)
   add_executable(cpkt_opcua_types_fixture_test tests/opcua_types_fixture_test.c
     src/opcua_types.c "${_cpkt_fixture_dir}/native/open62541/types_generated.c")
   cpkt_use_local_runtime(cpkt_opcua_types_fixture_test)
@@ -2038,7 +2039,7 @@ if(CPKT_BUILD_TESTS)
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_executable(cpkt_opcua_types_alloc_test tests/opcua_types_test.c
-      tests/opcua_types_native_peer.c tests/opcua_types_alloc_failure.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c)
+      tests/opcua_types_native_peer.c tests/opcua_types_alloc_failure.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c)
     cpkt_use_local_runtime(cpkt_opcua_types_alloc_test)
     cpkt_add_repo_warning_errors(cpkt_opcua_types_alloc_test)
     target_compile_definitions(cpkt_opcua_types_alloc_test PRIVATE CPKT_OPCUA_TYPES_ALLOC_FAILURE)
@@ -2054,7 +2055,7 @@ if(CPKT_BUILD_TESTS)
 
   foreach(_cpkt_types_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_types_${_cpkt_types_linkage}_test
-      tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c)
+      tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c)
     cpkt_use_local_runtime(cpkt_opcua_types_${_cpkt_types_linkage}_test)
     cpkt_add_repo_warning_errors(cpkt_opcua_types_${_cpkt_types_linkage}_test)
     target_compile_options(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE -UNDEBUG)
@@ -2062,7 +2063,7 @@ if(CPKT_BUILD_TESTS)
     set_source_files_properties(tests/opcua_callbacks_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_history_backend_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_plugins_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
-    set_source_files_properties(tests/opcua_util_test.c tests/opcua_identifiers_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+    set_source_files_properties(tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_server_types_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_types_native_peer.c PROPERTIES COMPILE_OPTIONS "-std=c99")
     target_link_libraries(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE

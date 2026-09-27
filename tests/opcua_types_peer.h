@@ -50,5 +50,7 @@ void cpkt_types_peer_random(unsigned int high, unsigned int low,
 void cpkt_types_peer_time(unsigned int high, unsigned int low,
                           unsigned int *unix_high, unsigned int *unix_low,
                           unsigned short *fields, short *year);
+unsigned int cpkt_types_peer_nodes(void *server, int action, void *context);
+unsigned int cpkt_types_peer_nodes_parallel(void *first, void *second);
 void cpkt_types_peer_stop(void *peer);
 #endif

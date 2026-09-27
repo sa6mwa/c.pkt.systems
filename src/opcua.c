@@ -4858,6 +4858,8 @@ void cpkt_opcua_server_free(cpkt_opcua_server *server) {
     if (server->typed_callbacks_clear)
       server->typed_callbacks_clear(server);
     UA_Server_delete(server->server);
+    if (server->typed_nodes_clear)
+      server->typed_nodes_clear(server);
   }
   method = server->methods;
   while (method != NULL) {

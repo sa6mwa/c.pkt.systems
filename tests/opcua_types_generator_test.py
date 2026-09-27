@@ -20,6 +20,7 @@ spec.loader.exec_module(emitter)
 import plugin_emitter
 import server_emitter
 import history_emitter
+import node_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -104,6 +105,25 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
     }
     server = changed_headers / 'server.h'
     server.chmod(0o644)
+    original_server = server.read_text()
+    node_public, node_private = node_emitter.emit_nodes(index, changed_headers)
+    for record in ('ValueSourceNotifications', 'NodeTypeLifecycle', 'GlobalNodeLifecycle'):
+        assert ('cpkt_opcua_' + record) in '\n'.join(node_public)
+    for old, new in (
+        ('(*onRead)', '(*onReadChanged)'),
+        ('const UA_NumericRange *range,', 'const UA_UnknownType *range,'),
+        ('} UA_GlobalNodeLifecycle;', 'UA_UInt32 unexpected; } UA_GlobalNodeLifecycle;'),
+        ('UA_NodeId *targetNodeId);', 'UA_NodeId **targetNodeId);'),
+    ):
+        assert old in original_server
+        server.write_text(original_server.replace(old, new, 1))
+        try:
+            node_emitter.emit_nodes(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed node callback declaration was accepted')
+    server.write_text(original_server)
     server.write_text(server.read_text().replace('UA_NodeId *out);', 'UA_NodeId **out);', 1))
     try:
         server_emitter.emit_server(index, changed_headers)

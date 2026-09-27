@@ -832,3 +832,43 @@ seconds, local offsets and seeded GUID/random values. C89 tests cover namespace
 translation, borrowed URI identity, owned mapping cleanup and injected allocation
 failures. A tracked native date-parser patch fixes overflow-guard reversal at
 the Unix epoch and the next second, verified by exact timestamp regressions.
+
+### Native node value notifications and lifecycle callbacks
+
+The generated plugin header derives the complete ValueSourceNotifications,
+NodeTypeLifecycle and GlobalNodeLifecycle records from the installed native
+server header. Unsupported or changed callback declarations fail generation.
+Node/session/type contexts remain exactly the native caller's contexts; mutable
+context pointers pass through directly. NodeIds are allocation-free borrowed
+views, so destructor dispatch does not fail because of conversion allocation.
+Never clear or retain callback NodeIds. Numeric ranges and notification values
+are borrowed C89 copies valid only until return; copy explicitly to retain them.
+Failed value/range conversion is logged through the configured server logger and
+skips a void notification, which has no native error return channel.
+
+The internal value-source setter forwards NULL values directly to the native
+source-switching implementation; NULL notifications disable both hooks. It stages complete callback records and value conversions before native
+installation. Failed installation retains the previous dispatch record. Node-type
+callback replacement follows the same staged ownership and can occur reentrantly
+inside a callback. The global lifecycle setter copies all four slots before
+startup; NULL disables its native pointer. generateChildNodeId produces an owned
+C89 NodeId that is converted to native ownership and then cleared by the bridge.
+Application contexts remain caller-owned throughout.
+
+These native records have no callback userdata slot. Private dispatch metadata is
+indexed by server and node, preserving all native context fields. A mutex protects
+cross-server registry lookup and never covers application callbacks. Operations
+on each server must remain serialized, and the server must not be freed from a
+callback. An active callback pins its old dispatch record across replacement.
+Metadata is retained until replacement or server destruction; native node/type
+and global destructors run before the registry is released. No value source or
+node lifecycle operation is reimplemented, and no native callback queue is added.
+
+Independent C99 peers invoke all eight notification/lifecycle slots and perform
+real native read, write, instance creation and deletion. Strict C89 tests cover
+complete 64-bit values/timestamps, numeric ranges, original and mutable contexts,
+two independent servers sharing NodeIds (including concurrent native read/write
+dispatch), reentrant replacement, NULL slots,
+unknown/wrong node types, owned child IDs, allocation failures preserving prior
+bindings and logger reporting. Producer-side async value/method callbacks remain
+separate pending interfaces.

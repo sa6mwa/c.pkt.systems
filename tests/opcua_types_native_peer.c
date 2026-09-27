@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <open62541/plugin/accesscontrol.h>
 #include <open62541/plugin/historydatabase.h>
+#include <open62541/plugin/nodestore.h>
 #include <open62541/server.h>
 #include <open62541/server_config_default.h>
 #include <open62541/util.h>
@@ -1069,4 +1070,193 @@ void cpkt_types_peer_random(unsigned int high, unsigned int low,
   native = UA_Guid_random();
   memcpy(guid, &native, sizeof(native));
   *number = UA_UInt32_random();
+}
+
+/* Drive callback slots using the installed native SDK, including native
+ * node operations. No facade callback structures are included here. */
+unsigned int cpkt_types_peer_nodes(void *arg, int action, void *context) {
+  UA_Server *server = arg;
+  UA_ServerConfig *config = UA_Server_getConfig(server);
+  UA_Nodestore *store = config->nodestore;
+  UA_NodeId variable = UA_NODEID_NUMERIC(1, 7000),
+            type = UA_NODEID_NUMERIC(1, 7001);
+  UA_NodeId session = UA_NODEID_STRING(2, "session"),
+            instance = UA_NODEID_STRING(1, "instance");
+  UA_NodeId parent = UA_NODEID_STRING(1, "parent"),
+            reference = UA_NODEID_NUMERIC(0, UA_NS0ID_HASCOMPONENT);
+  UA_ReferenceTypeSet references;
+  const UA_Node *node;
+  UA_GlobalNodeLifecycle global;
+  UA_NodeTypeLifecycle lifecycle;
+  UA_ValueSourceNotifications notifications;
+  UA_DataValue value;
+  UA_Int64 number = INT64_MIN;
+  UA_NumericRangeDimension dimension = {1, 1};
+  UA_NumericRange range = {1, &dimension};
+  UA_StatusCode status = 0;
+  void *mutable = context;
+  memset(&references, 0, sizeof(references));
+  UA_DataValue_init(&value);
+  if (action == 0) {
+    UA_VariableAttributes va = UA_VariableAttributes_default;
+    UA_ObjectTypeAttributes oa = UA_ObjectTypeAttributes_default;
+    va.dataType = UA_NODEID_NUMERIC(0, UA_NS0ID_INT64);
+    va.accessLevel = UA_ACCESSLEVELMASK_READ | UA_ACCESSLEVELMASK_WRITE;
+    UA_Variant_setScalar(&va.value, &number, &UA_TYPES[UA_TYPES_INT64]);
+    status = UA_Server_addVariableNode(
+        server, variable, UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+        UA_QUALIFIEDNAME(1, "notified"),
+        UA_NODEID_NUMERIC(0, UA_NS0ID_BASEDATAVARIABLETYPE), va, context, NULL);
+    if (!status)
+      status = UA_Server_addObjectTypeNode(
+          server, type, UA_NODEID_NUMERIC(0, UA_NS0ID_BASEOBJECTTYPE),
+          UA_NODEID_NUMERIC(0, UA_NS0ID_HASSUBTYPE),
+          UA_QUALIFIEDNAME(1, "lifecycle"), oa, context, NULL);
+    return status;
+  }
+  if (action == 1 || action == 2) {
+    node = store->getNode(store, &variable, 0xffffffffU, references,
+                          UA_BROWSEDIRECTION_BOTH);
+    if (!node)
+      return UA_STATUSCODE_BADNODEIDUNKNOWN;
+    notifications = node->variableNode.valueSource.internal.notifications;
+    store->releaseNode(store, node);
+    value.hasValue = 1;
+    UA_Variant_setScalar(&value.value, &number, &UA_TYPES[UA_TYPES_INT64]);
+    value.value.storageType = UA_VARIANT_DATA_NODELETE;
+    value.hasSourceTimestamp = 1;
+    value.sourceTimestamp = INT64_MAX;
+    value.hasServerTimestamp = 1;
+    value.serverTimestamp = INT64_MIN;
+    value.hasStatus = 1;
+    value.status = UA_STATUSCODE_GOODCLAMPED;
+    value.hasSourcePicoseconds = 1;
+    value.sourcePicoseconds = 321;
+    value.hasServerPicoseconds = 1;
+    value.serverPicoseconds = 654;
+    if (action == 1) {
+      if (notifications.onRead)
+        notifications.onRead(server, &session, context, &variable, context,
+                             &range, &value);
+    } else if (notifications.onWrite)
+      notifications.onWrite(server, &session, context, &variable, context, NULL,
+                            &value);
+    return 0;
+  }
+  if (action >= 3 && action <= 6) {
+    if (!config->nodeLifecycle)
+      return UA_STATUSCODE_BADNOTFOUND;
+    global = *config->nodeLifecycle;
+    if (action == 3) {
+      if (global.constructor)
+        status =
+            global.constructor(server, &session, context, &instance, &mutable);
+    }
+    if (action == 4) {
+      if (global.destructor)
+        global.destructor(server, &session, context, &instance, context);
+    }
+    if (action == 5) {
+      if (!global.createOptionalChild ||
+          !global.createOptionalChild(server, &session, context, &instance,
+                                      &parent, &reference))
+        status = UA_STATUSCODE_BADNOTFOUND;
+    }
+    if (action == 6) {
+      UA_NodeId output = UA_NODEID_NUMERIC(1, 0);
+      if (global.generateChildNodeId)
+        status = global.generateChildNodeId(
+            server, &session, context, &instance, &parent, &reference, &output);
+      if (!status &&
+          (output.identifierType != UA_NODEIDTYPE_STRING ||
+           output.namespaceIndex != 1 || output.identifier.string.length != 5))
+        status = UA_STATUSCODE_BADINTERNALERROR;
+      UA_NodeId_clear(&output);
+    }
+    if (action == 3 && !status && mutable == context)
+      status = UA_STATUSCODE_BADINTERNALERROR;
+    return status;
+  }
+  if (action == 7 || action == 8) {
+    node = store->getNode(store, &type, 0xffffffffU, references,
+                          UA_BROWSEDIRECTION_BOTH);
+    if (!node)
+      return UA_STATUSCODE_BADNODEIDUNKNOWN;
+    lifecycle = node->objectTypeNode.lifecycle;
+    store->releaseNode(store, node);
+    if (action == 7) {
+      if (lifecycle.constructor)
+        status = lifecycle.constructor(server, &session, context, &type,
+                                       context, &instance, &mutable);
+    } else if (lifecycle.destructor)
+      lifecycle.destructor(server, &session, context, &type, context, &instance,
+                           &mutable);
+    if (!status && mutable == context)
+      status = UA_STATUSCODE_BADINTERNALERROR;
+    return status;
+  }
+  if (action == 9) {
+    UA_Variant result;
+    UA_Variant_init(&result);
+    status = UA_Server_readValue(server, variable, &result);
+    UA_Variant_clear(&result);
+    return status;
+  }
+  if (action == 10) {
+    UA_Variant result;
+    UA_Variant_init(&result);
+    UA_Variant_setScalar(&result, &number, &UA_TYPES[UA_TYPES_INT64]);
+    return UA_Server_writeValue(server, variable, result);
+  }
+  if (action == 11) {
+    UA_ObjectAttributes oa = UA_ObjectAttributes_default;
+    return UA_Server_addObjectNode(server, UA_NODEID_NUMERIC(1, 7004),
+                                   UA_NODEID_NUMERIC(0, UA_NS0ID_OBJECTSFOLDER),
+                                   UA_NODEID_NUMERIC(0, UA_NS0ID_ORGANIZES),
+                                   UA_QUALIFIEDNAME(1, "constructed"), type, oa,
+                                   context, NULL);
+  }
+  if (action == 12)
+    return UA_Server_deleteNode(server, UA_NODEID_NUMERIC(1, 7004), UA_TRUE);
+  if (action == 13) {
+    node = store->getNode(store, &type, 0xffffffffU, references,
+                          UA_BROWSEDIRECTION_BOTH);
+    if (!node)
+      return UA_STATUSCODE_BADNODEIDUNKNOWN;
+    lifecycle = node->objectTypeNode.lifecycle;
+    store->releaseNode(store, node);
+    return !lifecycle.constructor && !lifecycle.destructor &&
+                   !config->nodeLifecycle
+               ? 0
+               : UA_STATUSCODE_BADINTERNALERROR;
+  }
+  return UA_STATUSCODE_BADINVALIDARGUMENT;
+}
+struct cpkt_nodes_thread {
+  void *server;
+  unsigned int status;
+};
+static void *cpkt_nodes_thread_work(void *arg) {
+  struct cpkt_nodes_thread *state = arg;
+  size_t i;
+  for (i = 0; i < 8 && !state->status; ++i) {
+    state->status = cpkt_types_peer_nodes(state->server, 9, NULL);
+    if (!state->status)
+      state->status = cpkt_types_peer_nodes(state->server, 10, NULL);
+  }
+  return NULL;
+}
+unsigned int cpkt_types_peer_nodes_parallel(void *first, void *second) {
+  struct cpkt_nodes_thread states[2] = {{first, 0}, {second, 0}};
+  pthread_t threads[2];
+  if (pthread_create(&threads[0], NULL, cpkt_nodes_thread_work, &states[0]))
+    return UA_STATUSCODE_BADINTERNALERROR;
+  if (pthread_create(&threads[1], NULL, cpkt_nodes_thread_work, &states[1])) {
+    (void)pthread_join(threads[0], NULL);
+    return UA_STATUSCODE_BADINTERNALERROR;
+  }
+  (void)pthread_join(threads[0], NULL);
+  (void)pthread_join(threads[1], NULL);
+  return states[0].status ? states[0].status : states[1].status;
 }

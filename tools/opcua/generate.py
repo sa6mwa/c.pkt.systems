@@ -33,6 +33,7 @@ shutil.copyfile(Path(__file__).with_name('c89_emitter.py'), scratch / 'c89_emitt
 shutil.copyfile(Path(__file__).with_name('plugin_emitter.py'), scratch / 'plugin_emitter.py')
 shutil.copyfile(Path(__file__).with_name('server_emitter.py'), scratch / 'server_emitter.py')
 shutil.copyfile(Path(__file__).with_name('history_emitter.py'), scratch / 'history_emitter.py')
+shutil.copyfile(Path(__file__).with_name('node_emitter.py'), scratch / 'node_emitter.py')
 subprocess.run([sys.executable, str(scratch / 'generate_nodeid_header.py'),
                 str(scratch / 'schema/NodeIds.csv'), str(output / 'nodeids'), 'NS0'], check=True)
 command = [sys.executable, str(script), '--type-bsd',

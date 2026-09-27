@@ -168,7 +168,9 @@ for required in \
   src/opcua_util_impl.h \
   src/opcua_identifiers_impl.h \
   src/opcua_plugins_impl.h \
+  src/opcua_nodes_impl.h \
   src/opcua_history_impl.h \
+  src/opcua_nodes_install_impl.h \
   src/opcua_types.c \
   src/opcua_types_internal.h \
   tools/opcua/generate.py \
@@ -176,6 +178,7 @@ for required in \
   tools/opcua/plugin_emitter.py \
   tools/opcua/history_emitter.py \
   tools/opcua/server_emitter.py \
+  tools/opcua/node_emitter.py \
   tools/opcua/public_api.py \
   tools/opcua/public_api_contract.json \
   tests/opcua_public_api_test.py \
@@ -186,6 +189,7 @@ for required in \
   tests/opcua_server_types_test.c \
   tests/opcua_util_test.c \
   tests/opcua_identifiers_test.c \
+  tests/opcua_nodes_test.c \
   tests/opcua_callbacks_test.h \
   tests/opcua_types_native_peer.c \
   tests/opcua_types_peer.h \

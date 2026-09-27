@@ -31,6 +31,8 @@ struct cpkt_opcua_server {
   struct cpkt_server_timer *typed_timers;
   void (*typed_callbacks_clear)(cpkt_opcua_server *);
   struct cpkt_server_async *typed_asyncs;
+  struct cpkt_nodes_owner *typed_nodes;
+  void (*typed_nodes_clear)(cpkt_opcua_server *);
   char *endpoint_hostname;
   char *access_username;
   unsigned char *access_password;
