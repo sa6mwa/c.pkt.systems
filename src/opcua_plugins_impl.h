@@ -15,6 +15,12 @@ typedef struct {
 struct cpkt_opcua_history_value {
   UA_DataValue native;
 };
+/* The node borrows this pointer slot, not a converted snapshot. Storage and
+ * the slot are independently caller-owned and must outlive every native use. */
+struct cpkt_opcua_external_value {
+  UA_DataValue *native;
+  cpkt_opcua_history_value *selected;
+};
 typedef struct cpkt_hb_bridge cpkt_hb_bridge;
 struct cpkt_hb_bridge {
   cpkt_opcua_server *owner;

@@ -6,3 +6,4 @@
 0007-safe-reentrant-async-result-callbacks.patch
 0008-preserve-date-parser-overflow-guard-direction.patch
 0009-release-method-argument-ownership.patch
+0010-use-external-source-notification-slots.patch

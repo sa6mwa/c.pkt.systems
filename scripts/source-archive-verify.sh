@@ -197,6 +197,7 @@ for required in \
   tests/opcua_identifiers_test.c \
   tests/opcua_producers_test.c \
   tests/opcua_creation_test.c \
+  tests/opcua_external_test.c \
   tests/opcua_nodes_test.c \
   tests/opcua_callbacks_test.h \
   tests/opcua_types_native_peer.c \
@@ -254,7 +255,8 @@ for required in \
   vendor/open62541/patches/0006-check-default-history-allocations.patch \
   vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch \
   vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch \
-  vendor/open62541/patches/0009-release-method-argument-ownership.patch
+  vendor/open62541/patches/0009-release-method-argument-ownership.patch \
+  vendor/open62541/patches/0010-use-external-source-notification-slots.patch
 do
   if [ ! -f "$source_root/$required" ]; then
     printf 'source archive is missing required payload: %s\n' "$required" >&2

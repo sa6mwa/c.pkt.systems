@@ -68,4 +68,10 @@ struct cpkt_creation_observed {
 };
 void cpkt_types_peer_creation_failure(int kind,
                                       struct cpkt_creation_observed *out);
+struct cpkt_external_observed {
+  const void *slot, *storage, *data;
+  unsigned int high[2], low[2];
+};
+unsigned int cpkt_types_peer_external(void *server, unsigned int id,
+                                      struct cpkt_external_observed *out);
 #endif

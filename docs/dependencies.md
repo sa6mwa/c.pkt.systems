@@ -127,3 +127,17 @@ unconfigured local fixture, not missing encryption support:
 `UA_ENABLE_ENCRYPTION_OPENSSL` is enabled in the shipped native configuration.
 Applications choosing certificate authentication must configure its encrypting
 security policy; the facade preserves the native diagnostic.
+
+### OPC UA external-source notification slots
+
+`0010-use-external-source-notification-slots.patch` corrects native external
+value reads and writes to dispatch the notifications installed in the external
+source union member. Upstream was accessing the internal source's differently
+located slots, suppressing external hooks. Internal value behavior is unchanged;
+this patch neither changes the public ABI nor adds a callback mechanism.
+It also preserves the borrowed external pointer slot during native node copies;
+the former copy overwrote that slot with an internal DataValue, corrupting the
+external union representation and leaking the copied payload. Native nodestore
+copy tests verify pointer identity and cleanup alongside the read/write tests.
+C89 tests exercise both native hooks, ranged reads/writes, pointer selection
+inside read notifications, and registration replacement during a callback.

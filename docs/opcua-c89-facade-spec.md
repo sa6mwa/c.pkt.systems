@@ -407,7 +407,7 @@ outputs, synchronous/deferred/error results, timestamp synchronization,
 reentrant callback replacement, cancellation/shutdown, partial preparation
 failure, every allocation during registration/conversion/completion, zero-output
 identities, and native borrowing without a facade payload clone. External
-double-pointer value sources remain tracked separately in the coverage contract.
+double-pointer value sources are covered by the external-value binding below.
 
 ### Native node creation
 
@@ -901,9 +901,9 @@ native status. Server deletion completes pending operations with BadShutdown
 and rejects new typed submissions with BadShutdown. Do not destroy the server
 from one of its callbacks.
 
-These submissions do not yet expose the producer-side value-source and method
-completion tokens. Those require a distinct lifetime binding for upstream's
-stable callback output addresses and remain tracked as pending public API.
+Producer-side value-source and method completion tokens use the distinct
+lifetime binding described in the producer callback section above. Upstream's
+stable callback output addresses retain their original pending-operation role.
 
 ### Public value utilities
 
@@ -1013,5 +1013,44 @@ complete 64-bit values/timestamps, numeric ranges, original and mutable contexts
 two independent servers sharing NodeIds (including concurrent native read/write
 dispatch), reentrant replacement, NULL slots,
 unknown/wrong node types, owned child IDs, allocation failures preserving prior
-bindings and logger reporting. Producer-side async value/method callbacks remain
-separate pending interfaces.
+bindings and logger reporting. Producer-side async value/method callbacks use
+the producer interfaces described above.
+
+### External value sources
+
+`cpkt_opcua_server_setVariableNode_externalValueSource_typed` invokes the native
+external source setter. Its `cpkt_opcua_external_value` holder represents the
+borrowed native `UA_DataValue **` slot. Create it with `external_value_new`,
+select storage with `external_value_set`, inspect the borrowed selection with
+`external_value_get`, and release a detached holder with `external_value_free`.
+The selected object is the same persistent `cpkt_opcua_history_value` used for
+history and callback-result borrowing; it is not restricted to history usage.
+
+The holder borrows storage and nodes borrow the holder. Installation and
+selection do not copy values. Multiple nodes and servers can use the same slot;
+changing its selection affects all of them. Native reads retain their own
+upstream copy/range behavior. Native writes mutate the selected persistent
+value, observable through `history_value_get`. An `onRead` hook can select
+another persistent object and the native read reloads that pointer after the
+hook. Notifications receive callback-lifetime C89 copies with the original
+node/session contexts. Registration replacement during a notification keeps
+that callback's arguments valid.
+
+The caller must serialize holder and storage changes with **all** native users,
+including other servers sharing the holder. There is no automatic reference
+counting or concurrent-update guarantee. Keep the holder and its current storage
+alive until every borrowing node is detached, deleted, or its server destroyed.
+Only then free the holder/storage. Replacing selection does not free the previous
+object. NULL selection is rejected as upstream requires; failures preserve the
+previous registration and selection.
+
+Permanent C89 tests cover full and ranged Int64 reads, selection inside `onRead`,
+original contexts, notification replacement, shared slots across two servers,
+native full/ranged writes, quiescent storage replacement, invalid nodes/classes,
+NULL/error paths, allocation failure,
+and detachment/destruction. An independent native peer inspects the public
+nodestore plugin to prove that slots and selected native storage addresses are
+shared, switch without a snapshot, and return to the original address. Native
+node copies must preserve the same borrowed slot and release without affecting
+storage. A bundled upstream patch corrects external notification field access
+and node-copy borrowing; these regressions fail without that patch.

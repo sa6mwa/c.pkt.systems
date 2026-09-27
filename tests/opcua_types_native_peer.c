@@ -1469,3 +1469,50 @@ void cpkt_types_peer_creation_failure(int kind,
   UA_NodeId_clear(&id);
   UA_Server_delete(server);
 }
+
+/* Inspect native borrowed storage through the public nodestore plugin API.
+ * No facade layouts or pointer slot representation are known to this peer. */
+unsigned int cpkt_types_peer_external(void *handle, unsigned int id,
+                                      struct cpkt_external_observed *out) {
+  UA_Server *server = handle;
+  UA_Nodestore *store = UA_Server_getConfig(server)->nodestore;
+  UA_NodeId nodeId = UA_NODEID_NUMERIC(1, id);
+  const UA_Node *node =
+      store->getNode(store, &nodeId, UA_NODEATTRIBUTESMASK_VALUE,
+                     UA_REFERENCETYPESET_NONE, UA_BROWSEDIRECTION_INVALID);
+  if (!node)
+    return UA_STATUSCODE_BADNODEIDUNKNOWN;
+  const UA_VariableNode *variable = (const UA_VariableNode *)node;
+  UA_StatusCode status = UA_STATUSCODE_BADTYPEMISMATCH;
+  if (node->head.nodeClass == UA_NODECLASS_VARIABLE &&
+      variable->valueSourceType == UA_VALUESOURCETYPE_EXTERNAL) {
+    UA_DataValue *value = *variable->valueSource.external.value;
+    if (value && value->hasValue &&
+        value->value.type == &UA_TYPES[UA_TYPES_INT64] &&
+        value->value.arrayLength == 2) {
+      memset(out, 0, sizeof(*out));
+      out->slot = variable->valueSource.external.value;
+      out->storage = value;
+      out->data = value->value.data;
+      for (size_t i = 0; i < 2; ++i) {
+        UA_UInt64 bits = (UA_UInt64)((UA_Int64 *)value->value.data)[i];
+        out->high[i] = (unsigned int)(bits >> 32);
+        out->low[i] = (unsigned int)bits;
+      }
+      status = UA_STATUSCODE_GOOD;
+    }
+  }
+  store->releaseNode(store, node);
+  if (status == UA_STATUSCODE_GOOD) {
+    UA_Node *copy = NULL;
+    status = store->getNodeCopy(store, &nodeId, &copy);
+    if (!status) {
+      const UA_VariableNode *copied = (const UA_VariableNode *)copy;
+      if (copied->valueSourceType != UA_VALUESOURCETYPE_EXTERNAL ||
+          copied->valueSource.external.value != out->slot)
+        status = UA_STATUSCODE_BADINTERNALERROR;
+      store->deleteNode(store, copy);
+    }
+  }
+  return status;
+}

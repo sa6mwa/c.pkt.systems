@@ -116,6 +116,8 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         ('const UA_NumericRange *range,', 'const UA_UnknownType *range,'),
         ('} UA_GlobalNodeLifecycle;', 'UA_UInt32 unexpected; } UA_GlobalNodeLifecycle;'),
         ('UA_NodeId *targetNodeId);', 'UA_NodeId **targetNodeId);'),
+        ('UA_DataValue **value,', 'UA_DataValue *value,'),
+        ('UA_DataValue **value,', 'UA_Variant **value,'),
     ):
         assert old in original_server
         server.write_text(original_server.replace(old, new, 1))

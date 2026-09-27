@@ -50,6 +50,67 @@ static void cpkt_nodes_commit(cpkt_nodes_entry *entry) {
     cpkt_nodes_release(previous);
 }
 cpkt_opcua_StatusCode
+cpkt_opcua_external_value_new(cpkt_opcua_history_value *stored,
+                              cpkt_opcua_external_value **out) {
+  cpkt_opcua_external_value *value;
+  if (!out)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  *out = NULL;
+  if (!stored)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  value = (cpkt_opcua_external_value *)UA_calloc(1, sizeof(*value));
+  if (!value)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  value->native = &stored->native;
+  value->selected = stored;
+  *out = value;
+  return 0;
+}
+cpkt_opcua_StatusCode
+cpkt_opcua_external_value_set(cpkt_opcua_external_value *value,
+                              cpkt_opcua_history_value *stored) {
+  if (!value || !stored)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  value->native = &stored->native;
+  value->selected = stored;
+  return 0;
+}
+cpkt_opcua_history_value *
+cpkt_opcua_external_value_get(const cpkt_opcua_external_value *value) {
+  return value ? value->selected : NULL;
+}
+void cpkt_opcua_external_value_free(cpkt_opcua_external_value *value) {
+  UA_free(value);
+}
+cpkt_opcua_StatusCode
+cpkt_opcua_server_setVariableNode_externalValueSource_typed(
+    cpkt_opcua_server *server, cpkt_opcua_NodeId nodeId,
+    cpkt_opcua_external_value *value,
+    const cpkt_opcua_ValueSourceNotifications *notifications) {
+  cpkt_nodes_entry *entry = NULL;
+  UA_ValueSourceNotifications native;
+  UA_StatusCode status;
+  if (!server || !server->server || server->destroying || !value ||
+      !value->native)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  status = cpkt_nodes_stage(server, &nodeId, &entry);
+  if (!status) {
+    if (notifications)
+      entry->notifications = *notifications;
+    else
+      memset(&entry->notifications, 0, sizeof(entry->notifications));
+    cpkt_nodes_assign_ValueSourceNotifications(&native, &entry->notifications);
+    status = UA_Server_setVariableNode_externalValueSource(
+        server->server, entry->node, &value->native,
+        notifications ? &native : NULL);
+  }
+  if (!status)
+    cpkt_nodes_commit(entry);
+  else if (entry)
+    cpkt_nodes_release(entry);
+  return status;
+}
+cpkt_opcua_StatusCode
 cpkt_opcua_server_setVariableNode_internalValueSource_typed(
     cpkt_opcua_server *server, cpkt_opcua_NodeId nodeId,
     const cpkt_opcua_DataValue *value,

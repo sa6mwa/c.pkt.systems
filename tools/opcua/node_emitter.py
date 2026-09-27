@@ -22,6 +22,12 @@ def record_body(text, name):
 
 def emit_nodes(index, native_headers):
     text = (native_headers / 'server.h').read_text()
+    external = re.search(r'UA_Server_setVariableNode_externalValueSource\s*\((.*?)\)\s*;', uncomment(text), re.S)
+    if not external or parameters(external[1]) != [
+            ('UA_Server *', 'server'), ('const UA_NodeId', 'nodeId'),
+            ('UA_DataValue **', 'value'),
+            ('const UA_ValueSourceNotifications *', 'notifications')]:
+        raise ValueError('Adapt public external value source declaration')
     header = [re.match(r'/\*.*?\*/', text, re.S)[0]]
     metadata = []
     slots = {'ValueSourceNotifications': ('onRead', 'onWrite'),
@@ -109,6 +115,32 @@ def emit_nodes(index, native_headers):
         metadata += [f'static void cpkt_nodes_assign_{record}(UA_{record} *native, const cpkt_opcua_{record} *plugin) {{',
                      '  memset(native, 0, sizeof(*native));', *assignments, '}']
     header += [
+        '/** Stable native DataValue pointer slot. Borrows persistent history_value storage.',
+        ' * The holder and selected storage must outlive every node using them. Serialize',
+        ' * selection/storage changes with all native users, including other servers that',
+        ' * share this holder. No reference counting or automatic lifetime extension. */',
+        'typedef struct cpkt_opcua_external_value cpkt_opcua_external_value;',
+        '/** Create a pointer slot selecting stored without copying its DataValue.',
+        ' * On failure *out is NULL. stored must be non-NULL and remains caller-owned. */',
+        'cpkt_opcua_StatusCode cpkt_opcua_external_value_new(cpkt_opcua_history_value *stored, cpkt_opcua_external_value **out);',
+        '/** Select different persistent storage without allocating/copying a value.',
+        ' * NULL is rejected, preserving selection. Call only with native users quiescent',
+        ' * or inside the serialized onRead hook; the native read reloads this slot. */',
+        'cpkt_opcua_StatusCode cpkt_opcua_external_value_set(cpkt_opcua_external_value *value, cpkt_opcua_history_value *stored);',
+        '/** Borrow the selected storage; NULL holder returns NULL. Native writes mutate',
+        ' * this storage, observable through history_value_get. No ownership transfer. */',
+        'cpkt_opcua_history_value *cpkt_opcua_external_value_get(const cpkt_opcua_external_value *value);',
+        '/** Free a quiescent, detached holder; NULL is safe. Does not free storage.',
+        ' * Detach EVERY node or delete its server before freeing holder or storage. */',
+        'void cpkt_opcua_external_value_free(cpkt_opcua_external_value *value);',
+        '/** Native external source installation. Borrows the holder pointer slot, not',
+        ' * a snapshot; nodes reload its selection when reading and write into selected',
+        ' * native storage. Notifications are copied, preserve original node contexts,',
+        ' * and receive callback-lifetime C89 copies. NULL notifications disables them.',
+        ' * Failure preserves the previous source/notification record. Native NULL source',
+        ' * rejection is preserved. Detach via another source or delete all borrowing nodes',
+        ' * before free. Serialize server calls and changes to shared holders/storage. */',
+        'cpkt_opcua_StatusCode cpkt_opcua_server_setVariableNode_externalValueSource_typed(cpkt_opcua_server *server, cpkt_opcua_NodeId nodeId, cpkt_opcua_external_value *value, const cpkt_opcua_ValueSourceNotifications *notifications);',
         '/** Replace internal value source and optional notifications using native behavior.',
         ' * NULL value follows native source-switching behavior; NULL notifications disables',
         ' * notifications. Input values/slots are borrowed during installation and copied.',
