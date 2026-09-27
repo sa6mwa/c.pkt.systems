@@ -350,6 +350,52 @@ helpers remain separate pending entries.
 Existing native-peer, integration, allocation-failure and destruction tests
 exercise these bindings; coverage classification does not add new behavior.
 
+### Public value constructors and parsing helpers
+
+The generated `cpkt_opcua_STRING`, `GUID`, `NODEID_*`, `EXPANDEDNODEID_*`,
+`QUALIFIEDNAME*`, `LOCALIZEDTEXT*` and `NUMERICRANGE` constructors invoke the
+corresponding native public factories. Names retain native spelling, including
+`EXPANDEDNODEID_STRING_GUID`. Borrowed factories retain the caller's actual
+byte addresses; numeric IDs and GUIDs contain no owned allocation. `_ALLOC`
+and identifier/range parsing factories transfer the native allocation, without
+adding a facade allocation. Native failures can produce partial owned records
+(for example a LocalizedText with only one string allocated); always clear owned
+results. Do not clear borrowed results or independently clear both sides of a
+shallow NodeId-to-ExpandedNodeId promotion.
+
+The native null String, ByteString, GUID, NodeId and ExpandedNodeId values are
+exposed as const public globals. Their values are checked against the actual
+native globals. C89 shorthand macros expose byte strings, allocated strings,
+static literal initializers, namespace-zero identifiers and shallow NodeId
+promotion. `STRING_STATIC` is an initializer, not a C99 compound literal.
+
+`NumericRange_parse` retains every UInt32 dimension endpoint, native overflow
+and validation rules, and native allocation failures. Success transfers the
+dimension allocation into an empty C89 output; failure preserves the previous
+output. `NumericRange_clear` releases owned dimensions and resets the record.
+NULL range text is normalized to an empty string before native parsing, avoiding
+the native number reader's non-NULL-buffer assertion. Range shorthand returns
+an empty range for invalid input, including allocation failure, as upstream does.
+The bridge checks the dimension layout and uses field copies and `memcpy` to
+transfer the allocation without accessing native records through incompatible
+C89 struct types.
+
+Endpoint parsers preserve native URL schemes, IPv6 handling, VLAN/PCP validation,
+optional paths, and partial outputs on failure. Host/target/path strings borrow
+slices of the original counted input; they must not be cleared. Initialize all
+outputs before use; omitted ports and paths retain their native unchanged-output
+behavior. Ethernet URL parsing remains available even where native Ethernet
+transport is unavailable. No URL, port or path normalization is added.
+
+Number readers forward native digit/base and UInt32 wraparound behavior and
+return the native consumed-byte count. Constant-time comparison calls the
+native implementation, retaining its full-byte traversal. These helpers and
+borrowed constructors do not allocate. Static/shared tests compare native binary
+representations, borrowed pointer identity, maximum scalar values, malformed
+and counted inputs, all byte-sized number bases, partial parser outputs and
+per-allocation failure results. Generator regression tests reject missing or
+unsupported constructor declarations and missing null constants.
+
 ### Core client connections, discovery, sessions and timers
 
 The generated `cpkt_opcua_client_<native suffix>_typed` bindings expose 24

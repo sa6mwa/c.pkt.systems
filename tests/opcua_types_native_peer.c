@@ -1996,6 +1996,11 @@ UA_StatusCode __wrap_UA_Client_readValueAttribute_async(
 #endif
 
 /* Independent native observations for the full core client boundary. */
+void cpkt_types_peer_functional_timeout(void *client) {
+  /* Instrumentation can delay the peer beyond the native five-second default.
+   * This fixture exercises successful transfer, not timeout policy. */
+  UA_Client_getConfig(client)->timeout = 30000;
+}
 void cpkt_types_peer_state(void *client, unsigned int *values) {
   UA_SecureChannelState channel;
   UA_SessionState session;
@@ -2186,3 +2191,202 @@ UA_StatusCode __wrap_UA_Client_getNamespaceUri(UA_Client *client,
   return status;
 }
 #endif
+
+/* Independent calls to every public native value constructor. */
+void cpkt_types_peer_value_factory(int kind, char *first, char *second,
+                                   int stop_failure,
+                                   struct cpkt_value_factory_observed *out) {
+  union {
+    UA_String string;
+    UA_Guid guid;
+    UA_NodeId node;
+    UA_ExpandedNodeId expanded;
+    UA_QualifiedName name;
+    UA_LocalizedText localized;
+  } value;
+  UA_Guid guid = {0xdeadbeefU, 0xabcd, 0xef12, {0, 127, 128, 255, 1, 2, 3, 4}};
+  UA_ByteString encoded = UA_BYTESTRING_NULL;
+  const void *borrowed = NULL, *borrowed_second = NULL;
+  const UA_DataType *type = NULL;
+  int owned = 0;
+  memset(&value, 0, sizeof(value));
+  memset(out, 0, sizeof(*out));
+  switch (kind) {
+  case 0:
+    value.string = UA_STRING(first);
+    type = &UA_TYPES[UA_TYPES_STRING];
+    borrowed = value.string.data;
+    break;
+  case 1:
+    value.guid = UA_GUID(first);
+    type = &UA_TYPES[UA_TYPES_GUID];
+    break;
+  case 2:
+    value.node = UA_NODEID(first);
+    owned = 1;
+    break;
+  case 3:
+    value.node = UA_NODEID_NUMERIC(65535, 0xfedcba98U);
+    break;
+  case 4:
+    value.node = UA_NODEID_STRING(65535, first);
+    borrowed = value.node.identifier.string.data;
+    break;
+  case 5:
+    value.node = UA_NODEID_STRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 6:
+    value.node = UA_NODEID_GUID(65535, guid);
+    break;
+  case 7:
+    value.node = UA_NODEID_BYTESTRING(65535, first);
+    borrowed = value.node.identifier.byteString.data;
+    break;
+  case 8:
+    value.node = UA_NODEID_BYTESTRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 9:
+    value.expanded = UA_EXPANDEDNODEID(first);
+    owned = 1;
+    break;
+  case 10:
+    value.expanded = UA_EXPANDEDNODEID_NUMERIC(65535, 0xfedcba98U);
+    break;
+  case 11:
+    value.expanded = UA_EXPANDEDNODEID_STRING(65535, first);
+    borrowed = value.expanded.nodeId.identifier.string.data;
+    break;
+  case 12:
+    value.expanded = UA_EXPANDEDNODEID_STRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 13:
+    value.expanded = UA_EXPANDEDNODEID_STRING_GUID(65535, guid);
+    break;
+  case 14:
+    value.expanded = UA_EXPANDEDNODEID_BYTESTRING(65535, first);
+    borrowed = value.expanded.nodeId.identifier.byteString.data;
+    break;
+  case 15:
+    value.expanded = UA_EXPANDEDNODEID_BYTESTRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 16:
+    value.expanded = UA_EXPANDEDNODEID_NODEID(UA_NODEID_STRING(65535, first));
+    borrowed = value.expanded.nodeId.identifier.string.data;
+    break;
+  case 17:
+    value.name = UA_QUALIFIEDNAME(65535, first);
+    type = &UA_TYPES[UA_TYPES_QUALIFIEDNAME];
+    borrowed = value.name.name.data;
+    break;
+  case 18:
+    value.name = UA_QUALIFIEDNAME_ALLOC(65535, first);
+    type = &UA_TYPES[UA_TYPES_QUALIFIEDNAME];
+    owned = 1;
+    break;
+  case 19:
+    value.localized = UA_LOCALIZEDTEXT(first, second);
+    type = &UA_TYPES[UA_TYPES_LOCALIZEDTEXT];
+    borrowed = value.localized.locale.data;
+    borrowed_second = value.localized.text.data;
+    break;
+  case 20:
+    value.localized = UA_LOCALIZEDTEXT_ALLOC(first, second);
+    type = &UA_TYPES[UA_TYPES_LOCALIZEDTEXT];
+    owned = 1;
+    break;
+  case 21:
+    value.string = UA_STRING_NULL;
+    type = &UA_TYPES[UA_TYPES_STRING];
+    break;
+  case 22:
+    value.string = UA_BYTESTRING_NULL;
+    type = &UA_TYPES[UA_TYPES_BYTESTRING];
+    break;
+  case 23:
+    value.guid = UA_GUID_NULL;
+    type = &UA_TYPES[UA_TYPES_GUID];
+    break;
+  case 24:
+    value.node = UA_NODEID_NULL;
+    type = &UA_TYPES[UA_TYPES_NODEID];
+    break;
+  case 25:
+    value.expanded = UA_EXPANDEDNODEID_NULL;
+    type = &UA_TYPES[UA_TYPES_EXPANDEDNODEID];
+    break;
+  default:
+    abort();
+  }
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (stop_failure)
+    out->injected = cpkt_types_fail_stop();
+#else
+  (void)stop_failure;
+#endif
+  if (!type)
+    type = kind < 9 ? &UA_TYPES[UA_TYPES_NODEID]
+                    : &UA_TYPES[UA_TYPES_EXPANDEDNODEID];
+  out->type = (size_t)(type - UA_TYPES);
+  out->aliases = (borrowed && borrowed == first ? 1U : 0U) |
+                 (borrowed_second && borrowed_second == second ? 2U : 0U);
+  out->status = UA_encodeBinary(&value, type, &encoded, NULL);
+  out->bytes = encoded.data;
+  out->length = encoded.length;
+  if (owned)
+    UA_clear(&value, type);
+}
+void cpkt_types_peer_range(const char *input, size_t length, int shorthand,
+                           int stop_failure, struct cpkt_range_observed *out) {
+  UA_NumericRange range = {0, NULL};
+  UA_String text = {length, (UA_Byte *)(input ? input : "")};
+  memset(out, 0, sizeof(*out));
+  if (shorthand)
+    range = UA_NUMERICRANGE(input ? input : "");
+  else
+    out->status = UA_NumericRange_parse(&range, text);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (stop_failure)
+    out->injected = cpkt_types_fail_stop();
+#else
+  (void)stop_failure;
+#endif
+  if (range.dimensionsSize > 32)
+    abort();
+  out->count = range.dimensionsSize;
+  for (size_t i = 0; i < out->count; ++i) {
+    out->bounds[2 * i] = range.dimensions[i].min;
+    out->bounds[2 * i + 1] = range.dimensions[i].max;
+  }
+  UA_free(range.dimensions);
+}
+void cpkt_types_peer_endpoint(const char *input, size_t length, char *seed,
+                              int ethernet, int path,
+                              struct cpkt_endpoint_observed *out) {
+  UA_String text = {length, (UA_Byte *)input};
+  UA_String host = UA_STRING(seed), suffix = UA_STRING(seed);
+  memset(out, 0, sizeof(*out));
+  out->port = 4242;
+  out->pcp = 6;
+  out->status = ethernet ? UA_parseEndpointUrlEthernet(&text, &host, &out->port,
+                                                       &out->pcp)
+                         : UA_parseEndpointUrl(&text, &host, &out->port,
+                                               path ? &suffix : NULL);
+  out->host = host.data;
+  out->host_length = host.length;
+  out->path = suffix.data;
+  out->path_length = suffix.length;
+}
+size_t cpkt_types_peer_number(const unsigned char *bytes, size_t length,
+                              unsigned int *number, unsigned char base,
+                              int decimal) {
+  return decimal ? UA_readNumber(bytes, length, number)
+                 : UA_readNumberWithBase(bytes, length, number, base);
+}
+int cpkt_types_peer_constant_equal(const void *first, const void *second,
+                                   size_t length) {
+  return UA_constantTimeEqual(first, second, length);
+}

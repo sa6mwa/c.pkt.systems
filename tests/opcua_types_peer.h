@@ -88,6 +88,7 @@ struct cpkt_external_observed {
 unsigned int cpkt_types_peer_external(void *server, unsigned int id,
                                       struct cpkt_external_observed *out);
 void cpkt_types_peer_state(void *client, unsigned int *values);
+void cpkt_types_peer_functional_timeout(void *client);
 unsigned int cpkt_types_peer_session_endpoint(void *recipient, void *donor,
                                               const char *url);
 unsigned int cpkt_types_peer_discovery(void *client, const char *url, int kind,
@@ -100,4 +101,35 @@ void cpkt_types_peer_external_loop_free(void *loop);
 unsigned short cpkt_types_peer_port(void);
 unsigned int cpkt_types_peer_reverse(void *peer, unsigned short port,
                                      int remove);
+struct cpkt_value_factory_observed {
+  unsigned char *bytes;
+  size_t length, type;
+  unsigned int status, aliases;
+  int injected;
+};
+void cpkt_types_peer_value_factory(int kind, char *first, char *second,
+                                   int stop_failure,
+                                   struct cpkt_value_factory_observed *out);
+struct cpkt_range_observed {
+  unsigned int status, bounds[64];
+  size_t count;
+  int injected;
+};
+void cpkt_types_peer_range(const char *input, size_t length, int shorthand,
+                           int stop_failure, struct cpkt_range_observed *out);
+struct cpkt_endpoint_observed {
+  unsigned int status;
+  const unsigned char *host, *path;
+  size_t host_length, path_length;
+  unsigned short port;
+  unsigned char pcp;
+};
+void cpkt_types_peer_endpoint(const char *input, size_t length, char *seed,
+                              int ethernet, int path,
+                              struct cpkt_endpoint_observed *out);
+size_t cpkt_types_peer_number(const unsigned char *bytes, size_t length,
+                              unsigned int *number, unsigned char base,
+                              int decimal);
+int cpkt_types_peer_constant_equal(const void *first, const void *second,
+                                   size_t length);
 #endif

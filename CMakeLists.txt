@@ -1061,6 +1061,7 @@ add_custom_command(
     "${CMAKE_SOURCE_DIR}/tools/opcua/client_emitter.py"
     "${CMAKE_SOURCE_DIR}/tools/opcua/async_client_emitter.py"
     "${CMAKE_SOURCE_DIR}/tools/opcua/core_client_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/value_emitter.py"
   VERBATIM)
 add_custom_target(cpkt_opcua_types_generate DEPENDS
   "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
@@ -2019,7 +2020,7 @@ if(CPKT_BUILD_TESTS)
       --output "${_cpkt_fixture_dir}"
       --extra-bsd "${CMAKE_SOURCE_DIR}/tests/opcua_types_fixture.bsd" --fixture-table
     DEPENDS cpkt::open62541_static tools/opcua/generate.py tools/opcua/c89_emitter.py
-      tools/opcua/plugin_emitter.py tools/opcua/history_emitter.py tools/opcua/server_emitter.py tools/opcua/node_emitter.py tools/opcua/producer_emitter.py tools/opcua/creation_emitter.py tools/opcua/client_emitter.py tools/opcua/async_client_emitter.py tools/opcua/core_client_emitter.py tests/opcua_types_fixture.bsd VERBATIM)
+      tools/opcua/plugin_emitter.py tools/opcua/history_emitter.py tools/opcua/server_emitter.py tools/opcua/node_emitter.py tools/opcua/producer_emitter.py tools/opcua/creation_emitter.py tools/opcua/client_emitter.py tools/opcua/async_client_emitter.py tools/opcua/core_client_emitter.py tools/opcua/value_emitter.py tests/opcua_types_fixture.bsd VERBATIM)
   add_executable(cpkt_opcua_types_fixture_test tests/opcua_types_fixture_test.c
     src/opcua_types.c "${_cpkt_fixture_dir}/native/open62541/types_generated.c")
   cpkt_use_local_runtime(cpkt_opcua_types_fixture_test)

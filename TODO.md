@@ -72,6 +72,11 @@ behind a callback interface.
 - [x] Expose complete identifier parse/print/extended URI forms, namespace
   mappings, exact 64-bit time/calendar/Unix conversions and native RNG helpers
   with independent native parity, ownership, preallocated-buffer and OOM tests.
+- [x] Expose all native public value constructors, null identifier/string/GUID
+  constants and C89 shorthand macros, numeric-range parsing, endpoint parsing,
+  number readers and constant-time comparison. Preserve borrowed addresses,
+  native owned/partial allocation results and parser outputs with native parity
+  and allocation-failure tests.
 - [x] Expose typed server-local async read/write/call submissions and context
   cancellation with synchronous completion, native pending results, timeout,
   shutdown, and conversion/allocation error coverage. Producer-side async

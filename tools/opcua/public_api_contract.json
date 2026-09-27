@@ -1319,35 +1319,43 @@
     },
     "UA_EXPANDEDNODEID": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID ( const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID"
     },
     "UA_EXPANDEDNODEID_BYTESTRING": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID_BYTESTRING ( UA_UInt16 nsIndex , char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_BYTESTRING"
     },
     "UA_EXPANDEDNODEID_BYTESTRING_ALLOC": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID_BYTESTRING_ALLOC ( UA_UInt16 nsIndex , const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_BYTESTRING_ALLOC"
     },
     "UA_EXPANDEDNODEID_NODEID": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID_NODEID ( UA_NodeId nodeId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_NODEID"
     },
     "UA_EXPANDEDNODEID_NUMERIC": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID_NUMERIC ( UA_UInt16 nsIndex , UA_UInt32 identifier )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_NUMERIC"
     },
     "UA_EXPANDEDNODEID_STRING": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID_STRING ( UA_UInt16 nsIndex , char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_STRING"
     },
     "UA_EXPANDEDNODEID_STRING_ALLOC": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID_STRING_ALLOC ( UA_UInt16 nsIndex , const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_STRING_ALLOC"
     },
     "UA_EXPANDEDNODEID_STRING_GUID": {
       "declaration": "UA_ExpandedNodeId UA_EXPANDEDNODEID_STRING_GUID ( UA_UInt16 nsIndex , UA_Guid guid )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_STRING_GUID"
     },
     "UA_EventFilter_parse": {
       "declaration": "UA_StatusCode UA_EventFilter_parse ( UA_EventFilter * filter , UA_ByteString content , UA_EventFilterParserOptions * options )",
@@ -1414,7 +1422,8 @@
     },
     "UA_GUID": {
       "declaration": "UA_Guid UA_GUID ( const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_GUID"
     },
     "UA_Guid_parse": {
       "declaration": "UA_StatusCode UA_Guid_parse ( UA_Guid * guid , const UA_String str )",
@@ -1531,11 +1540,13 @@
     },
     "UA_LOCALIZEDTEXT": {
       "declaration": "UA_LocalizedText UA_LOCALIZEDTEXT ( char * locale , char * text )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_LOCALIZEDTEXT"
     },
     "UA_LOCALIZEDTEXT_ALLOC": {
       "declaration": "UA_LocalizedText UA_LOCALIZEDTEXT_ALLOC ( const char * locale , const char * text )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_LOCALIZEDTEXT_ALLOC"
     },
     "UA_LOCK": {
       "declaration": "void UA_LOCK ( UA_Lock * lock )",
@@ -1611,35 +1622,43 @@
     },
     "UA_NODEID": {
       "declaration": "UA_NodeId UA_NODEID ( const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID"
     },
     "UA_NODEID_BYTESTRING": {
       "declaration": "UA_NodeId UA_NODEID_BYTESTRING ( UA_UInt16 nsIndex , char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID_BYTESTRING"
     },
     "UA_NODEID_BYTESTRING_ALLOC": {
       "declaration": "UA_NodeId UA_NODEID_BYTESTRING_ALLOC ( UA_UInt16 nsIndex , const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID_BYTESTRING_ALLOC"
     },
     "UA_NODEID_GUID": {
       "declaration": "UA_NodeId UA_NODEID_GUID ( UA_UInt16 nsIndex , UA_Guid guid )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID_GUID"
     },
     "UA_NODEID_NUMERIC": {
       "declaration": "UA_NodeId UA_NODEID_NUMERIC ( UA_UInt16 nsIndex , UA_UInt32 identifier )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID_NUMERIC"
     },
     "UA_NODEID_STRING": {
       "declaration": "UA_NodeId UA_NODEID_STRING ( UA_UInt16 nsIndex , char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID_STRING"
     },
     "UA_NODEID_STRING_ALLOC": {
       "declaration": "UA_NodeId UA_NODEID_STRING_ALLOC ( UA_UInt16 nsIndex , const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID_STRING_ALLOC"
     },
     "UA_NUMERICRANGE": {
       "declaration": "UA_NumericRange UA_NUMERICRANGE ( const char * s )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NUMERICRANGE"
     },
     "UA_NamespaceMapping_clear": {
       "declaration": "void UA_NamespaceMapping_clear ( UA_NamespaceMapping * nm )",
@@ -1840,7 +1859,8 @@
     },
     "UA_NumericRange_parse": {
       "declaration": "UA_StatusCode UA_NumericRange_parse ( UA_NumericRange * range , const UA_String str )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NumericRange_parse"
     },
     "UA_PubSubConnectionConfig_clear": {
       "declaration": "void UA_PubSubConnectionConfig_clear ( UA_PubSubConnectionConfig * cfg )",
@@ -1884,11 +1904,13 @@
     },
     "UA_QUALIFIEDNAME": {
       "declaration": "UA_QualifiedName UA_QUALIFIEDNAME ( UA_UInt16 nsIndex , char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QUALIFIEDNAME"
     },
     "UA_QUALIFIEDNAME_ALLOC": {
       "declaration": "UA_QualifiedName UA_QUALIFIEDNAME_ALLOC ( UA_UInt16 nsIndex , const char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_QUALIFIEDNAME_ALLOC"
     },
     "UA_QualifiedName_hash": {
       "declaration": "UA_UInt32 UA_QualifiedName_hash ( const UA_QualifiedName * q )",
@@ -1966,7 +1988,8 @@
     },
     "UA_STRING": {
       "declaration": "UA_String UA_STRING ( char * chars )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_STRING"
     },
     "UA_SecurityPolicy_Aes128Sha256RsaOaep": {
       "declaration": "UA_StatusCode UA_SecurityPolicy_Aes128Sha256RsaOaep ( UA_SecurityPolicy * policy , const UA_ByteString localCertificate , const UA_ByteString localPrivateKey , const UA_Logger * logger )",
@@ -3173,7 +3196,8 @@
     },
     "UA_constantTimeEqual": {
       "declaration": "UA_Boolean UA_constantTimeEqual ( const void * ptr1 , const void * ptr2 , size_t length )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_constantTimeEqual"
     },
     "UA_copy": {
       "declaration": "UA_StatusCode UA_copy ( const void * src , void * dst , const UA_DataType * type )",
@@ -3243,11 +3267,13 @@
     },
     "UA_parseEndpointUrl": {
       "declaration": "UA_StatusCode UA_parseEndpointUrl ( const UA_String * endpointUrl , UA_String * outHostname , UA_UInt16 * outPort , UA_String * outPath )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_parseEndpointUrl"
     },
     "UA_parseEndpointUrlEthernet": {
       "declaration": "UA_StatusCode UA_parseEndpointUrlEthernet ( const UA_String * endpointUrl , UA_String * target , UA_UInt16 * vid , UA_Byte * pcp )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_parseEndpointUrlEthernet"
     },
     "UA_print": {
       "declaration": "UA_StatusCode UA_print ( const void * p , const UA_DataType * type , UA_String * output )",
@@ -3265,11 +3291,13 @@
     },
     "UA_readNumber": {
       "declaration": "size_t UA_readNumber ( const UA_Byte * buf , size_t buflen , UA_UInt32 * number )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_readNumber"
     },
     "UA_readNumberWithBase": {
       "declaration": "size_t UA_readNumberWithBase ( const UA_Byte * buf , size_t buflen , UA_UInt32 * number , UA_Byte base )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_readNumberWithBase"
     },
     "__UA_Client_AsyncService": {
       "declaration": "UA_StatusCode __UA_Client_AsyncService ( UA_Client * client , const void * request , const UA_DataType * requestType , UA_ClientAsyncServiceCallback callback , const UA_DataType * responseType , void * userdata , UA_UInt32 * requestId )",
@@ -4136,7 +4164,8 @@
   "variables": {
     "UA_BYTESTRING_NULL": {
       "declaration": "const UA_ByteString UA_BYTESTRING_NULL",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_BYTESTRING_NULL"
     },
     "UA_ConnectionConfig_default": {
       "declaration": "const UA_ConnectionConfig UA_ConnectionConfig_default",
@@ -4148,11 +4177,13 @@
     },
     "UA_EXPANDEDNODEID_NULL": {
       "declaration": "const UA_ExpandedNodeId UA_EXPANDEDNODEID_NULL",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_EXPANDEDNODEID_NULL"
     },
     "UA_GUID_NULL": {
       "declaration": "const UA_Guid UA_GUID_NULL",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_GUID_NULL"
     },
     "UA_KEYVALUEMAP_NULL": {
       "declaration": "const UA_KeyValueMap UA_KEYVALUEMAP_NULL",
@@ -4173,7 +4204,8 @@
     },
     "UA_NODEID_NULL": {
       "declaration": "const UA_NodeId UA_NODEID_NULL",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_NODEID_NULL"
     },
     "UA_ObjectAttributes_default": {
       "declaration": "const UA_ObjectAttributes UA_ObjectAttributes_default",
@@ -4201,7 +4233,8 @@
     },
     "UA_STRING_NULL": {
       "declaration": "const UA_String UA_STRING_NULL",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_STRING_NULL"
     },
     "UA_TYPES": {
       "declaration": "UA_DataType UA_TYPES [ 388 ]",

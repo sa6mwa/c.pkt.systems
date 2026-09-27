@@ -508,3 +508,105 @@ void cpkt_opcua_random_seed_deterministic(cpkt_opcua_UInt64 seed) {
   UA_random_seed_deterministic(((UA_UInt64)seed.high32 << 32) | seed.low32);
 }
 cpkt_opcua_UInt32 cpkt_opcua_UInt32_random(void) { return UA_UInt32_random(); }
+
+/* A parsed range transfers its native allocation. Check the public dimension
+ * layout and retype each malloc-backed element through memcpy, rather than
+ * accessing a native struct through an incompatible C89 struct pointer. */
+typedef char cpkt_range_dimension_layout
+    [(sizeof(cpkt_opcua_NumericRangeDimension) ==
+          sizeof(UA_NumericRangeDimension) &&
+      offsetof(cpkt_opcua_NumericRangeDimension, min) ==
+          offsetof(UA_NumericRangeDimension, min) &&
+      offsetof(cpkt_opcua_NumericRangeDimension, max) ==
+          offsetof(UA_NumericRangeDimension, max))
+         ? 1
+         : -1];
+static cpkt_opcua_NumericRange cpkt_range_take(UA_NumericRange native) {
+  cpkt_opcua_NumericRange out;
+  cpkt_opcua_NumericRangeDimension dimension;
+  size_t i;
+  for (i = 0; i < native.dimensionsSize; ++i) {
+    dimension.min = native.dimensions[i].min;
+    dimension.max = native.dimensions[i].max;
+    memcpy((unsigned char *)native.dimensions + i * sizeof(dimension),
+           &dimension, sizeof(dimension));
+  }
+  out.dimensionsSize = native.dimensionsSize;
+  out.dimensions = (cpkt_opcua_NumericRangeDimension *)native.dimensions;
+  return out;
+}
+cpkt_opcua_StatusCode
+cpkt_opcua_NumericRange_parse(cpkt_opcua_NumericRange *range,
+                              cpkt_opcua_String text) {
+  UA_NumericRange native;
+  UA_String input;
+  UA_StatusCode status;
+  if (!range || (!text.data && text.length))
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  memset(&native, 0, sizeof(native));
+  input = cpkt_string_view(&text);
+  /* Native readNumber asserts a non-NULL buffer even with zero length. */
+  if (!input.data)
+    input.data = (UA_Byte *)"";
+  status = UA_NumericRange_parse(&native, input);
+  if (!status)
+    *range = cpkt_range_take(native);
+  return status;
+}
+void cpkt_opcua_NumericRange_clear(cpkt_opcua_NumericRange *range) {
+  if (!range)
+    return;
+  UA_free(range->dimensions);
+  memset(range, 0, sizeof(*range));
+}
+cpkt_opcua_StatusCode cpkt_opcua_parseEndpointUrl(const cpkt_opcua_String *url,
+                                                  cpkt_opcua_String *hostname,
+                                                  cpkt_opcua_UInt16 *port,
+                                                  cpkt_opcua_String *path) {
+  UA_String input, native_hostname, native_path;
+  UA_StatusCode status;
+  if (!url || !hostname || !port || (!url->data && url->length))
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  input = cpkt_string_view(url);
+  native_hostname = cpkt_string_view(hostname);
+  native_path = path ? cpkt_string_view(path) : UA_STRING_NULL;
+  status = UA_parseEndpointUrl(&input, &native_hostname, port,
+                               path ? &native_path : NULL);
+  cpkt_string_take(hostname, native_hostname);
+  if (path)
+    cpkt_string_take(path, native_path);
+  return status;
+}
+cpkt_opcua_StatusCode cpkt_opcua_parseEndpointUrlEthernet(
+    const cpkt_opcua_String *url, cpkt_opcua_String *target,
+    cpkt_opcua_UInt16 *vid, cpkt_opcua_Byte *pcp) {
+  UA_String input, native_target;
+  UA_StatusCode status;
+  if (!url || !target || !vid || !pcp || (!url->data && url->length))
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  input = cpkt_string_view(url);
+  native_target = cpkt_string_view(target);
+  status = UA_parseEndpointUrlEthernet(&input, &native_target, vid, pcp);
+  cpkt_string_take(target, native_target);
+  return status;
+}
+size_t cpkt_opcua_readNumber(const cpkt_opcua_Byte *buffer, size_t length,
+                             cpkt_opcua_UInt32 *number) {
+  if (!buffer || !number)
+    return 0;
+  return UA_readNumber(buffer, length, number);
+}
+size_t cpkt_opcua_readNumberWithBase(const cpkt_opcua_Byte *buffer,
+                                     size_t length, cpkt_opcua_UInt32 *number,
+                                     cpkt_opcua_Byte base) {
+  if (!buffer || !number)
+    return 0;
+  return UA_readNumberWithBase(buffer, length, number, base);
+}
+cpkt_opcua_Boolean cpkt_opcua_constantTimeEqual(const void *first,
+                                                const void *second,
+                                                size_t length) {
+  if ((!first || !second) && length)
+    return 0;
+  return UA_constantTimeEqual(first, second, length);
+}

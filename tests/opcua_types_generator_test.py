@@ -26,6 +26,7 @@ import creation_emitter
 import client_emitter
 import async_client_emitter
 import core_client_emitter
+import value_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -195,6 +196,30 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
     else:
         raise AssertionError('Missing native session-state enum was accepted')
     common_core.write_text(original_common)
+    value_types = changed_headers / 'types.h'
+    value_types.chmod(0o644)
+    original_value_types = value_types.read_text()
+    value_public, value_private = value_emitter.emit_values(changed_headers)
+    assert len(value_emitter.declarations(original_value_types)) == 22
+    for _, name, _ in value_emitter.declarations(original_value_types):
+        assert 'cpkt_opcua_' + name + '(' in '\n'.join(value_public)
+        assert 'UA_' + name + '(' in '\n'.join(value_private)
+    for old, new in (
+        ('UA_NODEID_NUMERIC(UA_UInt16', 'UA_NODEID_NUMERIC_CHANGED(UA_UInt16'),
+        ('UA_NODEID_NUMERIC(UA_UInt16 nsIndex, UA_UInt32 identifier)',
+         'UA_NODEID_NUMERIC(UA_UInt16 nsIndex, UA_UInt64 identifier)'),
+        ('UA_Guid guid);', 'UA_Guid *guid);'),
+        ('UA_GUID_NULL;', 'UA_GUID_NULL_CHANGED;'),
+    ):
+        assert old in original_value_types
+        value_types.write_text(original_value_types.replace(old, new, 1))
+        try:
+            value_emitter.emit_values(changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed public value constructor was accepted: ' + old)
+    value_types.write_text(original_value_types)
     server = changed_headers / 'server.h'
     server.chmod(0o644)
     original_server = server.read_text()

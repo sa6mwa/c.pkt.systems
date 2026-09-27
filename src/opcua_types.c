@@ -40,6 +40,12 @@ static UA_StatusCode
 cpkt_typed_service(cpkt_opcua_client *, const void *, void *,
                    const cpkt_opcua_Type *, const cpkt_opcua_Type *,
                    void (*)(UA_Client *, const void *, void *));
+static UA_String cpkt_string_view(const cpkt_opcua_String *);
+static void cpkt_string_take(cpkt_opcua_String *, UA_String);
+static UA_NodeId cpkt_nodeid_view(const cpkt_opcua_NodeId *);
+static cpkt_opcua_NodeId cpkt_nodeid_take(UA_NodeId);
+static cpkt_opcua_ExpandedNodeId cpkt_expanded_take(UA_ExpandedNodeId);
+static cpkt_opcua_NumericRange cpkt_range_take(UA_NumericRange);
 #include "opcua_types_metadata.inc"
 
 /** Implements the ownership and conversion contract in <cpkt/opcua_types.h>. */

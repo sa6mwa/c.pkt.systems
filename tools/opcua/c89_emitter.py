@@ -11,6 +11,7 @@ from server_emitter import emit_server
 from client_emitter import emit_client
 from async_client_emitter import emit_async_client
 from core_client_emitter import emit_core_client
+from value_emitter import emit_values
 
 
 def emit(generator, output, client_header):
@@ -188,6 +189,8 @@ def emit(generator, output, client_header):
     metadata.extend(async_client_metadata)
     core_client_header, core_client_metadata = emit_core_client(index, Path(client_header).parent)
     metadata.extend(core_client_metadata)
+    value_header, value_metadata = emit_values(Path(client_header).parent)
+    metadata.extend(value_metadata)
     header.extend([
         '/** Read all public DataValue fields through the native server read API. */',
         'cpkt_opcua_StatusCode cpkt_opcua_server_read_typed(cpkt_opcua_server *server, const cpkt_opcua_ReadValueId *request, cpkt_opcua_TimestampsToReturn timestamps, cpkt_opcua_DataValue *response);',
@@ -199,6 +202,7 @@ def emit(generator, output, client_header):
         *client_header_output,
         *async_client_header,
         *core_client_header,
+        *value_header,
         '#ifdef __cplusplus', '}', '#endif', '#endif', ''])
     root = Path(output)
     root.mkdir(parents=True, exist_ok=True)

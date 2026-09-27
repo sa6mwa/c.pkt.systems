@@ -357,7 +357,380 @@ static void randoms(void) {
   cpkt_opcua_random_seed(seed);
   (void)cpkt_opcua_UInt32_random();
 }
+
+static void factory(int kind, char *first, char *second, int failure_position) {
+  union {
+    cpkt_opcua_String string;
+    cpkt_opcua_Guid guid;
+    cpkt_opcua_NodeId node;
+    cpkt_opcua_ExpandedNodeId expanded;
+    cpkt_opcua_QualifiedName name;
+    cpkt_opcua_LocalizedText localized;
+  } value;
+  cpkt_opcua_Guid guid = {
+      0xdeadbeefU, 0xabcd, 0xef12, {0, 127, 128, 255, 1, 2, 3, 4}};
+  struct cpkt_value_factory_observed native;
+  cpkt_opcua_ByteString encoded;
+  const void *borrowed = NULL, *borrowed_second = NULL;
+  const cpkt_opcua_Type *type;
+  unsigned int aliases;
+  int owned = 0, injected = 0;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (failure_position >= 0)
+    cpkt_types_fail_after((size_t)failure_position);
+#endif
+  cpkt_types_peer_value_factory(kind, first, second, failure_position >= 0,
+                                &native);
+  CHECK(!native.status);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (failure_position >= 0)
+    cpkt_types_fail_after((size_t)failure_position);
+#endif
+  memset(&value, 0, sizeof(value));
+  switch (kind) {
+  case 0:
+    value.string = cpkt_opcua_STRING(first);
+    borrowed = value.string.data;
+    break;
+  case 1:
+    value.guid = cpkt_opcua_GUID(first);
+    break;
+  case 2:
+    value.node = cpkt_opcua_NODEID(first);
+    owned = 1;
+    break;
+  case 3:
+    value.node = cpkt_opcua_NODEID_NUMERIC(65535, 0xfedcba98U);
+    break;
+  case 4:
+    value.node = cpkt_opcua_NODEID_STRING(65535, first);
+    borrowed = value.node.identifier.string.data;
+    break;
+  case 5:
+    value.node = cpkt_opcua_NODEID_STRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 6:
+    value.node = cpkt_opcua_NODEID_GUID(65535, guid);
+    break;
+  case 7:
+    value.node = cpkt_opcua_NODEID_BYTESTRING(65535, first);
+    borrowed = value.node.identifier.byteString.data;
+    break;
+  case 8:
+    value.node = cpkt_opcua_NODEID_BYTESTRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 9:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID(first);
+    owned = 1;
+    break;
+  case 10:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_NUMERIC(65535, 0xfedcba98U);
+    break;
+  case 11:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_STRING(65535, first);
+    borrowed = value.expanded.nodeId.identifier.string.data;
+    break;
+  case 12:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_STRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 13:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_STRING_GUID(65535, guid);
+    break;
+  case 14:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_BYTESTRING(65535, first);
+    borrowed = value.expanded.nodeId.identifier.byteString.data;
+    break;
+  case 15:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_BYTESTRING_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 16:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_NODEID(
+        cpkt_opcua_NODEID_STRING(65535, first));
+    borrowed = value.expanded.nodeId.identifier.string.data;
+    break;
+  case 17:
+    value.name = cpkt_opcua_QUALIFIEDNAME(65535, first);
+    borrowed = value.name.name.data;
+    break;
+  case 18:
+    value.name = cpkt_opcua_QUALIFIEDNAME_ALLOC(65535, first);
+    owned = 1;
+    break;
+  case 19:
+    value.localized = cpkt_opcua_LOCALIZEDTEXT(first, second);
+    borrowed = value.localized.locale.data;
+    borrowed_second = value.localized.text.data;
+    break;
+  case 20:
+    value.localized = cpkt_opcua_LOCALIZEDTEXT_ALLOC(first, second);
+    owned = 1;
+    break;
+  case 21:
+    value.string = cpkt_opcua_STRING_NULL;
+    break;
+  case 22:
+    value.string = cpkt_opcua_BYTESTRING_NULL;
+    break;
+  case 23:
+    value.guid = cpkt_opcua_GUID_NULL;
+    break;
+  case 24:
+    value.node = cpkt_opcua_NODEID_NULL;
+    break;
+  case 25:
+    value.expanded = cpkt_opcua_EXPANDEDNODEID_NULL;
+    break;
+  default:
+    abort();
+  }
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (failure_position >= 0)
+    injected = cpkt_types_fail_stop();
+#endif
+  CHECK(injected == native.injected);
+  aliases = (borrowed && borrowed == first ? 1U : 0U) |
+            (borrowed_second && borrowed_second == second ? 2U : 0U);
+  CHECK(aliases == native.aliases);
+  type = cpkt_opcua_type_at(native.type);
+  cpkt_opcua_ByteString_init(&encoded);
+  CHECK(!cpkt_opcua_type_encode_binary(&value, type, &encoded));
+  CHECK(encoded.length == native.length &&
+        !memcmp(encoded.data, native.bytes, encoded.length));
+  cpkt_opcua_ByteString_clear(&encoded);
+  cpkt_types_native_free(native.bytes);
+  if (owned)
+    cpkt_opcua_type_clear(&value, type);
+}
+static void factories(void) {
+  int kind;
+  cpkt_opcua_String literal = cpkt_opcua_STRING_STATIC("literal");
+  cpkt_opcua_ByteString bytes;
+  cpkt_opcua_NodeId node;
+  cpkt_opcua_ExpandedNodeId expanded;
+  char ordinary[] = "native constructor";
+  char second[] = "second constructor";
+  char guid[] = "deadbeef-abcd-ef12-007f-80ff01020304";
+  char parsed[] = "ns=65535;s=native constructor";
+  char parsed_expanded[] = "svr=4294967295;nsu=urn:constructor;s=native";
+  for (kind = 0; kind < 26; ++kind) {
+    char *first = kind == 1   ? guid
+                  : kind == 2 ? parsed
+                  : kind == 9 ? parsed_expanded
+                              : ordinary;
+    factory(kind, first, second, -1);
+    if (kind == 1 || kind == 2 || kind == 9)
+      factory(kind, ordinary, second, -1);
+    if (kind != 1 && kind != 2 && kind != 9)
+      factory(kind, NULL, NULL, -1);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+    if (kind == 2 || kind == 5 || kind == 8 || kind == 9 || kind == 12 ||
+        kind == 15 || kind == 18 || kind == 20) {
+      int position;
+      for (position = 0; position < 12; ++position)
+        factory(kind, first, second, position);
+    }
+#endif
+  }
+  CHECK(literal.length == 7 && !memcmp(literal.data, "literal", 7));
+  bytes = cpkt_opcua_BYTESTRING(ordinary);
+  CHECK(bytes.data == (unsigned char *)ordinary);
+  bytes = cpkt_opcua_STRING_ALLOC(ordinary);
+  CHECK(bytes.length == strlen(ordinary) &&
+        bytes.data != (unsigned char *)ordinary);
+  cpkt_opcua_ByteString_clear(&bytes);
+  bytes = cpkt_opcua_BYTESTRING_ALLOC(ordinary);
+  CHECK(bytes.length == strlen(ordinary));
+  cpkt_opcua_ByteString_clear(&bytes);
+  node = cpkt_opcua_NS0ID(BASEOBJECTTYPE);
+  CHECK(!node.namespaceIndex &&
+        node.identifier.numeric == CPKT_OPCUA_NS0ID_BASEOBJECTTYPE);
+  expanded = cpkt_opcua_NS0EXID(BASEOBJECTTYPE);
+  CHECK(!expanded.nodeId.namespaceIndex &&
+        expanded.nodeId.identifier.numeric == node.identifier.numeric);
+  node = cpkt_opcua_NODEID_STRING(1, ordinary);
+  expanded = cpkt_opcua_NODEID2EXPANDEDNODEID(node);
+  CHECK(expanded.nodeId.identifier.string.data == node.identifier.string.data);
+}
+static void range_case(const char *input, int shorthand, int failure_position) {
+  struct cpkt_range_observed native;
+  cpkt_opcua_NumericRange range;
+  cpkt_opcua_StatusCode status = 0;
+  cpkt_opcua_String source;
+  size_t i;
+  int injected = 0;
+  source.length = input ? strlen(input) : 0;
+  source.data = (cpkt_opcua_Byte *)input;
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (failure_position >= 0)
+    cpkt_types_fail_after((size_t)failure_position);
+#endif
+  cpkt_types_peer_range(input, source.length, shorthand, failure_position >= 0,
+                        &native);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (failure_position >= 0)
+    cpkt_types_fail_after((size_t)failure_position);
+#endif
+  memset(&range, 0, sizeof(range));
+  if (shorthand)
+    range = cpkt_opcua_NUMERICRANGE(input);
+  else
+    status = cpkt_opcua_NumericRange_parse(&range, source);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  if (failure_position >= 0)
+    injected = cpkt_types_fail_stop();
+#endif
+  CHECK(status == native.status && injected == native.injected &&
+        range.dimensionsSize == native.count);
+  for (i = 0; i < native.count; ++i)
+    CHECK(range.dimensions[i].min == native.bounds[2 * i] &&
+          range.dimensions[i].max == native.bounds[2 * i + 1]);
+  cpkt_opcua_NumericRange_clear(&range);
+  CHECK(!range.dimensions && !range.dimensionsSize);
+}
+static void ranges(void) {
+  static const char *inputs[] = {"0",
+                                 "0:4294967295",
+                                 "0:2,4,4294967295",
+                                 "1:2,3:4,5:6,7:8,9:10,11:12",
+                                 "4294967296",
+                                 "",
+                                 "1:1",
+                                 "2:1",
+                                 "1,",
+                                 "x",
+                                 "-1"};
+  size_t i;
+  int shorthand;
+  cpkt_opcua_NumericRange range;
+  cpkt_opcua_NumericRangeDimension seed = {7, 11};
+  for (i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i)
+    for (shorthand = 0; shorthand < 2; ++shorthand)
+      range_case(inputs[i], shorthand, -1);
+  range_case(NULL, 0, -1);
+  range_case(NULL, 1, -1);
+  range.dimensions = &seed;
+  range.dimensionsSize = 1;
+  CHECK(cpkt_opcua_NumericRange_parse(&range, text("1:1")) ==
+            CPKT_OPCUA_STATUSCODE_BADINDEXRANGEINVALID &&
+        range.dimensions == &seed && range.dimensionsSize == 1);
+  CHECK(cpkt_opcua_NumericRange_parse(NULL, text("1")) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  cpkt_opcua_NumericRange_clear(NULL);
+#ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  for (i = 0; i < 8; ++i)
+    for (shorthand = 0; shorthand < 2; ++shorthand)
+      range_case(inputs[3], shorthand, (int)i);
+#endif
+}
+static void endpoint_case(const char *input, size_t length, int ethernet,
+                          int with_path) {
+  struct cpkt_endpoint_observed native;
+  cpkt_opcua_String url, host, path;
+  cpkt_opcua_UInt16 port = 4242;
+  cpkt_opcua_Byte pcp = 6;
+  cpkt_opcua_StatusCode status;
+  char seed[] = "seed";
+  url.length = length;
+  url.data = (cpkt_opcua_Byte *)input;
+  host = text(seed);
+  path = text(seed);
+  cpkt_types_peer_endpoint(input, length, seed, ethernet, with_path, &native);
+  status = ethernet
+               ? cpkt_opcua_parseEndpointUrlEthernet(&url, &host, &port, &pcp)
+               : cpkt_opcua_parseEndpointUrl(&url, &host, &port,
+                                             with_path ? &path : NULL);
+  CHECK(status == native.status && host.data == native.host &&
+        host.length == native.host_length && port == native.port &&
+        pcp == native.pcp);
+  if (with_path && !ethernet)
+    CHECK(path.data == native.path && path.length == native.path_length);
+}
+static void endpoints(void) {
+  static const char *inputs[] = {"opc.tcp://host",
+                                 "opc.tcp://host:65535/a/b/",
+                                 "opc.tcp://[::1]:4840/path",
+                                 "opc.tcp://[::1]",
+                                 "opc.tcp://host/",
+                                 "opc.tcp://host//",
+                                 "opc.tcp://host:65536/path",
+                                 "opc.tcp://host:0",
+                                 "opc.tcp://host:",
+                                 "opc.tcp://host:12x/path",
+                                 "opc.tcp://[::1",
+                                 "https://host:443/path",
+                                 "opc.eth://01-23-45-67-89-ab:4096.7",
+                                 "opc.eth://01-23-45-67-89-ab:4097.7",
+                                 "opc.eth://01-23-45-67-89-ab:12.8",
+                                 "opc.eth://01-23-45-67-89-ab:12.0",
+                                 "opc.eth://01-23-45-67-89-ab",
+                                 "bad",
+                                 ""};
+  static const char bounded[] = {'o', 'p', 'c', '.', 't', 'c', 'p', ':',
+                                 '/', '/', 'h', ':', '1', '/', 'x'};
+  size_t i;
+  int mode, path;
+  cpkt_opcua_String url = text("opc.tcp://host"), host;
+  unsigned short port = 0;
+  for (i = 0; i < sizeof(inputs) / sizeof(inputs[0]); ++i)
+    for (mode = 0; mode < 2; ++mode)
+      for (path = 0; path < 2; ++path)
+        endpoint_case(inputs[i], strlen(inputs[i]), mode, path);
+  endpoint_case(bounded, sizeof(bounded), 0, 1);
+  host = text("seed");
+  CHECK(cpkt_opcua_parseEndpointUrl(NULL, &host, &port, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_parseEndpointUrl(&url, NULL, &port, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  CHECK(cpkt_opcua_parseEndpointUrl(&url, &host, NULL, NULL) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+}
+static void readers(void) {
+  static const unsigned char bytes[] = "0123456789abcdefXYZ!";
+  static const unsigned char overflow[] = "429496729612345678901234567890";
+  unsigned int a, b;
+  size_t length, first, second, i;
+  unsigned int base;
+  unsigned char different[sizeof(bytes)];
+  for (base = 0; base < 256; ++base)
+    for (length = 0; length < sizeof(bytes); ++length) {
+      a = b = 0xdeadbeefU;
+      first = cpkt_types_peer_number(bytes, length, &a, (unsigned char)base, 0);
+      second =
+          cpkt_opcua_readNumberWithBase(bytes, length, &b, (unsigned char)base);
+      CHECK(first == second && a == b);
+    }
+  for (length = 0; length < sizeof(overflow); ++length) {
+    a = b = 0xdeadbeefU;
+    first = cpkt_types_peer_number(overflow, length, &a, 10, 1);
+    second = cpkt_opcua_readNumber(overflow, length, &b);
+    CHECK(first == second && a == b);
+  }
+  a = 7;
+  CHECK(!cpkt_opcua_readNumber(NULL, 0, &a) && a == 7);
+  CHECK(!cpkt_opcua_readNumber(bytes, sizeof(bytes), NULL));
+  CHECK(cpkt_opcua_constantTimeEqual(NULL, NULL, 0));
+  CHECK(!cpkt_opcua_constantTimeEqual(NULL, bytes, 1));
+  for (length = 0; length <= sizeof(bytes); ++length) {
+    CHECK(cpkt_opcua_constantTimeEqual(bytes, bytes, length) ==
+          cpkt_types_peer_constant_equal(bytes, bytes, length));
+    for (i = 0; i < sizeof(bytes); ++i) {
+      memcpy(different, bytes, sizeof(bytes));
+      different[i] ^= 0xff;
+      CHECK(cpkt_opcua_constantTimeEqual(bytes, different, length) ==
+            cpkt_types_peer_constant_equal(bytes, different, length));
+    }
+  }
+}
+
 void cpkt_types_test_identifiers(void) {
+  factories();
+  ranges();
+  endpoints();
+  readers();
   identifiers();
   randoms();
   namespaces();

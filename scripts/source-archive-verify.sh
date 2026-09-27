@@ -187,6 +187,7 @@ for required in \
   tools/opcua/creation_emitter.py \
   tools/opcua/async_client_emitter.py \
   tools/opcua/core_client_emitter.py \
+  tools/opcua/value_emitter.py \
   tools/opcua/client_emitter.py \
   tools/opcua/node_emitter.py \
   tools/opcua/public_api.py \
