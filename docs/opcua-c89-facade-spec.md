@@ -327,6 +327,26 @@ allocation-failure tests cover past/future deadlines, optional IDs, interval
 changes, reentrant cancellation, shutdown cleanup, inverse references and
 early termination.
 
+### Subscription binding coverage
+
+The public coverage contract recognizes the complete specialized client
+subscription and batch monitored-item interfaces already implemented by the
+C89 facade. This includes synchronous/asynchronous creation, subscription and
+item context access/replacement, native single deletion, and the generated
+modify/delete/publishing/monitoring/triggering service boundaries. Creation
+uses the native specialized functions, retaining their local subscription and
+monitored-item state rather than sending an equivalent raw service request.
+
+All native status, data, event, deletion and specialized completion callbacks
+retain their public data and original application contexts through C89 types.
+The facade adds explicit conversion status to distinguish representation
+failure from native service and per-operation status. Native data-change/event
+batch creation share a typed entry point with an explicit event selector;
+no event fields or nested values are discarded. Single-item creation helpers,
+attribute callbacks and other client helpers remain separate pending entries.
+Existing native-peer, integration, allocation-failure and destruction tests
+exercise these bindings; coverage classification does not add new behavior.
+
 ### Value-source and method producers
 
 The generated `cpkt_opcua_CallbackValueSource` and `cpkt_opcua_MethodCallback`

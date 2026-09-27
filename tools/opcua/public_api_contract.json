@@ -182,11 +182,13 @@
     },
     "UA_Client_MonitoredItem_getContext": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItem_getContext ( UA_Client * client , UA_UInt32 subscriptionId , UA_UInt32 monitoredItemId , void * * monContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_monitored_item_get_context"
     },
     "UA_Client_MonitoredItem_setContext": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItem_setContext ( UA_Client * client , UA_UInt32 subscriptionId , UA_UInt32 monitoredItemId , void * monContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_monitored_item_set_context"
     },
     "UA_Client_MonitoredItems_createDataChange": {
       "declaration": "UA_MonitoredItemCreateResult UA_Client_MonitoredItems_createDataChange ( UA_Client * client , UA_UInt32 subscriptionId , UA_TimestampsToReturn timestampsToReturn , const UA_MonitoredItemCreateRequest item , void * context , UA_Client_DataChangeNotificationCallback callback , UA_Client_DeleteMonitoredItemCallback deleteCallback )",
@@ -194,11 +196,13 @@
     },
     "UA_Client_MonitoredItems_createDataChanges": {
       "declaration": "UA_CreateMonitoredItemsResponse UA_Client_MonitoredItems_createDataChanges ( UA_Client * client , const UA_CreateMonitoredItemsRequest request , void * * contexts , UA_Client_DataChangeNotificationCallback * callbacks , UA_Client_DeleteMonitoredItemCallback * deleteCallbacks )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_monitored_items_create_typed"
     },
     "UA_Client_MonitoredItems_createDataChanges_async": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItems_createDataChanges_async ( UA_Client * client , const UA_CreateMonitoredItemsRequest request , void * * contexts , UA_Client_DataChangeNotificationCallback * callbacks , UA_Client_DeleteMonitoredItemCallback * deleteCallbacks , UA_ClientAsyncCreateMonitoredItemsCallback createCallback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_monitored_items_create_typed_async"
     },
     "UA_Client_MonitoredItems_createEvent": {
       "declaration": "UA_MonitoredItemCreateResult UA_Client_MonitoredItems_createEvent ( UA_Client * client , UA_UInt32 subscriptionId , UA_TimestampsToReturn timestampsToReturn , const UA_MonitoredItemCreateRequest item , void * context , UA_Client_EventNotificationCallback callback , UA_Client_DeleteMonitoredItemCallback deleteCallback )",
@@ -206,47 +210,58 @@
     },
     "UA_Client_MonitoredItems_createEvents": {
       "declaration": "UA_CreateMonitoredItemsResponse UA_Client_MonitoredItems_createEvents ( UA_Client * client , const UA_CreateMonitoredItemsRequest request , void * * contexts , UA_Client_EventNotificationCallback * callback , UA_Client_DeleteMonitoredItemCallback * deleteCallback )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_monitored_items_create_typed"
     },
     "UA_Client_MonitoredItems_createEvents_async": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItems_createEvents_async ( UA_Client * client , const UA_CreateMonitoredItemsRequest request , void * * contexts , UA_Client_EventNotificationCallback * callbacks , UA_Client_DeleteMonitoredItemCallback * deleteCallbacks , UA_ClientAsyncCreateMonitoredItemsCallback createCallback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_monitored_items_create_typed_async"
     },
     "UA_Client_MonitoredItems_delete": {
       "declaration": "UA_DeleteMonitoredItemsResponse UA_Client_MonitoredItems_delete ( UA_Client * client , const UA_DeleteMonitoredItemsRequest )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_delete"
     },
     "UA_Client_MonitoredItems_deleteSingle": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItems_deleteSingle ( UA_Client * client , UA_UInt32 subscriptionId , UA_UInt32 monitoredItemId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_monitored_item_delete_single"
     },
     "UA_Client_MonitoredItems_delete_async": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItems_delete_async ( UA_Client * client , const UA_DeleteMonitoredItemsRequest request , UA_ClientAsyncDeleteMonitoredItemsCallback callback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_delete_async"
     },
     "UA_Client_MonitoredItems_modify": {
       "declaration": "UA_ModifyMonitoredItemsResponse UA_Client_MonitoredItems_modify ( UA_Client * client , const UA_ModifyMonitoredItemsRequest request )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_modify"
     },
     "UA_Client_MonitoredItems_modify_async": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItems_modify_async ( UA_Client * client , const UA_ModifyMonitoredItemsRequest request , UA_ClientAsyncModifyMonitoredItemsCallback callback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_modify_async"
     },
     "UA_Client_MonitoredItems_setMonitoringMode": {
       "declaration": "UA_SetMonitoringModeResponse UA_Client_MonitoredItems_setMonitoringMode ( UA_Client * client , const UA_SetMonitoringModeRequest request )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_setMonitoringMode"
     },
     "UA_Client_MonitoredItems_setMonitoringMode_async": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItems_setMonitoringMode_async ( UA_Client * client , const UA_SetMonitoringModeRequest request , UA_ClientAsyncSetMonitoringModeCallback callback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_setMonitoringMode_async"
     },
     "UA_Client_MonitoredItems_setTriggering": {
       "declaration": "UA_SetTriggeringResponse UA_Client_MonitoredItems_setTriggering ( UA_Client * client , const UA_SetTriggeringRequest request )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_setTriggering"
     },
     "UA_Client_MonitoredItems_setTriggering_async": {
       "declaration": "UA_StatusCode UA_Client_MonitoredItems_setTriggering_async ( UA_Client * client , const UA_SetTriggeringRequest request , UA_ClientAsyncSetTriggeringCallback callback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_MonitoredItems_setTriggering_async"
     },
     "UA_Client_NamespaceGetIndex": {
       "declaration": "UA_StatusCode UA_Client_NamespaceGetIndex ( UA_Client * client , UA_String * namespaceUri , UA_UInt16 * namespaceIndex )",
@@ -324,43 +339,53 @@
     },
     "UA_Client_Subscriptions_create": {
       "declaration": "UA_CreateSubscriptionResponse UA_Client_Subscriptions_create ( UA_Client * client , const UA_CreateSubscriptionRequest request , void * subscriptionContext , UA_Client_StatusChangeNotificationCallback statusChangeCallback , UA_Client_DeleteSubscriptionCallback deleteCallback )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_subscription_create_typed"
     },
     "UA_Client_Subscriptions_create_async": {
       "declaration": "UA_StatusCode UA_Client_Subscriptions_create_async ( UA_Client * client , const UA_CreateSubscriptionRequest request , void * subscriptionContext , UA_Client_StatusChangeNotificationCallback statusChangeCallback , UA_Client_DeleteSubscriptionCallback deleteCallback , UA_ClientAsyncCreateSubscriptionCallback callback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_subscription_create_typed_async"
     },
     "UA_Client_Subscriptions_delete": {
       "declaration": "UA_DeleteSubscriptionsResponse UA_Client_Subscriptions_delete ( UA_Client * client , const UA_DeleteSubscriptionsRequest request )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_Subscriptions_delete"
     },
     "UA_Client_Subscriptions_deleteSingle": {
       "declaration": "UA_StatusCode UA_Client_Subscriptions_deleteSingle ( UA_Client * client , UA_UInt32 subscriptionId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_subscription_delete_single"
     },
     "UA_Client_Subscriptions_delete_async": {
       "declaration": "UA_StatusCode UA_Client_Subscriptions_delete_async ( UA_Client * client , const UA_DeleteSubscriptionsRequest request , UA_ClientAsyncDeleteSubscriptionsCallback callback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_Subscriptions_delete_async"
     },
     "UA_Client_Subscriptions_getContext": {
       "declaration": "UA_StatusCode UA_Client_Subscriptions_getContext ( UA_Client * client , UA_UInt32 subscriptionId , void * * subContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_subscription_get_context"
     },
     "UA_Client_Subscriptions_modify": {
       "declaration": "UA_ModifySubscriptionResponse UA_Client_Subscriptions_modify ( UA_Client * client , const UA_ModifySubscriptionRequest request )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_Subscriptions_modify"
     },
     "UA_Client_Subscriptions_modify_async": {
       "declaration": "UA_StatusCode UA_Client_Subscriptions_modify_async ( UA_Client * client , const UA_ModifySubscriptionRequest request , UA_ClientAsyncModifySubscriptionCallback callback , void * userdata , UA_UInt32 * requestId )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_Subscriptions_modify_async"
     },
     "UA_Client_Subscriptions_setContext": {
       "declaration": "UA_StatusCode UA_Client_Subscriptions_setContext ( UA_Client * client , UA_UInt32 subscriptionId , void * subContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_subscription_set_context"
     },
     "UA_Client_Subscriptions_setPublishingMode": {
       "declaration": "UA_SetPublishingModeResponse UA_Client_Subscriptions_setPublishingMode ( UA_Client * client , const UA_SetPublishingModeRequest request )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_client_service_Subscriptions_setPublishingMode"
     },
     "UA_Client_activateCurrentSession": {
       "declaration": "UA_StatusCode UA_Client_activateCurrentSession ( UA_Client * client )",
@@ -3150,23 +3175,28 @@
     },
     "UA_ClientAsyncCreateSubscriptionCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncCreateSubscriptionCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_CreateSubscriptionResponse * response )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_subscription_created_fn"
     },
     "UA_ClientAsyncDeleteMonitoredItemsCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncDeleteMonitoredItemsCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_DeleteMonitoredItemsResponse * response )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_service_MonitoredItems_delete_async_fn"
     },
     "UA_ClientAsyncDeleteSubscriptionsCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncDeleteSubscriptionsCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_DeleteSubscriptionsResponse * response )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_service_Subscriptions_delete_async_fn"
     },
     "UA_ClientAsyncModifyMonitoredItemsCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncModifyMonitoredItemsCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_ModifyMonitoredItemsResponse * response )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_service_MonitoredItems_modify_async_fn"
     },
     "UA_ClientAsyncModifySubscriptionCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncModifySubscriptionCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_ModifySubscriptionResponse * response )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_service_Subscriptions_modify_async_fn"
     },
     "UA_ClientAsyncOperationCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncOperationCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_StatusCode status , void * result )",
@@ -3270,11 +3300,13 @@
     },
     "UA_ClientAsyncSetMonitoringModeCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncSetMonitoringModeCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_SetMonitoringModeResponse * response )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_service_MonitoredItems_setMonitoringMode_async_fn"
     },
     "UA_ClientAsyncSetTriggeringCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncSetTriggeringCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_SetTriggeringResponse * response )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_service_MonitoredItems_setTriggering_async_fn"
     },
     "UA_ClientAsyncWriteCallback": {
       "declaration": "typedef void ( * UA_ClientAsyncWriteCallback ) ( UA_Client * client , void * userdata , UA_UInt32 requestId , UA_WriteResponse * wr )",
@@ -3298,23 +3330,28 @@
     },
     "UA_Client_DataChangeNotificationCallback": {
       "declaration": "typedef void ( * UA_Client_DataChangeNotificationCallback ) ( UA_Client * client , UA_UInt32 subId , void * subContext , UA_UInt32 monId , void * monContext , UA_DataValue * value )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_data_change_typed_fn"
     },
     "UA_Client_DeleteMonitoredItemCallback": {
       "declaration": "typedef void ( * UA_Client_DeleteMonitoredItemCallback ) ( UA_Client * client , UA_UInt32 subId , void * subContext , UA_UInt32 monId , void * monContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_monitored_delete_fn"
     },
     "UA_Client_DeleteSubscriptionCallback": {
       "declaration": "typedef void ( * UA_Client_DeleteSubscriptionCallback ) ( UA_Client * client , UA_UInt32 subId , void * subContext )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_subscription_delete_fn"
     },
     "UA_Client_EventNotificationCallback": {
       "declaration": "typedef void ( * UA_Client_EventNotificationCallback ) ( UA_Client * client , UA_UInt32 subId , void * subContext , UA_UInt32 monId , void * monContext , const UA_KeyValueMap eventFields )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_event_typed_fn"
     },
     "UA_Client_StatusChangeNotificationCallback": {
       "declaration": "typedef void ( * UA_Client_StatusChangeNotificationCallback ) ( UA_Client * client , UA_UInt32 subId , void * subContext , UA_StatusChangeNotification * notification )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_subscription_status_fn"
     },
     "UA_ConnectionConfig": {
       "declaration": "typedef struct { UA_UInt32 protocolVersion ; UA_UInt32 recvBufferSize ; UA_UInt32 sendBufferSize ; UA_UInt32 localMaxMessageSize ; UA_UInt32 remoteMaxMessageSize ; UA_UInt32 localMaxChunkCount ; UA_UInt32 remoteMaxChunkCount ; } UA_ConnectionConfig",
