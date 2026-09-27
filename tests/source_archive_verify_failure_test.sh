@@ -56,9 +56,11 @@ include/cpkt/sasl.h
 include/cpkt/postgres.h
 include/cpkt/sqlite.h
 include/cpkt/opcua_types_base.h
+include/cpkt/opcua_util.h
 include/cpkt/opcua_callbacks.h
 src/opcua_internal.h
 src/opcua_callbacks_impl.h
+src/opcua_util_impl.h
 src/opcua_plugins_impl.h
 src/opcua_history_impl.h
 src/opcua_types.c
@@ -76,6 +78,7 @@ tests/opcua_callbacks_test.c
 tests/opcua_plugins_test.c
 tests/opcua_history_backend_test.c
 tests/opcua_server_types_test.c
+tests/opcua_util_test.c
 tests/opcua_callbacks_test.h
 tests/opcua_types_native_peer.c
 tests/opcua_types_peer.h

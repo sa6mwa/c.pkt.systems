@@ -761,3 +761,41 @@ from one of its callbacks.
 These submissions do not yet expose the producer-side value-source and method
 completion tokens. Those require a distinct lifetime binding for upstream's
 stable callback output addresses and remain tracked as pending public API.
+
+### Public value utilities
+
+`<cpkt/opcua_util.h>` is also included by the generated types header. It exposes
+native Variant predicates, ownership setters and copy setters, decoded
+ExtensionObject ownership/type helpers, status predicates/names, sized-string
+allocation/append, native base64/hash/secure-zero helpers, and array
+resize/move-append/copy-append. Predicates pass borrowed native views without
+allocating or interpreting the payload. Ownership setters transfer C89 storage
+without duplicating it. Clear old destination contents before setters: native
+setters initialize their destinations rather than freeing previous contents.
+Scalar-copy failure leaves the destination unchanged; array-copy and
+ExtensionObject-copy failure leave initialized empty destinations.
+
+Array resizing uses the upstream allocation procedure with C89 element sizes
+and clear helpers. Growth initializes the new elements. Shrinking stages the
+removed elements' shallow representations before realloc, freeing their nested
+storage only after success. Failure leaves the original array, length, and
+owned elements intact. Move-append empties the source only on success; its
+source must not alias the array. Copy-append can copy an existing array element
+and retains upstream's 512-byte native-type-size limit. Zero-length no-op resize
+preserves NULL versus empty sentinel; shrinking to zero produces the sentinel.
+
+`cpkt_opcua_type_order` converts complete records and invokes native `UA_order`.
+It reports conversion/allocation errors separately from the order value; ignore
+the order output unless status is Good. The existing Boolean equality helper
+still returns false for conversion/allocation errors, as its header documents.
+String buffers use the configured native allocator. Append destinations must
+own their buffer and sources must not alias it. Base64 codecs preserve native
+empty-message and error behavior, including the upstream decoder's
+BadInternalError for allocation failure. These codecs materialize one value,
+like their native APIs, and make no streaming claim.
+
+Independent C99 peers verify Variant and ExtensionObject predicate combinations,
+status severities, and raw-byte hashing. C89 tests verify exact signed 64-bit
+ordering, ownership transfer, nested deep copies, array-element aliasing in
+copy-append, shrink/growth, base64 byte fidelity, secure zeroing, invalid inputs,
+and injected allocation failures preserving the documented state.

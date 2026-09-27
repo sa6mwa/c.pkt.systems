@@ -25,5 +25,13 @@ struct cpkt_async_peer {
 };
 unsigned int cpkt_types_peer_async_install(void *server, void *state);
 unsigned int cpkt_types_peer_async_complete(void *server, void *state);
+unsigned int cpkt_types_peer_variant_predicates(size_t type, size_t query,
+                                                size_t length, int state);
+unsigned int cpkt_types_peer_extension_predicate(int encoding, size_t type,
+                                                 size_t query, int populated);
+unsigned int cpkt_types_peer_bytes_hash(unsigned int initial,
+                                        const unsigned char *bytes,
+                                        size_t length);
+unsigned int cpkt_types_peer_status_predicates(unsigned int status);
 void cpkt_types_peer_stop(void *peer);
 #endif

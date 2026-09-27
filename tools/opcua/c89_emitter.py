@@ -184,6 +184,7 @@ def emit(generator, output, client_header):
         'cpkt_opcua_StatusCode cpkt_opcua_server_read_typed(cpkt_opcua_server *server, const cpkt_opcua_ReadValueId *request, cpkt_opcua_TimestampsToReturn timestamps, cpkt_opcua_DataValue *response);',
         '/** Write any generated scalar, array or nested public value. */',
         'cpkt_opcua_StatusCode cpkt_opcua_server_write_typed(cpkt_opcua_server *server, const cpkt_opcua_WriteValue *request);',
+        '#include <cpkt/opcua_util.h>',
         '#include <cpkt/opcua_callbacks.h>',
         '#include <cpkt/opcua_plugins.h>',
         '#ifdef __cplusplus', '}', '#endif', '#endif', ''])

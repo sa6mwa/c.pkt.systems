@@ -2038,7 +2038,7 @@ if(CPKT_BUILD_TESTS)
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_executable(cpkt_opcua_types_alloc_test tests/opcua_types_test.c
-      tests/opcua_types_native_peer.c tests/opcua_types_alloc_failure.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c)
+      tests/opcua_types_native_peer.c tests/opcua_types_alloc_failure.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c)
     cpkt_use_local_runtime(cpkt_opcua_types_alloc_test)
     cpkt_add_repo_warning_errors(cpkt_opcua_types_alloc_test)
     target_compile_definitions(cpkt_opcua_types_alloc_test PRIVATE CPKT_OPCUA_TYPES_ALLOC_FAILURE)
@@ -2054,7 +2054,7 @@ if(CPKT_BUILD_TESTS)
 
   foreach(_cpkt_types_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_types_${_cpkt_types_linkage}_test
-      tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c)
+      tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c)
     cpkt_use_local_runtime(cpkt_opcua_types_${_cpkt_types_linkage}_test)
     cpkt_add_repo_warning_errors(cpkt_opcua_types_${_cpkt_types_linkage}_test)
     target_compile_options(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE -UNDEBUG)
@@ -2062,6 +2062,7 @@ if(CPKT_BUILD_TESTS)
     set_source_files_properties(tests/opcua_callbacks_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_history_backend_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_plugins_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+    set_source_files_properties(tests/opcua_util_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_server_types_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_types_native_peer.c PROPERTIES COMPILE_OPTIONS "-std=c99")
     target_link_libraries(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE
@@ -2071,6 +2072,7 @@ if(CPKT_BUILD_TESTS)
         "${CMAKE_NM}" "$<TARGET_FILE:cpkt_opcua_${_cpkt_types_linkage}>"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua.h"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua_types_base.h"
+        "${CMAKE_SOURCE_DIR}/include/cpkt/opcua_util.h"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua_callbacks.h"
         "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_plugins.h"
         "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h")

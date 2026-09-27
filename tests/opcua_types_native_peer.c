@@ -903,3 +903,46 @@ unsigned int cpkt_types_peer_async_complete(void *native, void *context) {
   }
   return status;
 }
+
+static const UA_DataType *peer_utility_type(size_t type) {
+  return type == 1   ? &UA_TYPES[UA_TYPES_INT64]
+         : type == 2 ? &UA_TYPES[UA_TYPES_STRING]
+                     : NULL;
+}
+unsigned int cpkt_types_peer_variant_predicates(size_t type, size_t query,
+                                                size_t length, int state) {
+  UA_Variant value;
+  UA_Int64 number = 0;
+  UA_Variant_init(&value);
+  value.type = peer_utility_type(type);
+  value.arrayLength = length;
+  value.data = state == 2   ? (void *)&number
+               : state == 1 ? UA_EMPTY_ARRAY_SENTINEL
+                            : NULL;
+  return UA_Variant_isEmpty(&value) | (UA_Variant_isScalar(&value) << 1) |
+         (UA_Variant_isArray(&value) << 2) |
+         (UA_Variant_hasScalarType(&value, peer_utility_type(query)) << 3) |
+         (UA_Variant_hasArrayType(&value, peer_utility_type(query)) << 4);
+}
+unsigned int cpkt_types_peer_extension_predicate(int encoding, size_t type,
+                                                 size_t query, int populated) {
+  UA_ExtensionObject value;
+  UA_Int64 number = 0;
+  UA_ExtensionObject_init(&value);
+  value.encoding = (UA_ExtensionObjectEncoding)encoding;
+  if (encoding >= 3)
+    value.content.decoded.type = peer_utility_type(type);
+  if (encoding >= 3 && populated)
+    value.content.decoded.data = &number;
+  return UA_ExtensionObject_hasDecodedType(&value, peer_utility_type(query));
+}
+unsigned int cpkt_types_peer_bytes_hash(unsigned int initial,
+                                        const unsigned char *bytes,
+                                        size_t length) {
+  return UA_ByteString_hash(initial, bytes, length);
+}
+unsigned int cpkt_types_peer_status_predicates(unsigned int status) {
+  return UA_StatusCode_isGood(status) |
+         (UA_StatusCode_isUncertain(status) << 1) |
+         (UA_StatusCode_isBad(status) << 2);
+}

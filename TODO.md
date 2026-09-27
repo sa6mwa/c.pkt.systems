@@ -48,6 +48,9 @@ behind a callback interface.
 - [x] Generate the full HistoryDataBackend callback record, persistent borrowed
   DataValue storage, and native default gathering/database installation with
   allocation-failure and cleanup tests.
+- [x] Expose native public value predicates, Variant/ExtensionObject ownership
+  setters, status and byte/string helpers, array resize/move/copy append, and
+  checked native ordering with upstream parity and ownership/OOM tests.
 - [x] Expose typed server-local async read/write/call submissions and context
   cancellation with synchronous completion, native pending results, timeout,
   shutdown, and conversion/allocation error coverage. Producer-side async

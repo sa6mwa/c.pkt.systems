@@ -1092,6 +1092,7 @@ foreach(_path
     "include/cpkt/opcua.h"
     "include/cpkt/opcua_types.h"
     "include/cpkt/opcua_types_base.h"
+    "include/cpkt/opcua_util.h"
     "include/cpkt/opcua_callbacks.h"
     "include/cpkt/opcua_constants.h"
     "include/cpkt/opcua_plugins.h"
@@ -1439,7 +1440,7 @@ if(NOT EXISTS "${_opcua_facade_header}")
   message(FATAL_ERROR "missing OPC UA C89 facade header: ${_opcua_facade_header}")
 endif()
 file(READ "${_opcua_facade_header}" _opcua_facade_header_text)
-foreach(_type_header IN ITEMS opcua_types.h opcua_types_base.h opcua_callbacks.h opcua_constants.h opcua_plugins.h)
+foreach(_type_header IN ITEMS opcua_types.h opcua_types_base.h opcua_util.h opcua_callbacks.h opcua_constants.h opcua_plugins.h)
   file(READ "${_opcua_facade_header_extract_root}/${_archive_stem}/include/cpkt/${_type_header}" _type_text)
   string(APPEND _opcua_facade_header_text "\n${_type_text}")
 endforeach()

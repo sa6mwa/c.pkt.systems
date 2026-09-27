@@ -10,27 +10,33 @@
     },
     "UA_Array_append": {
       "declaration": "UA_StatusCode UA_Array_append ( void * * p , size_t * size , void * newElem , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_array_append"
     },
     "UA_Array_appendCopy": {
       "declaration": "UA_StatusCode UA_Array_appendCopy ( void * * p , size_t * size , const void * newElem , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_array_appendCopy"
     },
     "UA_Array_copy": {
       "declaration": "UA_StatusCode UA_Array_copy ( const void * src , size_t size , void * * dst , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_array_copy"
     },
     "UA_Array_delete": {
       "declaration": "void UA_Array_delete ( void * p , size_t size , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_array_delete"
     },
     "UA_Array_new": {
       "declaration": "void * UA_Array_new ( size_t size , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_array_new"
     },
     "UA_Array_resize": {
       "declaration": "UA_StatusCode UA_Array_resize ( void * * p , size_t * size , size_t newSize , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_array_resize"
     },
     "UA_AttributeId_name": {
       "declaration": "const char * UA_AttributeId_name ( UA_AttributeId attrId )",
@@ -46,23 +52,28 @@
     },
     "UA_ByteString_allocBuffer": {
       "declaration": "UA_StatusCode UA_ByteString_allocBuffer ( UA_ByteString * bs , size_t length )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ByteString_allocBuffer"
     },
     "UA_ByteString_fromBase64": {
       "declaration": "UA_StatusCode UA_ByteString_fromBase64 ( UA_ByteString * bs , const UA_String * input )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ByteString_fromBase64"
     },
     "UA_ByteString_hash": {
       "declaration": "UA_UInt32 UA_ByteString_hash ( UA_UInt32 initialHashValue , const UA_Byte * data , size_t size )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ByteString_hash"
     },
     "UA_ByteString_memZero": {
       "declaration": "void UA_ByteString_memZero ( UA_ByteString * bs )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ByteString_memZero"
     },
     "UA_ByteString_toBase64": {
       "declaration": "UA_StatusCode UA_ByteString_toBase64 ( const UA_ByteString * bs , UA_String * output )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ByteString_toBase64"
     },
     "UA_CertificateGroup_AcceptAll": {
       "declaration": "void UA_CertificateGroup_AcceptAll ( UA_CertificateGroup * certGroup )",
@@ -1178,19 +1189,23 @@
     },
     "UA_ExtensionObject_hasDecodedType": {
       "declaration": "UA_Boolean UA_ExtensionObject_hasDecodedType ( const UA_ExtensionObject * eo , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExtensionObject_hasDecodedType"
     },
     "UA_ExtensionObject_setValue": {
       "declaration": "void UA_ExtensionObject_setValue ( UA_ExtensionObject * eo , void * p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExtensionObject_setValue"
     },
     "UA_ExtensionObject_setValueCopy": {
       "declaration": "UA_StatusCode UA_ExtensionObject_setValueCopy ( UA_ExtensionObject * eo , void * p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExtensionObject_setValueCopy"
     },
     "UA_ExtensionObject_setValueNoDelete": {
       "declaration": "void UA_ExtensionObject_setValueNoDelete ( UA_ExtensionObject * eo , void * p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_ExtensionObject_setValueNoDelete"
     },
     "UA_GUID": {
       "declaration": "UA_Guid UA_GUID ( const char * chars )",
@@ -2726,27 +2741,33 @@
     },
     "UA_StatusCode_equalTop": {
       "declaration": "UA_Boolean UA_StatusCode_equalTop ( UA_StatusCode s1 , UA_StatusCode s2 )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_StatusCode_equalTop"
     },
     "UA_StatusCode_isBad": {
       "declaration": "UA_Boolean UA_StatusCode_isBad ( UA_StatusCode code )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_StatusCode_isBad"
     },
     "UA_StatusCode_isGood": {
       "declaration": "UA_Boolean UA_StatusCode_isGood ( UA_StatusCode code )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_StatusCode_isGood"
     },
     "UA_StatusCode_isUncertain": {
       "declaration": "UA_Boolean UA_StatusCode_isUncertain ( UA_StatusCode code )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_StatusCode_isUncertain"
     },
     "UA_StatusCode_name": {
       "declaration": "const char * UA_StatusCode_name ( UA_StatusCode code )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_StatusCode_name"
     },
     "UA_String_append": {
       "declaration": "UA_StatusCode UA_String_append ( UA_String * s , const UA_String s2 )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_String_append"
     },
     "UA_String_format": {
       "declaration": "UA_StatusCode UA_String_format ( UA_String * str , const char * format , . . . )",
@@ -2754,11 +2775,13 @@
     },
     "UA_String_fromChars": {
       "declaration": "UA_String UA_String_fromChars ( const char * src )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_String_fromChars"
     },
     "UA_String_isEmpty": {
       "declaration": "UA_Boolean UA_String_isEmpty ( const UA_String * s )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_String_isEmpty"
     },
     "UA_String_vformat": {
       "declaration": "UA_StatusCode UA_String_vformat ( UA_String * str , const char * format , va_list args )",
@@ -2803,31 +2826,38 @@
     },
     "UA_Variant_hasArrayType": {
       "declaration": "UA_Boolean UA_Variant_hasArrayType ( const UA_Variant * v , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_hasArrayType"
     },
     "UA_Variant_hasScalarType": {
       "declaration": "UA_Boolean UA_Variant_hasScalarType ( const UA_Variant * v , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_hasScalarType"
     },
     "UA_Variant_isArray": {
       "declaration": "UA_Boolean UA_Variant_isArray ( const UA_Variant * v )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_isArray"
     },
     "UA_Variant_isEmpty": {
       "declaration": "UA_Boolean UA_Variant_isEmpty ( const UA_Variant * v )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_isEmpty"
     },
     "UA_Variant_isScalar": {
       "declaration": "UA_Boolean UA_Variant_isScalar ( const UA_Variant * v )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_isScalar"
     },
     "UA_Variant_setArray": {
       "declaration": "void UA_Variant_setArray ( UA_Variant * v , void * array , size_t arraySize , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_setArray"
     },
     "UA_Variant_setArrayCopy": {
       "declaration": "UA_StatusCode UA_Variant_setArrayCopy ( UA_Variant * v , const void * array , size_t arraySize , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_setArrayCopy"
     },
     "UA_Variant_setRange": {
       "declaration": "UA_StatusCode UA_Variant_setRange ( UA_Variant * v , void * array , size_t arraySize , const UA_NumericRange range )",
@@ -2839,11 +2869,13 @@
     },
     "UA_Variant_setScalar": {
       "declaration": "void UA_Variant_setScalar ( UA_Variant * v , void * value , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_setScalar"
     },
     "UA_Variant_setScalarCopy": {
       "declaration": "UA_StatusCode UA_Variant_setScalarCopy ( UA_Variant * v , const void * p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Variant_setScalarCopy"
     },
     "UA_WriterGroupConfig_clear": {
       "declaration": "void UA_WriterGroupConfig_clear ( UA_WriterGroupConfig * writerGroupConfig )",
@@ -2878,7 +2910,8 @@
     },
     "UA_clear": {
       "declaration": "void UA_clear ( void * p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_type_clear"
     },
     "UA_constantTimeEqual": {
       "declaration": "UA_Boolean UA_constantTimeEqual ( const void * ptr1 , const void * ptr2 , size_t length )",
@@ -2886,7 +2919,8 @@
     },
     "UA_copy": {
       "declaration": "UA_StatusCode UA_copy ( const void * src , void * dst , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_type_copy"
     },
     "UA_decodeBinary": {
       "declaration": "UA_StatusCode UA_decodeBinary ( const UA_ByteString * inBuf , void * p , const UA_DataType * type , UA_DecodeBinaryOptions * options )",
@@ -2902,7 +2936,8 @@
     },
     "UA_delete": {
       "declaration": "void UA_delete ( void * p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_type_delete"
     },
     "UA_encodeBinary": {
       "declaration": "UA_StatusCode UA_encodeBinary ( const void * p , const UA_DataType * type , UA_ByteString * outBuf , UA_EncodeBinaryOptions * options )",
@@ -2918,7 +2953,8 @@
     },
     "UA_equal": {
       "declaration": "UA_Boolean UA_equal ( const void * p1 , const void * p2 , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_type_equal"
     },
     "UA_findDataType": {
       "declaration": "const UA_DataType * UA_findDataType ( const UA_NodeId * typeId )",
@@ -2934,15 +2970,18 @@
     },
     "UA_init": {
       "declaration": "void UA_init ( void * p , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_type_init"
     },
     "UA_new": {
       "declaration": "void * UA_new ( const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_type_new"
     },
     "UA_order": {
       "declaration": "UA_Order UA_order ( const void * p1 , const void * p2 , const UA_DataType * type )",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_type_order"
     },
     "UA_parseEndpointUrl": {
       "declaration": "UA_StatusCode UA_parseEndpointUrl ( const UA_String * endpointUrl , UA_String * outHostname , UA_UInt16 * outPort , UA_String * outPath )",
@@ -3544,7 +3583,8 @@
     },
     "UA_Order": {
       "declaration": "typedef enum { UA_ORDER_LESS = - 1 , UA_ORDER_EQ = 0 , UA_ORDER_MORE = 1 } UA_Order",
-      "state": "pending"
+      "state": "bound",
+      "binding": "cpkt_opcua_Order"
     },
     "UA_PubSubComponentType": {
       "declaration": "typedef enum { UA_PUBSUBCOMPONENT_CONNECTION = 0 , UA_PUBSUBCOMPONENT_WRITERGROUP = 1 , UA_PUBSUBCOMPONENT_DATASETWRITER = 2 , UA_PUBSUBCOMPONENT_READERGROUP = 3 , UA_PUBSUBCOMPONENT_DATASETREADER = 4 , UA_PUBSUBCOMPONENT_PUBLISHEDDATASET = 5 , UA_PUBSUBCOMPONENT_SUBSCRIBEDDDATASET = 6 } UA_PubSubComponentType",

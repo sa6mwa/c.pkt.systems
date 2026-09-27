@@ -500,6 +500,7 @@ int main(void) {
   test_populated_types();
   test_nested_values();
   test_failure_contracts();
+  cpkt_types_test_utilities();
   cpkt_types_test_plugins();
   cpkt_types_test_server();
   cpkt_types_test_history_backend();

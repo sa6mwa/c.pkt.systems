@@ -618,20 +618,9 @@ cpkt_opcua_StatusCode cpkt_opcua_type_copy(const void *src, void *dst,
 /** Implements the ownership and conversion contract in <cpkt/opcua_types.h>. */
 cpkt_opcua_Boolean cpkt_opcua_type_equal(const void *a, const void *b,
                                          const cpkt_opcua_Type *type) {
-  void *na, *nb;
-  cpkt_opcua_Boolean equal = 0;
-  if (!a || !b || !type)
-    return 0;
-  na = UA_new(type->native);
-  nb = UA_new(type->native);
-  if (na && nb && !cpkt_convert(a, na, type, 1, 0) &&
-      !cpkt_convert(b, nb, type, 1, 0))
-    equal = (UA_order(na, nb, type->native) == UA_ORDER_EQ);
-  if (na)
-    UA_delete(na, type->native);
-  if (nb)
-    UA_delete(nb, type->native);
-  return equal;
+  cpkt_opcua_Order order;
+  return cpkt_opcua_type_order(a, b, type, &order) == 0 &&
+         order == CPKT_OPCUA_ORDER_EQ;
 }
 /** Implements the ownership and conversion contract in <cpkt/opcua_types.h>. */
 cpkt_opcua_StatusCode
@@ -947,3 +936,5 @@ cpkt_opcua_server_write_typed(cpkt_opcua_server *server,
 
 #include "opcua_callbacks_impl.h"
 #include "opcua_plugins_impl.h"
+
+#include "opcua_util_impl.h"
