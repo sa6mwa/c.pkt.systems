@@ -66,7 +66,11 @@ def documentation(name):
     elif name == 'runUntilInterrupt':
         lines += [' * Run the native EventLoop until its interrupt handler stops it. Native',
                   ' * signal registration and cleanup remain unchanged; callbacks may submit',
-                  ' * async work but must not destroy the client or recursively iterate it.']
+                  ' * async work but must not destroy the client or recursively iterate it.',
+                  ' * Requires a configured InterruptManager. On macOS the stock manager is',
+                  ' * a process singleton; other default loops may have no manager, in which',
+                  ' * case this call preserves native BadInternalError. A custom interrupt',
+                  ' * plugin or a deliberately shared EventLoop can supply the source.']
     elif name == 'run_iterate':
         lines += [' * Native iteration dispatches connection, service, subscription and timer',
                   ' * callbacks. Its return status includes native connection errors.']

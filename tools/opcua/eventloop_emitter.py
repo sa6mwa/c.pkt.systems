@@ -151,7 +151,7 @@ def emit_eventloop(headers, output):
         if name == 'POSIX_Ethernet':
             header += ['#endif']
     header += [
-        '/** Allocate the native POSIX interrupt manager. The returned source is caller-owned until registration with a loop. */\ncpkt_opcua_InterruptManager *cpkt_opcua_InterruptManager_new_POSIX(cpkt_opcua_String name);',
+        '/** Allocate the native POSIX interrupt manager. The returned source is caller-owned until registration with a loop. On platforms without epoll, including macOS, the stock backend permits one manager per process and a second factory call returns NULL until the first is freed. */\ncpkt_opcua_InterruptManager *cpkt_opcua_InterruptManager_new_POSIX(cpkt_opcua_String name);',
         '/** Borrow the common EventSource portion; no allocation or ownership change. */',
         'cpkt_opcua_EventSource *cpkt_opcua_ConnectionManager_eventSource(cpkt_opcua_ConnectionManager *manager);',
         '/** Borrow the embedded native EventSource; lifetime and ownership follow the interrupt manager. */\ncpkt_opcua_EventSource *cpkt_opcua_InterruptManager_eventSource(cpkt_opcua_InterruptManager *manager);',

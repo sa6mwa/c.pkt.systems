@@ -353,14 +353,12 @@ static void timers(const char *url) {
                                                   NULL));
   CHECK(!cpkt_opcua_client_run_iterate_typed(client, 0) && state.calls == 1);
   CHECK(!cpkt_opcua_client_connect_typed(client, url));
-  for (i = 0; i < 2; ++i) {
-    state.calls = 0;
-    state.mode = 4;
-    CHECK(!cpkt_opcua_client_addRepeatedCallback_typed(client, timer, &state, 1,
-                                                       &state.id));
-    CHECK(!cpkt_opcua_client_runUntilInterrupt_typed(client) &&
-          state.calls == 1);
-  }
+#ifdef __APPLE__
+  /* The already-running peer owns the stock self-pipe singleton. The facade
+   * must preserve the native error when this client has no interrupt source. */
+  CHECK(cpkt_opcua_client_runUntilInterrupt_typed(client) ==
+        CPKT_OPCUA_STATUSCODE_BADINTERNALERROR);
+#endif
   state.calls = 0;
   state.mode = 0;
   CHECK(!cpkt_opcua_client_addTimedCallback_typed(client, timer, &state, date,
@@ -385,6 +383,33 @@ static void timers(const char *url) {
   cpkt_types_peer_external_loop_free(external.loop);
   CHECK(state.calls == native_calls && external.independent == 1);
   cpkt_opcua_client_removeCallback_typed(NULL, wrong);
+}
+void cpkt_types_test_core_client_interrupt(void) {
+  cpkt_opcua_client *client;
+  struct timer state;
+  void *peer;
+  unsigned short port;
+  char endpoint[64];
+  size_t i;
+  /* Allocate the client first: non-epoll POSIX permits one stock interrupt
+   * manager per process. The peer's ordinary iterate loop needs no manager. */
+  CHECK(cpkt_opcua_client_new(&client) == CPKT_OPCUA_OK);
+  peer = cpkt_types_peer_start(&port);
+  CHECK(peer);
+  sprintf(endpoint, "opc.tcp://127.0.0.1:%u", (unsigned int)port);
+  CHECK(!cpkt_opcua_client_connect_typed(client, endpoint));
+  memset(&state, 0, sizeof(state));
+  state.client = client;
+  state.mode = 4;
+  for (i = 0; i < 2; ++i) {
+    state.calls = 0;
+    CHECK(!cpkt_opcua_client_addRepeatedCallback_typed(client, timer, &state, 1,
+                                                       &state.id));
+    CHECK(!cpkt_opcua_client_runUntilInterrupt_typed(client) &&
+          state.calls == 1);
+  }
+  cpkt_opcua_client_free(client);
+  cpkt_types_peer_stop(peer);
 }
 static void sessions(const char *url) {
   struct transfer_config config;

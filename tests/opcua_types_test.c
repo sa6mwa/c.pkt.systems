@@ -541,6 +541,8 @@ int main(void) {
   cpkt_types_test_memory_backend();
   fprintf(stderr, "opcua runtime: test_services\n");
   test_services();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_core_client_interrupt\n");
+  cpkt_types_test_core_client_interrupt();
   puts("All public schema types, nested conversions and real typed services "
        "passed");
   return 0;

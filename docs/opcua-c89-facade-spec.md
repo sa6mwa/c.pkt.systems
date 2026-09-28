@@ -1495,6 +1495,17 @@ The inventory gate verifies every mapped accessor and record field and rejects
 missing or unexplained mappings. Declaration coverage is separate from runtime,
 allocation-failure, memory-check and target/package verification.
 
+The stock POSIX interrupt manager uses one process-wide self-pipe manager on
+platforms without epoll, including macOS. A second stock factory call returns
+NULL until the first manager is freed. Default client/server loops created
+after that first loop may therefore have no interrupt source;
+`cpkt_opcua_client_runUntilInterrupt_typed` preserves the native
+`BadInternalError` in that case. Ordinary iteration still works. Applications
+needing signal dispatch across multiple loops can provide their own interrupt
+plugin or explicitly share a configured event loop. The native macOS tests
+exercise both the missing-source error and repeated SIGINT shutdown with a
+client that owns the stock manager; they do not replace upstream signal logic.
+
 Native reverse-connect iteration selects stable handles again after callbacks,
 so logging or state callbacks may remove current or other registrations without
 leaving an iteration pointer into freed storage. Local monitoring callbacks may

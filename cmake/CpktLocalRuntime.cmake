@@ -4,6 +4,14 @@ function(cpkt_use_local_runtime target)
     target_link_options(${target} PRIVATE ${CPKT_LOCAL_RUNTIME_LINK_OPTIONS})
     set_property(TARGET ${target} PROPERTY CROSSCOMPILING_EMULATOR "")
   endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # Optional dependency targets supply build-only search paths for a local
+    # consumer's indirect @rpath dylibs. Shipped install paths stay relative.
+    foreach(_cpkt_runtime_dependency IN LISTS ARGN)
+      set_property(TARGET ${target} APPEND PROPERTY BUILD_RPATH
+        "$<TARGET_FILE_DIR:${_cpkt_runtime_dependency}>")
+    endforeach()
+  endif()
 endfunction()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux"

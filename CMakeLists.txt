@@ -1391,7 +1391,8 @@ if(CPKT_BUILD_TESTS)
   foreach(_cpkt_opcua_logging_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test
       tests/opcua_logging_test.c tests/opcua_logging_native_peer.c)
-    cpkt_use_local_runtime(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test)
+    cpkt_use_local_runtime(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test
+      cpkt::open62541_shared cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared)
     set_source_files_properties(tests/opcua_logging_test.c PROPERTIES
       COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_logging_native_peer.c PROPERTIES
@@ -2153,7 +2154,8 @@ if(CPKT_BUILD_TESTS)
   foreach(_cpkt_types_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_types_${_cpkt_types_linkage}_test
       tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_memory_backend_test.c tests/opcua_certificate_test.c tests/opcua_certificate_native_peer.c tests/opcua_config_test.c tests/opcua_config_native_peer.c tests/opcua_format_test.c tests/opcua_transport_test.c tests/opcua_operations_test.c tests/opcua_nodestore_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c tests/opcua_producers_test.c tests/opcua_creation_test.c tests/opcua_external_test.c tests/opcua_client_test.c tests/opcua_async_client_test.c tests/opcua_core_client_test.c)
-    cpkt_use_local_runtime(cpkt_opcua_types_${_cpkt_types_linkage}_test)
+    cpkt_use_local_runtime(cpkt_opcua_types_${_cpkt_types_linkage}_test
+      cpkt::open62541_shared cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared)
     cpkt_add_repo_warning_errors(cpkt_opcua_types_${_cpkt_types_linkage}_test)
     target_compile_options(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE -UNDEBUG)
     set_source_files_properties(tests/opcua_types_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
