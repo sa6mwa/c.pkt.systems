@@ -6,3 +6,4 @@
 /CMakeUserPresets.json
 /stash/
 /VERSION
+__pycache__/

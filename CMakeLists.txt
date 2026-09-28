@@ -109,6 +109,35 @@ function(cpkt_configure_c89_target target_name)
   endif()
 endfunction()
 
+# Authentication facades ship only the functions declared in their exact
+# source-controlled export catalogs. The generated linker files are build
+# artifacts; the catalogs remain the reviewed SDK boundary.
+function(cpkt_apply_auth_export_catalog target_name catalog_name)
+  set(_catalog "${CMAKE_SOURCE_DIR}/cmake/exports/${catalog_name}.txt")
+  file(STRINGS "${_catalog}" _symbols REGEX "^cpkt_")
+  if(NOT _symbols)
+    message(FATAL_ERROR "empty authentication export catalog: ${_catalog}")
+  endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(_linker_file "${CMAKE_BINARY_DIR}/${catalog_name}.exports")
+    file(WRITE "${_linker_file}" "")
+    foreach(_symbol IN LISTS _symbols)
+      file(APPEND "${_linker_file}" "_${_symbol}\n")
+    endforeach()
+    target_link_options(${target_name} PRIVATE
+      "-Wl,-exported_symbols_list,${_linker_file}")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_linker_file "${CMAKE_BINARY_DIR}/${catalog_name}.map")
+    file(WRITE "${_linker_file}" "{\n  global:\n")
+    foreach(_symbol IN LISTS _symbols)
+      file(APPEND "${_linker_file}" "    ${_symbol};\n")
+    endforeach()
+    file(APPEND "${_linker_file}" "  local: *;\n};\n")
+    target_link_options(${target_name} PRIVATE
+      "-Wl,--version-script,${_linker_file}" "-Wl,--exclude-libs,ALL")
+  endif()
+endfunction()
+
 # Lua's configured public header uses long long for its native 64-bit integer
 # ABI.  Keep facade implementation source in strict C89 while admitting that
 # upstream declaration-only extension; LUA_C89_NUMBERS would silently reduce
@@ -1194,7 +1223,9 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON
   )
 endif()
-add_library(cpkt_gssapi_static STATIC src/gssapi.c)
+add_library(cpkt_gssapi_static STATIC src/gssapi.c src/gssapi_ext.c
+  src/gssapi_context_ext.c src/gssapi_krb5.c src/gssapi_cred_ext.c
+  src/gssapi_mech_ext.c src/gssapi_oids.c src/gssapi_alloc.c)
 cpkt_configure_c89_target(cpkt_gssapi_static)
 cpkt_add_repo_warning_errors(cpkt_gssapi_static)
 target_include_directories(cpkt_gssapi_static
@@ -1206,13 +1237,21 @@ set_target_properties(cpkt_gssapi_static PROPERTIES
   OUTPUT_NAME cpkt_gssapi
   POSITION_INDEPENDENT_CODE ON)
 
-add_library(cpkt_gssapi_shared SHARED src/gssapi.c)
+add_library(cpkt_gssapi_shared SHARED src/gssapi.c src/gssapi_ext.c
+  src/gssapi_context_ext.c src/gssapi_krb5.c src/gssapi_cred_ext.c
+  src/gssapi_mech_ext.c src/gssapi_oids.c src/gssapi_alloc.c)
+cpkt_apply_auth_export_catalog(cpkt_gssapi_shared cpkt_gssapi)
 cpkt_configure_c89_target(cpkt_gssapi_shared)
 cpkt_add_repo_warning_errors(cpkt_gssapi_shared)
 target_include_directories(cpkt_gssapi_shared
   PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
 target_link_libraries(cpkt_gssapi_shared PUBLIC cpkt::gssapi_krb5_shared)
+target_link_libraries(cpkt_gssapi_shared PRIVATE
+  "${CPKT_EXTERNAL_ROOT}/krb5/install/lib/libkrb5${CMAKE_SHARED_LIBRARY_SUFFIX}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(cpkt_gssapi_shared PRIVATE "LINKER:--no-undefined")
+endif()
 target_compile_definitions(cpkt_gssapi_shared PRIVATE CPKT_GSSAPI_FACADE_VERSION="${CPKT_GSSAPI_ABI_VERSION}")
 set_target_properties(cpkt_gssapi_shared PROPERTIES
   OUTPUT_NAME cpkt_gssapi
@@ -1231,26 +1270,42 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
-add_library(cpkt_sasl_static STATIC src/sasl.c)
+add_library(cpkt_sasl_static STATIC src/sasl.c src/sasl_connection_properties.c src/sasl_util.c src/sasl_crypto.c
+  src/sasl_plugin_utils.c src/sasl_plugin_aux.c src/sasl_plugin_canon.c
+  src/sasl_plugin_params.c src/sasl_plugin_client.c
+  src/sasl_plugin_server.c src/sasl_plugin_info.c)
 cpkt_configure_c89_target(cpkt_sasl_static)
 cpkt_add_repo_warning_errors(cpkt_sasl_static)
 target_include_directories(cpkt_sasl_static
   PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+  PRIVATE
+    "${CPKT_EXTERNAL_ROOT}/krb5/install/include")
 target_link_libraries(cpkt_sasl_static PUBLIC cpkt::cyrus_sasl_static)
+target_link_libraries(cpkt_sasl_static PRIVATE Threads::Threads)
 target_compile_definitions(cpkt_sasl_static PRIVATE
   CPKT_SASL_FACADE_VERSION="${CPKT_SASL_ABI_VERSION}")
 set_target_properties(cpkt_sasl_static PROPERTIES
   OUTPUT_NAME cpkt_sasl
   POSITION_INDEPENDENT_CODE ON)
 
-add_library(cpkt_sasl_shared SHARED src/sasl.c)
+add_library(cpkt_sasl_shared SHARED src/sasl.c src/sasl_connection_properties.c src/sasl_util.c src/sasl_crypto.c
+  src/sasl_plugin_utils.c src/sasl_plugin_aux.c src/sasl_plugin_canon.c
+  src/sasl_plugin_params.c src/sasl_plugin_client.c
+  src/sasl_plugin_server.c src/sasl_plugin_info.c)
+cpkt_apply_auth_export_catalog(cpkt_sasl_shared cpkt_sasl)
 cpkt_configure_c89_target(cpkt_sasl_shared)
 cpkt_add_repo_warning_errors(cpkt_sasl_shared)
 target_include_directories(cpkt_sasl_shared
   PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>")
+    "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>"
+  PRIVATE
+    "${CPKT_EXTERNAL_ROOT}/krb5/install/include")
 target_link_libraries(cpkt_sasl_shared PUBLIC cpkt::cyrus_sasl_shared)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(cpkt_sasl_shared PRIVATE "LINKER:--no-undefined")
+endif()
+target_link_libraries(cpkt_sasl_shared PRIVATE Threads::Threads)
 target_compile_definitions(cpkt_sasl_shared PRIVATE
   CPKT_SASL_FACADE_VERSION="${CPKT_SASL_ABI_VERSION}")
 set_target_properties(cpkt_sasl_shared PROPERTIES
@@ -1786,6 +1841,80 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_gssapi_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_gssapi_facade_test)
     target_link_libraries(cpkt_gssapi_facade_test PRIVATE cpkt_gssapi_static)
+    add_executable(cpkt_gssapi_extended_test
+      tests/gssapi_extended_test.c)
+    cpkt_use_local_runtime(cpkt_gssapi_extended_test)
+    target_compile_options(cpkt_gssapi_extended_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_gssapi_extended_test)
+    target_link_libraries(cpkt_gssapi_extended_test PRIVATE cpkt_gssapi_static)
+    add_executable(cpkt_gssapi_lucid_conversion_test
+      tests/gssapi_lucid_conversion_test.c src/gssapi_ext.c)
+    cpkt_use_local_runtime(cpkt_gssapi_lucid_conversion_test)
+    target_compile_options(cpkt_gssapi_lucid_conversion_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_gssapi_lucid_conversion_test)
+    target_include_directories(cpkt_gssapi_lucid_conversion_test PRIVATE
+      "${CMAKE_SOURCE_DIR}/include")
+    target_link_libraries(cpkt_gssapi_lucid_conversion_test PRIVATE
+      cpkt::gssapi_krb5_shared)
+    add_executable(cpkt_gssapi_iov_native_peer_test
+      tests/gssapi_iov_native_peer_test.c src/gssapi_ext.c)
+    cpkt_use_local_runtime(cpkt_gssapi_iov_native_peer_test)
+    target_compile_options(cpkt_gssapi_iov_native_peer_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_gssapi_iov_native_peer_test)
+    target_include_directories(cpkt_gssapi_iov_native_peer_test PRIVATE
+      "${CMAKE_SOURCE_DIR}/include")
+    target_link_libraries(cpkt_gssapi_iov_native_peer_test PRIVATE
+      cpkt::gssapi_krb5_shared)
+    add_executable(cpkt_gssapi_oid_native_parity_test
+      tests/gssapi_oid_native_parity_test.c)
+    cpkt_use_local_runtime(cpkt_gssapi_oid_native_parity_test)
+    target_compile_options(cpkt_gssapi_oid_native_parity_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_gssapi_oid_native_parity_test)
+    target_link_libraries(cpkt_gssapi_oid_native_parity_test PRIVATE
+      cpkt_gssapi_static)
+    add_executable(cpkt_sasl_plugin_facade_test
+      tests/sasl_plugin_facade_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_plugin_facade_test)
+    target_compile_options(cpkt_sasl_plugin_facade_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_plugin_facade_test)
+    target_link_libraries(cpkt_sasl_plugin_facade_test PRIVATE cpkt_sasl_static)
+    add_executable(cpkt_sasl_property_lifetime_test
+      tests/sasl_property_lifetime_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_property_lifetime_test)
+    target_compile_options(cpkt_sasl_property_lifetime_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_property_lifetime_test)
+    target_link_libraries(cpkt_sasl_property_lifetime_test PRIVATE cpkt_sasl_static)
+    add_executable(cpkt_sasl_connection_property_test
+      tests/sasl_connection_property_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_connection_property_test)
+    target_compile_options(cpkt_sasl_connection_property_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_connection_property_test)
+    target_link_libraries(cpkt_sasl_connection_property_test PRIVATE
+      cpkt_sasl_static)
+    add_executable(cpkt_sasl_idle_registration_test
+      tests/sasl_idle_registration_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_idle_registration_test)
+    target_compile_options(cpkt_sasl_idle_registration_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_idle_registration_test)
+    target_link_libraries(cpkt_sasl_idle_registration_test PRIVATE cpkt_sasl_static)
+    add_executable(cpkt_sasl_registration_failure_test
+      tests/sasl_registration_failure_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_registration_failure_test)
+    target_compile_options(cpkt_sasl_registration_failure_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_sasl_registration_failure_test)
+    target_link_libraries(cpkt_sasl_registration_failure_test PRIVATE
+      cpkt_sasl_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_sasl_utility_allocation_failure_test
+        tests/sasl_utility_allocation_failure_test.c)
+      cpkt_use_local_runtime(cpkt_sasl_utility_allocation_failure_test)
+      target_compile_options(cpkt_sasl_utility_allocation_failure_test PRIVATE -std=c89)
+      cpkt_add_repo_warning_errors(cpkt_sasl_utility_allocation_failure_test)
+      target_link_libraries(cpkt_sasl_utility_allocation_failure_test PRIVATE
+        cpkt_sasl_static)
+      target_link_options(cpkt_sasl_utility_allocation_failure_test PRIVATE
+        "-Wl,--wrap=calloc")
+    endif()
     add_executable(cpkt_krb5_error_format_test tests/krb5_error_format_test.c)
     cpkt_use_local_runtime(cpkt_krb5_error_format_test)
     target_compile_options(cpkt_krb5_error_format_test PRIVATE -std=c99)
@@ -1878,7 +2007,7 @@ if(CPKT_BUILD_TESTS)
       cpkt::cyrus_sasl_shared cpkt::gssapi_krb5_shared)
     add_executable(cpkt_sasl_callback_retry_test
       tests/sasl_callback_retry_test.c
-      src/sasl.c)
+      src/sasl.c src/sasl_connection_properties.c src/sasl_util.c)
     if(TARGET cpkt_cyrus_sasl_project)
       add_dependencies(cpkt_sasl_callback_retry_test cpkt_cyrus_sasl_project)
     endif()
@@ -1887,9 +2016,23 @@ if(CPKT_BUILD_TESTS)
       INTERFACE_INCLUDE_DIRECTORIES)
     target_include_directories(cpkt_sasl_callback_retry_test PRIVATE
       "${CMAKE_SOURCE_DIR}/include"
-      "${cpkt_sasl_native_include_dir}")
+      "${cpkt_sasl_native_include_dir}"
+      "${CPKT_EXTERNAL_ROOT}/krb5/install/include")
     target_compile_options(cpkt_sasl_callback_retry_test PRIVATE -std=c89)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      target_compile_options(cpkt_sasl_callback_retry_test PRIVATE
+        -ffunction-sections -fdata-sections)
+      target_link_options(cpkt_sasl_callback_retry_test PRIVATE
+        -Wl,--gc-sections)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+      target_compile_options(cpkt_sasl_callback_retry_test PRIVATE
+        -ffunction-sections -fdata-sections)
+      target_link_options(cpkt_sasl_callback_retry_test PRIVATE
+        -Wl,-dead_strip)
+    endif()
     cpkt_add_repo_warning_errors(cpkt_sasl_callback_retry_test)
+    target_link_libraries(cpkt_sasl_callback_retry_test PRIVATE
+      cpkt::cyrus_sasl_shared)
     add_executable(cpkt_iodbc_static_test tests/iodbc_driver_manager_test.c)
     cpkt_use_local_runtime(cpkt_iodbc_static_test)
     cpkt_configure_c89_target(cpkt_iodbc_static_test)
@@ -2483,10 +2626,98 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging;smoke"
         TIMEOUT 30)
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
+      add_test(NAME gssapi_extended COMMAND cpkt_gssapi_extended_test)
+      add_test(NAME gssapi_lucid_conversion
+        COMMAND cpkt_gssapi_lucid_conversion_test)
+      add_test(NAME gssapi_iov_native_peer
+        COMMAND cpkt_gssapi_iov_native_peer_test)
+      add_test(NAME gssapi_oid_native_parity
+        COMMAND cpkt_gssapi_oid_native_parity_test)
+      set_tests_properties(gssapi_extended PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      set_tests_properties(gssapi_lucid_conversion PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      set_tests_properties(gssapi_iov_native_peer PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      set_tests_properties(gssapi_oid_native_parity PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(_cpkt_auth_symbol_format macho)
+      else()
+        set(_cpkt_auth_symbol_format elf)
+      endif()
+      add_test(NAME gssapi_export_policy
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/auth_export_policy_test.sh"
+          gssapi "$<TARGET_FILE:cpkt_gssapi_shared>"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_gssapi.txt"
+          "${_cpkt_auth_symbol_format}" "${CMAKE_NM}"
+          "${CMAKE_C_COMPILER}" "${CMAKE_SYSROOT}" "${CMAKE_SOURCE_DIR}"
+          "${CPKT_EXTERNAL_ROOT}")
+      add_test(NAME sasl_export_policy
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/auth_export_policy_test.sh"
+          sasl "$<TARGET_FILE:cpkt_sasl_shared>"
+          "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_sasl.txt"
+          "${_cpkt_auth_symbol_format}" "${CMAKE_NM}"
+          "${CMAKE_C_COMPILER}" "${CMAKE_SYSROOT}" "${CMAKE_SOURCE_DIR}"
+          "${CPKT_EXTERNAL_ROOT}")
+      set_tests_properties(gssapi_export_policy sasl_export_policy PROPERTIES
+        LABELS "facade;packaging" TIMEOUT 30)
+      add_test(NAME auth_native_api_contract
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/scripts/auth_api_contract.py"
+          --target "${CPKT_TARGET_ID}")
+      add_test(NAME auth_facade_binding_contract
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/scripts/auth_facade_bindings.py"
+          --target "${CPKT_TARGET_ID}")
+      add_test(NAME auth_facade_signature_contract
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/scripts/auth_facade_signatures.py"
+          "${CPKT_TARGET_ID}")
+      add_test(NAME auth_sasl_property_contract
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/scripts/auth_sasl_property_contract.py"
+          "${CPKT_TARGET_ID}")
+      if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu")
+        add_test(NAME auth_contract_mutations
+          COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/tests/auth_contract_mutation_test.py")
+        set_tests_properties(auth_contract_mutations PROPERTIES
+          LABELS "facade;packaging" TIMEOUT 120)
+      endif()
+      set_tests_properties(auth_native_api_contract
+        auth_facade_binding_contract auth_facade_signature_contract
+        auth_sasl_property_contract PROPERTIES
+        LABELS "facade;packaging" TIMEOUT 120)
       add_test(NAME krb5_error_format COMMAND cpkt_krb5_error_format_test)
       set_tests_properties(krb5_error_format PROPERTIES
         ENVIRONMENT "KRB5_CONFIG=/dev/null;LC_ALL=C")
       add_test(NAME sasl_facade COMMAND cpkt_sasl_facade_test)
+      add_test(NAME sasl_plugin_facade COMMAND cpkt_sasl_plugin_facade_test)
+      add_test(NAME sasl_property_lifetime
+        COMMAND cpkt_sasl_property_lifetime_test)
+      add_test(NAME sasl_connection_property
+        COMMAND cpkt_sasl_connection_property_test)
+      add_test(NAME sasl_idle_registration
+        COMMAND cpkt_sasl_idle_registration_test)
+      set_tests_properties(sasl_idle_registration PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      add_test(NAME sasl_registration_failure
+        COMMAND cpkt_sasl_registration_failure_test)
+      set_tests_properties(sasl_registration_failure PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME sasl_utility_allocation_failure
+          COMMAND cpkt_sasl_utility_allocation_failure_test)
+        set_tests_properties(sasl_utility_allocation_failure PROPERTIES
+          LABELS "facade;memcheck" TIMEOUT 30)
+      endif()
+      set_tests_properties(sasl_property_lifetime PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      set_tests_properties(sasl_connection_property PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      set_tests_properties(sasl_plugin_facade PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
       file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/sasl-empty-plugin-path")
       add_test(NAME sasl_privileged_plugin_path
         COMMAND cpkt_sasl_privileged_plugin_path_test privileged)
@@ -2517,7 +2748,9 @@ if(CPKT_BUILD_TESTS)
         sqlite_unlock_notify_groups
         sqlite_auto_extension_shutdown sqlite_rtree_registration_failure
         sqlite_session_hook_guard sqlite_collation_failure
-        gssapi_facade krb5_error_format sasl_facade sasl_callback_retry)
+        gssapi_facade gssapi_extended krb5_error_format
+        sasl_facade sasl_callback_retry
+        sasl_plugin_facade)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set_tests_properties(sqlite_unlock_notify_race PROPERTIES
           LABELS "facade;memcheck")

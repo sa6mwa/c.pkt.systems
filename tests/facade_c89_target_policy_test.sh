@@ -10,13 +10,14 @@ require_configuration() {
   local configure=$3
 
   if ! awk -v target="$target" -v source="$source" -v configure="$configure" '
-    $0 == "add_library(" target " STATIC " source ")" ||
-    $0 == "add_library(" target " SHARED " source ")" {
-      getline
-      if ($0 == configure)
-        found = 1
-      exit
+    index($0, "add_library(" target " ") == 1 {
+      if (index($0, source) == 0)
+        exit 1
+      inside = 1
+      next
     }
+    inside && index($0, "add_library(") == 1 { exit 1 }
+    inside && $0 == configure { found = 1; exit }
     END { exit found ? 0 : 1 }
   ' "$cmake_file"; then
     printf '%s must be compiled through %s\n' "$target" "$configure" >&2

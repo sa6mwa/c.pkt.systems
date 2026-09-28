@@ -342,6 +342,9 @@ The other facade contracts are documented in the matching files under `docs/`:
 [`GSSAPI`](docs/gssapi-c89-facade-spec.md),
 [`OpenSSL`](docs/openssl-c89-facade-surface.md), and
 [`OPC UA`](docs/opcua-c89-facade-spec.md).
+The auth facades include custom Cyrus SASL plugin records in
+`cpkt/sasl_plugin.h` and Kerberos-specific GSS extensions in
+`cpkt/gssapi.h`; the linked contract describes ownership and target coverage.
 
 The bundled `open62541::open62541` target is built with OpenSSL-backed
 security policy support, the upstream default reduced namespace zero, and static

@@ -415,6 +415,7 @@ assert_package_file "share/doc/c.pkt.systems/README.md"
 assert_package_file "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/sasl-c89-facade-spec.md"
+assert_package_file "include/cpkt/sasl_plugin.h"
 assert_package_file "share/doc/c.pkt.systems/docs/sqlite-c89-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
 assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
@@ -474,7 +475,7 @@ if grep -E 'open62541/|UA_Client|UA_Server|UA_StatusCode|UA_NodeId|UA_Variant|st
   exit 1
 fi
 if grep -E 'sasl/|sasl_conn_t|sasl_callback_t|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
-    "$prefix/include/cpkt/sasl.h" >/dev/null 2>&1; then
+    "$prefix/include/cpkt/sasl.h" "$prefix/include/cpkt/sasl_plugin.h" >/dev/null 2>&1; then
   printf 'SASL facade header is not C89-clean\n' >&2
   exit 1
 fi
@@ -1135,10 +1136,22 @@ cat > "$cmake_source_dir/cpkt_gssapi_facade_strict.c" <<'EOF'
 
 int main(void) {
   cpkt_gss_oid_set *mechanisms;
+  cpkt_gss_buffer_set *buffers;
+  cpkt_gss_krb_context *kerberos;
   cpkt_gss_status minor;
   cpkt_gss_status status;
 
   mechanisms = 0;
+  buffers = 0;
+  kerberos = 0;
+  if (cpkt_gss_known_oid(CPKT_GSS_OID_HOSTBASED_SERVICE_X) == 0 ||
+      cpkt_gss_create_buffer_set(&minor, &buffers) != CPKT_GSS_COMPLETE ||
+      buffers == 0 ||
+      cpkt_gss_release_buffer_set(&minor, &buffers) != CPKT_GSS_COMPLETE ||
+      cpkt_gss_krb_context_new(&kerberos) != 0 || kerberos == 0) {
+    return 2;
+  }
+  cpkt_gss_krb_context_free(&kerberos);
   status = cpkt_gss_indicate_mechanisms(&minor, &mechanisms);
   if (cpkt_gss_status_is_error(status) || mechanisms == 0 ||
       cpkt_gss_oid_set_count(mechanisms) == 0 ||
@@ -1173,11 +1186,17 @@ int main(void) {
 }
 EOF
 cat > "$cmake_source_dir/cpkt_sasl_facade_strict.c" <<'EOF'
-#include <cpkt/sasl.h>
+#include <cpkt/sasl_plugin.h>
 #include <string.h>
 
 int main(void) {
   cpkt_sasl *connection;
+  cpkt_sasl_md5_context digest_context;
+  cpkt_sasl_security_properties security;
+  cpkt_sasl_http_request request;
+  const cpkt_sasl_callbacks *selected_callbacks;
+  const void *payload;
+  const char *external_identity;
   const char *mechanisms;
   unsigned long mechanisms_length;
   int mechanisms_count;
@@ -1186,6 +1205,13 @@ int main(void) {
   if (cpkt_sasl_error_string(CPKT_SASL_BADPARAM, 0, 0) == 0) {
     return 1;
   }
+  cpkt_sasl_md5_initialize(&digest_context);
+  if (cpkt_sasl_client_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM ||
+      cpkt_sasl_server_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM ||
+      cpkt_sasl_canonicalizer_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM ||
+      cpkt_sasl_auxiliary_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM) {
+    return 6;
+  }
   if (cpkt_sasl_client_initialize(0) != CPKT_SASL_OK) {
     return 2;
   }
@@ -1193,9 +1219,44 @@ int main(void) {
   connection = cpkt_sasl_client_new("cpkt-package", "localhost", 0, 0,
       0, 0, &status);
   if (connection == 0 || status != CPKT_SASL_OK || connection->close == 0 ||
-      connection->set_security_properties == 0) {
+      connection->set_security_properties == 0 ||
+      connection->get_security_properties == 0 ||
+      connection->get_http_request == 0 ||
+      connection->get_callback_record == 0 ||
+      connection->get_option_context == 0 ||
+      connection->get_delegated_payload == 0 ||
+      connection->set_text_property == 0 ||
+      connection->encode_vector == 0 ||
+      connection->auxiliary_context == 0) {
     cpkt_sasl_client_finish();
     return 3;
+  }
+  selected_callbacks = 0;
+  payload = 0;
+  external_identity = 0;
+  memset(&security, 0, sizeof(security));
+  security.maximum_buffer_bytes = 1024;
+  memset(&request, 0, sizeof(request));
+  request.method = "GET";
+  request.uri = "/";
+  if (connection->set_security_properties(connection, &security) != CPKT_SASL_OK ||
+      connection->get_security_properties(connection, &security) != CPKT_SASL_OK ||
+      security.maximum_buffer_bytes != 1024 ||
+      connection->set_http_request(connection, &request) != CPKT_SASL_OK ||
+      connection->get_http_request(connection, &request) != CPKT_SASL_OK ||
+      request.method == 0 || strcmp(request.method, "GET") != 0 ||
+      connection->set_text_property(connection,
+          CPKT_SASL_PROPERTY_EXTERNAL_AUTHENTICATION, "sdk") != CPKT_SASL_OK ||
+      connection->get_text_property(connection,
+          CPKT_SASL_PROPERTY_EXTERNAL_AUTHENTICATION, &external_identity) != CPKT_SASL_OK ||
+      external_identity == 0 || strcmp(external_identity, "sdk") != 0 ||
+      connection->get_callback_record(connection, &selected_callbacks) != CPKT_SASL_OK ||
+      selected_callbacks != 0 ||
+      connection->get_delegated_payload(connection, &payload) != CPKT_SASL_NOTDONE ||
+      payload != 0) {
+    connection->close(connection);
+    cpkt_sasl_client_finish();
+    return 7;
   }
   mechanisms = 0;
   mechanisms_length = 0;
@@ -1591,6 +1652,7 @@ cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541
 cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
 cpkt_add_static_smoke(cpkt_cmake_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
+cpkt_add_shared_smoke(cpkt_cmake_gssapi_facade_shared cpkt_gssapi_facade_strict.c cpkt::gssapi_shared)
 cpkt_add_static_smoke(cpkt_cmake_openldap cpkt_openldap.c cpkt::openldap_static)
 cpkt_add_shared_smoke(cpkt_cmake_openldap_shared cpkt_openldap.c cpkt::openldap_shared)
 cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)

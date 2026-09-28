@@ -1,6 +1,8 @@
 #include <cpkt/gssapi.h>
 
+#include <errno.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <gssapi/gssapi.h>
@@ -12,6 +14,22 @@ typedef char
 
 static OM_uint32 cpkt_gss_status_input(cpkt_gss_status value) {
   return (OM_uint32)value;
+}
+
+static int cpkt_gss_u32_fits(unsigned long value) {
+  return value <= 0xffffffffUL;
+}
+
+static cpkt_gss_status cpkt_gss_invalid_u32(cpkt_gss_status *minor_out) {
+  if (minor_out != NULL)
+    *minor_out = EINVAL;
+  return GSS_S_CALL_BAD_STRUCTURE;
+}
+
+static int cpkt_gss_bindings_fit(const cpkt_gss_channel_bindings *bindings) {
+  return bindings == NULL ||
+         (cpkt_gss_u32_fits(bindings->initiator_address_type) &&
+          cpkt_gss_u32_fits(bindings->acceptor_address_type));
 }
 
 static cpkt_gss_status cpkt_gss_finish(OM_uint32 status, OM_uint32 minor,
@@ -67,7 +85,8 @@ cpkt_gss_native_bindings(const cpkt_gss_channel_bindings *bindings) {
 /** Implements the documented public C89 GSSAPI facade operation
  * cpkt_gss_status_is_error. */
 int cpkt_gss_status_is_error(cpkt_gss_status status) {
-  return GSS_ERROR(cpkt_gss_status_input(status)) != 0;
+  return !cpkt_gss_u32_fits(status) ||
+         GSS_ERROR(cpkt_gss_status_input(status)) != 0;
 }
 
 /** Implements the documented public C89 GSSAPI facade operation
@@ -262,6 +281,34 @@ cpkt_gss_status cpkt_gss_oid_from_text(cpkt_gss_status *minor_out,
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
+/** Copies a raw DER OID descriptor into an owned handle. On invalid input
+ * the output is cleared; release a successful handle with cpkt_gss_oid_free. */
+cpkt_gss_status cpkt_gss_oid_from_bytes(cpkt_gss_status *minor_out,
+                                        const void *bytes, size_t length,
+                                        cpkt_gss_oid **oid_out) {
+  gss_OID native;
+  if (oid_out == NULL || length > UINT_MAX || (length != 0 && bytes == NULL)) {
+    if (oid_out != NULL)
+      *oid_out = NULL;
+    return cpkt_gss_finish(GSS_S_CALL_BAD_STRUCTURE, EINVAL, minor_out);
+  }
+  *oid_out = NULL;
+  native = (gss_OID)calloc(1, sizeof(*native));
+  if (native == NULL)
+    return cpkt_gss_finish(GSS_S_FAILURE, ENOMEM, minor_out);
+  if (length != 0) {
+    native->elements = malloc(length);
+    if (native->elements == NULL) {
+      free(native);
+      return cpkt_gss_finish(GSS_S_FAILURE, ENOMEM, minor_out);
+    }
+    memcpy(native->elements, bytes, length);
+  }
+  native->length = (OM_uint32)length;
+  *oid_out = (cpkt_gss_oid *)native;
+  return cpkt_gss_finish(GSS_S_COMPLETE, 0, minor_out);
+}
+
 /** Implements the documented public C89 GSSAPI facade operation
  * cpkt_gss_oid_to_text. */
 cpkt_gss_status cpkt_gss_oid_to_text(cpkt_gss_status *minor_out,
@@ -377,12 +424,18 @@ cpkt_gss_status cpkt_gss_acquire_credential(
   OM_uint32 minor, lifetime = 0;
   gss_cred_id_t credential = GSS_C_NO_CREDENTIAL;
   gss_OID_set actual = GSS_C_NO_OID_SET;
-  OM_uint32 status =
+  OM_uint32 ignored;
+  OM_uint32 status;
+  if (!cpkt_gss_u32_fits(requested_lifetime))
+    return cpkt_gss_invalid_u32(minor_out);
+  status =
       gss_acquire_cred(&minor, (gss_name_t)name, (OM_uint32)requested_lifetime,
                        (gss_OID_set)desired, usage, &credential,
                        actual_out == NULL ? NULL : &actual, &lifetime);
   if (credential_out != NULL)
     *credential_out = (cpkt_gss_credential *)credential;
+  else if (credential != GSS_C_NO_CREDENTIAL)
+    (void)gss_release_cred(&ignored, &credential);
   if (actual_out != NULL)
     *actual_out = (cpkt_gss_oid_set *)actual;
   if (lifetime_out != NULL)
@@ -432,6 +485,9 @@ cpkt_gss_status cpkt_gss_init_context(
   gss_buffer_desc native_input = cpkt_gss_native_buffer(input), native_output;
   gss_OID actual = GSS_C_NO_OID;
   OM_uint32 status;
+  if (!cpkt_gss_u32_fits(flags) || !cpkt_gss_u32_fits(lifetime) ||
+      !cpkt_gss_bindings_fit(bindings))
+    return cpkt_gss_invalid_u32(minor_out);
   memset(&native_output, 0, sizeof(native_output));
   status = gss_init_sec_context(
       &minor, (gss_cred_id_t)credential, &native_context, (gss_name_t)target,
@@ -470,6 +526,8 @@ cpkt_gss_status cpkt_gss_accept_context(
   gss_OID mechanism = GSS_C_NO_OID;
   gss_cred_id_t delegated = GSS_C_NO_CREDENTIAL;
   OM_uint32 status;
+  if (!cpkt_gss_bindings_fit(bindings))
+    return cpkt_gss_invalid_u32(minor_out);
   memset(&native_output, 0, sizeof(native_output));
   status = gss_accept_sec_context(
       &minor, &native_context, (gss_cred_id_t)credential,
@@ -517,6 +575,8 @@ cpkt_gss_status cpkt_gss_get_mic(cpkt_gss_status *minor_out,
   OM_uint32 minor;
   gss_buffer_desc native_message = cpkt_gss_native_buffer(message), token;
   OM_uint32 status;
+  if (!cpkt_gss_u32_fits(qop))
+    return cpkt_gss_invalid_u32(minor_out);
   memset(&token, 0, sizeof(token));
   status = gss_get_mic(&minor, (gss_ctx_id_t)context, (gss_qop_t)qop,
                        &native_message, &token);
@@ -554,6 +614,8 @@ cpkt_gss_status cpkt_gss_wrap(cpkt_gss_status *minor_out,
   int confidentiality = 0;
   gss_buffer_desc native_input = cpkt_gss_native_buffer(input), output;
   OM_uint32 status;
+  if (!cpkt_gss_u32_fits(qop))
+    return cpkt_gss_invalid_u32(minor_out);
   memset(&output, 0, sizeof(output));
   status = gss_wrap(&minor, (gss_ctx_id_t)context, confidentiality_requested,
                     (gss_qop_t)qop, &native_input, &confidentiality, &output);
@@ -597,6 +659,9 @@ cpkt_gss_status cpkt_gss_display_status(cpkt_gss_status *minor_out,
                                         : (OM_uint32)*message_context;
   gss_buffer_desc text;
   OM_uint32 status;
+  if (!cpkt_gss_u32_fits(status_value) ||
+      (message_context != NULL && !cpkt_gss_u32_fits(*message_context)))
+    return cpkt_gss_invalid_u32(minor_out);
   memset(&text, 0, sizeof(text));
   status = gss_display_status(&minor, (OM_uint32)status_value, type,
                               (gss_OID)mechanism, &native_context, &text);

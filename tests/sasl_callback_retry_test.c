@@ -16,13 +16,60 @@ static int mock_secret_mode;
 static unsigned char mock_password[] = "secret";
 static cpkt_sasl_secret mock_public_secret;
 static sasl_interact_t mock_start_interactions[2];
-static sasl_interact_t mock_step_interactions[2];
+static sasl_interact_t mock_step_interactions[301];
+static int mock_extended_callback_calls;
+static void *mock_delegated_credential = &mock_connection;
+static const char *mock_source = "GSSAPI";
+static const char *mock_mechanism = "GSSAPI";
+static int mock_provider_credential_releases;
+static int mock_application_credential_releases;
+
+/* The injected provider test links only the receiver implementation. Native
+ * global shutdown owns these plugin registries in the production build. */
+void cpkt_sasl_client_plugins_cleanup(void) {}
+void cpkt_sasl_server_plugins_cleanup(void) {}
+void cpkt_sasl_auxiliary_plugins_cleanup(void) {}
+void cpkt_sasl_canonicalizers_cleanup(void) {}
+void cpkt_sasl_plugin_utils_forget_connection(sasl_conn_t *native) {
+  (void)native;
+}
+void cpkt_sasl_plugin_utils_cleanup(void) {}
 
 typedef union mock_callback_bridge {
   int (*generic)(void);
   sasl_getsimple_t *simple;
   sasl_getsecret_t *secret;
+  sasl_chalprompt_t *challenge;
 } mock_callback_bridge;
+
+static int mock_extended_simple(void *context, int identifier,
+                                const char **result, unsigned long *length) {
+  (void)context;
+  if (identifier != SASL_CB_LANGUAGE && identifier != SASL_CB_CNONCE)
+    return SASL_BADPARAM;
+  ++mock_extended_callback_calls;
+  *result = identifier == SASL_CB_LANGUAGE ? "en" : "nonce";
+  if (length != 0)
+    *length = (unsigned long)strlen(*result);
+  return SASL_OK;
+}
+
+static int mock_extended_challenge(void *context, int identifier,
+                                   const char *challenge, const char *prompt,
+                                   const char *default_result,
+                                   const char **result, unsigned long *length) {
+  (void)context;
+  (void)challenge;
+  (void)prompt;
+  (void)default_result;
+  if (identifier != SASL_CB_NOECHOPROMPT)
+    return SASL_BADPARAM;
+  ++mock_extended_callback_calls;
+  *result = "private";
+  if (length != 0)
+    *length = 7;
+  return SASL_OK;
+}
 
 static const sasl_callback_t *
 mock_find_callback(const sasl_callback_t *callbacks, unsigned long identifier) {
@@ -50,6 +97,17 @@ static int mock_simple(void *context, int identifier, const char **result,
   *result = "facade-authentication-user";
   if (result_byte_count != 0)
     *result_byte_count = (unsigned long)strlen(*result);
+  return SASL_OK;
+}
+
+static int mock_option(void *context, const char *plugin, const char *name,
+                       const char **result, unsigned long *length) {
+  (void)plugin;
+  if (context == 0 || name == 0 || result == 0)
+    return SASL_BADPARAM;
+  *result = "option";
+  if (length != 0)
+    *length = 6;
   return SASL_OK;
 }
 
@@ -173,6 +231,7 @@ int sasl_client_start(sasl_conn_t *connection, const char *mechanisms,
 int sasl_client_step(sasl_conn_t *connection, const char *input,
                      unsigned input_length, sasl_interact_t **interactions,
                      const char **output, unsigned *output_length) {
+  unsigned i;
   (void)connection;
   (void)input;
   (void)input_length;
@@ -183,10 +242,12 @@ int sasl_client_step(sasl_conn_t *connection, const char *input,
   if (mock_step_calls == 0) {
     if (interactions == 0 || *interactions != 0)
       return SASL_BADPARAM;
-    mock_step_interactions[0].id = SASL_CB_PASS;
-    mock_step_interactions[0].result = "initial";
-    mock_step_interactions[0].len = 7;
-    mock_step_interactions[1].id = SASL_CB_LIST_END;
+    for (i = 0; i < 300; ++i) {
+      mock_step_interactions[i].id = SASL_CB_PASS;
+      mock_step_interactions[i].result = "initial";
+      mock_step_interactions[i].len = 7;
+    }
+    mock_step_interactions[300].id = SASL_CB_LIST_END;
     *interactions = mock_step_interactions;
     mock_step_calls += 1;
     return SASL_INTERACT;
@@ -264,6 +325,32 @@ int sasl_setprop(sasl_conn_t *connection, int property, const void *value) {
   return SASL_OK;
 }
 
+int sasl_getprop(sasl_conn_t *connection, int property, const void **value) {
+  (void)connection;
+  if (value == 0)
+    return SASL_BADPARAM;
+  if (property == SASL_AUTHSOURCE)
+    *value = mock_source;
+  else if (property == SASL_MECHNAME)
+    *value = mock_mechanism;
+  else if (property == SASL_CALLBACK)
+    *value = mock_callbacks;
+  else if (property == SASL_GETOPTCTX) {
+    const sasl_callback_t *callback = mock_callback(SASL_CB_GETOPT);
+    *value = callback == 0 ? 0 : callback->context;
+  } else if (property == SASL_DELEGATEDCREDS)
+    *value = mock_delegated_credential == 0
+                 ? 0
+                 : (strcmp(mock_source, "cpkt-custom") == 0
+                        ? mock_delegated_credential
+                        : &mock_delegated_credential);
+  else
+    return SASL_BADPARAM;
+  if (*value == 0)
+    return SASL_NOTDONE;
+  return SASL_OK;
+}
+
 int sasl_set_path(int type, char *path) {
   (void)type;
   (void)path;
@@ -301,6 +388,10 @@ void sasl_version_info(const char **implementation, const char **version,
 }
 
 void sasl_dispose(sasl_conn_t **connection) {
+  if (mock_delegated_credential != 0) {
+    ++mock_provider_credential_releases;
+    mock_delegated_credential = 0;
+  }
   if (connection != 0)
     *connection = 0;
 }
@@ -310,6 +401,10 @@ int main(void) {
   mock_callback_bridge callback_bridge;
   cpkt_sasl_callbacks callbacks;
   cpkt_sasl *client;
+  const cpkt_sasl_callbacks *original_callbacks;
+  void *option_context;
+  cpkt_gss_credential *taken_credential;
+  const void *generic_payload;
   cpkt_sasl_interaction *interactions;
   const char *result;
   const char *output;
@@ -324,12 +419,26 @@ int main(void) {
   callback_calls = 0;
   callbacks.context = &callback_calls;
   callbacks.simple = mock_simple;
+  callbacks.option = mock_option;
+  callbacks.language = mock_extended_simple;
+  callbacks.client_nonce = mock_extended_simple;
+  callbacks.challenge_no_echo = mock_extended_challenge;
   callbacks.secret = mock_secret;
   status = CPKT_SASL_FAIL;
   client = cpkt_sasl_client_new("imap", "mail.example.test", 0, 0, &callbacks,
                                 0, &status);
   if (client == 0 || status != CPKT_SASL_OK)
     return 1;
+  original_callbacks = 0;
+  option_context = 0;
+  if (client->get_callback_record(client, &original_callbacks) !=
+          CPKT_SASL_OK ||
+      original_callbacks == 0 || original_callbacks == &callbacks ||
+      original_callbacks->context != &callback_calls ||
+      original_callbacks->option != mock_option ||
+      client->get_option_context(client, &option_context) != CPKT_SASL_OK ||
+      option_context != &callback_calls)
+    return 35;
   callback = mock_callback(SASL_CB_AUTHNAME);
   if (callback == 0 || callback->proc == 0)
     return 2;
@@ -341,6 +450,32 @@ int main(void) {
       result == 0 || strcmp(result, "facade-authentication-user") != 0 ||
       length != strlen(result) || callback_calls != 1)
     return 3;
+  callback = mock_callback(SASL_CB_LANGUAGE);
+  if (callback == 0 || callback->proc == 0)
+    return 24;
+  callback_bridge.generic = callback->proc;
+  if (callback_bridge.simple(callback->context, SASL_CB_LANGUAGE, &result,
+                             &length) != SASL_OK ||
+      strcmp(result, "en") != 0 || length != 2)
+    return 25;
+  callback = mock_callback(SASL_CB_CNONCE);
+  if (callback == 0 || callback->proc == 0)
+    return 26;
+  callback_bridge.generic = callback->proc;
+  if (callback_bridge.simple(callback->context, SASL_CB_CNONCE, &result,
+                             &length) != SASL_OK ||
+      strcmp(result, "nonce") != 0 || length != 5)
+    return 27;
+  callback = mock_callback(SASL_CB_NOECHOPROMPT);
+  if (callback == 0 || callback->proc == 0)
+    return 28;
+  callback_bridge.generic = callback->proc;
+  if (callback_bridge.challenge(callback->context, SASL_CB_NOECHOPROMPT,
+                                "challenge", "prompt", 0, &result,
+                                &length) != SASL_OK ||
+      strcmp(result, "private") != 0 || length != 7 ||
+      mock_extended_callback_calls != 3)
+    return 29;
   callback = mock_callback(SASL_CB_PASS);
   if (callback == 0 || callback->proc == 0)
     return 8;
@@ -394,7 +529,8 @@ int main(void) {
   if (client->step(client, "input", 5, &interactions, &output,
                    &output_length) != CPKT_SASL_INTERACT ||
       interactions == 0 || interactions[0].id != SASL_CB_PASS ||
-      interactions[0].result == 0 ||
+      interactions[299].id != SASL_CB_PASS ||
+      interactions[300].id != SASL_CB_LIST_END || interactions[0].result == 0 ||
       strcmp((const char *)interactions[0].result, "initial") != 0 ||
       interactions[0].result_byte_count != 7)
     return 6;
@@ -405,6 +541,41 @@ int main(void) {
       interactions != 0 || output == 0 || output_length != 7 ||
       mock_step_calls != 2)
     return 7;
+  taken_credential = 0;
+  generic_payload = 0;
+  if (client->get_delegated_payload(client, &generic_payload) != CPKT_SASL_OK ||
+      generic_payload != &mock_delegated_credential)
+    return 33;
+  if (client->get_delegated_credentials(client, &taken_credential) !=
+          CPKT_SASL_OK ||
+      taken_credential != (cpkt_gss_credential *)&mock_connection ||
+      mock_delegated_credential != 0)
+    return 30;
+  taken_credential = (cpkt_gss_credential *)&mock_connection;
+  if (client->get_delegated_credentials(client, &taken_credential) !=
+          CPKT_SASL_NOTDONE ||
+      taken_credential != 0)
+    return 31;
+  ++mock_application_credential_releases;
+  client->close(client);
+  if (mock_provider_credential_releases != 0 ||
+      mock_application_credential_releases != 1)
+    return 32;
+  mock_source = "cpkt-custom";
+  mock_mechanism = "CPKT-CUSTOM";
+  mock_delegated_credential = (void *)1;
+  client =
+      cpkt_sasl_client_new("imap", "mail.example.test", 0, 0, 0, 0, &status);
+  generic_payload = 0;
+  taken_credential = (cpkt_gss_credential *)&mock_connection;
+  if (client == 0 || status != CPKT_SASL_OK ||
+      client->get_delegated_payload(client, &generic_payload) != CPKT_SASL_OK ||
+      generic_payload != (void *)1 ||
+      client->get_delegated_credentials(client, &taken_credential) !=
+          CPKT_SASL_BADPROT ||
+      taken_credential != 0 || mock_delegated_credential != (void *)1)
+    return 34;
+  mock_delegated_credential = 0;
   client->close(client);
   callbacks.secret = 0;
   callback_calls = 0;
