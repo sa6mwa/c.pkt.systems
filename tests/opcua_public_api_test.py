@@ -81,6 +81,37 @@ rejected(model=changed, message='Changed public types declaration: UA_Plugin')
 rejected(public={'cpkt_opcua_Plugin'}, message='Missing C89 binding')
 rejected(public_types={'cpkt_opcua_Plugin': 'typedef struct cpkt_opcua_Plugin cpkt_opcua_Plugin'},
          message='Missing C89 record members')
+# Opaque native storage is covered by explicit public fields/accessors. An
+# unexplained exclusion, typo, newly missing field or native escape must fail.
+opaque_types = {'cpkt_opcua_Plugin': 'typedef struct cpkt_opcua_Plugin cpkt_opcua_Plugin',
+                'cpkt_opcua_PluginInfo': model['types']['UA_Plugin']}
+represented = deepcopy(contract)
+represented['types']['UA_Plugin'].update(
+    representation='Actual native storage; owned public metadata snapshot',
+    fields={field: ['cpkt_opcua_PluginInfo.' + field] for field in api.record_fields(model['types']['UA_Plugin'])})
+opaque_public = public | {'cpkt_opcua_PluginInfo'}
+api.check(model, represented, opaque_public, public_types=opaque_types)
+invalid = deepcopy(represented)
+invalid['types']['UA_Plugin']['fields'] = ['first']
+rejected(contract=invalid, public=opaque_public, public_types=opaque_types, message='Invalid public field map')
+invalid = deepcopy(represented)
+del invalid['types']['UA_Plugin']['representation']
+rejected(contract=invalid, public=opaque_public, public_types=opaque_types, message='Unexplained C89 representation')
+invalid = deepcopy(represented)
+invalid['types']['UA_Plugin']['fields']['first'] = ['cpkt_opcua_PluginInfo.missing']
+rejected(contract=invalid, public=opaque_public, public_types=opaque_types, message='Missing C89 access member')
+invalid = deepcopy(represented)
+invalid['types']['UA_Plugin']['fields']['first'] = []
+rejected(contract=invalid, public=opaque_public, public_types=opaque_types, message='Missing public access')
+invalid = deepcopy(represented)
+invalid['types']['UA_Plugin']['fields']['first'] = ['cpkt_opcua_server_native']
+rejected(contract=invalid, public=opaque_public | {'cpkt_opcua_server_native'}, public_types=opaque_types, message='Missing C89 access')
+invalid = deepcopy(represented)
+del invalid['types']['UA_Plugin']['fields']['first']
+rejected(contract=invalid, public=opaque_public, public_types=opaque_types, message='Missing C89 record members')
+invalid = deepcopy(represented)
+invalid['types']['UA_Plugin']['fields']['nonexistent'] = ['cpkt_opcua_operation']
+rejected(contract=invalid, public=opaque_public, public_types=opaque_types, message='Unknown represented native member')
 changed = deepcopy(contract)
 changed['functions']['UA_operation']['binding'] = 'cpkt_opcua_server_native'
 rejected(contract=changed, public=public | {'cpkt_opcua_server_native'}, message='Native escape hatch')

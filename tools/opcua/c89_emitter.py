@@ -12,9 +12,19 @@ from client_emitter import emit_client
 from async_client_emitter import emit_async_client
 from core_client_emitter import emit_core_client
 from value_emitter import emit_values
+from pubsub_emitter import emit_records
+from codec_emitter import emit_codecs
+from event_emitter import emit_events
+from dynamic_emitter import emit_dynamic
+from eventloop_emitter import emit_eventloop
+from config_emitter import emit_configuration
+from nodestore_emitter import emit_nodestore
+from certificate_emitter import emit_certificates
+from format_emitter import emit_format, emit_logger
+from utility_emitter import emit_utilities, emit_value_operations, emit_event_filter, emit_security_records, emit_operations
 
 
-def emit(generator, output, client_header):
+def emit(generator, output, client_header, formatter_source=None):
     types = [t for ns in generator.filtered_types.values() for t in ns.values()]
     index = {t.name: i for i, t in enumerate(types)}
     if len(index) != len(types):
@@ -22,7 +32,7 @@ def emit(generator, output, client_header):
     header = ['/* Generated from the upstream public schema. Do not edit. */',
               '/* Schema: Copyright OPC Foundation, MIT License 1.00; see THIRD_PARTY_NOTICES. */',
               '#ifndef CPKT_OPCUA_TYPES_H', '#define CPKT_OPCUA_TYPES_H',
-              '#include <cpkt/opcua_types_base.h>', '#ifdef __cplusplus',
+              '#include <cpkt/opcua_types_base.h>', '#include <stdarg.h>', '#ifdef __cplusplus',
               'extern "C" {', '#endif',
               '#include <cpkt/opcua_constants.h>',
               f'#define CPKT_OPCUA_TYPES_COUNT {len(types)}']
@@ -76,7 +86,7 @@ def emit(generator, output, client_header):
                 offsets += [f'offsetof({prefix}{t.name}, {length})' if m.is_array else '0'
                             for prefix in ('cpkt_opcua_', 'UA_')]
                 metadata.append('  {' + ', '.join(offsets + [str(index[typename]),
-                                str(int(m.is_array)), str(int(bool(m.is_optional)))]) + '},')
+                                str(int(m.is_array)), str(int(bool(m.is_optional))), "NULL"]) + '},')
             metadata.append('};')
         else:
             raise ValueError(f'Unsupported public schema class {type(t).__name__}')
@@ -91,6 +101,12 @@ def emit(generator, output, client_header):
             if cast:
                 expression = '(' + expression + ')'
             header.append(f'#define cpkt_opcua_{t.name}_{action}({params}) {expression}')
+    header.extend(['/** Complete native public map with generated KeyValuePair entries.',
+                   ' * Owned copies release entries on clear. Callback notification maps',
+                   ' * borrow their entries only until return; never clear/retain those views. */',
+                   'struct cpkt_opcua_KeyValueMap { size_t mapSize; cpkt_opcua_KeyValuePair *map; };'])
+    for i, t in enumerate(types):
+        metadata.append(f'struct cpkt_type_alignment_{i} {{ char prefix; cpkt_opcua_{t.name} value; }};')
     metadata.append('static const cpkt_opcua_Type cpkt_types[] = {')
     for i, t in enumerate(types):
         kind = (kinds[t.name] if isinstance(t, BuiltinType) else
@@ -100,7 +116,7 @@ def emit(generator, output, client_header):
         members = f'members_{i}' if isinstance(t, StructType) else 'NULL'
         size = len(t.members) if isinstance(t, StructType) else 0
         metadata.append(f'  {{"{t.name}", sizeof(cpkt_opcua_{t.name}), &UA_TYPES[{i}], '
-                        f'{kind}, {size}, {members}}},')
+                        f'{kind}, {size}, {members}, offsetof(struct cpkt_type_alignment_{i}, value), NULL}},')
     metadata.append('};')
     pairs = [(t.name, t.name[:-7] + 'Response') for t in types
              if t.name.endswith('Request') and t.name[:-7] + 'Response' in index]
@@ -180,6 +196,17 @@ def emit(generator, output, client_header):
                 '  cpkt_async_response(client, user, id, response);', '}',
                 f'static UA_StatusCode async_{name}_invoke(UA_Client *client, const void *request, cpkt_async_base *context, UA_UInt32 *id) {{',
                 f'  return {native_function}_async(client, *(const UA_{request} *)request, async_{name}_native, context, id);', '}']
+    utility_header, utility_metadata = emit_utilities(index, Path(client_header).parent)
+    header.extend(utility_header)
+    metadata.extend(utility_metadata)
+    security_header, security_metadata = emit_security_records(Path(client_header).parent)
+    header.extend(security_header)
+    metadata.extend(security_metadata)
+    operation_header, operation_metadata = emit_value_operations(index, Path(client_header).parent)
+    metadata.extend(operation_metadata)
+    event_filter_header, event_filter_metadata = emit_event_filter(index, Path(client_header).parent)
+    header.extend(event_filter_header)
+    metadata.extend(event_filter_metadata)
     server_header, server_metadata = emit_server(index, Path(client_header).parent)
     header.extend(server_header)
     metadata.extend(server_metadata)
@@ -191,6 +218,8 @@ def emit(generator, output, client_header):
     metadata.extend(core_client_metadata)
     value_header, value_metadata = emit_values(Path(client_header).parent)
     metadata.extend(value_metadata)
+    certificate_header, certificate_metadata = emit_certificates(index, Path(client_header).parent)
+    metadata.extend(certificate_metadata)
     header.extend([
         '/** Read all public DataValue fields through the native server read API. */',
         'cpkt_opcua_StatusCode cpkt_opcua_server_read_typed(cpkt_opcua_server *server, const cpkt_opcua_ReadValueId *request, cpkt_opcua_TimestampsToReturn timestamps, cpkt_opcua_DataValue *response);',
@@ -198,11 +227,23 @@ def emit(generator, output, client_header):
         'cpkt_opcua_StatusCode cpkt_opcua_server_write_typed(cpkt_opcua_server *server, const cpkt_opcua_WriteValue *request);',
         '#include <cpkt/opcua_util.h>',
         '#include <cpkt/opcua_callbacks.h>',
+        *emit_records(Path(client_header).parent),
+        *emit_codecs(index, Path(client_header).parent, output),
+        *emit_dynamic(Path(client_header).parent),
         '#include <cpkt/opcua_plugins.h>',
+        *operation_header,
         *client_header_output,
         *async_client_header,
         *core_client_header,
+        *emit_events(Path(client_header).parent),
+        *emit_eventloop(Path(client_header).parent, Path(output)),
+        *emit_nodestore(Path(client_header).parent, Path(output)),
+        *emit_configuration(index, Path(client_header).parent, Path(output)),
+        *emit_operations(Path(client_header).parent),
+        *emit_format(Path(client_header).parent, Path(formatter_source), Path(output)),
+        *emit_logger(Path(client_header).parent),
         *value_header,
+        *certificate_header,
         '#ifdef __cplusplus', '}', '#endif', '#endif', ''])
     root = Path(output)
     root.mkdir(parents=True, exist_ok=True)

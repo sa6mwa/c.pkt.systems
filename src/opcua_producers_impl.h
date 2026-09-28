@@ -176,10 +176,13 @@ cpkt_producer_read(UA_Server *server, const UA_NodeId *session,
   if (!status)
     status = cpkt_convert(value, &op->value,
                           &cpkt_types[CPKT_OPCUA_TYPES_DATAVALUE], 0, 0);
-  if (!status)
+  if (!status) {
+    ++entry->owner->owner->typed_config_depth;
     status = source.read(entry->owner->owner, session ? &c_session : NULL,
                          session_context, node ? &c_node : NULL, node_context,
                          timestamp, range ? &c_range : NULL, &op->value);
+    --entry->owner->owner->typed_config_depth;
+  }
   {
     UA_StatusCode returned = status;
     if (!status || status == UA_STATUSCODE_GOODCOMPLETESASYNCHRONOUSLY) {
@@ -240,10 +243,13 @@ cpkt_producer_write(UA_Server *server, const UA_NodeId *session,
   if (!status)
     status = cpkt_convert(value, &op->value,
                           &cpkt_types[CPKT_OPCUA_TYPES_DATAVALUE], 0, 0);
-  if (!status)
+  if (!status) {
+    ++entry->owner->owner->typed_config_depth;
     status = source.write(entry->owner->owner, session ? &c_session : NULL,
                           session_context, node ? &c_node : NULL, node_context,
                           range ? &c_range : NULL, &op->value);
+    --entry->owner->owner->typed_config_depth;
+  }
   UA_free(c_range.dimensions);
   cpkt_nodes_release(entry);
   if (op) {
@@ -279,8 +285,9 @@ static UA_StatusCode cpkt_producer_outputs(cpkt_producer *op,
       outputs[i] = staged[i];
       UA_Variant_init(&staged[i]);
     }
-  UA_Array_delete(staged, op->output_count,
-                  cpkt_types[CPKT_OPCUA_TYPES_VARIANT].native);
+  if (staged)
+    UA_Array_delete(staged, op->output_count,
+                    cpkt_types[CPKT_OPCUA_TYPES_VARIANT].native);
   return status;
 }
 
@@ -327,12 +334,15 @@ static UA_StatusCode cpkt_producer_method(
   if (!status)
     status = cpkt_array(inputs, input_size, &c_inputs,
                         &cpkt_types[CPKT_OPCUA_TYPES_VARIANT], 0, 0);
-  if (!status)
+  if (!status) {
+    ++entry->owner->owner->typed_config_depth;
     status = callback(entry->owner->owner, session ? &c_session : NULL,
                       session_context, method ? &c_method : NULL,
                       method_context, object ? &c_object : NULL, object_context,
                       input_size, (const cpkt_opcua_Variant *)c_inputs,
                       output_size, op->outputs);
+    --entry->owner->owner->typed_config_depth;
+  }
   {
     UA_StatusCode returned = status;
     if (!status || status == UA_STATUSCODE_GOODCOMPLETESASYNCHRONOUSLY) {

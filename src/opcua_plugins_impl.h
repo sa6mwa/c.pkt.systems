@@ -1,6 +1,11 @@
 /* Private public-plugin bridge, included by the type converter's C TU. */
 #include <open62541/plugin/accesscontrol.h>
 #include <open62541/plugin/historydatabase.h>
+static void cpkt_cfg_bind_server_owner(cpkt_opcua_server *, UA_Server *);
+static UA_ServerConfig *cpkt_cfg_server_native(cpkt_opcua_server *);
+static void cpkt_cfg_view_ac_clear(cpkt_opcua_AccessControl *);
+static void cpkt_cfg_view_hdb_clear(cpkt_opcua_HistoryDatabase *);
+static int cpkt_cfg_global_is_view(const cpkt_opcua_GlobalNodeLifecycle *);
 typedef struct {
   cpkt_opcua_server *owner;
   cpkt_opcua_AccessControl plugin;
@@ -128,7 +133,10 @@ static void cpkt_hb_borrow_node(const UA_NodeId *native,
 #include "opcua_nodes_impl.h"
 #include "opcua_producers_impl.h"
 #include "opcua_creation_impl.h"
+#include "opcua_security_impl.h"
+#include "opcua_pubsub_internal.h"
 #include "opcua_plugins_metadata.inc"
+#include "opcua_pubsub_impl.h"
 #include "opcua_nodes_install_impl.h"
 #include "opcua_producers_install_impl.h"
 /* clang-format on */
@@ -145,18 +153,18 @@ static void cpkt_ac_clear(UA_AccessControl *native) {
   memset(native, 0, sizeof(*native));
   UA_free(bridge);
 }
-/** Installs the generated C89 access-control plugin before server startup. */
-cpkt_opcua_StatusCode cpkt_opcua_server_set_access_control_plugin(
-    cpkt_opcua_server *server, const cpkt_opcua_AccessControl *plugin) {
+static UA_StatusCode cpkt_ac_install(UA_AccessControl *destination,
+                                     cpkt_opcua_server *server,
+                                     const cpkt_opcua_AccessControl *plugin) {
   cpkt_ac_bridge *bridge;
-  UA_ServerConfig *configuration;
   UA_AccessControl native;
   UA_StatusCode status;
   void *policies = NULL;
   void *native_policies = NULL;
-  if (!server || !plugin || server->started || !plugin->activateSession ||
-      !plugin->getUserRightsMask || !plugin->getUserAccessLevel ||
-      !plugin->getUserExecutable || !plugin->getUserExecutableOnObject)
+  if (!server || !plugin || plugin->clear == cpkt_cfg_view_ac_clear ||
+      !plugin->activateSession || !plugin->getUserRightsMask ||
+      !plugin->getUserAccessLevel || !plugin->getUserExecutable ||
+      !plugin->getUserExecutableOnObject)
     return UA_STATUSCODE_BADINVALIDARGUMENT;
   bridge = (cpkt_ac_bridge *)UA_calloc(1, sizeof(*bridge));
   if (!bridge)
@@ -185,11 +193,18 @@ cpkt_opcua_StatusCode cpkt_opcua_server_set_access_control_plugin(
   native.clear = cpkt_ac_clear;
   native.userTokenPoliciesSize = plugin->userTokenPoliciesSize;
   native.userTokenPolicies = (UA_UserTokenPolicy *)native_policies;
-  configuration = UA_Server_getConfig(server->server);
-  if (configuration->accessControl.clear)
-    configuration->accessControl.clear(&configuration->accessControl);
-  configuration->accessControl = native;
+  if (destination->clear)
+    destination->clear(destination);
+  *destination = native;
   return 0;
+}
+/** Installs the generated C89 access-control plugin before server startup. */
+cpkt_opcua_StatusCode cpkt_opcua_server_set_access_control_plugin(
+    cpkt_opcua_server *server, const cpkt_opcua_AccessControl *plugin) {
+  if (!server || !server->server || server->destroying || server->started)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  return cpkt_ac_install(&UA_Server_getConfig(server->server)->accessControl,
+                         server, plugin);
 }
 static void cpkt_hdb_clear(UA_HistoryDatabase *native) {
   cpkt_hdb_bridge *bridge = (cpkt_hdb_bridge *)native->context;
@@ -198,13 +213,12 @@ static void cpkt_hdb_clear(UA_HistoryDatabase *native) {
   memset(native, 0, sizeof(*native));
   UA_free(bridge);
 }
-/** Installs the full C89 history plugin using generated native trampolines. */
-cpkt_opcua_StatusCode cpkt_opcua_server_set_history_database_plugin(
-    cpkt_opcua_server *server, const cpkt_opcua_HistoryDatabase *plugin) {
+static UA_StatusCode
+cpkt_hdb_install(UA_HistoryDatabase *destination, cpkt_opcua_server *server,
+                 const cpkt_opcua_HistoryDatabase *plugin) {
   cpkt_hdb_bridge *bridge;
-  UA_ServerConfig *configuration;
   UA_HistoryDatabase native;
-  if (!server || !plugin || server->started)
+  if (!server || !plugin || plugin->clear == cpkt_cfg_view_hdb_clear)
     return UA_STATUSCODE_BADINVALIDARGUMENT;
   bridge = (cpkt_hdb_bridge *)UA_calloc(1, sizeof(*bridge));
   if (!bridge)
@@ -214,11 +228,18 @@ cpkt_opcua_StatusCode cpkt_opcua_server_set_history_database_plugin(
   cpkt_hdb_assign(&native, plugin);
   native.context = bridge;
   native.clear = cpkt_hdb_clear;
-  configuration = UA_Server_getConfig(server->server);
-  if (configuration->historyDatabase.clear)
-    configuration->historyDatabase.clear(&configuration->historyDatabase);
-  configuration->historyDatabase = native;
+  if (destination->clear)
+    destination->clear(destination);
+  *destination = native;
   return 0;
+}
+/** Installs the full C89 history plugin using generated native trampolines. */
+cpkt_opcua_StatusCode cpkt_opcua_server_set_history_database_plugin(
+    cpkt_opcua_server *server, const cpkt_opcua_HistoryDatabase *plugin) {
+  if (!server || !server->server || server->destroying || server->started)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  return cpkt_hdb_install(&UA_Server_getConfig(server->server)->historyDatabase,
+                          server, plugin);
 }
 
 #include "opcua_history_impl.h"

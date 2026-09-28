@@ -109,7 +109,7 @@ fi
         context = name + ":\n" + output
         if not phase:
             assert process.returncode == 0, context
-            assert actual_calls == ["configure"] * 7 + ["fixture"] * 18 + [
+            assert actual_calls == ["configure"] * 7 + ["fixture"] * 54 + [
                 "build", "test", "package"] * 6 + ["build", "package"], context
         else:
             if phase == "configure":
@@ -117,7 +117,7 @@ fi
             elif phase == "fixture":
                 expected_calls = ["configure"] * 7 + ["fixture"]
             else:
-                expected_calls = ["configure"] * 7 + ["fixture"] * 18 + [
+                expected_calls = ["configure"] * 7 + ["fixture"] * 54 + [
                     "build", "test", "package"][:["build", "test", "package"].index(phase) + 1]
             assert actual_calls == expected_calls, context
             prefix = "[package] " + (

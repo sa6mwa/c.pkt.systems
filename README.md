@@ -504,19 +504,22 @@ Include `<cpkt/opcua_types.h>` for the complete generated standard public model:
 helpers, binary codecs, typed synchronous/asynchronous client services, full
 subscription notifications, and typed server node/attribute/browse operations. Types follow upstream names and fields with a
 `cpkt_opcua_` prefix. Generation reuses upstream's schema parser and C generator;
-it preserves the native ABI. See the [generated model contract](docs/opcua-c89-facade-spec.md#generated-c89-public-model)
+it preserves native type semantics through explicit boundary conversions. See
+the [generated model contract](docs/opcua-c89-facade-spec.md#generated-c89-public-model)
 for ownership and error handling. Generated access-control and history-database
 plugin records expose every enabled native callback slot to C89. The full
 history storage backend is also available, with default gathering/database
 installation and backend-owned persistent values for borrowed-pointer callbacks.
 See [history storage ownership](docs/opcua-c89-facade-spec.md#history-storage-and-borrowed-values).
-Custom gathering callbacks, PubSub component configuration and other custom
-plugins remain separate coverage work.
+Custom gathering callbacks, PubSub component configuration, and custom plugin
+callbacks are available to strict C89 consumers. The enabled public surface is
+tracked by the complete [API contract](docs/opcua-c89-facade-spec.md).
 
 The facade header does not include open62541 headers or expose `UA_Client`,
 `UA_Server`, `UA_StatusCode`, `UA_NodeId`, `UA_Variant`, fixed-width C99 integer
-types, `long long`, or inline functions. Its implementation is compiled as C89
-inside the SDK and links the bundled open62541 library.
+types, `long long`, or inline functions. Its handwritten facade translation
+units are compiled as C89 inside the SDK and link the bundled open62541
+library; the private native formatter uses the upstream C dialect.
 
 The OPC UA facade provides opaque client and server handles, C89-safe node-id
 and scalar value wrappers, explicit server startup/iterate/shutdown control,

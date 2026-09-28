@@ -60,6 +60,21 @@ macro(cpkt_cached_external_project_add)
   ExternalProject_Add(${_cpkt_ep_args})
 endmacro()
 
+function(cpkt_order_shared_install shared_project static_project)
+  # Both variants write common package metadata into one install prefix.
+  # Leave compilation parallel, but install shared metadata last.
+  ExternalProject_Get_Property(${static_project} STAMP_DIR)
+  get_property(multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+  if(multi_config)
+    set(static_install_stamp "${STAMP_DIR}/$<CONFIG>/${static_project}-install")
+  else()
+    set(static_install_stamp "${STAMP_DIR}/${static_project}-install")
+  endif()
+  # A target dependency would serialize the whole external project. The install
+  # stamp is a file dependency, preserving independent configure/build steps.
+  ExternalProject_Add_StepDependencies(${shared_project} install "${static_install_stamp}")
+endfunction()
+
 function(cpkt_record_dependency_target target_name)
   set_property(GLOBAL APPEND PROPERTY CPKT_DEPENDENCY_TARGETS "${target_name}")
 endfunction()
@@ -848,6 +863,9 @@ function(cpkt_add_libssh2)
       PATCH_COMMAND ${CMAKE_COMMAND}
         -DCPKT_LIBSSH2_SOURCE_DIR=<SOURCE_DIR>
         -P ${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_single_pass.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_LIBSSH2_SOURCE_DIR=<SOURCE_DIR>
+          -P ${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_poll_elapsed.cmake
       CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${install_dir}
         -DCMAKE_INSTALL_LIBDIR=lib
@@ -1364,7 +1382,6 @@ function(cpkt_add_libxml2)
     -DLIBXML2_WITH_ZLIB=ON
     -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
     -DZLIB_DIR=${CPKT_ZLIB_PREFIX}/lib/cmake/zlib
-    -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
     ${common_cmake_args}
   )
 
@@ -1385,7 +1402,6 @@ function(cpkt_add_libxml2)
       CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=ON
         ${libxml2_common_cmake_args}
-        -DZLIB_LIBRARY=${CPKT_ZLIB_SHARED_LIBRARY}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
       BUILD_BYPRODUCTS "${libxml2_shared_library}"
@@ -1409,7 +1425,6 @@ function(cpkt_add_libxml2)
       CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=OFF
         ${libxml2_common_cmake_args}
-        -DZLIB_LIBRARY=${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
@@ -2003,6 +2018,7 @@ function(cpkt_add_whisper)
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
+    cpkt_order_shared_install(${project_name_shared} ${project_name_static})
   endif()
 
   add_library(cpkt::whisper_static STATIC IMPORTED GLOBAL)
@@ -2636,6 +2652,7 @@ function(cpkt_add_cyrus_sasl)
         --host=${target_triple}
         --prefix=/usr
         --libdir=/usr/lib
+        --with-lib-subdir=lib
         --includedir=/usr/include
         --sysconfdir=/etc
         --enable-static
@@ -3236,6 +3253,8 @@ function(cpkt_add_sqlite)
     list(APPEND sqlite_link_flags "-Wl,--enable-new-dtags,-rpath,$ORIGIN")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND sqlite_link_flags "-Wl,-rpath,@loader_path")
+    list(APPEND sqlite_link_flags
+      "-mmacosx-version-min=${CPKT_MACOS_DEPLOYMENT_TARGET}")
   endif()
   if(NOT "${CMAKE_SHARED_LINKER_FLAGS}" STREQUAL "")
     separate_arguments(sqlite_user_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
@@ -3500,6 +3519,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_single_pass.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_poll_elapsed.cmake"
     RECIPE_FUNCTIONS cpkt_add_libssh2)
   cpkt_prepare_dependency_component(
     NAME curl
@@ -3569,7 +3589,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake"
-    RECIPE_FUNCTIONS cpkt_add_whisper)
+    RECIPE_FUNCTIONS cpkt_order_shared_install cpkt_add_whisper)
   cpkt_prepare_dependency_component(
     NAME mqttc
     BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c"
@@ -3600,6 +3620,21 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0009-release-method-argument-ownership.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0010-use-external-source-notification-slots.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0011-check-memory-history-backend-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0012-check-certificate-trust-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0013-own-filestore-policy-metadata.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0014-own-datatype-copy-metadata.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0015-use-mutable-ec-keygen-argument.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0016-fix-variant-range-moves.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0017-preserve-event-source-free-failures.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0018-copy-client-config-owned-values.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0019-check-node-copy-and-filestore-helpers.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0020-check-discovery-and-reverse-connect.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0021-install-native-formatter-and-fix-minima.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0022-check-default-access-control-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0023-pin-reverse-connect-iteration-handles.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0024-define-discovery-callback-and-unavailable-policies.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0026-count-json-string-closing-quote.patch"
     RECIPE_FUNCTIONS cpkt_add_open62541)
   cpkt_prepare_dependency_component(
     NAME krb5
@@ -3614,6 +3649,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/patches/krb5.series"
       "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_const_correctness.patch"
       "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_tls_bundle.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_error_va_list.patch"
     RECIPE_FUNCTIONS cpkt_add_krb5)
   cpkt_prepare_dependency_component(
     NAME cyrus-sasl

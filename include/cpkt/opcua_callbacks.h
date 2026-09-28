@@ -5,13 +5,7 @@
 extern "C" {
 #endif
 
-/** Same fields as upstream's event/configuration map. Entries are full
- * generated KeyValuePairs. Notification storage is borrowed until callback
- * return. */
-struct cpkt_opcua_KeyValueMap {
-  size_t mapSize;
-  cpkt_opcua_KeyValuePair *map;
-};
+/* The complete KeyValueMap record is generated in opcua_types.h. */
 /** Fill an empty output with the native subscription defaults. The output owns
  * its fields and can be cleared normally; no allocation is needed. */
 cpkt_opcua_StatusCode cpkt_opcua_CreateSubscriptionRequest_default(
@@ -151,13 +145,21 @@ cpkt_opcua_StatusCode cpkt_opcua_client_monitored_items_create_typed(
     const cpkt_opcua_CreateMonitoredItemsRequest *request, int event_monitoring,
     const cpkt_opcua_MonitoredItemCallbacks *registrations,
     cpkt_opcua_CreateMonitoredItemsResponse *response);
+/** Native monitored-item creation completion with a full typed C89 response.
+ * Nonzero conversion status yields NULL response. Otherwise the complete
+ * response borrows until return; copy it explicitly before retaining it.
+ * Native timeout/disconnect/destruction delivery is preserved. */
+typedef void (*cpkt_opcua_ClientAsyncCreateMonitoredItemsCallback)(
+    cpkt_opcua_client *client, void *userdata, cpkt_opcua_UInt32 requestId,
+    cpkt_opcua_StatusCode conversionStatus,
+    const cpkt_opcua_CreateMonitoredItemsResponse *response);
 /** Asynchronous counterpart: invokes upstream's specialized create operation,
  * preserving its local monitored-item state and notification ordering. */
 cpkt_opcua_StatusCode cpkt_opcua_client_monitored_items_create_typed_async(
     cpkt_opcua_client *client,
     const cpkt_opcua_CreateMonitoredItemsRequest *request, int event_monitoring,
     const cpkt_opcua_MonitoredItemCallbacks *registrations,
-    cpkt_opcua_async_service_fn complete_fn, void *user,
+    cpkt_opcua_ClientAsyncCreateMonitoredItemsCallback complete_fn, void *user,
     cpkt_opcua_UInt32 *request_id);
 /** Retrieve the original caller monitored-item context. */
 cpkt_opcua_StatusCode cpkt_opcua_client_monitored_item_get_context(

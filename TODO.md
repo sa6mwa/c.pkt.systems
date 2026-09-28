@@ -34,10 +34,9 @@ behind a callback interface.
 - [x] Inventory enabled public declarations, configuration fields and callback
   slots with the configured compiler. A maintained coverage contract rejects
   new or changed declarations, missing bindings and incomplete C89 records.
-- [ ] Finish the contract's explicit pending classifications/bindings and switch
-  the standard contract test to `--require-complete`. Existing convenience or
-  aggregate bindings need semantic review; pending counts are not a claim that
-  every entry lacks implementation. Native escape hatches do not count.
+- [x] Bind all enabled usable public declarations and run the standard contract
+  test with `--require-complete`. Implementation-only declarations remain
+  explicitly classified; native escape hatches do not count as C89 bindings.
 - [x] Generate synchronous/asynchronous client services and full subscription,
   monitored-item and event notifications with native request/context lifetimes.
 - [x] Generate schema-only server operations and native attribute defaults.
@@ -98,9 +97,8 @@ behind a callback interface.
 - [x] Expose every custom history gathering callback and stock gathering/database
   factory with actual native settings borrows, callable slots, backend ownership,
   polling, payload alias preservation and allocation-failure tests.
-- [ ] Use generated typed records at remaining PubSub component configuration and
-  custom security/event-loop/nodestore plugin boundaries. Preserve the upstream
-  behavior and ownership rules; no C99-only native callback substitutes for
-  a promised C89 binding. Custom native datatype registration is still separate.
+- [x] Use generated typed records at PubSub component configuration and custom
+  security, event-loop and nodestore plugin boundaries, including custom native
+  datatype registration and the corresponding ownership rules.
 - [ ] Compare generated public type layouts and indices with the last released
   model during dependency upgrades, enforcing the existing compatibility policy.

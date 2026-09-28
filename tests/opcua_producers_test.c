@@ -53,6 +53,8 @@ static void metadata(struct state *s, cpkt_opcua_server *server,
                      const cpkt_opcua_NodeId *session, void *session_context,
                      const cpkt_opcua_NodeId *id, unsigned int number,
                      const cpkt_opcua_NumericRange *range) {
+  CHECK(cpkt_opcua_server_delete_typed(server) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDSTATE);
   CHECK(server == s->server && id && id->namespaceIndex == 1 &&
         id->identifier.numeric == number);
   if (s->direct) {

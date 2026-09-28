@@ -1,0 +1,17 @@
+--- a/plugins/crypto/ua_certificategroup_none.c
++++ b/plugins/crypto/ua_certificategroup_none.c
+@@ -23,12 +23,14 @@
+ 
+ void UA_CertificateGroup_AcceptAll(UA_CertificateGroup *certGroup) {
+     /* Clear the structure, as it may have already been initialized. */
++    const UA_Logger *logging = certGroup->logging;
+     UA_NodeId groupId = certGroup->certificateGroupId;
+     certGroup->certificateGroupId = UA_NODEID_NULL;
+     if(certGroup->clear)
+         certGroup->clear(certGroup);
+     memset(certGroup, 0, sizeof(*certGroup));
+     certGroup->certificateGroupId = groupId;
++    certGroup->logging = logging;
+     certGroup->verifyCertificate = verifyCertificateAllowAll;
+     certGroup->clear = clearVerifyAllowAll;
+     certGroup->getTrustList = NULL;

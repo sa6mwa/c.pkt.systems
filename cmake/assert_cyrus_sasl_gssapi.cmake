@@ -5,11 +5,24 @@ endif()
 set(_config "${CPKT_CYRUS_SASL_BUILD_DIR}/config.h")
 set(_lib_makefile "${CPKT_CYRUS_SASL_BUILD_DIR}/lib/Makefile")
 set(_plugins_makefile "${CPKT_CYRUS_SASL_BUILD_DIR}/plugins/Makefile")
-foreach(_required IN ITEMS "${_config}" "${_lib_makefile}" "${_plugins_makefile}")
+set(_configure_log "${CPKT_CYRUS_SASL_BUILD_DIR}/config.log")
+foreach(_required IN ITEMS "${_config}" "${_lib_makefile}" "${_plugins_makefile}" "${_configure_log}")
   if(NOT EXISTS "${_required}")
     message(FATAL_ERROR "Cyrus SASL configure did not produce ${_required}")
   endif()
 endforeach()
+
+file(STRINGS "${_configure_log}" _lib_subdir
+  REGEX "^ac_cv_cmu_lib_subdir=")
+if(NOT "${_lib_subdir}" STREQUAL "ac_cv_cmu_lib_subdir=lib")
+  message(FATAL_ERROR
+    "Cyrus SASL must use the bundled lib directory, got: ${_lib_subdir}")
+endif()
+file(STRINGS "${_configure_log}" _configure_args
+  REGEX "^  \\$ .*configure --host=")
+if(NOT _configure_args MATCHES "--with-lib-subdir=lib")
+  message(FATAL_ERROR "Cyrus SASL configure must pin --with-lib-subdir=lib")
+endif()
 
 file(STRINGS "${_config}" _gssapi_enabled
   REGEX "^#define (HAVE_GSSAPI|STATIC_GSSAPIV2) ")

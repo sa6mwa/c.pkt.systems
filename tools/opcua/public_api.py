@@ -269,7 +269,29 @@ def check(native, contract, public, schema=(), platform='linux', public_types=No
                 if not binding or binding not in public:
                     failures.append(f'Missing C89 binding for {name}: {binding}')
                 if category == 'types' and public_types is not None:
-                    missing = record_fields(observed[name]) - record_fields(public_types.get(binding, ''))
+                    native_fields = record_fields(observed[name])
+                    represented = rule.get('fields', {})
+                    if not isinstance(represented, dict):
+                        failures.append(f'Invalid public field map for {name}')
+                        represented = {}
+                    if represented and not rule.get('representation'):
+                        failures.append(f'Unexplained C89 representation for {name}')
+                    for field, access in represented.items():
+                        if field not in native_fields:
+                            failures.append(f'Unknown represented native member for {name}: {field}')
+                        if not isinstance(access, list) or not access:
+                            failures.append(f'Missing public access for {name}.{field}')
+                            continue
+                        for target in access:
+                            if not isinstance(target, str):
+                                failures.append(f'Invalid public access for {name}.{field}')
+                                continue
+                            symbol, separator, member = target.partition('.')
+                            if symbol not in public or re.search(r'_native(?:_|$)', symbol):
+                                failures.append(f'Missing C89 access for {name}.{field}: {target}')
+                            elif separator and member not in record_fields(public_types.get(symbol, '')):
+                                failures.append(f'Missing C89 access member for {name}.{field}: {target}')
+                    missing = native_fields - record_fields(public_types.get(binding, '')) - represented.keys()
                     if missing:
                         failures.append(f'Missing C89 record members for {name}: {sorted(missing)}')
                     native_prefix = rule.get('native_constants', 'UA_' if name.startswith('UA_') else '')
@@ -312,7 +334,7 @@ def main():
     for root in (args.facade_include, args.generated_include):
         for header in (root / 'cpkt').glob('opcua*.h'):
             text = re.sub(r'/\*.*?\*/', '', header.read_text(), flags=re.S)
-            public.update(re.findall(r'^\s*#define\s+(cpkt_opcua_\w+)\s*\(', text, re.M))
+            public.update(re.findall(r'^\s*#define\s+(cpkt_opcua_\w+)(?=\s|\()', text, re.M))
     metadata = (args.generated_include / 'opcua_types_metadata.inc').read_text()
     schema = set(re.findall(r'^  \{"(\w+)", sizeof\(cpkt_opcua_', metadata, re.M))
     report = check(native, json.loads(args.contract.read_text()), public, schema,

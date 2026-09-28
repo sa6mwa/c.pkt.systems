@@ -793,7 +793,11 @@ cpkt_opcua_server_new_from_json_file(cpkt_opcua_server **out, const char *path,
 cpkt_opcua_result cpkt_opcua_server_new_from_json_file_with_logger(
     cpkt_opcua_server **out, const char *path,
     const cpkt_opcua_log_config *logger, cpkt_opcua_status *status_out);
-/** Free a server and shut it down first when needed. Accepts NULL. */
+/** Free a server and shut it down first when needed. Accepts NULL.
+ * Do not destroy a server from its callbacks. With an external event loop,
+ * finish native shutdown by iterating that loop until lifecycle STOPPED before
+ * freeing. Incomplete shutdown or native deletion failure is logged and retains
+ * the live handle; complete shutdown and retry. */
 void cpkt_opcua_server_free(cpkt_opcua_server *server);
 /** Start, iterate, and stop the server event loop. */
 cpkt_opcua_result cpkt_opcua_server_startup(cpkt_opcua_server *server,

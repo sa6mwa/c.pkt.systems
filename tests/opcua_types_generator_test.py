@@ -27,6 +27,9 @@ import client_emitter
 import async_client_emitter
 import core_client_emitter
 import value_emitter
+import certificate_emitter
+import eventloop_emitter
+import config_emitter
 
 with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
     work = Path(temporary)
@@ -49,11 +52,25 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         pass
     else:
         raise AssertionError('Plugin backend silently ignored a new data field')
+    for backend, enabled in [('', False), ('#define UA_ENABLE_DISCOVERY_MULTICAST_MDNSD\n', True)]:
+        configured = backend + ('#if defined(UA_ENABLE_DISCOVERY_MULTICAST_MDNSD) || defined(UA_ENABLE_DISCOVERY_MULTICAST_AVAHI)\n'
+            '#define UA_ENABLE_DISCOVERY_MULTICAST\n#endif\n')
+        selected = plugin_emitter.configuration_macros(configured)
+        assert ('UA_ENABLE_DISCOVERY_MULTICAST' in selected) == enabled
+        fragment = work / 'configuration-fields.h'
+        fragment.write_text('struct UA_TestConfig {\n# ifdef UA_ENABLE_DISCOVERY_MULTICAST\nUA_Boolean mdnsEnabled;\n# else\nUA_UInt32 other;\n# endif\n};\n')
+        body = plugin_emitter.public_body(fragment, 'TestConfig', configured)
+        assert ('mdnsEnabled' in body) == enabled
+        assert ('other' in body) != enabled
+    assert plugin_emitter.conditional('UA_MULTITHREADING >= 100 && !defined(UNKNOWN)', {'UA_MULTITHREADING': '100'})
     tool = repo / 'tools/opcua/generate.py'
     for name in ('one', 'two'):
         subprocess.run([sys.executable, tool, '--upstream', upstream, '--output', work / name], check=True)
     for filename in ('cpkt/opcua_types.h', 'cpkt/opcua_constants.h', 'cpkt/opcua_plugins.h',
-                     'opcua_types_metadata.inc', 'opcua_plugins_metadata.inc'):
+                     'opcua_types_metadata.inc', 'opcua_plugins_metadata.inc',
+                     'opcua_message_metadata.inc', 'opcua_codec_metadata.inc',
+                     'opcua_eventloop_metadata.inc', 'opcua_config_metadata.inc',
+                     'opcua_config_plugins_metadata.inc', 'opcua_nodestore_metadata.inc', 'opcua_native_nodestore.h', 'opcua_native_format.c'):
         first = (work / 'one' / filename).read_bytes()
         assert first == (work / 'two' / filename).read_bytes()
         assert str(repo).encode() not in first and str(work).encode() not in first
@@ -84,6 +101,22 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         pass
     else:
         raise AssertionError('Unsupported public callback context was accepted')
+    eventloop_header = changed_headers / 'plugin/eventloop.h'
+    original_loop = eventloop_header.read_text()
+    eventloop_header.chmod(0o644)
+    for broken in (
+        original_loop.replace('const UA_Logger *logger;', 'const UA_Logger *logger; UA_UInt32 extra;', 1),
+        original_loop.replace('(*addTimer)', '(*addTimerChanged)', 1),
+        original_loop.replace('UA_UInt64 timerId,', 'const UA_UnknownTimerId *timerId,', 1),
+    ):
+        eventloop_header.write_text(broken)
+        try:
+            eventloop_emitter.emit_eventloop(changed_headers, work / 'one')
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Event-loop generator ignored changed public fields/methods')
+    eventloop_header.write_text(original_loop)
     history_header = changed_headers / 'plugin/historydata/history_data_backend.h'
     original_history = history_header.read_text()
     history_header.chmod(0o644)
@@ -288,6 +321,30 @@ with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as tempor
         else:
             raise AssertionError('Changed public value constructor was accepted: ' + old)
     value_types.write_text(original_value_types)
+    certificate_public, certificate_private = certificate_emitter.emit_certificates(index, changed_headers)
+    assert len(certificate_emitter.declarations(changed_headers)) == 15
+    for _, name, _ in certificate_emitter.declarations(changed_headers):
+        assert name.replace('UA_', 'cpkt_opcua_', 1) + '(' in '\n'.join(certificate_public)
+        assert name + '(' in '\n'.join(certificate_private)
+    for filename, old, new in (
+        ('plugin/certificategroup.h', 'size_t *keySize', 'UA_UnknownType *keySize'),
+        ('plugin/certificategroup.h', 'UA_CertificateUtils_checkCA', 'UA_CertificateUtils_newFunction'),
+        ('plugin/create_certificate.h', 'UA_CertificateFormat certFormat', 'UA_UInt32 certFormat'),
+        ('plugin/create_certificate.h', 'const UA_Logger *logger', 'UA_Logger *logger'),
+        ('util.h', 'UA_TrustListMasks mask', 'UA_UInt64 mask'),
+    ):
+        changed = changed_headers / filename
+        original = changed.read_text()
+        assert old in original
+        changed.chmod(0o644)
+        changed.write_text(original.replace(old, new, 1))
+        try:
+            certificate_emitter.emit_certificates(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed certificate/trust declaration was accepted: ' + old)
+        changed.write_text(original)
     server = changed_headers / 'server.h'
     server.chmod(0o644)
     original_server = server.read_text()

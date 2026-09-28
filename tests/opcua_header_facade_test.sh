@@ -10,31 +10,7 @@ cxx=${CXX:-c++}
 work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-opcua-header.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
 
-for forbidden in \
-  'open62541/' \
-  'UA_Client' \
-  'UA_Server' \
-  'UA_StatusCode' \
-  'UA_NodeId' \
-  'UA_Variant' \
-  'stdint.h' \
-  'stdbool.h' \
-  'uint8_t' \
-  'uint16_t' \
-  'uint32_t' \
-  'uint64_t' \
-  'int8_t' \
-  'int16_t' \
-  'int32_t' \
-  'int64_t' \
-  'long long' \
-  'inline'
-do
-  if grep -F -- "$forbidden" "$header" >/dev/null 2>&1; then
-    printf 'OPC UA C89 facade header contains forbidden token: %s\n' "$forbidden" >&2
-    exit 1
-  fi
-done
+python3 "$repo_root/tools/opcua/header_contract.py" "$header"
 
 cat > "$work_root/opcua_header_c89.c" <<'EOF'
 #include <cpkt/opcua.h>

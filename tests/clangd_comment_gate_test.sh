@@ -67,6 +67,20 @@ write_source '/** Public facade definition. */'
 write_lua_header '/** Generated Lua facade declaration. */'
 run_gate
 
+# Cross-file helpers have private visibility, so they are not public API.
+printf 'CPKT_OPCUA_PRIVATE void cpkt_private_helper(void);\n' > "$source_dir/src/opcua_facade_internal.h"
+printf 'void cpkt_private_helper(void) {}\n' > "$source_dir/src/private.c"
+run_gate
+
+# A helper named in a public header still requires a documented definition.
+printf '/** Public helper. */\nvoid cpkt_private_helper(void);\n' >> "$source_dir/include/cpkt/facade.h"
+if run_gate >"$work_dir/private.out" 2>"$work_dir/private.err"; then
+  printf 'clangd comment gate exempted a public function as a private helper\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/private.err" >/dev/null
+write_header '/** Public facade declaration. */'
+
 write_header '/* Ordinary block comment is not Doxygen. */'
 if run_gate >"$work_dir/header.out" 2>"$work_dir/header.err"; then
   printf 'clangd comment gate accepted an ordinary header block comment\n' >&2

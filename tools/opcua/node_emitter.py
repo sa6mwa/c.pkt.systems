@@ -96,7 +96,8 @@ def emit_nodes(index, native_headers):
             metadata += [f'static {result} cpkt_nodes_{record}_{name}({signature}) {{', lookup_line,
                          f'  cpkt_opcua_{record} plugin;', '  UA_StatusCode status = 0;',
                          *([f'  {result} result = 0;'] if result != 'void' else []), *local,
-                         f'  if(!owner) return{default};', f'  plugin = {target};', *convert]
+                         f'  if(!owner) return{default};',
+                         '  ++owner->owner->typed_config_depth;', f'  plugin = {target};', *convert]
             if result == 'void':
                 metadata.append(f'  if(!status && plugin.{name}) {invocation};')
             else:
@@ -106,6 +107,7 @@ def emit_nodes(index, native_headers):
             error_condition = 'status && status != result' if result == 'UA_StatusCode' else 'status'
             metadata += outputs + cleanup + [
                 f'  if({error_condition}) UA_LOG_ERROR(UA_Server_getConfig(server)->logging, UA_LOGCATEGORY_SERVER, "C89 {record}.{name} conversion failed: %08lx", (unsigned long)status);']
+            metadata.append('  --owner->owner->typed_config_depth;')
             if not global_record:
                 metadata.append('  cpkt_nodes_release(entry);')
             if result != 'void':
@@ -114,6 +116,8 @@ def emit_nodes(index, native_headers):
             assignments.append(f'  native->{name} = plugin->{name} ? cpkt_nodes_{record}_{name} : NULL;')
         metadata += [f'static void cpkt_nodes_assign_{record}(UA_{record} *native, const cpkt_opcua_{record} *plugin) {{',
                      '  memset(native, 0, sizeof(*native));', *assignments, '}']
+    header += ['/** Upstream public spelling retained for its notification record alias. */',
+        'typedef cpkt_opcua_ValueSourceNotifications cpkt_opcua_ValueCallback;']
     header += [
         '/** Stable native DataValue pointer slot. Borrows persistent history_value storage.',
         ' * The holder and selected storage must outlive every node using them. Serialize',

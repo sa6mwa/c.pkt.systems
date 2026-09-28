@@ -170,6 +170,8 @@ cpkt_opcua_StatusCode cpkt_opcua_server_set_global_node_lifecycle(
     cpkt_opcua_server *server,
     const cpkt_opcua_GlobalNodeLifecycle *lifecycle) {
   cpkt_nodes_owner *owner;
+  if (cpkt_cfg_global_is_view(lifecycle))
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
   if (!server || !server->server || server->destroying || server->started)
     return UA_STATUSCODE_BADINVALIDARGUMENT;
   owner = cpkt_nodes_owner_new(server);

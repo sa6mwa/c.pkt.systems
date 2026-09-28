@@ -318,6 +318,9 @@ void cpkt_types_test_server(void) {
   CHECK(cpkt_opcua_server_readObjectProperty_typed(
             server, object, name(ns, "property"), &value) == 0 &&
         ((cpkt_opcua_Int64 *)value.data)->high32 == 0x80000000U);
+  CHECK(cpkt_opcua_server_writeObjectProperty_scalar_typed(
+            server, object, name(ns, "property"), &numbers[0],
+            cpkt_opcua_type_at(CPKT_OPCUA_TYPES_INT64)) == 0);
   *(cpkt_opcua_Int64 *)value.data = numbers[1];
   CHECK(cpkt_opcua_server_writeObjectProperty_typed(
             server, object, name(ns, "property"), value) == 0);

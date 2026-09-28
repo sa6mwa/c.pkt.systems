@@ -410,6 +410,148 @@ static cpkt_opcua_status failed_history(void *native, void *user) {
   return 0;
 }
 #endif
+static void history_view(cpkt_opcua_server *server) {
+  cpkt_opcua_ServerConfig *config;
+  cpkt_opcua_HistoryDatabase *hdb;
+  cpkt_opcua_NodeId node = cpkt_opcua_NODEID_NUMERIC(1, 6001);
+  cpkt_opcua_DataValue value;
+  cpkt_opcua_Int64 number;
+  cpkt_opcua_RequestHeader header;
+  cpkt_opcua_HistoryReadValueId read;
+  cpkt_opcua_ReadRawModifiedDetails raw;
+  cpkt_opcua_ReadEventDetails event;
+  cpkt_opcua_ReadProcessedDetails processed;
+  cpkt_opcua_ReadAtTimeDetails at_time;
+  cpkt_opcua_HistoryReadResponse response;
+  cpkt_opcua_HistoryUpdateResult result;
+  cpkt_opcua_UpdateDataDetails update;
+  cpkt_opcua_DeleteRawModifiedDetails deletion;
+  cpkt_opcua_DeleteEventDetails delete_event;
+  size_t i;
+  cpkt_opcua_EventFieldList fields;
+  CHECK(cpkt_opcua_server_get_config_typed(server, &config) == 0);
+  CHECK(cpkt_opcua_ServerConfig_getHistoryDatabase(config, &hdb) == 0 &&
+        hdb != NULL);
+  CHECK(cpkt_opcua_ServerConfig_setHistoryDatabase(config, hdb) ==
+        CPKT_OPCUA_STATUSCODE_BADINVALIDARGUMENT);
+  number.high32 = 0x80000000U;
+  number.low32 = 0;
+  cpkt_opcua_DataValue_init(&value);
+  value.hasValue = 1;
+  cpkt_opcua_Variant_setScalar(&value.value, &number,
+                               cpkt_opcua_type_at(CPKT_OPCUA_TYPES_INT64));
+  value.value.storageType = CPKT_OPCUA_VARIANT_DATA_NODELETE;
+  hdb->setValue(server, hdb->context, NULL, NULL, &node, 1, &value);
+  cpkt_opcua_EventFieldList_init(&fields);
+  hdb->setEvent(server, hdb->context, &node, &node, NULL, &fields);
+  cpkt_opcua_EventFieldList_clear(&fields);
+  cpkt_opcua_RequestHeader_init(&header);
+  cpkt_opcua_HistoryReadValueId_init(&read);
+  read.nodeId = node;
+  cpkt_opcua_ReadRawModifiedDetails_init(&raw);
+  raw.startTime.high32 = 0x80000000U;
+  raw.startTime.low32 = 0;
+  raw.endTime.high32 = 0x7fffffffU;
+  raw.endTime.low32 = 0xffffffffU;
+  cpkt_opcua_ReadEventDetails_init(&event);
+  cpkt_opcua_ReadProcessedDetails_init(&processed);
+  cpkt_opcua_ReadAtTimeDetails_init(&at_time);
+  for (i = 0; i < 5; ++i) {
+    const cpkt_opcua_Type *type =
+        cpkt_opcua_type_at(i == 1   ? CPKT_OPCUA_TYPES_HISTORYMODIFIEDDATA
+                           : i == 2 ? CPKT_OPCUA_TYPES_HISTORYEVENT
+                                    : CPKT_OPCUA_TYPES_HISTORYDATA);
+    void *payload = cpkt_opcua_type_new(type);
+    cpkt_opcua_HistoryReadResponse_init(&response);
+    response.results = cpkt_opcua_array_new(
+        1, cpkt_opcua_type_at(CPKT_OPCUA_TYPES_HISTORYREADRESULT));
+    response.resultsSize = 1;
+    if (!payload || !response.results)
+      abort();
+    cpkt_opcua_ExtensionObject_setValue(&response.results[0].historyData,
+                                        payload, type);
+    if (i == 1) {
+      cpkt_opcua_HistoryModifiedData *items[1];
+      items[0] = (cpkt_opcua_HistoryModifiedData *)payload;
+      hdb->readModified(server, hdb->context, NULL, NULL, &header, &raw,
+                        cpkt_opcua_TIMESTAMPSTORETURN_BOTH, 0, 1, &read,
+                        &response, items);
+    } else if (i == 2) {
+      cpkt_opcua_HistoryEvent *items[1];
+      items[0] = (cpkt_opcua_HistoryEvent *)payload;
+      hdb->readEvent(server, hdb->context, NULL, NULL, &header, &event,
+                     cpkt_opcua_TIMESTAMPSTORETURN_BOTH, 0, 1, &read, &response,
+                     items);
+    } else {
+      cpkt_opcua_HistoryData *items[1];
+      items[0] = (cpkt_opcua_HistoryData *)payload;
+      if (i == 0)
+        hdb->readRaw(server, hdb->context, NULL, NULL, &header, &raw,
+                     cpkt_opcua_TIMESTAMPSTORETURN_BOTH, 0, 1, &read, &response,
+                     items);
+      else if (i == 3)
+        hdb->readProcessed(server, hdb->context, NULL, NULL, &header,
+                           &processed, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, 0, 1,
+                           &read, &response, items);
+      else
+        hdb->readAtTime(server, hdb->context, NULL, NULL, &header, &at_time,
+                        cpkt_opcua_TIMESTAMPSTORETURN_BOTH, 0, 1, &read,
+                        &response, items);
+    }
+    if (response.responseHeader.serviceResult || response.resultsSize != 1 ||
+        response.results[0].historyData.content.decoded.type != type)
+      abort();
+    if (i == 2) {
+      cpkt_opcua_HistoryEvent *history =
+          response.results[0].historyData.content.decoded.data;
+      if (history->eventsSize != 1 || history->events[0].eventFieldsSize != 1 ||
+          ((const cpkt_opcua_Int64 *)history->events[0].eventFields[0].data)
+                  ->high32 != 0x80000000U)
+        abort();
+    } else if (i == 1) {
+      cpkt_opcua_HistoryModifiedData *history =
+          response.results[0].historyData.content.decoded.data;
+      if (history->dataValuesSize != 1 ||
+          ((const cpkt_opcua_Int64 *)history->dataValues[0].value.data)
+                  ->high32 != 0x80000000U)
+        abort();
+    } else {
+      cpkt_opcua_HistoryData *history =
+          response.results[0].historyData.content.decoded.data;
+      if (history->dataValuesSize != 1 ||
+          ((const cpkt_opcua_Int64 *)history->dataValues[0].value.data)
+                  ->high32 != 0x80000000U)
+        abort();
+    }
+    cpkt_opcua_HistoryReadResponse_clear(&response);
+  }
+  cpkt_opcua_UpdateDataDetails_init(&update);
+  update.nodeId = node;
+  update.updateValues = &value;
+  update.updateValuesSize = 1;
+  cpkt_opcua_DeleteRawModifiedDetails_init(&deletion);
+  deletion.nodeId = node;
+  deletion.startTime = raw.startTime;
+  deletion.endTime = raw.endTime;
+  cpkt_opcua_DeleteEventDetails_init(&delete_event);
+  delete_event.nodeId = node;
+  for (i = 0; i < 3; ++i) {
+    cpkt_opcua_HistoryUpdateResult_init(&result);
+    if (i == 0)
+      hdb->updateData(server, hdb->context, NULL, NULL, &header, &update,
+                      &result);
+    else if (i == 1)
+      hdb->deleteRawModified(server, hdb->context, NULL, NULL, &header,
+                             &deletion, &result);
+    else
+      hdb->deleteEvent(server, hdb->context, NULL, NULL, &header, &delete_event,
+                       &result);
+    if (result.statusCode || result.operationResultsSize != 1 ||
+        result.operationResults[0] != CPKT_OPCUA_STATUSCODE_BADNOTFOUND)
+      abort();
+    cpkt_opcua_HistoryUpdateResult_clear(&result);
+  }
+}
 static void history_plugins(void) {
   history_state state;
   cpkt_opcua_HistoryDatabase plugin;
@@ -450,6 +592,11 @@ static void history_plugins(void) {
   CHECK(cpkt_opcua_server_set_history_database_plugin(state.server, &plugin) ==
         0);
   CHECK(state.cleared == 1);
+  {
+    unsigned int before = state.calls;
+    history_view(state.server);
+    CHECK(state.calls == before + 10 && state.cleared == 1);
+  }
   cpkt_opcua_server_free(state.server);
   CHECK(state.cleared == 2);
 }

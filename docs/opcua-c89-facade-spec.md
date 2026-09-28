@@ -16,8 +16,8 @@ while delegating OPC UA semantics to open62541.
   headers or using C99-only upstream types in public signatures.
 - Generate the complete standard public schema model in C89 using upstream's
   parser and C generator, with transparent conversions at typed API boundaries.
-  Keep native extension hooks for hand-written plugin interfaces still awaiting
-  C89 bindings.
+  Derive handwritten public plugin/configuration bindings from the upstream
+  headers; native extension hooks remain explicit optional interoperability.
 - Prove facade behavior with integration tests that cross the facade/native
   boundary in both directions.
 
@@ -46,8 +46,8 @@ while delegating OPC UA semantics to open62541.
   64-bit protocol values on 32-bit hardware. The implementation must compile
   assert that upstream `UA_UInt64` and `UA_DateTime` are 64 bits and must widen
   each public word to the upstream 64-bit type before shifting.
-- Public handles remain opaque: `cpkt_opcua_client`, `cpkt_opcua_server`, and
-  future opaque value/config handles.
+- Public handles remain opaque, including `cpkt_opcua_client`,
+  `cpkt_opcua_server`, and native configuration/plugin roots.
 - Borrowed input memory is valid only for the duration of the call. Public APIs
   that return variable-length data use caller-provided buffers, explicit
   required-size outputs, or `cpkt`-owned handles with matching free functions.
@@ -115,9 +115,10 @@ The existing facade already covers a useful core workflow:
   through the C89 value layer with native history services still available
   through explicit pass-through.
 
-The generated model below extends the practical C89 surface. Some hand-written
-configuration and plugin interfaces still use native callbacks; type completeness
-does not imply that every such function is already wrapped.
+The generated model and handwritten-header emitters cover the enabled usable
+public C89 surface. Native callbacks remain optional interoperability. The
+strict declaration contract gates functions, callback slots, enum values and
+public fields, including explicit accessors for opaque native storage.
 
 ## Upstream Surface Inventory
 
@@ -134,13 +135,13 @@ does not imply that every such function is already wrapped.
 | Generated request/response services | `client.h`, `types_generated.h` | Generated C89 types, 14 synchronous/asynchronous public services and specialized subscription service bindings | Reuse upstream parsing and declarations; convert recursively without changing the upstream ABI. |
 | Security and certificates | `server_config_default.h`, `client_config_default.h`, plugin security headers | First-class buffer configuration wrappers plus native config callback | Common secure setup needs DX; file loading and custom policies/stores are application-specific and can be handled explicitly in native callbacks. |
 | Access control | `plugin/accesscontrol*.h` | Complete generated C89 access-control callback record plus common login wrappers | Native authorization semantics are retained; schema arguments are converted at the callback boundary. |
-| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Full generated C89 HistoryDatabase callback record plus typed client history services | Full HistoryDataBackend, persistent borrowed values and default gathering/database bindings; custom gathering callbacks remain separate coverage work. |
+| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Full generated C89 HistoryDatabase callback record plus typed client history services | Full HistoryDataBackend, persistent borrowed values and default gathering/database bindings; full custom gathering callbacks and native stock factories. |
 | Events and alarms/conditions | `server.h`, `client_subscriptions.h` | First-class event creation/trigger and event monitored items; alarms/conditions native-first | Events are common; alarms/conditions are broad generated models. |
-| PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Native-first plus common MQTT connection, publisher, subscriber, and config byte-string wrappers | PubSub is extensive and config-heavy. open62541 owns the MQTT integration; the facade should avoid duplicating generated config structures. |
-| Async services | `client_highlevel_async.h`, `server.h` async operations | Generated typed async client services and full subscription/event callback records | Typed local read/write/call submissions and cancellation preserve native completion; value-source completion tokens and other callback/configuration boundaries remain separate coverage work. |
+| PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Full generated public configs, CRUD/state/offset bindings, custom policy callbacks and common MQTT helpers | open62541 owns transport, scheduling and codecs; facade conversion preserves records and 64-bit identities. |
+| Async services | `client_highlevel_async.h`, `server.h` async operations | Generated typed async client services and full subscription/event callback records | Typed local read/write/call submissions and cancellation preserve native completion; full value-source completion and configuration/plugin boundaries preserve native ownership. |
 | File/json server config | `server_config_file_based.h` | Explicit JSON bytes/file constructors plus native config callback | Useful, but file I/O must stay explicit at the application boundary. |
 | Logging | `plugin/log.h` | First-class C89 callback with every upstream level/category, constructor configuration, and destination replacement | Capture initialization, runtime, security, event-loop, and destruction messages without depending on a logging library. |
-| Event loop plugins | `plugin/eventloop.h` | Native config callback | Upstream event-loop customization remains available through native configuration. Its logs use the same configured logger. |
+| Event loop plugins | `plugin/eventloop.h` | Full native-backed C89 method tables and stock factories | Native timer, transport and interrupt mechanisms remain unchanged; receive buffers borrow directly. |
 
 ## Generated C89 public model
 
@@ -210,10 +211,57 @@ C89 example exercises typed server read/write too.
 The standard graph and its indices are part of the new public facade surface.
 Dependency upgrade review must compare generated layouts, indices and semantics
 against the last released bundle alongside the existing ABI checks. Generated
-model coverage does not imply that every handwritten public interface has a C89
-binding. PubSub component configuration, custom security/event-loop/nodestore
-plugins, full configuration records and custom datatype registration remain
-distinct coverage work.
+model coverage is separate from handwritten public-interface coverage. PubSub
+component configuration, custom security/event-loop/nodestore plugins, full
+configuration records and custom datatype registration have C89 bindings under
+the strict public API contract. The ownership rules below describe those
+bindings. Runtime, target-matrix and package verification remain separate
+shipment gates.
+
+### Native configuration ownership
+
+`ClientConfig_new` and `ServerConfig_new` allocate standalone native-backed
+configurations. Configure ordinary values with `getSettings`/`setSettings`, and
+install callbacks, logging, event loops and security plugins through their
+separate configuration APIs. Settings getters return owned C89 values into an
+empty output; clear those values once. Settings setters stage conversions before
+replacing native values. Application context pointers remain borrowed.
+
+`client_get_config_typed` and `server_get_config_typed` return a borrowed view of
+the actual handle configuration. Serialize configuration access with its handle
+and configure it before connection/startup. Do not independently clear or delete
+a borrowed configuration. Successful `newWithConfig_typed` transfers the same
+configuration wrapper to the new handle. Native client construction failure
+preserves the standalone configuration; native server construction failure
+consumes it and leaves the standalone wrapper empty. Failures before invoking
+the native constructor preserve the input.
+
+Standalone server configurations can install full access-control and history
+database callbacks and global node lifecycle callbacks. The facade reserves its
+eventual server identity before construction, so callbacks issued during native
+construction receive that same handle. It does not construct a temporary native
+server. Callback arguments borrow until return; callbacks must not destroy the
+configuration or handle. Plugin context cleanup ownership transfers only on
+successful installation. Global node lifecycle contexts remain application-owned.
+
+Configuration certificate-group and regular/PubSub security-policy getters
+return configuration-owned views of the actual native plugins, including plugins
+created by native defaults. Their callbacks invoke the current native record and
+private backend context. Public fields are metadata snapshots; changing a view's
+fields does not change configuration. Install owned records through the setters
+instead. Never free, copy or reinstall a borrowed view as an owned plugin. Policy
+array growth preserves view identity. Replacement, explicit plugin clear, and
+configuration destruction invalidate borrowers. Explicit view `clear` forwards
+backend cleanup while quiescent; its view storage still belongs to configuration.
+
+`ClientConfig_copy` preserves native shallow plugin ownership. Ordinary values,
+including user-token policy, namespaces and session settings, are independent
+copies; callbacks retain the original application context pointers. Plugins,
+event loops and custom descriptors are shared as upstream specifies. Clearing
+either configuration can invalidate those shared objects in the other. Keep the
+source facade metadata alive while a copied backend can use it. Copying requires
+an empty standalone destination and preserves both configurations on failure;
+it does not create independently owned backend instances.
 
 ### Typed services and subscriptions
 
@@ -251,14 +299,13 @@ System-header declarations and generated native compile assertions are not
 consumer interfaces. Schema declarations and lifecycle helpers are matched
 against the actual upstream-generated C89 model without duplicating its schema.
 
-`tools/opcua/public_api_contract.json` records reviewed bindings, explicit pending
-work and narrowly explained implementation helpers. The check rejects new or
+`tools/opcua/public_api_contract.json` records public bindings, explicit opaque
+field mappings and narrowly explained implementation helpers. The check rejects new or
 changed native declarations, missing C89 declarations, incomplete public
 records, changed enum values and native escape hatches used as bindings.
 Binding existence is a structural gate; behavioral, ownership and lifetime
-tests remain required. Existing convenience and aggregate bindings still need
-semantic classification where an entry is pending. Pending counts therefore
-measure unclassified declarations, not the number of missing implementations.
+tests remain required. The standard check rejects any pending declaration;
+the declaration total includes generated lifecycle helpers.
 Linux-only syslog, Ethernet and filestore declarations follow the target's
 actual header guards; their absence on Darwin does not waive Linux coverage.
 
@@ -276,9 +323,9 @@ cmake --build --preset debug --target cpkt_opcua_public_api_complete
 
 It fails while any enabled declaration remains pending and writes its coverage
 report only under the build directory. Run the equivalent target for every
-shipped preset before declaring the full interface complete. During this
-ongoing migration the standard contract test permits explicitly recorded
-pending entries; switching it to strict mode is a remaining completion task.
+shipped preset before declaring the full interface complete. The standard contract test also runs in strict mode: no pending declaration
+is accepted. Opaque records have explicit field-to-public-access mappings; a
+new native field, missing accessor or native escape binding fails the gate.
 The contract retains the source-header license/copyright notices in `_origin`.
 
 ### Typed server operations
@@ -345,8 +392,8 @@ batch creation share a typed entry point with an explicit event selector;
 no event fields or nested values are discarded. Single-item monitored-item
 creation helpers and native default factories are also exposed; their ownership
 rules are described below. Complete async attribute/header bindings are
-described below. Client configuration and remaining datatype/connection-attribute
-helpers remain separate pending entries.
+described below. Full client configuration, public datatype metadata and
+connection-attribute helpers are also covered below.
 Existing native-peer, integration, allocation-failure and destruction tests
 exercise these bindings; coverage classification does not add new behavior.
 
@@ -427,8 +474,9 @@ the original user identity and matching endpoint/token policies. Native
 SecureChannel-only asynchronous connection does not discover those policies;
 the caller must configure them explicitly. The integration test prepares that
 public native endpoint configuration, then transfers and reads through both
-synchronous and asynchronous paths. Configuration bindings are still separate
-pending coverage; this test setup does not count as a C89 configuration API.
+synchronous and asynchronous paths. Full C89 configuration records and
+plugin slots are exposed separately; this native test setup verifies the
+underlying session mechanism.
 
 The four timer bindings retain native names, all 64 bits of DateTime/IDs, the
 original facade client, and application context. The native EventLoop is the
@@ -897,8 +945,9 @@ Register all nodes **before starting any polling**. Later registration is reject
 because growing upstream's gathering array would move monitored-item contexts.
 Database replacement/destruction stops polling automatically. Application code
 must still obey upstream restrictions on destruction/reconfiguration from inside
-callbacks. Custom `HistoryDataGathering` vtables and bindings for the stock memory/circular
-backend factories remain separate coverage work.
+callbacks. Complete C89 custom `HistoryDataGathering` callback records and
+native-backed stock memory/circular backend factories are available, preserving
+the native collection and storage mechanisms.
 
 Static/shared C89 tests exercise low-level reads, bounds, numeric ranges, Int64
 values, high-level continuation points, all write/update/delete hooks, duplicate
@@ -972,7 +1021,7 @@ above and is the minimum smoke-test surface for package consumers.
 
 ### Tier 1: Current Practical C89 Facade
 
-Tier 1 is the released first-class C89 OPC UA surface.
+Tier 1 provides common first-class C89 OPC UA operations.
 
 - General C89 value layer:
   - scalar numeric widths needed by OPC UA without using C99 names in public
@@ -985,7 +1034,8 @@ Tier 1 is the released first-class C89 OPC UA surface.
   - parse/print helpers for node ids, GUIDs, qualified names, and localized
     text;
   - generated typed Variant/DataValue and ExtensionObject payloads for every
-    standard public schema type; native hooks remain for custom native types.
+    standard public schema type, plus custom descriptor and native datatype
+    registration bindings.
 - Expanded node ids:
   - keep null, numeric, string, GUID, and byte-string constructors and
     compare/parse/print helpers as the first stable node-id slice;
@@ -1059,9 +1109,9 @@ Tier 1 is the released first-class C89 OPC UA surface.
 
 ### Tier 2: Advanced Pass-Through With Convenience Entry Points
 
-Tier 2 keeps hand-written advanced interfaces reachable. Schema-defined public
-structures are generated in C89; the remaining work is their function and callback
-boundaries, not maintaining hand-written copies of the structures.
+Tier 2 exposes the enabled handwritten public interfaces in C89. Schema types
+come from the upstream generator; header emitters derive the public records
+and boundary callbacks. Native hooks remain optional interoperability.
 
 - PubSub/MQTT:
   - convenience wrappers for common MQTT broker, topic, publisher, subscriber,
@@ -1070,26 +1120,28 @@ boundaries, not maintaining hand-written copies of the structures.
   - native server callback for full `UA_Server_*PubSub*` configuration;
   - tests use loopback or a deterministic local broker only when available.
 - Security plugins:
-  - native hooks for custom security policies and certificate groups;
+  - complete C89 custom security policy and certificate group callback slots;
   - full generated C89 access-control callbacks;
-  - convenience helpers for bundled default policies only.
+  - native-backed factories for bundled default policies and trust stores.
 - History:
   - client history-read wrappers for common raw value reads;
   - full generated C89 HistoryDatabase callbacks;
   - full generated C89 HistoryDataBackend callbacks and native default gathering;
-  - custom gathering callbacks and stock backend factories remain pending.
+  - full custom gathering callbacks and native-backed stock backend factories.
 - Async services:
   - selected async read, write, browse, call, and add-node wrappers with C89
     callbacks;
   - generic and generated typed async client service bindings;
   - typed server-local read/write/call submissions and cancellation;
-  - native hooks remain for asynchronous value-source completion tokens.
+  - C89 producer bindings preserve native asynchronous value-source completion
+    tokens and cancellation.
 - File/json server config:
   - create server from explicit JSON bytes or explicit file path;
   - no implicit config-file discovery.
-- Alarms/conditions, custom data types, NodeSet loading, event loop plugins,
-  reverse connect, and low-level network message encoding stay native-first
-  unless a concrete downstream workflow needs a typed wrapper.
+- Custom datatypes, event-loop plugins, reverse connect and low-level network
+  message codecs have full enabled public C89 bindings. Features disabled in
+  the bundle (including alarms/conditions and NodeSet loading) are outside the
+  enabled surface contract.
 
 ## Pass-Through Rules
 
@@ -1158,7 +1210,7 @@ Facade correctness must be proven with observable integration tests.
 
 ## Packaging And Documentation Contract
 
-- Binary SDK artifacts ship the facade header, `libcpkt` static/shared
+- Binary SDK artifacts ship the facade header, `libcpkt_opcua` static/shared
   libraries, bundled open62541/mqtt-c libraries according to the package
   contract, CMake config, pkg-config metadata, examples, README material, and
   license files under `share/doc`.
@@ -1178,8 +1230,9 @@ Facade correctness must be proven with observable integration tests.
 
 ## Maintenance Contract
 
-The documented Tier 1 surface and the selected Tier 2 convenience wrappers are
-implemented. Future additions must preserve the C89 boundary, name native
+The enabled usable public interface is bound by the strict inventory contract,
+alongside the compatibility convenience wrappers. Future additions must
+preserve the C89 boundary, name native
 escape hatches explicitly, document ownership and asynchronous callback
 lifetimes in `include/cpkt/opcua.h`, and land with focused observable tests plus
 installed-package coverage where the new surface is shipped.
@@ -1364,3 +1417,118 @@ shared, switch without a snapshot, and return to the original address. Native
 node copies must preserve the same borrowed slot and release without affecting
 storage. A bundled upstream patch corrects external notification field access
 and node-copy borrowing; these regressions fail without that patch.
+
+### Native operations, logging plugins and formatting
+
+Connection/session non-copy getters fill an owned opaque `VariantView` root
+with the actual native borrowed Variant. Payload ownership and identity stay
+native; `VariantView_snapshot` is the explicit conversion to an owned C89
+value. Serialize access and finish snapshots before any native change that
+invalidates the payload. The scalar getters perform the native type check and
+borrowed scalar retrieval, then convert that scalar into an owned C89 result.
+They never clear the borrowed native scalar. The copying getter remains a
+separate native copying operation.
+
+`server_run_typed` calls the native run loop with a `RunFlag` holding actual
+native volatile Boolean storage. Call `RunFlag_set(flag, 0)` from a callback
+to stop; keep the flag alive until run returns. Shutdown delay and loop behavior
+remain upstream. `server_runUntilInterrupt_typed` uses the native platform
+interrupt implementation. `server_delete_typed` reports native deletion status
+without implicit shutdown; failed deletion leaves the handle live. The legacy
+`server_free` convenience operation continues to request shutdown first.
+
+`Logger` exposes the complete log/context/clear callback record. A configuration
+setter consumes the record on success and retains the native logger address
+already borrowed by event loops/security policies. Native messages are rendered
+one at a time and delivered to the C89 plugin as `%S` with a C89 String, borrowed
+during that callback. Stock stdout/syslog loggers retain their native backend,
+filtering, timestamps and output limits. Heap factories own their native logger
+and C89 root; clear exactly once. A configuration getter supplies callable
+borrowed slots with NULL clear because configuration owns destruction.
+
+The String formatter is generated from the pinned native `mp_printf` and `dtoa`
+implementation, changing argument extraction at the ABI boundary. `%S`, `%N`
+and `%Q` consume C89 records. Variadic `%ll` retains upstream's native C99
+`long long` argument contract: strict C89 consumers use `String_format_args`
+with explicit paired Int64/UInt64 arguments. They must never pass those pairs
+to variadic `%ll`. Native allocation, capacity, trailing NUL and truncation
+behavior are retained. The implementation boundary uses C99 internally; public
+headers and consumer records remain strict C89. MIT/Boost notices ship with
+the SDK.
+
+Discovery register/deregister takes a pointer to the owned ClientConfig pointer.
+Native asynchronous handoff sets that pointer to NULL, including errors after
+native client creation. A non-NULL pointer on return remains caller-owned:
+early native failures can clear its contents, while a failed owned event-loop
+free preserves its configuration for retry. The consumed callback metadata
+survives native internal-client deletion and deferred teardown. Discovery
+registration, connection state, application contexts and native scheduling
+remain upstream operations.
+
+These operations have native/C89 regressions for ownership, failure paths and
+callback behavior. Compile checks do not establish runtime or shipment readiness.
+
+Typed formatting rejects mismatched or invalid arguments immediately, before
+native padding or output allocation. Valid format behavior remains native.
+Message cleanup releases selected union arms and arrays before resetting their
+flags, counts and headers; malformed or partially converted messages retain the
+controls needed to clean up completed allocations.
+
+Generic codec options borrow their custom descriptor arrays during the call.
+Decoded values retain the exact descriptor selected from that array, even when
+equivalent descriptors from another owner coexist. The descriptor owner must
+outlive decoded values. This address mapping is scoped to the current thread
+and restores the outer mapping after nested codec calls.
+
+### Strict completion inventory
+
+The enabled Linux contract currently binds 3,637 public declarations with zero
+pending declarations. Eleven declarations describe native implementation state
+or internal helpers; each has a recorded reason. This total includes generated
+lifecycle helpers and is not a count of independently maintained functions.
+Darwin uses its actual feature guards. Reports are generated under build/.
+
+Opaque node/configuration/plugin roots retain actual native storage. Public
+metadata, class attributes, method tables and explicitly mapped accessors cover
+the public contract; private list/tree links are not duplicated as C89 layouts.
+The inventory gate verifies every mapped accessor and record field and rejects
+missing or unexplained mappings. Declaration coverage is separate from runtime,
+allocation-failure, memory-check and target/package verification.
+
+Native reverse-connect iteration selects stable handles again after callbacks,
+so logging or state callbacks may remove current or other registrations without
+leaving an iteration pointer into freed storage. Local monitoring callbacks may
+delete their own item; the in-flight converted value remains valid until return.
+Facade callbacks pin the parent server through conversion and dispatch, so
+parent deletion from a callback reports BadInvalidState. Failed native source
+free retains EventLoop ownership and can be retried.
+
+The OpenSSL build has no upstream stock AES-CTR PubSub implementation. The
+public AES128/AES256 factory declarations return `BadNotSupported` and leave
+output empty. Full custom PubSub policy callback slots remain usable; the facade
+does not add a cryptographic backend. A vendor fix supplies the otherwise
+missing symbols, and restores the declared discovery-registration callback
+setter using the existing native discovery manager and service dispatch.
+
+## Source organization
+
+The compatibility helpers declared in `include/cpkt/opcua.h` are handwritten.
+They compile as separate source files for identifiers, values and arrays,
+client/server lifecycle, node management, value access, attribute access,
+browsing, methods, history, events, PubSub, asynchronous requests and
+subscriptions. `src/opcua.c` contains version and status reporting only.
+`src/opcua_facade_internal.h` declares the shared private helpers and callback
+contexts. Those helpers have hidden visibility; they are not SDK exports.
+The static archive needs their inter-object definitions, and the export gate
+also checks that each definition has hidden visibility.
+
+`src/opcua_logging.c` owns the single shared logger bridge. The typed and
+compatibility surfaces use the same bridge function identity when replacing
+or inspecting a logger, so ownership is consistent across both surfaces.
+
+The schema types, layout metadata and public binding declarations are generated
+from the upstream schema and public declarations by `tools/opcua/`. The
+handwritten recursive conversion core and its domain implementation headers
+remain in `src/opcua_types.c`; generated metadata is included from the build
+tree. Splitting the compatibility implementation does not change the public
+API, ownership rules, or native operation semantics.

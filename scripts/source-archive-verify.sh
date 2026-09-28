@@ -164,6 +164,30 @@ for required in \
   include/cpkt/opcua_util.h \
   include/cpkt/opcua_callbacks.h \
   src/opcua_internal.h \
+  src/opcua_arrays.c \
+  src/opcua_browse.c \
+  src/opcua_client.c \
+  src/opcua_client_async.c \
+  src/opcua_client_attributes.c \
+  src/opcua_client_nodes.c \
+  src/opcua_client_values.c \
+  src/opcua_events.c \
+  src/opcua_files.c \
+  src/opcua_history.c \
+  src/opcua_identifiers.c \
+  src/opcua_methods.c \
+  src/opcua_pubsub.c \
+  src/opcua_server.c \
+  src/opcua_server_attributes.c \
+  src/opcua_server_nodes.c \
+  src/opcua_server_values.c \
+  src/opcua_subscriptions.c \
+  src/opcua_value.c \
+  src/opcua_facade_internal.h \
+  src/opcua_logging.c src/opcua_logger_impl.h \
+  src/opcua_security_impl.h \
+  src/opcua_pubsub_internal.h src/opcua_codec_impl.h src/opcua_events_impl.h src/opcua_dynamic_internal.h src/opcua_dynamic_impl.h src/opcua_eventloop_impl.h src/opcua_eventloop_lifecycle_impl.h src/opcua_range_impl.h src/opcua_config_impl.h src/opcua_config_accesscontrol_impl.h src/opcua_operations_impl.h src/opcua_config_discovery_impl.h src/opcua_config_types_impl.h src/opcua_config_plugins_impl.h src/opcua_nodestore_impl.h src/opcua_nodestore_nodes_impl.h \
+  src/opcua_pubsub_impl.h \
   src/opcua_callbacks_impl.h \
   src/opcua_client_impl.h \
   src/opcua_map_impl.h \
@@ -188,12 +212,27 @@ for required in \
   tools/opcua/async_client_emitter.py \
   tools/opcua/core_client_emitter.py \
   tools/opcua/value_emitter.py \
+  tools/opcua/certificate_emitter.py \
+  tools/opcua/utility_emitter.py tools/opcua/format_emitter.py \
+  tools/opcua/security_emitter.py \
+  tools/opcua/policy_emitter.py \
+  tools/opcua/pubsub_emitter.py tools/opcua/codec_emitter.py tools/opcua/event_emitter.py tools/opcua/dynamic_emitter.py tools/opcua/eventloop_emitter.py tools/opcua/config_emitter.py tools/opcua/config_plugin_emitter.py tools/opcua/config_server_plugin_emitter.py tools/opcua/nodestore_emitter.py \
   tools/opcua/client_emitter.py \
   tools/opcua/node_emitter.py \
   tools/opcua/public_api.py \
+  tools/opcua/header_contract.py \
+  tests/opcua_header_contract_test.py \
+  tests/opcua_format_optimized_compile_test.py tests/dependency_install_order_test.py tests/zlib_feature_namespace_test.py \
+  tests/open62541_openssl_provenance_test.cmake tests/open62541_openssl_provenance_fixture_test.py \
+  tests/libssh2_poll_elapsed_test.c cmake/patch_libssh2_poll_elapsed.cmake \
+  tests/krb5_error_format_test.c cmake/patches/krb5_error_va_list.patch \
   tools/opcua/public_api_contract.json \
   tests/opcua_public_api_test.py \
   tests/opcua_types_test.c \
+  tests/opcua_certificate_test.c tests/opcua_certificate_native_peer.c \
+  tests/opcua_config_test.c tests/opcua_config_native_peer.c \
+  tests/opcua_format_test.c tests/opcua_transport_test.c \
+  tests/opcua_operations_test.c tests/opcua_nodestore_test.c \
   tests/opcua_callbacks_test.c \
   tests/opcua_plugins_test.c \
   tests/opcua_history_backend_test.c \
@@ -218,6 +257,7 @@ for required in \
   tests/opcua_types_exports_test.py \
   tests/opcua_types_generator_test.py \
   docs/third_party/opcua-schema/LICENSE \
+  docs/third_party/opcua-formatter/LICENSE \
   src/opcua.c \
   src/gssapi.c \
   src/sasl.c \
@@ -266,7 +306,22 @@ for required in \
   vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch \
   vendor/open62541/patches/0009-release-method-argument-ownership.patch \
   vendor/open62541/patches/0010-use-external-source-notification-slots.patch \
-  vendor/open62541/patches/0011-check-memory-history-backend-allocations.patch
+  vendor/open62541/patches/0011-check-memory-history-backend-allocations.patch \
+  vendor/open62541/patches/0012-check-certificate-trust-allocations.patch \
+  vendor/open62541/patches/0013-own-filestore-policy-metadata.patch \
+  vendor/open62541/patches/0014-own-datatype-copy-metadata.patch \
+  vendor/open62541/patches/0015-use-mutable-ec-keygen-argument.patch \
+  vendor/open62541/patches/0016-fix-variant-range-moves.patch \
+  vendor/open62541/patches/0017-preserve-event-source-free-failures.patch \
+  vendor/open62541/patches/0018-copy-client-config-owned-values.patch \
+  vendor/open62541/patches/0019-check-node-copy-and-filestore-helpers.patch \
+  vendor/open62541/patches/0020-check-discovery-and-reverse-connect.patch \
+  vendor/open62541/patches/0021-install-native-formatter-and-fix-minima.patch \
+  vendor/open62541/patches/0022-check-default-access-control-allocations.patch \
+  vendor/open62541/patches/0023-pin-reverse-connect-iteration-handles.patch \
+  vendor/open62541/patches/0024-define-discovery-callback-and-unavailable-policies.patch \
+  vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch \
+  vendor/open62541/patches/0026-count-json-string-closing-quote.patch
 do
   if [ ! -f "$source_root/$required" ]; then
     printf 'source archive is missing required payload: %s\n' "$required" >&2

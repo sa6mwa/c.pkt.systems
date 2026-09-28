@@ -28,5 +28,9 @@ bash ./scripts/run-afl-fuzz.sh "$mode" build/fuzz/cpkt_lua_runtime_fuzz fuzz/see
 bash ./scripts/configure-preset.sh debug
 "$cmake" --build --preset debug --target cpkt_opcua_static
 bash ./scripts/configure-preset.sh --fresh opcua-fuzz
+# Compile the generated formatter with AFL's actual optimized warning policy
+# before building the rest of the instrumented SDK.
+"$cmake" --build --preset opcua-fuzz --target cpkt_opcua_types_generate
+"${CTEST:-ctest}" --test-dir build/opcua-fuzz -R '^opcua_format_optimized_compile$' --no-tests=error --output-on-failure
 "$cmake" --build --preset opcua-fuzz
 bash ./scripts/run-afl-fuzz.sh "$mode" build/opcua-fuzz/cpkt_opcua_facade_fuzz fuzz/seeds/opcua

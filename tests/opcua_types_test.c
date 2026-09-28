@@ -496,22 +496,50 @@ static void test_services(void) {
 }
 int main(void) {
 #ifdef CPKT_OPCUA_TYPES_ALLOC_FAILURE
+  fprintf(stderr, "opcua runtime: test_allocation_failures\n");
   test_allocation_failures();
 #endif
+  fprintf(stderr, "opcua runtime: test_all_types\n");
   test_all_types();
+  fprintf(stderr, "opcua runtime: test_populated_types\n");
   test_populated_types();
+  fprintf(stderr, "opcua runtime: test_nested_values\n");
   test_nested_values();
+  fprintf(stderr, "opcua runtime: test_failure_contracts\n");
   test_failure_contracts();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_utilities\n");
   cpkt_types_test_utilities();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_identifiers\n");
   cpkt_types_test_identifiers();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_certificates\n");
+  cpkt_types_test_certificates();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_configuration\n");
+  cpkt_types_test_configuration();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_formatting\n");
+  cpkt_types_test_formatting();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_transport\n");
+  cpkt_types_test_transport();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_operations\n");
+  cpkt_types_test_operations();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_nodestore\n");
+  cpkt_types_test_nodestore();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_plugins\n");
   cpkt_types_test_plugins();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_server\n");
   cpkt_types_test_server();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_nodes\n");
   cpkt_types_test_nodes();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_producers\n");
   cpkt_types_test_producers();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_creation\n");
   cpkt_types_test_creation();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_external\n");
   cpkt_types_test_external();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_history_backend\n");
   cpkt_types_test_history_backend();
+  fprintf(stderr, "opcua runtime: cpkt_types_test_memory_backend\n");
   cpkt_types_test_memory_backend();
+  fprintf(stderr, "opcua runtime: test_services\n");
   test_services();
   puts("All public schema types, nested conversions and real typed services "
        "passed");

@@ -7,9 +7,14 @@ typedef struct cpkt_nodes_owner cpkt_nodes_owner;
 typedef struct cpkt_nodes_entry cpkt_nodes_entry;
 struct cpkt_producer;
 struct cpkt_creation;
+static int cpkt_loop_server_active(cpkt_opcua_server *);
+static cpkt_nodes_owner *cpkt_cfg_find_constructing_server(UA_Server *);
 struct cpkt_nodes_owner {
   cpkt_nodes_owner *next;
   cpkt_opcua_server *owner;
+  UA_Server *native;
+  UA_EventLoop *event_loop;
+  int deleting;
   cpkt_nodes_entry *entries;
   struct cpkt_creation *creations;
   cpkt_opcua_GlobalNodeLifecycle global;
@@ -18,6 +23,18 @@ struct cpkt_nodes_owner {
   void (*producer_cleanup)(cpkt_nodes_owner *);
   void (*cancel)(cpkt_opcua_server *, const void *);
   void (*native_cancel)(UA_Server *, const void *);
+  cpkt_opcua_ClientConfig *discovery;
+  void (*discovery_cleanup)(cpkt_nodes_owner *);
+  void *dynamic_types;
+  void (*dynamic_types_cleanup)(cpkt_nodes_owner *);
+  void *reverse_connections;
+  void (*reverse_connections_cleanup)(cpkt_nodes_owner *);
+  cpkt_opcua_Server_registerServerCallback registered_server;
+  void *registered_server_context;
+  void *local_monitors;
+  void (*local_monitors_cleanup)(cpkt_nodes_owner *);
+  void *pubsub;
+  void (*pubsub_cleanup)(cpkt_nodes_owner *);
 };
 /* The native out-ID is populated before construction callbacks. Borrow that
  * address during the actual native call, including automatically assigned IDs.
@@ -46,10 +63,10 @@ static cpkt_nodes_owner *cpkt_nodes_find_owner(UA_Server *server) {
   cpkt_nodes_owner *owner;
   (void)pthread_mutex_lock(&cpkt_nodes_mutex);
   for (owner = cpkt_nodes_owners; owner; owner = owner->next)
-    if (owner->owner->server == server)
+    if (owner->native == server)
       break;
   (void)pthread_mutex_unlock(&cpkt_nodes_mutex);
-  return owner;
+  return owner ? owner : cpkt_cfg_find_constructing_server(server);
 }
 static void cpkt_nodes_release(cpkt_nodes_entry *entry) {
   if (!--entry->references) {
@@ -93,11 +110,53 @@ static void cpkt_nodes_clear(cpkt_opcua_server *server) {
     next = entry->next;
     cpkt_nodes_release(entry);
   }
+  if (owner->discovery_cleanup)
+    owner->discovery_cleanup(owner);
   if (owner->producer_cleanup)
     owner->producer_cleanup(owner);
+  if (owner->reverse_connections_cleanup)
+    owner->reverse_connections_cleanup(owner);
+  if (owner->local_monitors_cleanup)
+    owner->local_monitors_cleanup(owner);
+  if (owner->pubsub_cleanup)
+    owner->pubsub_cleanup(owner);
+  if (owner->dynamic_types_cleanup)
+    owner->dynamic_types_cleanup(owner);
   UA_free(owner);
   server->typed_nodes = NULL;
+  server->typed_nodes_set_deleting = NULL;
+  server->typed_nodes_refresh_eventloop = NULL;
+  server->typed_eventloop_active = NULL;
   server->typed_producers_refresh = NULL;
+}
+static void cpkt_nodes_set_deleting(cpkt_opcua_server *server, int deleting) {
+  (void)pthread_mutex_lock(&cpkt_nodes_mutex);
+  server->typed_nodes->deleting = deleting;
+  server->destroying = deleting;
+  (void)pthread_mutex_unlock(&cpkt_nodes_mutex);
+}
+static void cpkt_nodes_refresh_eventloop(cpkt_opcua_server *server) {
+  UA_EventLoop *loop =
+      server->server ? UA_Server_getConfig(server->server)->eventLoop : NULL;
+  (void)pthread_mutex_lock(&cpkt_nodes_mutex);
+  server->typed_nodes->event_loop = loop;
+  (void)pthread_mutex_unlock(&cpkt_nodes_mutex);
+}
+static void cpkt_nodes_owner_publish(cpkt_opcua_server *server,
+                                     cpkt_nodes_owner *owner) {
+  owner->owner = server;
+  owner->native = server->server;
+  owner->event_loop =
+      server->server ? UA_Server_getConfig(server->server)->eventLoop : NULL;
+  (void)pthread_mutex_lock(&cpkt_nodes_mutex);
+  owner->next = cpkt_nodes_owners;
+  cpkt_nodes_owners = owner;
+  (void)pthread_mutex_unlock(&cpkt_nodes_mutex);
+  server->typed_nodes = owner;
+  server->typed_nodes_clear = cpkt_nodes_clear;
+  server->typed_nodes_set_deleting = cpkt_nodes_set_deleting;
+  server->typed_nodes_refresh_eventloop = cpkt_nodes_refresh_eventloop;
+  server->typed_eventloop_active = cpkt_loop_server_active;
 }
 static cpkt_nodes_owner *cpkt_nodes_owner_new(cpkt_opcua_server *server) {
   cpkt_nodes_owner *owner;
@@ -106,13 +165,7 @@ static cpkt_nodes_owner *cpkt_nodes_owner_new(cpkt_opcua_server *server) {
   owner = (cpkt_nodes_owner *)UA_calloc(1, sizeof(*owner));
   if (!owner)
     return NULL;
-  owner->owner = server;
-  (void)pthread_mutex_lock(&cpkt_nodes_mutex);
-  owner->next = cpkt_nodes_owners;
-  cpkt_nodes_owners = owner;
-  (void)pthread_mutex_unlock(&cpkt_nodes_mutex);
-  server->typed_nodes = owner;
-  server->typed_nodes_clear = cpkt_nodes_clear;
+  cpkt_nodes_owner_publish(server, owner);
   return owner;
 }
 static UA_StatusCode cpkt_nodes_range(const UA_NumericRange *native,

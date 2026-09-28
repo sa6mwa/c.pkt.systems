@@ -4,6 +4,12 @@
 void cpkt_types_test_callbacks(cpkt_opcua_client *client, void *peer);
 void cpkt_types_test_plugins(void);
 void cpkt_types_test_identifiers(void);
+void cpkt_types_test_certificates(void);
+void cpkt_types_test_configuration(void);
+void cpkt_types_test_formatting(void);
+void cpkt_types_test_transport(void);
+void cpkt_types_test_operations(void);
+void cpkt_types_test_nodestore(void);
 void cpkt_types_test_utilities(void);
 void cpkt_types_test_producers(void);
 void cpkt_types_test_nodes(void);

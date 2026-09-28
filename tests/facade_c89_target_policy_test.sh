@@ -35,7 +35,7 @@ for target in \
   case "$target" in
     cpkt_audio_*) source=src/audio.c ;;
     cpkt_sus_*) source=src/sus.c ;;
-    cpkt_opcua_*) source='src/opcua.c src/opcua_types.c' ;;
+    cpkt_opcua_*) source='${CPKT_OPCUA_SOURCES}' ;;
     cpkt_gssapi_*) source=src/gssapi.c ;;
     cpkt_sasl_*) source=src/sasl.c ;;
     cpkt_postgres_*) source=src/postgres.c ;;

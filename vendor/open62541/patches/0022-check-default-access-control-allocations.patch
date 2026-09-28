@@ -1,0 +1,98 @@
+--- a/plugins/ua_accesscontrol_default.c
++++ b/plugins/ua_accesscontrol_default.c
+@@ -376,6 +376,9 @@
+ 
+     if(ac->clear)
+         ac->clear(ac);
++    /* Custom clear callbacks need not reset their public record. A failed
++     * replacement must never leave that freed context in the default backend. */
++    memset(ac, 0, sizeof(*ac));
+ 
+     ac->clear = clear_default;
+     ac->activateSession = activateSession_default;
+@@ -417,15 +420,19 @@
+     /* Copy username/password to the access control plugin */
+     if(usernamePasswordLoginSize > 0) {
+         context->usernamePasswordLogin = (UA_UsernamePasswordLogin*)
+-            UA_malloc(usernamePasswordLoginSize * sizeof(UA_UsernamePasswordLogin));
++            UA_calloc(usernamePasswordLoginSize, sizeof(UA_UsernamePasswordLogin));
+         if(!context->usernamePasswordLogin)
+             return UA_STATUSCODE_BADOUTOFMEMORY;
+         context->usernamePasswordLoginSize = usernamePasswordLoginSize;
+         for(size_t i = 0; i < usernamePasswordLoginSize; i++) {
+-            UA_String_copy(&usernamePasswordLogin[i].username,
++            UA_StatusCode copyStatus = UA_String_copy(&usernamePasswordLogin[i].username,
+                            &context->usernamePasswordLogin[i].username);
+-            UA_ByteString_copy(&usernamePasswordLogin[i].password,
++            if(copyStatus != UA_STATUSCODE_GOOD)
++                return copyStatus;
++            copyStatus = UA_ByteString_copy(&usernamePasswordLogin[i].password,
+                            &context->usernamePasswordLogin[i].password);
++            if(copyStatus != UA_STATUSCODE_GOOD)
++                return copyStatus;
+         }
+     }
+ 
+@@ -448,6 +455,8 @@
+         policies++;
+     if(config->sessionPKI.verifyCertificate)
+         policies++;
++    if(policies && numOfPolcies > SIZE_MAX / policies)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+     ac->userTokenPoliciesSize = 0;
+     ac->userTokenPolicies = (UA_UserTokenPolicy *)
+         UA_Array_new(policies * numOfPolcies, &UA_TYPES[UA_TYPES_USERTOKENPOLICY]);
+@@ -472,14 +481,20 @@
+         if(allowAnonymous) {
+             ac->userTokenPolicies[policies].tokenType = UA_USERTOKENTYPE_ANONYMOUS;
+             ac->userTokenPolicies[policies].policyId = UA_STRING_ALLOC(ANONYMOUS_POLICY);
+-            UA_String_copy(utpUri,
++            if(!ac->userTokenPolicies[policies].policyId.data)
++                return UA_STATUSCODE_BADOUTOFMEMORY;
++            UA_StatusCode copyStatus = UA_String_copy(utpUri,
+                                &ac->userTokenPolicies[policies].securityPolicyUri);
++            if(copyStatus != UA_STATUSCODE_GOOD)
++                return copyStatus;
+             policies++;
+         }
+ 
+         if(config->sessionPKI.verifyCertificate) {
+             ac->userTokenPolicies[policies].tokenType = UA_USERTOKENTYPE_CERTIFICATE;
+             ac->userTokenPolicies[policies].policyId = UA_STRING_ALLOC(CERTIFICATE_POLICY);
++            if(!ac->userTokenPolicies[policies].policyId.data)
++                return UA_STATUSCODE_BADOUTOFMEMORY;
+ #if UA_LOGLEVEL <= 400
+             if(UA_String_equal(utpUri, &UA_SECURITY_POLICY_NONE_URI)) {
+                 UA_LOG_WARNING(config->logging, UA_LOGCATEGORY_SERVER,
+@@ -488,14 +503,18 @@
+                                "This can leak credentials on the network.");
+             }
+ #endif
+-            UA_String_copy(utpUri,
++            UA_StatusCode copyStatus = UA_String_copy(utpUri,
+                                &ac->userTokenPolicies[policies].securityPolicyUri);
++            if(copyStatus != UA_STATUSCODE_GOOD)
++                return copyStatus;
+             policies++;
+         }
+ 
+         if(usernamePasswordLoginSize > 0) {
+             ac->userTokenPolicies[policies].tokenType = UA_USERTOKENTYPE_USERNAME;
+             ac->userTokenPolicies[policies].policyId = UA_STRING_ALLOC(USERNAME_POLICY);
++            if(!ac->userTokenPolicies[policies].policyId.data)
++                return UA_STATUSCODE_BADOUTOFMEMORY;
+ #if UA_LOGLEVEL <= 400
+             if(UA_String_equal(utpUri, &UA_SECURITY_POLICY_NONE_URI)) {
+                 UA_LOG_WARNING(config->logging, UA_LOGCATEGORY_SERVER,
+@@ -504,8 +523,10 @@
+                                "This can leak credentials on the network.");
+             }
+ #endif
+-            UA_String_copy(utpUri,
++            UA_StatusCode copyStatus = UA_String_copy(utpUri,
+                                &ac->userTokenPolicies[policies].securityPolicyUri);
++            if(copyStatus != UA_STATUSCODE_GOOD)
++                return copyStatus;
+             policies++;
+         }
+     }

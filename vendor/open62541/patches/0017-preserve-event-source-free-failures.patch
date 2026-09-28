@@ -1,0 +1,27 @@
+--- a/arch/posix/eventloop_posix.c
++++ b/arch/posix/eventloop_posix.c
+@@ -515,8 +515,22 @@
+     /* Deregister and delete all the EventSources */
+     while(el->eventLoop.eventSources) {
+         UA_EventSource *es = el->eventLoop.eventSources;
+-        UA_EventLoopPOSIX_deregisterEventSource(el, es);
+-        es->free(es);
++        UA_StatusCode res = UA_EventLoopPOSIX_deregisterEventSource(el, es);
++        if(res != UA_STATUSCODE_GOOD) {
++            UA_UNLOCK(&el->elMutex);
++            return res;
++        }
++        res = es->free(es);
++        if(res != UA_STATUSCODE_GOOD) {
++            /* A failed free preserves the source. Restore loop ownership so
++             * cleanup can be retried without losing the stopped source. */
++            es->next = el->eventLoop.eventSources;
++            el->eventLoop.eventSources = es;
++            es->eventLoop = &el->eventLoop;
++            es->state = UA_EVENTSOURCESTATE_STOPPED;
++            UA_UNLOCK(&el->elMutex);
++            return res;
++        }
+     }
+ 
+     /* Remove the repeated timed callbacks */

@@ -38,3 +38,13 @@ from `src/util/ua_util.c` to the generated C89 record representation. That file
 retains the original MPL-2.0 terms and copyright notices. Its modified source
 is included in the c.pkt.systems source archive; the upstream MPL-2.0 license
 is shipped with the open62541 notices.
+
+The generated private OPC UA formatting boundary retains the pinned
+open62541 `deps/mp_printf.c` parser and `deps/dtoa.c` numeric formatter.
+`mp_printf` is MIT licensed (Julius Pfrommer, Eyal Rozenberg and Marco Paland);
+`dtoa` uses the Boost Software License 1.0 (Andreas Samoljuk and Julius
+Pfrommer). Their complete copyright/permission notices are shipped in
+`third_party/opcua-formatter/LICENSE`. `tools/opcua/format_emitter.py` adapts
+argument extraction for C89 schema records and explicit paired 64-bit values;
+it preserves both upstream notices in the generated source. This private C99
+boundary is compiled into `cpkt_opcua`; public declarations remain strict C89.

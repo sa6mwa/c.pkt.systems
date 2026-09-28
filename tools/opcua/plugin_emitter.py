@@ -6,13 +6,111 @@ a second copy of OPC UA schema types. Unsupported signatures fail generation.
 """
 from pathlib import Path
 import re
+import ast
+from functools import lru_cache
 
-CALLBACK_PATTERN = re.compile(r'(void|size_t|UA_\w+|const UA_\w+\s*\*)\s*'
+CALLBACK_PATTERN = re.compile(r'(void|size_t|(?:const\s+)?UA_\w+(?:\s*\*)?)\s*'
                               r'\(\*(\w+)\)\s*\((.*?)\)\s*;', re.S)
 
 
 def uncomment(text):
     return re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+
+
+def conditional(expression, macros):
+    """Evaluate the installed configuration's integer/defined conditions only.
+
+    No host compiler macros are inferred. Undefined names are zero as in the C
+    preprocessor. Unrecognized expressions fail rather than choosing a branch.
+    """
+    expression = re.sub(r'defined\s*(?:\(\s*(\w+)\s*\)|(\w+))',
+                        lambda m: '1' if (m[1] or m[2]) in macros else '0', expression)
+    expression = re.sub(r'\b(\d+)[uUlL]+\b', r'\1', expression)
+    expression = re.sub(r'\b[A-Za-z_]\w*\b',
+                        lambda m: macros.get(m[0], '0') if re.fullmatch(r'\d+', macros.get(m[0], '0')) else '0', expression)
+    expression = expression.replace('&&', ' and ').replace('||', ' or ')
+    expression = re.sub(r'!(?!=)', ' not ', expression).strip()
+    try:
+        root = ast.parse(expression, mode='eval').body
+    except SyntaxError as error:
+        raise ValueError('Adapt public configuration condition: ' + expression) from error
+
+    def evaluate(node):
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            return node.value
+        if isinstance(node, ast.BoolOp):
+            values = [bool(evaluate(value)) for value in node.values]
+            if isinstance(node.op, ast.And):
+                return all(values)
+            if isinstance(node.op, ast.Or):
+                return any(values)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not evaluate(node.operand)
+        if isinstance(node, ast.Compare):
+            left = evaluate(node.left)
+            for operator, value in zip(node.ops, node.comparators):
+                right = evaluate(value)
+                if isinstance(operator, ast.Eq): valid = left == right
+                elif isinstance(operator, ast.NotEq): valid = left != right
+                elif isinstance(operator, ast.Gt): valid = left > right
+                elif isinstance(operator, ast.GtE): valid = left >= right
+                elif isinstance(operator, ast.Lt): valid = left < right
+                elif isinstance(operator, ast.LtE): valid = left <= right
+                else: raise ValueError('Adapt public configuration comparison')
+                if not valid:
+                    return False
+                left = right
+            return True
+        raise ValueError('Adapt public configuration expression: ' + expression)
+    return bool(evaluate(root))
+
+
+@lru_cache(maxsize=8)
+def configuration_macros(configuration):
+    # Installed config.h also contains computed flags, e.g. multicast is
+    # defined only if an enabled backend exists. A textual define search would
+    # incorrectly expose disabled fields. Preserve the effective branch state.
+    # Feature/architecture flags precede the C99 includes. Later compiler
+    # attribute/atomic/endian probes require target compiler builtins and do not
+    # select these public plugin fields; do not substitute the generator host.
+    marker = re.search(r'/\*\*\s*\* C99 Definitions\b', configuration)
+    if marker:
+        suffix = configuration[marker.start():]
+        if re.search(r'^\s*#\s*define\s+(?:UA_ENABLE_\w+|UA_MULTITHREADING)\b', uncomment(suffix), re.M):
+            raise ValueError('Adapt installed configuration feature boundary')
+        configuration = configuration[:marker.start()] + '\n#endif\n'
+    text = re.sub(r'\\\r?\n', '', uncomment(configuration))
+    macros, stack, active = {}, [], True
+    for line in text.splitlines():
+        directive = re.match(r'\s*#\s*(\w+)\s*(.*)', line)
+        if not directive:
+            continue
+        op, arg = directive.groups()
+        if op in ('if', 'ifdef', 'ifndef'):
+            selected = (arg in macros if op == 'ifdef' else arg not in macros if op == 'ifndef'
+                        else conditional(arg, macros) if active else False)
+            stack.append((active, bool(selected)))
+            active = active and bool(selected)
+        elif op == 'elif' and stack:
+            parent, taken = stack[-1]
+            selected = parent and not taken and conditional(arg, macros)
+            stack[-1] = (parent, taken or selected)
+            active = selected
+        elif op == 'else' and stack:
+            parent, taken = stack[-1]
+            active = parent and not taken
+            stack[-1] = (parent, True)
+        elif op == 'endif' and stack:
+            active = stack.pop()[0]
+        elif op == 'define' and active:
+            match = re.match(r'(\w+)(?:\s+(.*))?', arg)
+            if match:
+                macros[match[1]] = (match[2] or '1').strip()
+        elif op == 'undef' and active:
+            macros.pop(arg, None)
+    if stack:
+        raise ValueError('Unbalanced installed configuration conditions')
+    return macros
 
 
 def public_body(path, name, configuration):
@@ -21,15 +119,32 @@ def public_body(path, name, configuration):
     if not body:
         raise ValueError(f'Adapt C89 plugin backend: missing {name} declaration')
     active = [True]
+    selected = []
+    macros = configuration_macros(configuration)
     result = []
     for line in body.group(1).splitlines():
-        directive = re.match(r'\s*#(\w+)(.*)', line)
+        directive = re.match(r'\s*#\s*(\w+)(.*)', line)
         if directive:
             op, arg = directive.group(1), directive.group(2).strip()
             if op == 'ifdef':
-                active.append(active[-1] and re.search(r'^#define ' + re.escape(arg) + r'\b', configuration, re.M) is not None)
+                selected.append(arg in macros)
+                active.append(active[-1] and selected[-1])
+            elif op == 'ifndef':
+                selected.append(arg not in macros)
+                active.append(active[-1] and selected[-1])
+            elif op == 'if':
+                selected.append(conditional(arg, macros) if active[-1] else False)
+                active.append(active[-1] and selected[-1])
+            elif op == 'elif' and len(active) > 1:
+                branch = active[-2] and not selected[-1] and conditional(arg, macros)
+                selected[-1] = selected[-1] or branch
+                active[-1] = branch
+            elif op == 'else' and len(active) > 1:
+                active[-1] = active[-2] and not selected[-1]
+                selected[-1] = True
             elif op == 'endif' and len(active) > 1:
                 active.pop()
+                selected.pop()
             else:
                 raise ValueError(f'Adapt C89 plugin conditional: {line}')
         elif active[-1]:
@@ -137,8 +252,10 @@ def emit_plugins(index, native_headers, output):
                      '  cpkt_ac_bridge *bridge = (cpkt_ac_bridge *)ac->context;',
                      '  UA_StatusCode status = 0;',
                      *([f'  {result} result;'] if result != 'void' else []),
-                     *declarations, '  (void)server;', *conversion,
+                     *declarations, '  cpkt_cfg_bind_server_owner(bridge->owner, server);',
+                     '  ++bridge->owner->typed_config_depth;', *conversion,
                      invocation, *cleanup,
+                     '  --bridge->owner->typed_config_depth;',
                      *(['  return result;'] if result != 'void' else []), '}']
         assignments.append(f'  native.{name} = plugin->{name} ? cpkt_ac_{name} : NULL;')
     metadata += ['static void cpkt_ac_assign(UA_AccessControl *destination, const cpkt_opcua_AccessControl *plugin) {',
@@ -159,6 +276,18 @@ def emit_plugins(index, native_headers, output):
     producer_header, producer_metadata = emit_producers(index, native_headers)
     header += producer_header
     metadata += producer_metadata
+    from security_emitter import emit_security
+    security_header, security_metadata = emit_security(index, native_headers)
+    header += security_header
+    metadata += security_metadata
+    from policy_emitter import emit_policies
+    policy_header, policy_metadata = emit_policies(index, native_headers)
+    header += policy_header
+    metadata += policy_metadata
+    from pubsub_emitter import emit_pubsub
+    pubsub_header, pubsub_metadata = emit_pubsub(index, native_headers)
+    header += pubsub_header
+    metadata += pubsub_metadata
     header += ['#ifdef __cplusplus', '}', '#endif', '#endif', '']
     (output / 'cpkt/opcua_plugins.h').write_text('\n'.join(header))
     (output / 'opcua_plugins_metadata.inc').write_text('\n'.join(metadata) + '\n')
@@ -278,10 +407,12 @@ def emit_history(index, native_headers, configuration):
                  f'  if(status) UA_LOG_ERROR(UA_Server_getConfig(server)->logging, UA_LOGCATEGORY_SERVER, "C89 history {name} conversion failed: %08lx", (unsigned long)status);')
         metadata += [f'static void cpkt_hdb_{name}({signature}) {{',
                      '  cpkt_hdb_bridge *bridge = (cpkt_hdb_bridge *)hdbContext;',
-                     '  UA_StatusCode status = 0;', *declarations, '  (void)server;',
+                     '  UA_StatusCode status = 0;', *declarations,
+                     '  cpkt_cfg_bind_server_owner(bridge->owner, server);',
+                     '  ++bridge->owner->typed_config_depth;',
                      *conversion,
                      f'  if(!status) bridge->plugin.{name}({", ".join(callargs)});',
-                     *out, error, *cleanup, '}']
+                     *out, error, *cleanup, '  --bridge->owner->typed_config_depth;', '}']
         assignments.append(f'  native.{name} = plugin->{name} ? cpkt_hdb_{name} : NULL;')
     metadata += ['static void cpkt_hdb_assign(UA_HistoryDatabase *destination, const cpkt_opcua_HistoryDatabase *plugin) {',
                  '  UA_HistoryDatabase native;', '  memset(&native, 0, sizeof(native));',

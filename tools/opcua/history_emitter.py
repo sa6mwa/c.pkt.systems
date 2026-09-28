@@ -334,7 +334,7 @@ def emit_stock_backend(index, native_headers, methods):
                     pointer = param if '*' in spelling else '&' + param
                     conversion += [f'  if(!status) status = cpkt_convert({pointer}, &n_{param}, &cpkt_types[{index[typename]}], 1, 0);']
                 cleanup += [f'  UA_{typename}_clear(&n_{param});']
-                callargs.append('&n_' + param if '*' in spelling else 'n_' + param)
+                callargs.append(f'{param} ? &n_{param} : NULL' if '*' in spelling and spelling.startswith('const ') else '&n_' + param if '*' in spelling else 'n_' + param)
             else:
                 raise ValueError(f'Adapt stock backend argument {name}.{param}: {spelling}')
         if result not in ('UA_StatusCode', 'size_t', 'UA_Boolean', 'const UA_DataValue*'):
@@ -575,7 +575,7 @@ def emit_stock_gathering(index, native_headers, methods):
                 pointer = param if '*' in spelling else '&' + param
                 conversion += [f'  if(!status{f" && {param}" if "*" in spelling else ""}) status = cpkt_convert({pointer}, &n_{param}, &cpkt_types[{index[typename]}], 1, 0);']
                 cleanup += [f'  UA_{typename}_clear(&n_{param});']
-                callargs.append('&n_' + param if '*' in spelling else 'n_' + param)
+                callargs.append(f'{param} ? &n_{param} : NULL' if '*' in spelling and spelling.startswith('const ') else '&n_' + param if '*' in spelling else 'n_' + param)
             else:
                 raise ValueError(f'Adapt stock gathering argument {name}.{param}: {spelling}')
         if name in ('registerNodeId', 'updateNodeIdSetting'):
@@ -641,7 +641,7 @@ def emit_stock_gathering(index, native_headers, methods):
     return header, metadata
 
 
-def emit_stock_database(index, native_headers, configuration):
+def emit_stock_database(index, native_headers, configuration, configuration_view=False):
     path = native_headers / 'plugin/historydata/history_database_default.h'
     text = path.read_text()
     declaration = re.search(r'UA_HistoryDatabase\s+UA_EXPORT\s+UA_HistoryDatabase_default\s*\((.*?)\)\s*;', uncomment(text), re.S)
@@ -725,7 +725,7 @@ def emit_stock_database(index, native_headers, configuration):
                     if param in ('response', 'result'):
                         error_target = param
                 cleanup += [f'  UA_{typename}_clear(&n_{param});']
-                callargs.append('&n_' + param if '*' in spelling else 'n_' + param)
+                callargs.append(f'{param} ? &n_{param} : NULL' if '*' in spelling and spelling.startswith('const ') else '&n_' + param if '*' in spelling else 'n_' + param)
             else:
                 raise ValueError(f'Adapt stock database argument {name}.{param}: {spelling}')
         if history_type:
@@ -753,6 +753,20 @@ def emit_stock_database(index, native_headers, configuration):
                      f'  if(!bridge || !bridge->native.{name} || (server && !server->server){" || !server" if name not in ("setValue", "setEvent") else ""}) status = UA_STATUSCODE_BADINVALIDARGUMENT;',
                      *conversion, f'  if(!status) {{ bridge->gathering->owner = server; bridge->native.{name}({", ".join(callargs)}); }}',
                      *outputs, error, *cleanup, '}']
+    if configuration_view:
+        text = '\n'.join(metadata).replace('cpkt_stock_hdb_', 'cpkt_cfg_view_hdb_')
+        text = text.replace('  cpkt_stock_hdb *bridge = (cpkt_stock_hdb *)hdbContext;',
+            '  cpkt_cfg_plugin_view *view = (cpkt_cfg_plugin_view *)hdbContext;\n'
+            '  UA_HistoryDatabase *native = view ? (UA_HistoryDatabase *)cpkt_cfg_view_native(view) : NULL;')
+        text = text.replace('!bridge || !bridge->native.', '!native || !native->')
+        text = text.replace('bridge->native.', 'native->')
+        text = text.replace('bridge->gathering->owner = server; ', '')
+        # Enter before dispatch (including nested facade/native callbacks), keep
+        # metadata alive through conversion and cleanup, then release the scope.
+        text = text.replace('  UA_StatusCode status = 0;', '  UA_StatusCode status = 0;')
+        text = text.replace('  if(!native ||', '  if(view) cpkt_cfg_view_enter(view);\n  if(view && server && view->server->owner && view->server->owner != server) status = UA_STATUSCODE_BADINVALIDARGUMENT;\n  if(!native ||')
+        text = text.replace('\n}', '\n  if(view) cpkt_cfg_view_leave(view);\n}')
+        return [], text.splitlines()
     metadata += ['static void cpkt_stock_hdb_clear(cpkt_opcua_HistoryDatabase *database) {',
                  '  cpkt_stock_hdb *bridge = (cpkt_stock_hdb *)database->context;',
                  '  bridge->native.clear(&bridge->native); UA_free(bridge);', '}',

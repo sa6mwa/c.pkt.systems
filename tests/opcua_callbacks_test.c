@@ -83,15 +83,12 @@ static void event_received(cpkt_opcua_client *client, cpkt_opcua_UInt32 sub,
         cpkt_opcua_type_at(CPKT_OPCUA_TYPES_BYTESTRING));
   ++state->events;
 }
-static void items_created(cpkt_opcua_client *client, void *user,
-                          cpkt_opcua_UInt32 id, cpkt_opcua_StatusCode status,
-                          const void *response, const cpkt_opcua_Type *type) {
+static void
+items_created(cpkt_opcua_client *client, void *user, cpkt_opcua_UInt32 id,
+              cpkt_opcua_StatusCode status,
+              const cpkt_opcua_CreateMonitoredItemsResponse *result) {
   callback_state *state = (callback_state *)user;
-  const cpkt_opcua_CreateMonitoredItemsResponse *result =
-      (const cpkt_opcua_CreateMonitoredItemsResponse *)response;
   CHECK(client && id && !status && result);
-  CHECK(type ==
-        cpkt_opcua_type_at(CPKT_OPCUA_TYPES_CREATEMONITOREDITEMSRESPONSE));
   CHECK(!result->responseHeader.serviceResult && result->resultsSize == 1 &&
         !result->results[0].statusCode);
   CHECK(cpkt_opcua_CreateMonitoredItemsResponse_copy(result,

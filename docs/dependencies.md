@@ -40,10 +40,6 @@ and osxcross are development prerequisites, not SDK dependencies.
 
 The pinned open62541/OpenSSL combination has these inspected diagnostics:
 
-- GNU compilers report `-Wcast-qual` in OpenSSL 3.6.4's `EVP_EC_gen`
-  macro. `EVP_PKEY_Q_keygen` receives the curve name through a `char *`
-  parameter; the EC provider's `COPY_UTF8_PARAM` duplicates that input without
-  modifying it. The cast is in the upstream convenience macro.
 - Darwin arm64 reports `No native IEEE 754 format detected`. Upstream recognizes
   the IEEE representation, but its float-endianness detection lacks the Darwin
   compiler macros. It selects the upstream generic float encoder, with the
@@ -62,17 +58,102 @@ contract; native Darwin runtime checks run in the macOS workflow.
 
 ## Other inspected dependency diagnostics
 
-- libssh2's compression build can report a `HAVE_UNISTD_H` redefinition:
-  libssh2 defines it without a value, and zlib defines it as `1`. libssh2 checks
-  whether it is defined; zlib uses its numeric value. Both configurations
-  recognize the available header.
+- OpenSSL's metadata generator reports omitted `CMAKECONFIGDIR`,
+  `PKGCONFIGDIR`, and `libdir` fields when creating its build-only metadata,
+  and an omitted `COMMENT` when creating install metadata. Its upstream
+  Makefile passes the actual install paths to the install metadata command.
+  The SDK supplies its own consumer metadata; the provenance gate checks the
+  selected bundled shared libraries in either Ninja or Unix Makefiles link
+  plans, with negative fixtures for incorrect paths and linkage.
+- zlib's installed header uses its `Z_HAVE_*` feature names, preserving the
+  detected features without redefining a consumer's private `HAVE_*` macros.
+  Its legacy configure probes guard absent macros. The header regression
+  compiles consumers with absent, empty, zero and one definitions under
+  `-Wundef -Werror`, including libssh2's empty-definition convention.
 - Cyrus SASL 2.1.28 reports function-pointer casts for its heterogeneous,
   callback-ID-tagged table. Dispatch selects the specific callback type before
   invocation. Its bundled MD5 implementation also uses K&R function definitions,
   accepted by the configured C dialect with old-style-definition warnings.
+  Its config reader also increments an unused line counter; this does not
+  affect parsing or error returns.
+- Cyrus SASL's cross-configure is pinned to `--with-lib-subdir=lib`. Its
+  autodetection otherwise inspects the build host's `/usr/lib64` and can emit
+  invalid OpenSSL `lib64` paths for Darwin, even though the SDK installs in
+  `lib`.
+- On 32-bit musl, `libssh2_poll` previously narrowed a 64-bit `timeval`
+  difference into 32-bit `long`; a large clock jump could wrap the remaining
+  timeout. The bundled source patch bounds elapsed time before narrowing, and
+  the QEMU regression checks large forward and backward jumps plus a short
+  remaining interval.
+- ARM ggml reports `-Wpointer-to-int-cast` in its failed-affinity diagnostic:
+  the log passes a mask-array address as an integer. The affinity mask itself
+  is applied separately through `CPU_SET`; this diagnostic does not change
+  affinity behavior.
+- Darwin libxml2's `xmlLittleEndian` and PostgreSQL's `libpq_gettext_impl`
+  report set-but-unused globals in their upstream builds. The linker also
+  warns about an upstream `-single_module` probe. These do not affect exported
+  interfaces. The direct SQLite dylib link carries the configured deployment
+  minimum, and package verification checks the recorded minimum for every
+  bundled Darwin dylib and module.
 - libtool reports ignored version metadata for convenience libraries and
   relocation/finish messages for staged SASL installs. The SDK's package and
   plugin relocation gates check installed paths and runtime discovery.
+
+## Kerberos error formatting and inspected Darwin diagnostics
+
+MIT Kerberos 1.22.2's `krb5_vprepend_error_message` incorrectly forwarded its
+`va_list` to the variadic `krb5_wrap_error_message`. The bundled
+`krb5_error_va_list.patch` forwards it to `krb5_vwrap_error_message` instead.
+The regression checks exact integer, mixed string/long/double, and nested
+prepend results; the unpatched library fails the integer case.
+
+The remaining inspected Darwin Kerberos diagnostics are:
+
+- Mutex return locals and the pre-CFX trailer local are read by assertions;
+  `NDEBUG` removes those reads. Mutex operations still execute, and the
+  pre-CFX path constructs an empty crypto trailer as designed.
+- The private AES table header replaces the SDK's function-like `ALIGN` macro
+  with an empty declaration decoration. It is confined to the AES table
+  translation unit, which does not call the SDK alignment macro afterward.
+- `default_com_err_proc` lacks a format-checking attribute; its implementation
+  forwards the `va_list` to `vfprintf` correctly. This diagnostic affects
+  compile-time checking, not formatting.
+- `ld64.lld` ignores upstream's `-dylib_file` mapping for indirect dependencies.
+  The build links the in-tree libraries directly. Package verification checks
+  installed dependency paths, relocation and consumer links.
+- The generic configure probe warns about absent `gethostbyname_r` and
+  `getservbyname_r`. The built Darwin support library imports native
+  `getaddrinfo`; its old address-cache implementation is disabled. The remaining
+  legacy krb524 service lookup uses `getservbyname`, whose
+  [Apple implementation](https://github.com/apple-oss-distributions/Libinfo/blob/main/lookup.subproj/libinfo.c#L1756)
+  retains the result in
+  [thread-specific storage](https://github.com/apple-oss-distributions/Libinfo/blob/main/lookup.subproj/thread_data.c#L91).
+  These source paths do not substantiate the probe's thread-safety warning.
+  Native macOS runtime verification remains required before release.
+
+## Inspected configure notices
+
+- Kerberos's obsolete `sys_errlist` probe fails on modern libc; the available
+  `strerror` path supplies error descriptions instead.
+- Cyrus SASL has no local SASLDB database backend in this bundle. GSSAPI/GS2
+  mechanisms are built and tested. Missing Sphinx and Perl documentation modules
+  affect regeneration of upstream documentation, not SDK libraries or the
+  shipped facade documentation.
+- OpenLDAP disables `slapd`. Its configure script warns about ignoring default
+  server backend and systemd options; the bundle builds client libraries with
+  OpenSSL and Cyrus SASL support.
+- iODBC's unshipped `iodbc-config` helper ignores `--datarootdir`; SDK metadata
+  is generated separately. Autoconf's unprefixed `mt` probe is a host manifest
+  tool check; compiler, archiver, strip and linker tools use the configured
+  target paths.
+- Cross-compilation notices describe configure tests that cannot execute on the
+  build host. Linux runtime and consumer checks use the configured target
+  toolchains and emulators. PostgreSQL's upstream server OAuth tests require
+  its Python-enabled server configuration; the bundle builds client libraries
+  and runs its own OAuth loader, cleanup and facade regressions.
+- The stale-SDK-root regression intentionally configures a minimal project
+  with an unused lifecycle marker and prints CMake's unused-variable notice.
+  This is fixture output, not a warning from the SDK's own configuration.
 
 ## Default OPC UA history allocation safety
 

@@ -1,0 +1,60 @@
+--- a/src/ua_types.c
++++ b/src/ua_types.c
+@@ -130,16 +130,31 @@
+     memcpy(t2, t1, sizeof(UA_DataType));
+     t2->members = NULL;
+     t2->membersSize = 0;
++    UA_NodeId_init(&t2->typeId);
++    UA_NodeId_init(&t2->binaryEncodingId);
++    UA_NodeId_init(&t2->xmlEncodingId);
++#ifdef UA_ENABLE_TYPEDESCRIPTION
++    t2->typeName = NULL;
++#endif
++
++    /* The copy owns its identifiers, just like its names and members. */
++    res = UA_NodeId_copy(&t1->typeId, &t2->typeId);
++    UA_CHECK_STATUS(res, goto errout);
++    res = UA_NodeId_copy(&t1->binaryEncodingId, &t2->binaryEncodingId);
++    UA_CHECK_STATUS(res, goto errout);
++    res = UA_NodeId_copy(&t1->xmlEncodingId, &t2->xmlEncodingId);
++    UA_CHECK_STATUS(res, goto errout);
+ 
+     /* Copy the typename */
+ #ifdef UA_ENABLE_TYPEDESCRIPTION
+-    size_t nameLen = strlen(t1->typeName) + 1;
+-    char *t2Name = (char*)UA_malloc(nameLen);
+-    if(!t2Name) {
++    size_t nameLen = t1->typeName ? strlen(t1->typeName) + 1 : 0;
++    char *t2Name = nameLen ? (char*)UA_malloc(nameLen) : NULL;
++    if(nameLen && !t2Name) {
+         res = UA_STATUSCODE_BADOUTOFMEMORY;
+         goto errout;
+     }
+-    memcpy(t2Name, t1->typeName, nameLen);
++    if(nameLen)
++        memcpy(t2Name, t1->typeName, nameLen);
+     *(void**)(uintptr_t)&t2->typeName = t2Name;
+ #endif
+ 
+@@ -160,13 +175,16 @@
+-            if(m1->memberType == t1)
++            if(t1->typeKind != UA_DATATYPEKIND_ENUM && m1->memberType == t1)
+                 m2->memberType = t2;
+ #ifdef UA_ENABLE_TYPEDESCRIPTION
+-            nameLen = strlen(m1->memberName) + 1;
+-            char *mName = (char*)UA_malloc(nameLen);
+-            if(!mName) {
++            /* Detach the borrowed source name before any allocation can fail. */
++            m2->memberName = NULL;
++            nameLen = m1->memberName ? strlen(m1->memberName) + 1 : 0;
++            char *mName = nameLen ? (char*)UA_malloc(nameLen) : NULL;
++            if(nameLen && !mName) {
+                 res = UA_STATUSCODE_BADOUTOFMEMORY;
+                 goto errout;
+             }
+-            memcpy(mName, m1->memberName, nameLen);
++            if(nameLen)
++                memcpy(mName, m1->memberName, nameLen);
+             *(void**)(uintptr_t)&m2->memberName = mName;
+ #endif
+         }

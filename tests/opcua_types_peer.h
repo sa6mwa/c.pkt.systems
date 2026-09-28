@@ -1,6 +1,13 @@
 #ifndef CPKT_OPCUA_TYPES_PEER_H
 #define CPKT_OPCUA_TYPES_PEER_H
 #include <stddef.h>
+void cpkt_types_peer_configuration(void);
+void cpkt_types_peer_log(void *client);
+void cpkt_types_peer_accesscontrol_allocations(void);
+unsigned int cpkt_types_peer_attribute_borrow(void *owner, const void *view,
+                                              int client);
+unsigned int cpkt_types_peer_format(unsigned int kind, unsigned char **bytes,
+                                    size_t *length);
 void cpkt_types_test_memory_backend(void);
 size_t cpkt_types_peer_stock_remove_end(void);
 unsigned int cpkt_types_peer_stock_history(void *native_server);
@@ -139,4 +146,13 @@ size_t cpkt_types_peer_number(const unsigned char *bytes, size_t length,
                               int decimal);
 int cpkt_types_peer_constant_equal(const void *first, const void *second,
                                    size_t length);
+unsigned int cpkt_types_peer_certificate(const void *, size_t, const void *,
+                                         size_t, unsigned int, unsigned int *,
+                                         unsigned int *, size_t *);
+unsigned int cpkt_types_peer_decrypted_key(const void *, size_t, const void *,
+                                           size_t, const void *, size_t);
+unsigned int cpkt_types_peer_trust(unsigned int, unsigned int, size_t *,
+                                   unsigned int *);
+int cpkt_types_peer_nodepointer(const void *pointer, const void *id);
+void cpkt_types_peer_node_copy(void);
 #endif

@@ -266,7 +266,7 @@ set(CPKT_CYRUS_SASL_VERSION "2.1.28" CACHE STRING "Pinned Cyrus SASL release.")
 set(CPKT_OPENLDAP_VERSION "2.6.15" CACHE STRING "Pinned OpenLDAP LTS release.")
 set(CPKT_POSTGRESQL_VERSION "18.6" CACHE STRING "Pinned PostgreSQL/libpq release.")
 set(CPKT_SQLITE_VERSION "3.53.4" CACHE STRING "Pinned SQLite release.")
-set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-crypto-logging-9" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
+set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-crypto-logging-23" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_ABI_VERSION "0" CACHE STRING "Lua C89 facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
@@ -1046,6 +1046,14 @@ add_custom_command(
          "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_plugins.h"
          "${CPKT_OPCUA_GENERATED_DIR}/opcua_plugins_metadata.inc"
          "${CPKT_OPCUA_GENERATED_DIR}/opcua_types_metadata.inc"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_message_metadata.inc"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_codec_metadata.inc"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_eventloop_metadata.inc"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_config_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_config_plugins_metadata.inc"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_nodestore_metadata.inc"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_native_format.c"
+         "${CPKT_OPCUA_GENERATED_DIR}/opcua_native_nodestore.h"
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/opcua/generate.py"
     --upstream "${CPKT_EXTERNAL_ROOT}/open62541/install/share/open62541"
     --output "${CPKT_OPCUA_GENERATED_DIR}"
@@ -1062,13 +1070,34 @@ add_custom_command(
     "${CMAKE_SOURCE_DIR}/tools/opcua/async_client_emitter.py"
     "${CMAKE_SOURCE_DIR}/tools/opcua/core_client_emitter.py"
     "${CMAKE_SOURCE_DIR}/tools/opcua/value_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/certificate_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/utility_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/format_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/security_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/policy_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/pubsub_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/codec_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/event_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/dynamic_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/eventloop_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/config_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/config_plugin_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/config_server_plugin_emitter.py"
+    "${CMAKE_SOURCE_DIR}/tools/opcua/nodestore_emitter.py"
   VERBATIM)
 add_custom_target(cpkt_opcua_types_generate DEPENDS
   "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
   "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_constants.h"
   "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_plugins.h"
   "${CPKT_OPCUA_GENERATED_DIR}/opcua_plugins_metadata.inc"
-  "${CPKT_OPCUA_GENERATED_DIR}/opcua_types_metadata.inc")
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_types_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_message_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_codec_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_eventloop_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_config_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_config_plugins_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_nodestore_metadata.inc"
+  "${CPKT_OPCUA_GENERATED_DIR}/opcua_native_nodestore.h")
 set(_cpkt_opcua_public_api_command
   "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/opcua/public_api.py"
   --compiler "${CMAKE_C_COMPILER}" --platform "${CPKT_TARGET_OS}"
@@ -1081,8 +1110,35 @@ add_custom_target(cpkt_opcua_public_api_complete
   COMMAND ${_cpkt_opcua_public_api_command} --require-complete
   DEPENDS cpkt_opcua_types_generate VERBATIM)
 
-add_library(cpkt_opcua_static STATIC src/opcua.c src/opcua_types.c)
+set_source_files_properties("${CPKT_OPCUA_GENERATED_DIR}/opcua_native_format.c"
+  PROPERTIES COMPILE_OPTIONS "-std=c99")
+set(CPKT_OPCUA_SOURCES
+  src/opcua.c
+  src/opcua_arrays.c
+  src/opcua_browse.c
+  src/opcua_client.c
+  src/opcua_client_async.c
+  src/opcua_client_attributes.c
+  src/opcua_client_nodes.c
+  src/opcua_client_values.c
+  src/opcua_events.c
+  src/opcua_files.c
+  src/opcua_history.c
+  src/opcua_identifiers.c
+  src/opcua_logging.c
+  src/opcua_methods.c
+  src/opcua_pubsub.c
+  src/opcua_server.c
+  src/opcua_server_attributes.c
+  src/opcua_server_nodes.c
+  src/opcua_server_values.c
+  src/opcua_subscriptions.c
+  src/opcua_types.c
+  src/opcua_value.c
+)
+add_library(cpkt_opcua_static STATIC ${CPKT_OPCUA_SOURCES})
 cpkt_configure_c89_target(cpkt_opcua_static)
+target_sources(cpkt_opcua_static PRIVATE "${CPKT_OPCUA_GENERATED_DIR}/opcua_native_format.c")
 add_dependencies(cpkt_opcua_static cpkt_opcua_types_generate)
 cpkt_add_repo_warning_errors(cpkt_opcua_static)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
@@ -1103,8 +1159,9 @@ set_target_properties(cpkt_opcua_static PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 
-add_library(cpkt_opcua_shared SHARED src/opcua.c src/opcua_types.c)
+add_library(cpkt_opcua_shared SHARED ${CPKT_OPCUA_SOURCES})
 cpkt_configure_c89_target(cpkt_opcua_shared)
+target_sources(cpkt_opcua_shared PRIVATE "${CPKT_OPCUA_GENERATED_DIR}/opcua_native_format.c")
 add_dependencies(cpkt_opcua_shared cpkt_opcua_types_generate)
 cpkt_add_repo_warning_errors(cpkt_opcua_shared)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
@@ -1728,6 +1785,12 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_gssapi_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_gssapi_facade_test)
     target_link_libraries(cpkt_gssapi_facade_test PRIVATE cpkt_gssapi_static)
+    add_executable(cpkt_krb5_error_format_test tests/krb5_error_format_test.c)
+    cpkt_use_local_runtime(cpkt_krb5_error_format_test)
+    target_compile_options(cpkt_krb5_error_format_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_krb5_error_format_test)
+    target_link_libraries(cpkt_krb5_error_format_test PRIVATE
+      cpkt::gssapi_krb5_static)
     add_executable(cpkt_openssl_facade_test tests/openssl_facade_test.c)
     cpkt_use_local_runtime(cpkt_openssl_facade_test)
     target_compile_options(cpkt_openssl_facade_test PRIVATE -std=c89)
@@ -1762,6 +1825,24 @@ if(CPKT_BUILD_TESTS)
       cpkt_add_repo_warning_errors(cpkt_libssh2_sftp_eof_test)
       target_link_libraries(cpkt_libssh2_sftp_eof_test PRIVATE
         cpkt_libssh2_static cpkt::libssh2_static)
+      add_executable(cpkt_libssh2_poll_elapsed_test
+        tests/libssh2_poll_elapsed_test.c)
+      cpkt_use_local_runtime(cpkt_libssh2_poll_elapsed_test)
+      target_compile_options(cpkt_libssh2_poll_elapsed_test PRIVATE -std=c99)
+      target_link_options(cpkt_libssh2_poll_elapsed_test PRIVATE
+        "-Wl,--wrap=poll")
+      if(CPKT_TARGET_ID STREQUAL "armhf-linux-musl")
+        target_compile_definitions(cpkt_libssh2_poll_elapsed_test PRIVATE
+          CPKT_LIBSSH2_TEST_MUSL_TIME64=1)
+        target_link_options(cpkt_libssh2_poll_elapsed_test PRIVATE
+          "-Wl,--wrap=__gettimeofday_time64")
+      else()
+        target_link_options(cpkt_libssh2_poll_elapsed_test PRIVATE
+          "-Wl,--wrap=gettimeofday")
+      endif()
+      cpkt_add_repo_warning_errors(cpkt_libssh2_poll_elapsed_test)
+      target_link_libraries(cpkt_libssh2_poll_elapsed_test PRIVATE
+        cpkt::libssh2_static)
     endif()
     add_executable(cpkt_mqttc_header_facade_test
       tests/mqttc_header_facade_test.c)
@@ -1999,7 +2080,7 @@ if(CPKT_BUILD_TESTS)
       "${CMAKE_CURRENT_BINARY_DIR}")
   set_tests_properties(opcua_types_generator PROPERTIES LABELS "opcua;packaging")
   add_test(NAME opcua_public_api_contract
-    COMMAND ${_cpkt_opcua_public_api_command})
+    COMMAND ${_cpkt_opcua_public_api_command} --require-complete)
   add_test(NAME opcua_public_api_contract_failures
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_public_api_test.py"
       "${CMAKE_SOURCE_DIR}" "${CMAKE_C_COMPILER}" "${CPKT_TARGET_OS}"
@@ -2013,6 +2094,11 @@ if(CPKT_BUILD_TESTS)
       "${_cpkt_fixture_dir}/cpkt/opcua_plugins.h"
       "${_cpkt_fixture_dir}/opcua_plugins_metadata.inc"
       "${_cpkt_fixture_dir}/opcua_types_metadata.inc"
+      "${_cpkt_fixture_dir}/opcua_config_metadata.inc"
+  "${_cpkt_fixture_dir}/opcua_config_plugins_metadata.inc"
+  "${_cpkt_fixture_dir}/opcua_nodestore_metadata.inc"
+  "${_cpkt_fixture_dir}/opcua_native_format.c"
+  "${_cpkt_fixture_dir}/opcua_native_nodestore.h"
       "${_cpkt_fixture_dir}/native/open62541/types_generated.c"
       "${_cpkt_fixture_dir}/native/open62541/types_generated.h"
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/opcua/generate.py"
@@ -2020,7 +2106,7 @@ if(CPKT_BUILD_TESTS)
       --output "${_cpkt_fixture_dir}"
       --extra-bsd "${CMAKE_SOURCE_DIR}/tests/opcua_types_fixture.bsd" --fixture-table
     DEPENDS cpkt::open62541_static tools/opcua/generate.py tools/opcua/c89_emitter.py
-      tools/opcua/plugin_emitter.py tools/opcua/history_emitter.py tools/opcua/server_emitter.py tools/opcua/node_emitter.py tools/opcua/producer_emitter.py tools/opcua/creation_emitter.py tools/opcua/client_emitter.py tools/opcua/async_client_emitter.py tools/opcua/core_client_emitter.py tools/opcua/value_emitter.py tests/opcua_types_fixture.bsd VERBATIM)
+      tools/opcua/plugin_emitter.py tools/opcua/history_emitter.py tools/opcua/server_emitter.py tools/opcua/node_emitter.py tools/opcua/producer_emitter.py tools/opcua/creation_emitter.py tools/opcua/client_emitter.py tools/opcua/async_client_emitter.py tools/opcua/core_client_emitter.py tools/opcua/value_emitter.py tools/opcua/certificate_emitter.py tools/opcua/utility_emitter.py tools/opcua/format_emitter.py tools/opcua/security_emitter.py tools/opcua/policy_emitter.py tools/opcua/pubsub_emitter.py tools/opcua/codec_emitter.py tools/opcua/event_emitter.py tools/opcua/dynamic_emitter.py tools/opcua/eventloop_emitter.py tools/opcua/config_emitter.py tools/opcua/config_plugin_emitter.py tools/opcua/config_server_plugin_emitter.py tools/opcua/nodestore_emitter.py tests/opcua_types_fixture.bsd VERBATIM)
   add_executable(cpkt_opcua_types_fixture_test tests/opcua_types_fixture_test.c
     src/opcua_types.c "${_cpkt_fixture_dir}/native/open62541/types_generated.c")
   cpkt_use_local_runtime(cpkt_opcua_types_fixture_test)
@@ -2045,7 +2131,7 @@ if(CPKT_BUILD_TESTS)
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   add_executable(cpkt_opcua_types_alloc_test tests/opcua_types_test.c
-      tests/opcua_types_native_peer.c tests/opcua_types_alloc_failure.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_memory_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c tests/opcua_producers_test.c tests/opcua_creation_test.c tests/opcua_external_test.c tests/opcua_client_test.c tests/opcua_async_client_test.c tests/opcua_core_client_test.c)
+      tests/opcua_types_native_peer.c tests/opcua_types_alloc_failure.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_memory_backend_test.c tests/opcua_certificate_test.c tests/opcua_certificate_native_peer.c tests/opcua_config_test.c tests/opcua_config_native_peer.c tests/opcua_format_test.c tests/opcua_transport_test.c tests/opcua_operations_test.c tests/opcua_nodestore_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c tests/opcua_producers_test.c tests/opcua_creation_test.c tests/opcua_external_test.c tests/opcua_client_test.c tests/opcua_async_client_test.c tests/opcua_core_client_test.c)
     cpkt_use_local_runtime(cpkt_opcua_types_alloc_test)
     cpkt_add_repo_warning_errors(cpkt_opcua_types_alloc_test)
     target_compile_definitions(cpkt_opcua_types_alloc_test PRIVATE CPKT_OPCUA_TYPES_ALLOC_FAILURE)
@@ -2056,28 +2142,29 @@ if(CPKT_BUILD_TESTS)
     if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
       add_test(NAME opcua_types_allocation_failure COMMAND cpkt_opcua_types_alloc_test)
       set_tests_properties(opcua_types_allocation_failure PROPERTIES
-        LABELS "facade;integration;offline;opcua;memcheck" TIMEOUT 90)
+        LABELS "facade;integration;offline;opcua;memcheck" TIMEOUT 120)
     endif()
   endif()
 
   foreach(_cpkt_types_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_types_${_cpkt_types_linkage}_test
-      tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_memory_backend_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c tests/opcua_producers_test.c tests/opcua_creation_test.c tests/opcua_external_test.c tests/opcua_client_test.c tests/opcua_async_client_test.c tests/opcua_core_client_test.c)
+      tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_memory_backend_test.c tests/opcua_certificate_test.c tests/opcua_certificate_native_peer.c tests/opcua_config_test.c tests/opcua_config_native_peer.c tests/opcua_format_test.c tests/opcua_transport_test.c tests/opcua_operations_test.c tests/opcua_nodestore_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c tests/opcua_producers_test.c tests/opcua_creation_test.c tests/opcua_external_test.c tests/opcua_client_test.c tests/opcua_async_client_test.c tests/opcua_core_client_test.c)
     cpkt_use_local_runtime(cpkt_opcua_types_${_cpkt_types_linkage}_test)
     cpkt_add_repo_warning_errors(cpkt_opcua_types_${_cpkt_types_linkage}_test)
     target_compile_options(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE -UNDEBUG)
     set_source_files_properties(tests/opcua_types_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_callbacks_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
-    set_source_files_properties(tests/opcua_history_backend_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+    set_source_files_properties(tests/opcua_history_backend_test.c tests/opcua_certificate_test.c tests/opcua_config_test.c tests/opcua_format_test.c tests/opcua_transport_test.c tests/opcua_operations_test.c tests/opcua_nodestore_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_plugins_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c tests/opcua_producers_test.c tests/opcua_creation_test.c tests/opcua_external_test.c tests/opcua_client_test.c tests/opcua_async_client_test.c tests/opcua_core_client_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
     set_source_files_properties(tests/opcua_server_types_test.c PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
-    set_source_files_properties(tests/opcua_types_native_peer.c tests/opcua_memory_backend_test.c PROPERTIES COMPILE_OPTIONS "-std=c99")
+    set_source_files_properties(tests/opcua_types_native_peer.c tests/opcua_memory_backend_test.c tests/opcua_certificate_native_peer.c tests/opcua_config_native_peer.c PROPERTIES COMPILE_OPTIONS "-std=c99")
     target_link_libraries(cpkt_opcua_types_${_cpkt_types_linkage}_test PRIVATE
       cpkt_opcua_${_cpkt_types_linkage} Threads::Threads)
     add_test(NAME opcua_types_exports_${_cpkt_types_linkage}
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_types_exports_test.py"
-        "${CMAKE_NM}" "$<TARGET_FILE:cpkt_opcua_${_cpkt_types_linkage}>"
+        "${CMAKE_NM}" "${CMAKE_READELF}" "$<TARGET_FILE:cpkt_opcua_${_cpkt_types_linkage}>"
+        "${CMAKE_SOURCE_DIR}/src/opcua_facade_internal.h"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua.h"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua_types_base.h"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua_util.h"
@@ -2089,7 +2176,7 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME opcua_types_${_cpkt_types_linkage}
         COMMAND cpkt_opcua_types_${_cpkt_types_linkage}_test)
       set_tests_properties(opcua_types_${_cpkt_types_linkage} PROPERTIES
-        LABELS "facade;integration;offline;opcua;memcheck" TIMEOUT 90)
+        LABELS "facade;integration;offline;opcua;memcheck" TIMEOUT 120)
     endif()
   endforeach()
 
@@ -2296,6 +2383,7 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME libssh2_facade COMMAND cpkt_libssh2_facade_test)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         add_test(NAME libssh2_sftp_eof COMMAND cpkt_libssh2_sftp_eof_test)
+        add_test(NAME libssh2_poll_elapsed COMMAND cpkt_libssh2_poll_elapsed_test)
       endif()
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
@@ -2380,6 +2468,9 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging;smoke"
         TIMEOUT 30)
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
+      add_test(NAME krb5_error_format COMMAND cpkt_krb5_error_format_test)
+      set_tests_properties(krb5_error_format PROPERTIES
+        ENVIRONMENT "KRB5_CONFIG=/dev/null;LC_ALL=C")
       add_test(NAME sasl_facade COMMAND cpkt_sasl_facade_test)
       file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/sasl-empty-plugin-path")
       add_test(NAME sasl_privileged_plugin_path
@@ -2411,7 +2502,7 @@ if(CPKT_BUILD_TESTS)
         sqlite_unlock_notify_groups
         sqlite_auto_extension_shutdown sqlite_rtree_registration_failure
         sqlite_session_hook_guard sqlite_collation_failure
-        gssapi_facade sasl_facade sasl_callback_retry)
+        gssapi_facade krb5_error_format sasl_facade sasl_callback_retry)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         set_tests_properties(sqlite_unlock_notify_race PROPERTIES
           LABELS "facade;memcheck")
@@ -2420,7 +2511,7 @@ if(CPKT_BUILD_TESTS)
       endif()
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         list(APPEND _cpkt_memcheck_facade_tests
-          libssh2_sftp_eof sqlite_page_cache_discard)
+          libssh2_sftp_eof libssh2_poll_elapsed sqlite_page_cache_discard)
       endif()
       set_tests_properties(
         opcua_facade_integration
@@ -2585,6 +2676,29 @@ if(CPKT_BUILD_TESTS)
       set_tests_properties(privacy_scan_failure PROPERTIES
         LABELS "packaging"
         TIMEOUT 30)
+      add_test(NAME source_archive_verify_failure
+        COMMAND bash "${CMAKE_SOURCE_DIR}/tests/source_archive_verify_failure_test.sh")
+      set_tests_properties(source_archive_verify_failure PROPERTIES
+        LABELS "packaging;smoke" TIMEOUT 30)
+      foreach(_cpkt_install_generator IN ITEMS Ninja Makefiles)
+        if(_cpkt_install_generator STREQUAL "Makefiles")
+          set(_cpkt_install_generator_name "Unix Makefiles")
+        else()
+          set(_cpkt_install_generator_name "Ninja")
+        endif()
+        add_test(NAME dependency_install_order_${_cpkt_install_generator}
+          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/dependency_install_order_test.py"
+            "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}" "${_cpkt_install_generator_name}")
+        set_tests_properties(dependency_install_order_${_cpkt_install_generator} PROPERTIES LABELS "packaging;smoke" TIMEOUT 30)
+        add_test(NAME open62541_openssl_provenance_${_cpkt_install_generator}
+          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/open62541_openssl_provenance_fixture_test.py"
+            "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}" "${_cpkt_install_generator_name}")
+        set_tests_properties(open62541_openssl_provenance_${_cpkt_install_generator} PROPERTIES LABELS "packaging;smoke" TIMEOUT 30)
+      endforeach()
+      add_test(NAME zlib_feature_namespace
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/zlib_feature_namespace_test.py"
+          "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_C_COMPILER}")
+      set_tests_properties(zlib_feature_namespace PROPERTIES LABELS "packaging;smoke" TIMEOUT 30)
       add_test(
         NAME dependency_component_targets
         COMMAND
@@ -2603,6 +2717,13 @@ if(CPKT_BUILD_TESTS)
       set_tests_properties(package_assertions_elf_runpath PROPERTIES
         LABELS "packaging"
         TIMEOUT 30)
+      add_test(NAME opcua_format_optimized_compile
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_format_optimized_compile_test.py"
+          "${CMAKE_CURRENT_BINARY_DIR}")
+      set_tests_properties(opcua_format_optimized_compile PROPERTIES LABELS "packaging;opcua" TIMEOUT 30)
+      add_test(NAME opcua_header_contract
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_header_contract_test.py" "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(opcua_header_contract PROPERTIES LABELS "packaging;opcua" TIMEOUT 30)
       add_test(
         NAME package_assertions_cleanup
         COMMAND
@@ -3050,6 +3171,7 @@ if(CPKT_BUILD_DEPENDENCIES)
         -DCPKT_CXX_LIBGCC_STATIC_LIBRARY=${CPKT_CXX_LIBGCC_STATIC_LIBRARY}
         -DCPKT_STRIP_BIN=${CMAKE_STRIP}
         -DCPKT_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+        -DCPKT_MACOS_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET}
         -P ${CMAKE_SOURCE_DIR}/cmake/package_bundle.cmake
     DEPENDS
       cpkt_deps_all

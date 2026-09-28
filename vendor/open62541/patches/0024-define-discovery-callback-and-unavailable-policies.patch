@@ -1,0 +1,48 @@
+--- a/src/server/ua_discovery.c
++++ b/src/server/ua_discovery.c
+@@ -542,4 +542,18 @@
+     return res;
+ }
+ 
++void
++UA_Server_setRegisterServerCallback(UA_Server *server,
++                                   UA_Server_registerServerCallback callback,
++                                   void *data) {
++    lockServer(server);
++    UA_DiscoveryManager *dm = (UA_DiscoveryManager*)
++        getServerComponentByName(server, UA_STRING("discovery"));
++    if(dm) {
++        dm->registerServerCallback = callback;
++        dm->registerServerCallbackData = data;
++    }
++    unlockServer(server);
++}
++
+ #endif /* UA_ENABLE_DISCOVERY */
+--- a/plugins/crypto/ua_securitypolicy_none.c
++++ b/plugins/crypto/ua_securitypolicy_none.c
+@@ -236,3 +236,24 @@
+ 
+     return setLocalCertificate_none(sp, localCertificate);
+ }
++
++/* The public default header declares these factories for every backend.
++ * AES-CTR PubSub implementation currently exists only for mbedTLS. Preserve
++ * the API and fail explicitly when this backend cannot supply the policy. */
++#ifndef UA_ENABLE_ENCRYPTION_MBEDTLS
++UA_StatusCode
++UA_PubSubSecurityPolicy_Aes128Ctr(UA_PubSubSecurityPolicy *policy,
++                                const UA_Logger *logger) {
++    (void)policy;
++    (void)logger;
++    return UA_STATUSCODE_BADNOTSUPPORTED;
++}
++
++UA_StatusCode
++UA_PubSubSecurityPolicy_Aes256Ctr(UA_PubSubSecurityPolicy *policy,
++                                const UA_Logger *logger) {
++    (void)policy;
++    (void)logger;
++    return UA_STATUSCODE_BADNOTSUPPORTED;
++}
++#endif

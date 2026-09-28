@@ -10,6 +10,7 @@ typedef struct {
   size_t c_offset, ua_offset, c_size_offset, ua_size_offset;
   size_t type_index;
   int is_array, is_optional;
+  const cpkt_opcua_Type *type;
 } cpkt_opcua_type_member;
 struct cpkt_opcua_Type {
   const char *name;
@@ -18,6 +19,8 @@ struct cpkt_opcua_Type {
   unsigned int kind;
   size_t members_size;
   const cpkt_opcua_type_member *members;
+  size_t alignment;
+  void *dynamic_owner;
 };
 /* Only generated code and the bridge include this file. No private bridge
  * symbol is externally linked: the generated table is included into the C TU.

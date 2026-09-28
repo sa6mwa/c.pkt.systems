@@ -550,13 +550,14 @@ cpkt_opcua_StatusCode cpkt_opcua_client_monitored_items_create_typed(
 typedef struct {
   cpkt_async_base base;
   cpkt_monitor_batch batch;
-  cpkt_opcua_async_service_fn fn;
+  cpkt_opcua_ClientAsyncCreateMonitoredItemsCallback fn;
 } cpkt_monitor_async;
 static void cpkt_monitor_async_deliver(cpkt_async_base *base, UA_UInt32 id,
                                        UA_StatusCode status,
                                        const void *response) {
   cpkt_monitor_async *context = (cpkt_monitor_async *)base;
-  context->fn(base->client, base->user, id, status, response, base->type);
+  context->fn(base->client, base->user, id, status,
+              (const cpkt_opcua_CreateMonitoredItemsResponse *)response);
 }
 static void
 cpkt_monitor_async_native(UA_Client *client, void *user, UA_UInt32 id,
@@ -593,7 +594,7 @@ cpkt_opcua_StatusCode cpkt_opcua_client_monitored_items_create_typed_async(
     cpkt_opcua_client *client,
     const cpkt_opcua_CreateMonitoredItemsRequest *request, int event_monitoring,
     const cpkt_opcua_MonitoredItemCallbacks *registrations,
-    cpkt_opcua_async_service_fn complete_fn, void *user,
+    cpkt_opcua_ClientAsyncCreateMonitoredItemsCallback complete_fn, void *user,
     cpkt_opcua_UInt32 *request_id) {
   cpkt_monitor_async *call;
   cpkt_monitor_batch saved;

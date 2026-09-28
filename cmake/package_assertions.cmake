@@ -420,6 +420,28 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
   endforeach()
 endfunction()
 
+function(cpkt_assert_darwin_deployment_target file_path expected_minimum description)
+  cpkt_find_darwin_otool(_otool)
+  execute_process(
+    COMMAND "${_otool}" -l "${file_path}"
+    RESULT_VARIABLE _result OUTPUT_VARIABLE _output ERROR_VARIABLE _error)
+  if(NOT _result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect Darwin deployment target for ${description}: ${_error}")
+  endif()
+  string(REGEX MATCHALL "cmd LC_BUILD_VERSION" _commands "${_output}")
+  list(LENGTH _commands _command_count)
+  string(REGEX MATCHALL "minos[ \t]+[0-9]+[.][0-9]+" _minimums "${_output}")
+  list(LENGTH _minimums _minimum_count)
+  if(NOT _command_count EQUAL 1 OR NOT _minimum_count EQUAL 1)
+    message(FATAL_ERROR "${description} must have one LC_BUILD_VERSION minimum")
+  endif()
+  string(REGEX REPLACE ".*minos[ \t]+" "" _actual_minimum "${_minimums}")
+  if(NOT _actual_minimum VERSION_EQUAL expected_minimum)
+    message(FATAL_ERROR
+      "${description} records macOS ${_actual_minimum}, expected ${expected_minimum}")
+  endif()
+endfunction()
+
 function(cpkt_read_elf_dynamic_section out_var file_path description)
   cpkt_find_readelf(CPKT_READELF_BIN)
   if(NOT EXISTS "${file_path}")
@@ -547,6 +569,13 @@ if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSE
     "test Darwin relocatable dylib")
   message(STATUS "CPKT_TEST_DARWIN_RELOCATABLE=ok")
 endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT)
+  cpkt_assert_darwin_deployment_target(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_DEPLOYMENT}"
+    "test Darwin deployment target")
+  message(STATUS "CPKT_TEST_DARWIN_DEPLOYMENT=ok")
+endif()
 if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH)
   cpkt_assert_elf_runpath_file_relocatable(
     "${CPKT_PACKAGE_ASSERTIONS_TEST_ELF}"
@@ -566,6 +595,7 @@ if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_AS
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA))
   return()
@@ -665,6 +695,12 @@ foreach(_libharu_required_feature LIBHPDF_HAVE_LIBPNG LIBHPDF_HAVE_ZLIB)
   endif()
 endforeach()
 file(READ "${_manifest_path}" _manifest_text)
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  if(NOT _manifest_text MATCHES "(^|\n)macos_deployment_target=([0-9]+[.][0-9]+)(\n|$)")
+    message(FATAL_ERROR "Darwin package manifest is missing macos_deployment_target")
+  endif()
+  set(_manifest_macos_deployment_target "${CMAKE_MATCH_2}")
+endif()
 set(_sus_model_catalog_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/sus-model-catalog.tsv")
 if(NOT EXISTS "${_sus_model_catalog_path}")
   message(FATAL_ERROR "missing sus model catalog metadata: ${_sus_model_catalog_path}")
@@ -1242,6 +1278,7 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md"
     "share/doc/c.pkt.systems/third_party/mqtt-c/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/LICENSE"
+    "share/doc/c.pkt.systems/third_party/opcua-formatter/LICENSE"
     "share/doc/c.pkt.systems/third_party/mit-kerberos/LICENSE"
     "share/doc/c.pkt.systems/third_party/cyrus-sasl/LICENSE"
     "share/doc/c.pkt.systems/third_party/openldap/LICENSE"
@@ -1439,34 +1476,22 @@ set(_opcua_facade_header "${_opcua_facade_header_extract_root}/${_archive_stem}/
 if(NOT EXISTS "${_opcua_facade_header}")
   message(FATAL_ERROR "missing OPC UA C89 facade header: ${_opcua_facade_header}")
 endif()
-file(READ "${_opcua_facade_header}" _opcua_facade_header_text)
+set(_opcua_contract_headers "${_opcua_facade_header}")
 foreach(_type_header IN ITEMS opcua_types.h opcua_types_base.h opcua_util.h opcua_callbacks.h opcua_constants.h opcua_plugins.h)
-  file(READ "${_opcua_facade_header_extract_root}/${_archive_stem}/include/cpkt/${_type_header}" _type_text)
-  string(APPEND _opcua_facade_header_text "\n${_type_text}")
+  list(APPEND _opcua_contract_headers
+    "${_opcua_facade_header_extract_root}/${_archive_stem}/include/cpkt/${_type_header}")
 endforeach()
-foreach(_forbidden_header_token
-    "open62541/"
-    "UA_Client"
-    "UA_Server"
-    "UA_StatusCode"
-    "UA_NodeId"
-    "UA_Variant"
-    "stdint\\.h"
-    "stdbool\\.h"
-    "uint8_t"
-    "uint16_t"
-    "uint32_t"
-    "uint64_t"
-    "int8_t"
-    "int16_t"
-    "int32_t"
-    "int64_t"
-    "long long"
-    "inline")
-  if(_opcua_facade_header_text MATCHES "${_forbidden_header_token}")
-    message(FATAL_ERROR "OPC UA C89 facade header contains forbidden token: ${_forbidden_header_token}")
-  endif()
-endforeach()
+find_program(_cpkt_header_contract_python NAMES python3 REQUIRED)
+execute_process(
+  COMMAND "${_cpkt_header_contract_python}"
+    "${CMAKE_CURRENT_LIST_DIR}/../tools/opcua/header_contract.py"
+    ${_opcua_contract_headers}
+  RESULT_VARIABLE _opcua_header_contract_result
+  OUTPUT_VARIABLE _opcua_header_contract_output
+  ERROR_VARIABLE _opcua_header_contract_error)
+if(NOT _opcua_header_contract_result EQUAL 0)
+  message(FATAL_ERROR "OPC UA C89 facade header contract failed: ${_opcua_header_contract_error}${_opcua_header_contract_output}")
+endif()
 file(REMOVE_RECURSE "${_opcua_facade_header_extract_root}")
 
 cpkt_extract_archive_for_assertions(_postgres_facade_header_extract_root)
@@ -1682,6 +1707,10 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     get_filename_component(_packaged_darwin_dylib_name "${_packaged_darwin_dylib}" NAME)
     cpkt_assert_darwin_dylib_relocatable(
       "${_packaged_darwin_dylib}"
+      "${_packaged_darwin_dylib_name}")
+    cpkt_assert_darwin_deployment_target(
+      "${_packaged_darwin_dylib}"
+      "${_manifest_macos_deployment_target}"
       "${_packaged_darwin_dylib_name}")
   endforeach()
   cpkt_assert_dynamic_exports_equal(

@@ -1,0 +1,133 @@
+--- a/src/server/ua_discovery.c
++++ b/src/server/ua_discovery.c
+@@ -304,7 +304,7 @@
+                                      registerAsyncResponse,
+                                      &UA_TYPES[UA_TYPES_REGISTERSERVERRESPONSE], ar, NULL);
+         if(res != UA_STATUSCODE_GOOD) {
+-            UA_LOG_ERROR((const UA_Logger *)&sc->logging, UA_LOGCATEGORY_CLIENT,
++            UA_LOG_ERROR(sc->logging, UA_LOGCATEGORY_CLIENT,
+                          "RegisterServer failed with statuscode %s",
+                          UA_StatusCode_name(res));
+             goto done;
+@@ -453,8 +453,16 @@
+     }
+ 
+     /* Use the EventLoop from the server for the client */
+-    if(cc->eventLoop && !cc->externalEventLoop)
+-        cc->eventLoop->free(cc->eventLoop);
++    if(cc->eventLoop && !cc->externalEventLoop) {
++        /* A failed free still owns its loop. Do not overwrite the pointer and
++         * silently leak it. This failure precedes config handoff; the caller
++         * retains the entire configuration and can retry after quiescing it. */
++        if(cc->eventLoop == sc->eventLoop)
++            return UA_STATUSCODE_BADINVALIDSTATE;
++        UA_StatusCode eventLoopStatus = cc->eventLoop->free(cc->eventLoop);
++        if(eventLoopStatus != UA_STATUSCODE_GOOD)
++            return eventLoopStatus;
++    }
+     cc->eventLoop = sc->eventLoop;
+     cc->externalEventLoop = true;
+ 
+@@ -476,7 +484,11 @@
+ 
+     /* Move the endpoint url */
+     UA_String_clear(&cc->endpointUrl);
+-    UA_String_copy(&discoveryServerUrl, &cc->endpointUrl);
++    UA_StatusCode retval = UA_String_copy(&discoveryServerUrl, &cc->endpointUrl);
++    if(retval != UA_STATUSCODE_GOOD) {
++        UA_ClientConfig_clear(cc);
++        return retval;
++    }
+ 
+     /* Instantiate the client */
+     ar->client = UA_Client_newWithConfig(cc);
+@@ -493,7 +505,11 @@
+     ar->dm = dm;
+     ar->unregister = unregister;
+     ar->register2 = true; /* Try register2 first */
+-    UA_String_copy(&semaphoreFilePath, &ar->semaphoreFilePath);
++    retval = UA_String_copy(&semaphoreFilePath, &ar->semaphoreFilePath);
++    if(retval != UA_STATUSCODE_GOOD) {
++        asyncRegisterRequest_clear(NULL, ar);
++        return retval;
++    }
+ 
+     /* Connect asynchronously. The register service is called once the
+      * connection is open. */
+--- a/include/open62541/server.h
++++ b/include/open62541/server.h
+@@ -1638,8 +1638,10 @@
+  * and eventually cleaned up internally. The structure pointed at by `cc` is
+  * zeroed to avoid accessing outdated information.
+  *
+- * The eventloop and logging plugins in the client configuration are replaced by
+- * those configured in the server. */
++ * The eventloop is replaced by the server eventloop. The client's logger is
++ * retained. If releasing the old owned client eventloop fails before handoff,
++ * the configuration remains caller-owned and unchanged (except for effects of
++ * the eventloop's failed free callback). Quiesce the loop and retry. */
+ UA_StatusCode UA_EXPORT UA_THREADSAFE
+ UA_Server_registerDiscovery(UA_Server *server, UA_ClientConfig *cc,
+                             const UA_String discoveryServerUrl,
+--- a/src/server/ua_server_binary.c
++++ b/src/server/ua_server_binary.c
+@@ -1034,7 +1034,7 @@
+ 
+     reverse_connect_context *rc = NULL;
+     LIST_FOREACH(rc, &bpm->reverseConnects, next) {
+-        if(rc->currentConnection.connectionId)
++        if(rc->destruction || rc->currentConnection.connectionId)
+             continue;
+         UA_LOG_INFO(server->config.logging, UA_LOGCATEGORY_SERVER,
+                     "Attempt to reverse reconnect to %S:%d", rc->hostname, rc->port);
+@@ -1158,7 +1158,11 @@
+     if(!newContext)
+         return UA_STATUSCODE_BADOUTOFMEMORY;
+ 
+-    UA_String_copy(&hostname, &newContext->hostname);
++    res = UA_String_copy(&hostname, &newContext->hostname);
++    if(res != UA_STATUSCODE_GOOD) {
++        UA_free(newContext);
++        return res;
++    }
+     newContext->port = port;
+     newContext->handle = ++bpm->lastReverseConnectHandle;
+     newContext->stateCallback = stateCallback;
+@@ -1167,7 +1171,13 @@
+     lockServer(server);
+ 
+     /* Register the retry callback */
+-    setReverseConnectRetryCallback(bpm, true);
++    res = setReverseConnectRetryCallback(bpm, true);
++    if(res != UA_STATUSCODE_GOOD) {
++        unlockServer(server);
++        UA_String_clear(&newContext->hostname);
++        UA_free(newContext);
++        return res;
++    }
+ 
+     /* Register the new reverse connection */
+     LIST_INSERT_HEAD(&bpm->reverseConnects, newContext, next);
+@@ -1200,10 +1210,12 @@
+ 
+     reverse_connect_context *rev, *temp;
+     LIST_FOREACH_SAFE(rev, &bpm->reverseConnects, next, temp) {
+-        if(rev->handle != handle)
++        if(rev->handle != handle || rev->destruction)
+             continue;
+ 
+-        LIST_REMOVE(rev, next);
++        /* Keep a connected entry linked until its closing callback. Removing it
++         * here and again from that callback corrupts the list when another
++         * reverse connection is inserted in between. */
+ 
+         /* Connected -> disconnect, otherwise free immediately */
+         if(rev->currentConnection.connectionId) {
+@@ -1211,6 +1223,7 @@
+             rev->destruction = true;
+             cm->closeConnection(cm, rev->currentConnection.connectionId);
+         } else {
++            LIST_REMOVE(rev, next);
+             setReverseConnectState(server, rev, UA_SECURECHANNELSTATE_CLOSED);
+             UA_String_clear(&rev->hostname);
+             UA_free(rev);

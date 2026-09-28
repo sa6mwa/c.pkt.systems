@@ -124,7 +124,7 @@ def verify_header(path):
     return failures
 
 
-def verify_source(path, documented_symbols):
+def verify_source(path, documented_symbols, private_symbols):
     lines = path.read_text(encoding="utf-8").splitlines()
     failures = []
     depth = 0
@@ -145,7 +145,7 @@ def verify_source(path, documented_symbols):
             # its implementation intentionally does not duplicate it.
             # Every other facade source keeps a declaration-local Doxygen
             # comment, which also protects this verifier's negative fixture.
-            if name and (name not in documented_symbols or
+            if name and not (name in private_symbols and name not in documented_symbols) and (name not in documented_symbols or
                          path.name != "sqlite.c") and not previous_nonblank_is_doxygen_comment(
                              lines, start):
                 failures.append((start + 1, name))
@@ -185,8 +185,18 @@ for filename in ("opcua_types.h", "opcua_constants.h", "opcua_plugins.h"):
     for line, symbol in verify_header(generated_header):
         all_failures.append((generated_header, line, symbol))
     documented_symbols.update(re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(", generated_header.read_text()))
+# The OPC UA implementation has private linkage across several source files.
+# Only explicitly hidden helper declarations can be exempt from public API
+# comments. The export gate independently verifies their object visibility.
+private_header = source_dir / "src/opcua_facade_internal.h"
+private_symbols = set()
+if private_header.is_file():
+    private_symbols.update(re.findall(
+        r"CPKT_OPCUA_PRIVATE\s+[A-Za-z_][A-Za-z0-9_\s*]*?\b(cpkt_[A-Za-z0-9_]+)\s*\(",
+        private_header.read_text()))
+
 for source in facade_sources:
-    for line, symbol in verify_source(source, documented_symbols):
+    for line, symbol in verify_source(source, documented_symbols, private_symbols):
         all_failures.append((source, line, symbol))
 
 # The complete Lua C89 header is generated in the build tree, so the installed

@@ -4,6 +4,13 @@
 #include <open62541/client_highlevel.h>
 #include <open62541/client_highlevel_async.h>
 #include <open62541/client_subscriptions.h>
+#include <open62541/plugin/certificategroup.h>
+#include <open62541/plugin/certificategroup_default.h>
+#include <open62541/plugin/create_certificate.h>
+#include <open62541/plugin/securitypolicy.h>
+#include <open62541/plugin/securitypolicy_default.h>
+#include <open62541/pubsub.h>
+#include <open62541/server_pubsub.h>
 #include <open62541/util.h>
 #include <string.h>
 
@@ -31,6 +38,24 @@ typedef char cpkt_guid_layout[(sizeof(cpkt_opcua_Guid) == sizeof(UA_Guid) &&
                                   ? 1
                                   : -1];
 
+typedef struct {
+  void *context;
+  void *(*calloc)(void *, size_t, size_t);
+} cpkt_conversion_allocator;
+static void *cpkt_conversion_calloc(const cpkt_conversion_allocator *allocator,
+                                    size_t count, size_t size) {
+  if (count && size > (size_t)-1 / count)
+    return NULL;
+  return allocator && allocator->calloc
+             ? allocator->calloc(allocator->context, count, size)
+             : UA_calloc(count, size);
+}
+static UA_StatusCode cpkt_convert_ex(const void *, void *,
+                                     const cpkt_opcua_Type *, int, unsigned int,
+                                     const cpkt_conversion_allocator *);
+static UA_StatusCode cpkt_array_ex(const void *, size_t, void **,
+                                   const cpkt_opcua_Type *, int, unsigned int,
+                                   const cpkt_conversion_allocator *);
 static UA_StatusCode cpkt_convert(const void *, void *, const cpkt_opcua_Type *,
                                   int, unsigned int);
 static const cpkt_opcua_Type *cpkt_valid_type(const cpkt_opcua_Type *);
@@ -46,6 +71,9 @@ static UA_NodeId cpkt_nodeid_view(const cpkt_opcua_NodeId *);
 static cpkt_opcua_NodeId cpkt_nodeid_take(UA_NodeId);
 static cpkt_opcua_ExpandedNodeId cpkt_expanded_take(UA_ExpandedNodeId);
 static cpkt_opcua_NumericRange cpkt_range_take(UA_NumericRange);
+#include "opcua_facade_internal.h"
+static void cpkt_local_monitor_remove(cpkt_opcua_server *, UA_UInt32);
+static void cpkt_reverse_removed(cpkt_opcua_server *, UA_UInt64);
 #include "opcua_types_metadata.inc"
 
 /** Implements the ownership and conversion contract in <cpkt/opcua_types.h>. */
@@ -69,19 +97,10 @@ void cpkt_opcua_type_init(void *value, const cpkt_opcua_Type *type) {
 void *cpkt_opcua_type_new(const cpkt_opcua_Type *type) {
   return type ? UA_calloc(1, type->size) : NULL;
 }
-static const cpkt_opcua_Type *cpkt_from_native(const UA_DataType *type) {
-  size_t i;
-  for (i = 0; i < CPKT_OPCUA_TYPES_COUNT; ++i)
-    if (cpkt_types[i].native == type)
-      return &cpkt_types[i];
-  return NULL;
-}
-static const cpkt_opcua_Type *cpkt_valid_type(const cpkt_opcua_Type *type) {
-  size_t i;
-  for (i = 0; i < CPKT_OPCUA_TYPES_COUNT; ++i)
-    if (&cpkt_types[i] == type)
-      return type;
-  return NULL;
+#include "opcua_dynamic_internal.h"
+static const cpkt_opcua_Type *
+cpkt_member_type(const cpkt_opcua_type_member *member) {
+  return member->type ? member->type : &cpkt_types[member->type_index];
 }
 static void cpkt_clear_array(void *data, size_t length,
                              const cpkt_opcua_Type *type) {
@@ -133,9 +152,20 @@ cpkt_opcua_StatusCode cpkt_opcua_array_copy(const void *source, size_t length,
   }
   return 0;
 }
+static UA_StatusCode cpkt_convert(const void *src, void *dst,
+                                  const cpkt_opcua_Type *type, int to_native,
+                                  unsigned int depth) {
+  return cpkt_convert_ex(src, dst, type, to_native, depth, NULL);
+}
 static UA_StatusCode cpkt_array(const void *src, size_t length, void **dst,
                                 const cpkt_opcua_Type *type, int to_native,
                                 unsigned int depth) {
+  return cpkt_array_ex(src, length, dst, type, to_native, depth, NULL);
+}
+static UA_StatusCode cpkt_array_ex(const void *src, size_t length, void **dst,
+                                   const cpkt_opcua_Type *type, int to_native,
+                                   unsigned int depth,
+                                   const cpkt_conversion_allocator *allocator) {
   size_t i, in_size, out_size;
   UA_StatusCode status;
   if (!src)
@@ -150,20 +180,21 @@ static UA_StatusCode cpkt_array(const void *src, size_t length, void **dst,
   out_size = to_native ? type->native->memSize : type->size;
   if (length > (size_t)-1 / out_size || length > (size_t)-1 / in_size)
     return UA_STATUSCODE_BADOUTOFMEMORY;
-  *dst = UA_calloc(length, out_size);
+  *dst = cpkt_conversion_calloc(allocator, length, out_size);
   if (!*dst)
     return UA_STATUSCODE_BADOUTOFMEMORY;
   for (i = 0; i < length; ++i) {
-    status =
-        cpkt_convert((const char *)src + i * in_size,
-                     (char *)*dst + i * out_size, type, to_native, depth + 1);
+    status = cpkt_convert_ex((const char *)src + i * in_size,
+                             (char *)*dst + i * out_size, type, to_native,
+                             depth + 1, allocator);
     if (status)
       return status;
   }
   return UA_STATUSCODE_GOOD;
 }
-static UA_StatusCode cpkt_string(const void *src, void *dst, int to_native,
-                                 unsigned int depth) {
+static UA_StatusCode
+cpkt_string_ex(const void *src, void *dst, int to_native, unsigned int depth,
+               const cpkt_conversion_allocator *allocator) {
   const cpkt_opcua_String *c;
   const UA_String *u;
   size_t length;
@@ -179,8 +210,8 @@ static UA_StatusCode cpkt_string(const void *src, void *dst, int to_native,
     length = u->length;
     data = u->data;
   }
-  status = cpkt_array(data, length, &out, &cpkt_types[CPKT_OPCUA_TYPES_BYTE],
-                      to_native, depth);
+  status = cpkt_array_ex(data, length, &out, &cpkt_types[CPKT_OPCUA_TYPES_BYTE],
+                         to_native, depth, allocator);
   if (to_native) {
     ((UA_String *)dst)->length = out ? length : 0;
     ((UA_String *)dst)->data = (UA_Byte *)out;
@@ -192,10 +223,11 @@ static UA_StatusCode cpkt_string(const void *src, void *dst, int to_native,
 }
 #define CONVERT_FIELD(C, U, field, type)                                       \
   do {                                                                         \
-    status = cpkt_convert(                                                     \
+    status = cpkt_convert_ex(                                                  \
         to_native ? (const void *)&(C)->field : (const void *)&(U)->field,     \
         to_native ? (void *)&(U)->field : (void *)&(C)->field,                 \
-        &cpkt_types[CPKT_OPCUA_TYPES_##type], to_native, depth + 1);           \
+        &cpkt_types[CPKT_OPCUA_TYPES_##type], to_native, depth + 1,            \
+        allocator);                                                            \
     if (status)                                                                \
       return status;                                                           \
   } while (0)
@@ -207,9 +239,10 @@ static UA_StatusCode cpkt_string(const void *src, void *dst, int to_native,
       (C)->field = (U)->field;                                                 \
   } while (0)
 
-static UA_StatusCode cpkt_convert(const void *src, void *dst,
-                                  const cpkt_opcua_Type *type, int to_native,
-                                  unsigned int depth) {
+static UA_StatusCode
+cpkt_convert_ex(const void *src, void *dst, const cpkt_opcua_Type *type,
+                int to_native, unsigned int depth,
+                const cpkt_conversion_allocator *allocator) {
   UA_StatusCode status = UA_STATUSCODE_GOOD;
   size_t i, length, in_offset, out_offset, selected = 0;
   unsigned int switch_field;
@@ -246,7 +279,7 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
   case 11:
   case 14:
   case 15:
-    return cpkt_string(src, dst, to_native, depth);
+    return cpkt_string_ex(src, dst, to_native, depth, allocator);
   case 16: {
     cpkt_opcua_NodeId *c = (cpkt_opcua_NodeId *)(to_native ? (void *)src : dst);
     UA_NodeId *u = (UA_NodeId *)(to_native ? dst : (void *)src);
@@ -319,8 +352,9 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
                             : cpkt_from_native(u->content.decoded.type);
     if (!member_type)
       return UA_STATUSCODE_BADTYPEMISMATCH;
-    out = UA_calloc(1, to_native ? member_type->native->memSize
-                                 : member_type->size);
+    out = cpkt_conversion_calloc(allocator, 1,
+                                 to_native ? member_type->native->memSize
+                                           : member_type->size);
     if (!out)
       return UA_STATUSCODE_BADOUTOFMEMORY;
     if (to_native) {
@@ -334,7 +368,8 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
       c->content.decoded.data = out;
       data = u->content.decoded.data;
     }
-    return cpkt_convert(data, out, member_type, to_native, depth + 1);
+    return cpkt_convert_ex(data, out, member_type, to_native, depth + 1,
+                           allocator);
   }
   case 22: {
     cpkt_opcua_DataValue *c =
@@ -379,7 +414,8 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
     if (!length && data && data != UA_EMPTY_ARRAY_SENTINEL)
       length = 1;
     out = NULL;
-    status = cpkt_array(data, length, &out, member_type, to_native, depth);
+    status = cpkt_array_ex(data, length, &out, member_type, to_native, depth,
+                           allocator);
     if (to_native) {
       u->data = out;
       if (!out)
@@ -395,8 +431,9 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
     data = to_native ? (const void *)c->arrayDimensions
                      : (const void *)u->arrayDimensions;
     out = NULL;
-    status = cpkt_array(data, length, &out,
-                        &cpkt_types[CPKT_OPCUA_TYPES_UINT32], to_native, depth);
+    status =
+        cpkt_array_ex(data, length, &out, &cpkt_types[CPKT_OPCUA_TYPES_UINT32],
+                      to_native, depth, allocator);
     if (to_native) {
       u->arrayDimensionsSize = out ? length : 0;
       u->arrayDimensions = (UA_UInt32 *)out;
@@ -428,15 +465,17 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
     if (!data)
       return 0;
     member_type = &cpkt_types[CPKT_OPCUA_TYPES_DIAGNOSTICINFO];
-    out = UA_calloc(1, to_native ? sizeof(UA_DiagnosticInfo)
-                                 : sizeof(cpkt_opcua_DiagnosticInfo));
+    out = cpkt_conversion_calloc(allocator, 1,
+                                 to_native ? sizeof(UA_DiagnosticInfo)
+                                           : sizeof(cpkt_opcua_DiagnosticInfo));
     if (!out)
       return UA_STATUSCODE_BADOUTOFMEMORY;
     if (to_native)
       u->innerDiagnosticInfo = (UA_DiagnosticInfo *)out;
     else
       c->innerDiagnosticInfo = (cpkt_opcua_DiagnosticInfo *)out;
-    return cpkt_convert(data, out, member_type, to_native, depth + 1);
+    return cpkt_convert_ex(data, out, member_type, to_native, depth + 1,
+                           allocator);
   }
   case 29:
     memcpy(&switch_field, src, sizeof(switch_field));
@@ -447,12 +486,13 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
       return 0;
     selected = switch_field - 1;
     /* FALLTHROUGH */
+  case 28:
   case 27:
     for (i = 0; i < type->members_size; ++i) {
       if (type->kind == 29 && i != selected)
         continue;
       m = &type->members[i];
-      member_type = &cpkt_types[m->type_index];
+      member_type = cpkt_member_type(m);
       in_offset = to_native ? m->c_offset : m->ua_offset;
       out_offset = to_native ? m->ua_offset : m->c_offset;
       if (m->is_array || m->is_optional) {
@@ -463,25 +503,26 @@ static UA_StatusCode cpkt_convert(const void *src, void *dst,
                  (const char *)src +
                      (to_native ? m->c_size_offset : m->ua_size_offset),
                  sizeof(length));
-          status =
-              cpkt_array(data, length, &out, member_type, to_native, depth);
+          status = cpkt_array_ex(data, length, &out, member_type, to_native,
+                                 depth, allocator);
           if (!out)
             length = 0;
           memcpy((char *)dst +
                      (to_native ? m->ua_size_offset : m->c_size_offset),
                  &length, sizeof(length));
         } else if (data) {
-          out = UA_calloc(1, to_native ? member_type->native->memSize
-                                       : member_type->size);
-          status =
-              out ? cpkt_convert(data, out, member_type, to_native, depth + 1)
-                  : UA_STATUSCODE_BADOUTOFMEMORY;
+          out = cpkt_conversion_calloc(allocator, 1,
+                                       to_native ? member_type->native->memSize
+                                                 : member_type->size);
+          status = out ? cpkt_convert_ex(data, out, member_type, to_native,
+                                         depth + 1, allocator)
+                       : UA_STATUSCODE_BADOUTOFMEMORY;
         }
         memcpy((char *)dst + out_offset, &out, sizeof(out));
       } else
-        status = cpkt_convert((const char *)src + in_offset,
-                              (char *)dst + out_offset, member_type, to_native,
-                              depth + 1);
+        status = cpkt_convert_ex((const char *)src + in_offset,
+                                 (char *)dst + out_offset, member_type,
+                                 to_native, depth + 1, allocator);
       if (status)
         return status;
     }
@@ -577,6 +618,7 @@ void cpkt_opcua_type_clear(void *value, const cpkt_opcua_Type *type) {
       break;
     selected = switch_field - 1;
     /* FALLTHROUGH */
+  case 28:
   case 27:
     for (i = 0; i < type->members_size; ++i) {
       if (type->kind == 29 && i != selected)
@@ -586,12 +628,11 @@ void cpkt_opcua_type_clear(void *value, const cpkt_opcua_Type *type) {
         memcpy(&data, (char *)value + m->c_offset, sizeof(data));
         if (m->is_array) {
           memcpy(&length, (char *)value + m->c_size_offset, sizeof(length));
-          cpkt_clear_array(data, length, &cpkt_types[m->type_index]);
+          cpkt_clear_array(data, length, cpkt_member_type(m));
         } else
-          cpkt_opcua_type_delete(data, &cpkt_types[m->type_index]);
+          cpkt_opcua_type_delete(data, cpkt_member_type(m));
       } else
-        cpkt_opcua_type_clear((char *)value + m->c_offset,
-                              &cpkt_types[m->type_index]);
+        cpkt_opcua_type_clear((char *)value + m->c_offset, cpkt_member_type(m));
     }
     break;
   default:
@@ -953,3 +994,19 @@ cpkt_opcua_server_write_typed(cpkt_opcua_server *server,
 #include "opcua_identifiers_impl.h"
 
 #include "opcua_map_impl.h"
+
+#include "opcua_codec_impl.h"
+
+#include "opcua_events_impl.h"
+
+#include "opcua_dynamic_impl.h"
+#include "opcua_eventloop_impl.h"
+#include "opcua_range_impl.h"
+
+#include "opcua_nodestore_impl.h"
+
+#include "opcua_config_impl.h"
+
+#include "opcua_operations_impl.h"
+
+#include "opcua_logger_impl.h"

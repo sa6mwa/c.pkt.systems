@@ -1,2 +1,3 @@
 krb5_const_correctness.patch
 krb5_tls_bundle.patch
+krb5_error_va_list.patch

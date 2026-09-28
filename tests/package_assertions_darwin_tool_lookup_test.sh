@@ -320,3 +320,41 @@ if ! grep -F -- '"uint64_t"' "$repo_root/cmake/package_assertions.cmake" >/dev/n
   printf 'package assertions no longer reject C99 fixed-width integer typedef leaks\n' >&2
   exit 1
 fi
+
+cat > "$osxcross_root/bin/$osxcross_host-otool" <<'SH'
+#!/usr/bin/env sh
+printf 'Load command 0\n'
+printf '          cmd LC_BUILD_VERSION\n'
+printf '        minos %s\n' "$CPKT_TEST_MINOS"
+SH
+chmod +x "$osxcross_root/bin/$osxcross_host-otool"
+touch "$work_dir/libsqlite3.0.dylib"
+
+output=$(
+  CPKT_TEST_MINOS=15.0 OSXCROSS_ROOT="$osxcross_root" \
+  CPKT_OSXCROSS_HOST="$osxcross_host" cmake \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT=ON \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libsqlite3.0.dylib" \
+    -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_DEPLOYMENT=15.0 \
+    -P "$repo_root/cmake/package_assertions.cmake"
+)
+case "$output" in
+  *"CPKT_TEST_DARWIN_DEPLOYMENT=ok"*) ;;
+  *) printf 'Darwin deployment gate rejected a matching minimum\n%s\n' "$output" >&2; exit 1 ;;
+esac
+
+if output=$(
+    CPKT_TEST_MINOS=11.0 OSXCROSS_ROOT="$osxcross_root" \
+    CPKT_OSXCROSS_HOST="$osxcross_host" cmake \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT=ON \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_DYLIB="$work_dir/libsqlite3.0.dylib" \
+      -DCPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_DEPLOYMENT=15.0 \
+      -P "$repo_root/cmake/package_assertions.cmake" 2>&1
+  ); then
+  printf 'Darwin deployment gate accepted an old minimum\n%s\n' "$output" >&2
+  exit 1
+fi
+case "$output" in
+  *"records macOS 11.0, expected 15.0"*) ;;
+  *) printf 'Darwin deployment diagnostic was not actionable\n%s\n' "$output" >&2; exit 1 ;;
+esac

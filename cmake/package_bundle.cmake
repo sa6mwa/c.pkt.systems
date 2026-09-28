@@ -1981,9 +1981,18 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-mqttc.pc"
 )
 
 file(MAKE_DIRECTORY "${_stage_root}/share/c.pkt.systems")
+set(_cpkt_macos_manifest_field "")
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  if(NOT CPKT_MACOS_DEPLOYMENT_TARGET MATCHES "^[0-9]+[.][0-9]+$")
+    message(FATAL_ERROR "Darwin package requires CPKT_MACOS_DEPLOYMENT_TARGET")
+  endif()
+  set(_cpkt_macos_manifest_field
+    "macos_deployment_target=${CPKT_MACOS_DEPLOYMENT_TARGET}\n")
+endif()
 file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "bundle_version=${CPKT_BUNDLE_VERSION}\n"
   "target_id=${CPKT_TARGET_ID}\n"
+  "${_cpkt_macos_manifest_field}"
   "openssl_version=${CPKT_OPENSSL_VERSION}\n"
   "zlib_version=${CPKT_ZLIB_VERSION}\n"
   "libpng_version=${CPKT_LIBPNG_VERSION}\n"
@@ -2096,6 +2105,7 @@ cpkt_stage_license("miniaudio" "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio/src/LICE
 cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src-static/LICENSE")
 cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
 cpkt_stage_license("opcua-schema" "${CPKT_SOURCE_DIR}/docs/third_party/opcua-schema/LICENSE")
+cpkt_stage_license("opcua-formatter" "${CPKT_SOURCE_DIR}/docs/third_party/opcua-formatter/LICENSE")
 cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src-static/LICENSE")
 cpkt_stage_license("mit-kerberos" "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5/src/NOTICE")
 cpkt_stage_license("cyrus-sasl" "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl/src/COPYING")

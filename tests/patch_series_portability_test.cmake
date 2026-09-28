@@ -8,7 +8,9 @@ file(MAKE_DIRECTORY "${_work_dir}")
 file(WRITE "${_work_dir}/message.txt" "before\n")
 file(WRITE "${_work_dir}/change.patch"
   "--- a/message.txt\n+++ b/message.txt\n@@ -1 +1 @@\n-before\n+after\n")
-file(WRITE "${_work_dir}/series" "change.patch\n")
+file(WRITE "${_work_dir}/second.patch"
+  "--- a/message.txt\n+++ b/message.txt\n@@ -1 +1 @@\n-after\n+final\n")
+file(WRITE "${_work_dir}/series" "change.patch\nsecond.patch\n")
 
 foreach(_attempt RANGE 1 2)
   execute_process(
@@ -23,8 +25,8 @@ foreach(_attempt RANGE 1 2)
     message(FATAL_ERROR "patch attempt ${_attempt} failed:\n${_output}\n${_error}")
   endif()
   file(READ "${_work_dir}/message.txt" _actual)
-  if(NOT _actual STREQUAL "after\n")
-    message(FATAL_ERROR "patch attempt ${_attempt} produced ${_actual}; expected after")
+  if(NOT _actual STREQUAL "final\n")
+    message(FATAL_ERROR "patch attempt ${_attempt} produced ${_actual}; expected final")
   endif()
 endforeach()
 
