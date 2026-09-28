@@ -169,7 +169,10 @@ builds and tests on an arm64 macOS runner, then extracts its SDK archive and
 checks that packaged static and shared libcurl provide asynchronous DNS. The
 workflow also exercises a hostname through libcurl's multi socket API while a
 second transfer remains active, checks LDAP/BER linkage, and verifies the C89
-Lua facade targets from the extracted SDK. Check this workflow before a Darwin
+Lua facade targets from the extracted SDK. Native OPC UA checks cover static and
+shared type conversions, callbacks, plugins, transports, logging, generated
+schema fixtures, C++98 consumers, public API completeness, and export privacy.
+Check this workflow before a Darwin
 release. The release's Darwin archive is still built from this repository with the
 local osxcross release preset. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,

@@ -41,21 +41,24 @@ jobs:
         run: |
           ctest --test-dir build/arm64-apple-darwin-native --verbose \
             --no-tests=error -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
-      - name: Verify native OPC UA logging
+      - name: Verify native OPC UA public facade
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
-            --target cpkt_opcua_logging_static_test cpkt_opcua_logging_shared_test
+            --target cpkt_opcua_logging_static_test cpkt_opcua_logging_shared_test \
+              cpkt_opcua_types_static_test cpkt_opcua_types_shared_test \
+              cpkt_opcua_types_fixture_test cpkt_opcua_types_cpp_test \
+              cpkt_opcua_c89_example cpkt_opcua_public_api_complete
           ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
-            --no-tests=error -R '^opcua_logging_'
+            --no-tests=error -R '^opcua_'
       - name: Package SDK
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Verify bundled OpenSSL provenance
-        run: ctest --test-dir build/arm64-apple-darwin-native --output-on-failure -R '^open62541_openssl_provenance$'
+        run: ctest --test-dir build/arm64-apple-darwin-native --output-on-failure --no-tests=error -R '^open62541_openssl_provenance$'
       - name: Verify OpenLDAP build target closure
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
             --target cpkt_openldap_static_test cpkt_openldap_shared_test
-          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure -R '^openldap_(static|shared)$'
+          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure --no-tests=error -R '^openldap_(static|shared)$'
       - name: Test packaged curl, OpenLDAP, and Lua static and shared
         run: bash tests/darwin_curl_package_test.sh dist/*-arm64-apple-darwin.tar.gz
       - name: Preserve diagnostic SDK archive

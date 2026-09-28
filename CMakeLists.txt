@@ -2146,6 +2146,10 @@ if(CPKT_BUILD_TESTS)
     endif()
   endif()
 
+  add_test(NAME opcua_types_exports_portability
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_types_exports_portability_test.py"
+      "${CMAKE_SOURCE_DIR}")
+  set_tests_properties(opcua_types_exports_portability PROPERTIES LABELS "packaging;opcua" TIMEOUT 30)
   foreach(_cpkt_types_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_types_${_cpkt_types_linkage}_test
       tests/opcua_types_test.c tests/opcua_types_native_peer.c tests/opcua_callbacks_test.c tests/opcua_plugins_test.c tests/opcua_history_backend_test.c tests/opcua_memory_backend_test.c tests/opcua_certificate_test.c tests/opcua_certificate_native_peer.c tests/opcua_config_test.c tests/opcua_config_native_peer.c tests/opcua_format_test.c tests/opcua_transport_test.c tests/opcua_operations_test.c tests/opcua_nodestore_test.c tests/opcua_server_types_test.c tests/opcua_util_test.c tests/opcua_identifiers_test.c tests/opcua_nodes_test.c tests/opcua_producers_test.c tests/opcua_creation_test.c tests/opcua_external_test.c tests/opcua_client_test.c tests/opcua_async_client_test.c tests/opcua_core_client_test.c)
@@ -2163,7 +2167,7 @@ if(CPKT_BUILD_TESTS)
       cpkt_opcua_${_cpkt_types_linkage} Threads::Threads)
     add_test(NAME opcua_types_exports_${_cpkt_types_linkage}
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_types_exports_test.py"
-        "${CMAKE_NM}" "${CMAKE_READELF}" "$<TARGET_FILE:cpkt_opcua_${_cpkt_types_linkage}>"
+        "${CMAKE_NM}" "${CMAKE_READELF}" "${CMAKE_SYSTEM_NAME}" "${CMAKE_C_COMPILER}" "$<TARGET_FILE:cpkt_opcua_${_cpkt_types_linkage}>"
         "${CMAKE_SOURCE_DIR}/src/opcua_facade_internal.h"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua.h"
         "${CMAKE_SOURCE_DIR}/include/cpkt/opcua_types_base.h"
