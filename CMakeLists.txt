@@ -2088,6 +2088,15 @@ if(CPKT_BUILD_TESTS)
       "${CMAKE_CURRENT_BINARY_DIR}")
   set_tests_properties(opcua_public_api_contract opcua_public_api_contract_failures
     PROPERTIES LABELS "opcua;packaging")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_test(NAME open62541_openssl_provenance
+      COMMAND "${CMAKE_COMMAND}"
+        "-DCPKT_OPEN62541_BUILD_ROOT=${CPKT_DEPENDENCY_BUILD_ROOT}/open62541"
+        "-DCPKT_OPENSSL_PREFIX=${CPKT_EXTERNAL_ROOT}/openssl/install"
+        "-DCPKT_SHARED_LIBRARY_SUFFIX=${CMAKE_SHARED_LIBRARY_SUFFIX}"
+        -P "${CMAKE_SOURCE_DIR}/tests/open62541_openssl_provenance_test.cmake")
+    set_tests_properties(open62541_openssl_provenance PROPERTIES LABELS "packaging;opcua" TIMEOUT 30)
+  endif()
   set(_cpkt_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/opcua-fixture")
   add_custom_command(
     OUTPUT "${_cpkt_fixture_dir}/cpkt/opcua_types.h"
@@ -2626,15 +2635,6 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/dependency_archive_cache_test.sh"
           "${CMAKE_SOURCE_DIR}")
-      if(CPKT_BUILD_DEPENDENCIES)
-        add_test(
-          NAME open62541_openssl_provenance
-          COMMAND "${CMAKE_COMMAND}"
-            "-DCPKT_OPEN62541_BUILD_ROOT=${CPKT_DEPENDENCY_BUILD_ROOT}/open62541"
-            "-DCPKT_OPENSSL_PREFIX=${CPKT_EXTERNAL_ROOT}/openssl/install"
-            "-DCPKT_SHARED_LIBRARY_SUFFIX=${CMAKE_SHARED_LIBRARY_SUFFIX}"
-            -P "${CMAKE_SOURCE_DIR}/tests/open62541_openssl_provenance_test.cmake")
-      endif()
       add_test(
         NAME dependency_cache_disabled
         COMMAND

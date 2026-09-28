@@ -50,10 +50,10 @@ jobs:
               cpkt_opcua_c89_example cpkt_opcua_public_api_complete
           ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
             --no-tests=error -R '^opcua_'
-      - name: Package SDK
-        run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Verify bundled OpenSSL provenance
         run: ctest --test-dir build/arm64-apple-darwin-native --output-on-failure --no-tests=error -R '^open62541_openssl_provenance$'
+      - name: Package SDK
+        run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Verify OpenLDAP build target closure
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
