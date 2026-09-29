@@ -1809,6 +1809,18 @@ if(CPKT_BUILD_TESTS)
     target_link_libraries(cpkt_postgres_event_concurrent_release_test PRIVATE
       cpkt_postgres_static Threads::Threads)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_postgres_notice_event_lifetime_test
+        tests/postgres_notice_event_lifetime_test.c)
+      cpkt_use_local_runtime(cpkt_postgres_notice_event_lifetime_test)
+      cpkt_configure_c89_target(cpkt_postgres_notice_event_lifetime_test)
+      cpkt_add_repo_warning_errors(cpkt_postgres_notice_event_lifetime_test)
+      target_include_directories(cpkt_postgres_notice_event_lifetime_test PRIVATE
+        "$<TARGET_PROPERTY:cpkt::postgresql_static,INTERFACE_INCLUDE_DIRECTORIES>")
+      target_link_options(cpkt_postgres_notice_event_lifetime_test PRIVATE
+        "-Wl,--wrap=PQsetNoticeReceiver"
+        "-Wl,--wrap=cpkt_postgres_event_allocate")
+      target_link_libraries(cpkt_postgres_notice_event_lifetime_test PRIVATE
+        cpkt_postgres_static)
       add_executable(cpkt_postgres_event_allocation_test
         tests/postgres_event_allocation_test.c)
       cpkt_use_local_runtime(cpkt_postgres_event_allocation_test)
@@ -2086,6 +2098,17 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
     target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_sqlite_module_adapter_fault_test
+        tests/sqlite_module_adapter_fault_test.c)
+      cpkt_use_local_runtime(cpkt_sqlite_module_adapter_fault_test)
+      cpkt_configure_c89_target(cpkt_sqlite_module_adapter_fault_test)
+      cpkt_add_repo_warning_errors(cpkt_sqlite_module_adapter_fault_test)
+      target_link_options(cpkt_sqlite_module_adapter_fault_test PRIVATE
+        "-Wl,--wrap=calloc")
+      target_link_libraries(cpkt_sqlite_module_adapter_fault_test PRIVATE
+        cpkt_sqlite_static)
+    endif()
     add_executable(cpkt_sqlite_log_native_peer_test
       tests/sqlite_log_native_peer_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_log_native_peer_test)
@@ -2626,6 +2649,8 @@ if(CPKT_BUILD_TESTS)
       set_tests_properties(postgres_event_concurrent_release PROPERTIES
         TIMEOUT 90)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME postgres_notice_event_lifetime
+          COMMAND cpkt_postgres_notice_event_lifetime_test)
         add_test(NAME postgres_event_allocation
           COMMAND cpkt_postgres_event_allocation_test)
         add_test(NAME postgres_oauth_cleanup
@@ -2651,6 +2676,10 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME sqlite_module_adapter_fault
+          COMMAND cpkt_sqlite_module_adapter_fault_test)
+      endif()
       add_test(NAME sqlite_log_native_peer COMMAND cpkt_sqlite_log_native_peer_test)
       set_tests_properties(sqlite_log_native_peer PROPERTIES
         LABELS "facade;memcheck;integration" TIMEOUT 30)
@@ -2955,7 +2984,8 @@ if(CPKT_BUILD_TESTS)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         list(APPEND _cpkt_memcheck_facade_tests
           libssh2_sftp_eof libssh2_poll_elapsed sqlite_page_cache_discard
-          sqlite_temp_directory)
+          sqlite_temp_directory postgres_notice_event_lifetime
+          sqlite_module_adapter_fault)
       endif()
       set_tests_properties(
         opcua_facade_integration

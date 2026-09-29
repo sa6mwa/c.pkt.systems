@@ -902,6 +902,9 @@ struct cpkt_sqlite_context {
  * Virtual-table and cursor shells are allocated by their module callbacks
  * with the constructors below.  SQLite owns their lifetime after a
  * successful callback; their `state` fields remain owned by the module.
+ * On callback failure, release state before returning and leave the output
+ * NULL. After success the facade calls disconnect/destroy_table or close
+ * exactly once, including when it rejects an invalid returned shell.
  */
 struct cpkt_sqlite_virtual_table {
   int (*set_error)(cpkt_sqlite_virtual_table *self, const char *message);

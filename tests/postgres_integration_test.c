@@ -302,6 +302,7 @@ static int postgres_large_object(cpkt_postgres_connection *connection) {
 
 typedef struct live_notice {
   cpkt_postgres_connection *connection;
+  cpkt_postgres_result *copy;
   int messages;
   int failures;
 } live_notice;
@@ -316,12 +317,30 @@ static void on_notice(void *context, cpkt_postgres_connection *connection,
   ++notice->messages;
 }
 
-static int postgres_notice_and_notify(cpkt_postgres_connection *connection) {
+static void on_notice_result(void *context,
+                             cpkt_postgres_connection *connection,
+                             const cpkt_postgres_result *result) {
+  live_notice *notice;
+  notice = (live_notice *)context;
+  if (connection != notice->connection || result == NULL ||
+      notice->copy != NULL) {
+    ++notice->failures;
+    return;
+  }
+  notice->copy =
+      cpkt_postgres_result_copy(result, CPKT_POSTGRES_COPY_RESULT_EVENTS);
+  if (notice->copy == NULL)
+    ++notice->failures;
+}
+
+static int postgres_notice_and_notify(cpkt_postgres_connection *connection,
+                                      cpkt_postgres_result **copy_out) {
   cpkt_postgres_result *result;
   cpkt_postgres_notification *notification;
   live_notice notice;
   int ok;
   memset(&notice, 0, sizeof(notice));
+  *copy_out = NULL;
   notice.connection = connection;
   cpkt_postgres_set_notice_processor(connection, on_notice, &notice, NULL,
                                      NULL);
@@ -332,6 +351,18 @@ static int postgres_notice_and_notify(cpkt_postgres_connection *connection) {
   cpkt_postgres_set_notice_processor(connection, NULL, NULL, NULL, NULL);
   if (!ok || notice.messages != 1 || notice.failures != 0)
     return 0;
+  cpkt_postgres_set_notice_receiver(connection, on_notice_result, &notice, NULL,
+                                    NULL);
+  result = cpkt_postgres_execute(
+      connection, "DO $$ BEGIN RAISE NOTICE 'cpkt e2e copy'; END $$");
+  ok = require_command(result);
+  cpkt_postgres_result_free(result);
+  cpkt_postgres_set_notice_receiver(connection, NULL, NULL, NULL, NULL);
+  if (!ok || notice.copy == NULL || notice.failures != 0) {
+    cpkt_postgres_result_free(notice.copy);
+    return 0;
+  }
+  *copy_out = notice.copy;
   result = cpkt_postgres_execute(connection, "LISTEN cpkt_e2e_channel");
   ok = require_command(result);
   cpkt_postgres_result_free(result);
@@ -478,6 +509,7 @@ static int run_integration(const char *server_name,
   const char *parameters[2];
   cpkt_postgres *pg;
   cpkt_postgres_result *result;
+  cpkt_postgres_result *notice_copy;
   live_events events;
   int ok;
 
@@ -492,6 +524,7 @@ static int run_integration(const char *server_name,
   }
 
   ok = 1;
+  notice_copy = NULL;
   memset(&events, 0, sizeof(events));
   if (cpkt_postgres_event_register(pg->connection, live_event, "live-e2e",
                                    &events) == NULL)
@@ -558,11 +591,18 @@ static int run_integration(const char *server_name,
   if (strcmp(server_name, "postgresql") == 0 &&
       (!postgres_pipeline(pg->connection) || !postgres_copy(pg->connection) ||
        !postgres_large_object(pg->connection) ||
-       !postgres_notice_and_notify(pg->connection) ||
+       !postgres_notice_and_notify(pg->connection, &notice_copy) ||
        !postgres_cancel_and_reset(pg->connection)))
     ok = 0;
 
   pg->close(pg);
+  if (notice_copy != NULL) {
+    if (!cpkt_postgres_event_fire_result_create(NULL, notice_copy) ||
+        cpkt_postgres_event_result_data(notice_copy, events.identity) !=
+            &events)
+      ok = 0;
+    cpkt_postgres_result_free(notice_copy);
+  }
   if (events.registrations != 1 || events.results < 5 ||
       events.destroyed != events.results || events.failures != 0)
     ok = 0;

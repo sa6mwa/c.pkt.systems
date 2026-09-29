@@ -2646,22 +2646,27 @@ static int cpkt_sqlite_module_connect(sqlite3 *native_database, void *auxiliary,
   callback = is_create ? module->methods.create : module->methods.connect;
   if (callback == NULL)
     return SQLITE_MISUSE;
+  native_table =
+      (cpkt_sqlite_native_virtual_table *)calloc(1, sizeof(*native_table));
+  if (native_table == NULL)
+    return SQLITE_NOMEM;
   public_table = NULL;
   status = callback(module->methods.context, module->database, argument_count,
                     arguments, &public_table, error_out);
   if (status != SQLITE_OK) {
     free(public_table);
+    free(native_table);
     return status;
   }
   if (public_table == NULL || public_table->internal != NULL) {
+    cpkt_sqlite_module_table_callback cleanup;
+    cleanup =
+        is_create ? module->methods.destroy_table : module->methods.disconnect;
+    if (public_table != NULL && cleanup != NULL)
+      (void)cleanup(module->methods.context, public_table);
     free(public_table);
+    free(native_table);
     return SQLITE_MISUSE;
-  }
-  native_table =
-      (cpkt_sqlite_native_virtual_table *)calloc(1, sizeof(*native_table));
-  if (native_table == NULL) {
-    free(public_table);
-    return SQLITE_NOMEM;
   }
   native_table->base.pModule = &module->module;
   native_table->public_table = public_table;
@@ -2868,24 +2873,26 @@ static int cpkt_sqlite_module_open_trampoline(sqlite3_vtab *table,
   module = native_table->module;
   if (module == NULL || module->methods.open == NULL)
     return SQLITE_MISUSE;
+  native_cursor =
+      (cpkt_sqlite_native_virtual_cursor *)calloc(1, sizeof(*native_cursor));
+  if (native_cursor == NULL)
+    return SQLITE_NOMEM;
   public_cursor = NULL;
   status = module->methods.open(module->methods.context,
                                 native_table->public_table, &public_cursor);
   if (status != SQLITE_OK) {
     free(public_cursor);
+    free(native_cursor);
     return status;
   }
   if (public_cursor == NULL ||
       public_cursor->table != native_table->public_table ||
       public_cursor->internal != NULL) {
+    if (public_cursor != NULL && module->methods.close != NULL)
+      (void)module->methods.close(module->methods.context, public_cursor);
     free(public_cursor);
+    free(native_cursor);
     return SQLITE_MISUSE;
-  }
-  native_cursor =
-      (cpkt_sqlite_native_virtual_cursor *)calloc(1, sizeof(*native_cursor));
-  if (native_cursor == NULL) {
-    free(public_cursor);
-    return SQLITE_NOMEM;
   }
   native_cursor->base.pVtab = table;
   native_cursor->public_cursor = public_cursor;

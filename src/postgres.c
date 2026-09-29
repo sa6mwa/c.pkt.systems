@@ -265,9 +265,14 @@ static void cpkt_postgres_native_notice_receiver(void *argument,
   context = snapshot->receiver_context;
   argument = snapshot->connection;
   cpkt_postgres_hook_lock_release();
+  /* Do not deliver a borrow that could be copied with native event context
+   * but without a retained facade owner after bookkeeping allocation fails. */
   if (callback != NULL) {
-    callback(context, (cpkt_postgres_connection *)argument,
-             (const cpkt_postgres_result *)result);
+    if (cpkt_postgres_event_prepare_notice((PGconn *)argument, result)) {
+      callback(context, (cpkt_postgres_connection *)argument,
+               (const cpkt_postgres_result *)result);
+      cpkt_postgres_event_release_notice(result);
+    }
   }
   cpkt_postgres_hook_lock_acquire();
   slot = &cpkt_postgres_callback_results;

@@ -36,6 +36,17 @@ and only initialized registrations receive COPY and DESTROY. A result retains
 its frozen registration list after its connection closes, and detached results
 may be cleared independently. A callback identity remains borrowed until the
 connection and all results that refer to it have been destroyed.
+Server notice results carry native libpq events even though libpq does not
+fire RESULT_CREATE for the borrowed notice. A receiver may copy the notice
+with `CPKT_POSTGRES_COPY_RESULT_EVENTS`; the copy keeps its frozen event owner
+after the callback and connection close. Fire RESULT_CREATE explicitly if the
+application needs create callbacks on that copy, then free the copy normally.
+The borrowed notice's event state ends when its receiver returns because
+libpq does not send RESULT_DESTROY for an uninitialized notice. If an
+application explicitly fires RESULT_CREATE on that borrowed result, libpq
+initializes its event and sends RESULT_DESTROY when it clears the notice.
+If event bookkeeping cannot be allocated, the facade skips that notice
+receiver invocation so it cannot return an unsafe event-bearing copy.
 
 `cpkt_postgres_i64` represents an exact signed 64-bit value as two 32-bit
 words (`high`, `low`) without requiring `long long`.  Values are two's

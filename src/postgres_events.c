@@ -528,6 +528,30 @@ int cpkt_postgres_event_prepare_result(PGconn *connection, PGresult *result) {
   return 1;
 }
 
+/** Retain callback-local native notice event state while its receiver runs. */
+int cpkt_postgres_event_prepare_notice(PGconn *connection,
+                                       const PGresult *result) {
+  /* libpq copies the connection's native event array into notices without
+   * firing RESULTCREATE. The callback-local source freezes registrations;
+   * surviving copies each acquire their own owner role. */
+  return cpkt_postgres_event_prepare_result(connection, (PGresult *)result);
+}
+
+/** Release an uninitialized native notice after its receiver returns. */
+void cpkt_postgres_event_release_notice(const PGresult *result) {
+  cpkt_postgres_event_result *entry;
+  int native_initialized;
+  (void)pthread_mutex_lock(&cpkt_postgres_events_mutex);
+  entry = cpkt_postgres_event_find_result(result);
+  native_initialized = entry != NULL && entry->create_fired_count != 0UL;
+  (void)pthread_mutex_unlock(&cpkt_postgres_events_mutex);
+  /* PQclear skips RESULTDESTROY on ordinary notices. An explicit create
+   * initializes libpq's native event and makes its later destroy responsible
+   * for releasing the source role instead. */
+  if (!native_initialized)
+    cpkt_postgres_event_result_release(result);
+}
+
 /** Freeze the source registration list for a native result copy. */
 int cpkt_postgres_event_prepare_copy(const PGresult *source, PGresult *dest,
                                      int flags) {
