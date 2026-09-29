@@ -30,7 +30,7 @@ def inspect(target, include_root=None):
     prepared = native_contract.run(
         [cc, "-std=gnu99", "-E", "-x", "c", "-I", str(include_root), "-"],
         SOURCE)
-    directory = ROOT / "build/auth-completion/contract" / target
+    directory = native_contract.output_dir(target) / target
     directory.mkdir(parents=True, exist_ok=True)
     source = directory / "facade.i"
     source.write_text(prepared)

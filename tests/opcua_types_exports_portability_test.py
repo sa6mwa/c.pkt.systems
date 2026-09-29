@@ -2,14 +2,24 @@
 """Export gates must reject leaks using both ELF and Apple nm interfaces."""
 import json
 from pathlib import Path
-import shutil
+import re
 import subprocess
 import sys
 import tempfile
 
 repo = Path(sys.argv[1]).resolve()
+binary = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else repo / 'build'
+configured_compiler = sys.argv[3] if len(sys.argv) > 3 else None
+if configured_compiler is None:
+    cache = (binary / 'CMakeCache.txt').read_text()
+    match = re.search(r'^CMAKE_C_COMPILER:(?:FILEPATH|STRING)=(.+)$',
+                      cache, re.MULTILINE)
+    if not match:
+        raise RuntimeError('configured C compiler missing: ' + str(binary))
+    configured_compiler = match.group(1)
+binary.mkdir(parents=True, exist_ok=True)
 checker = repo / 'tests/opcua_types_exports_test.py'
-with tempfile.TemporaryDirectory(prefix='opcua-export-tools-', dir=repo / 'build') as temporary:
+with tempfile.TemporaryDirectory(prefix='opcua-export-tools-', dir=binary) as temporary:
     work = Path(temporary)
     private = work / 'private.h'
     private.write_text('void cpkt_bridge_helper(void);\n')
@@ -61,7 +71,7 @@ raise SystemExit(subprocess.run([fixture['compiler'], *flags, *sys.argv[1:]]).re
         def check(suffix, symbols, visibility=hidden, error=None):
             tool.with_suffix('.json').write_text(json.dumps({
                 'system': system, 'symbols': symbols, 'visibility': visibility,
-                'compiler': shutil.which('cc')}))
+                'compiler': configured_compiler}))
             library = work / ('facade' + suffix)
             result = subprocess.run([sys.executable, str(checker), str(tool), str(tool),
                                      system, str(compiler), str(library), str(private), str(public)],

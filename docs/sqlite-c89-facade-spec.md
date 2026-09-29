@@ -24,12 +24,34 @@ The caller owns the returned receiver, including a receiver returned for a
 failed SQLite open where SQLite supplied a database handle: inspect `error`
 and `error_code`, then call `close`.
 
+The legacy `sqlite3_temp_directory` global is available through
+`cpkt_sqlite_temp_directory_get/set`. The setter makes a SQLite-allocator copy
+and frees the previous value; NULL restores SQLite's normal temporary-folder
+search. The getter borrows the current string until any native or facade
+assignment. SQLite requires changes during process setup, with no open
+connections and no concurrent SQLite calls. SQLite discourages this legacy
+global on Linux and Darwin; it remains available for applications that need
+native compatibility. `sqlite3_data_directory` affects only the Windows VFS
+and is excluded from the delivered Linux/Darwin facade. The public
+`sqlite3_version[]` string is available through `cpkt_sqlite_library_version()`.
+
 For process-wide automatic extensions, create an
 `cpkt_sqlite_auto_extension` receiver and register it before opening a
 connection. The initialization callback receives the eventual connection
 receiver rather than a transient native handle, so registrations made from the
 callback have the same lifetime as the returned connection. Cancel returns the
 number of registrations removed, matching the underlying API.
+
+The SDK also installs SQLite's public `sqlite3ext.h` for native loadable
+modules. Such a module receives `sqlite3_api_routines` from the bundled SQLite
+engine and uses `SQLITE_EXTENSION_INIT1`/`SQLITE_EXTENSION_INIT2` as upstream
+specifies. A C89 facade client can enable extension loading, load that module,
+and disable loading with `cpkt_sqlite_enable_extension_loading()` and
+`cpkt_sqlite_load_extension()`. This native module ABI is separate from the
+SDK-bound C89 auto-extension callback: the latter receives a facade database
+receiver, while the former receives SQLite's native connection and dispatch
+table. The facade callback does not reinterpret a foreign SQLite engine's
+native connection as a facade receiver.
 
 `tx` executes one or more SQL statements and invokes its optional row callback
 without materializing result sets. `prepare` creates an explicit statement
@@ -41,6 +63,15 @@ The legacy profiler may run alongside a v2 trace callback. Installing or
 clearing the legacy profiler preserves the v2 trace registration and returns
 the previous legacy profiler context. Registering a new trace callback cancels
 the previous trace and legacy profiler, matching SQLite's trace behavior.
+The log callback follows SQLite's configured log path and its native
+per-record size cap. Formatting, including SQLite's `%q`, `%Q`, `%z`, and `%n`
+behavior, occurs only when a log callback is installed. The signed and
+unsigned 64-bit helpers pass the exact 64-bit value to that same renderer.
+`SQLITE_CONFIG_LOG` remains replaceable after initialization, as in the
+configured SQLite provider.
+For a connection's latest failure, `cpkt_sqlite_result_code()` follows
+`sqlite3_errcode()` and its current extended-result-code mask;
+`cpkt_sqlite_error_code()` returns SQLite's extended code.
 
 On serialized connections, callback setters that keep a callback/context pair
 in facade state hold the connection mutex while updating the pair and the
@@ -82,8 +113,26 @@ accept only C89-native argument types.
 For file controls `SQLITE_FCNTL_SIZE_HINT`, `SQLITE_FCNTL_MMAP_SIZE`, and
 `SQLITE_FCNTL_SIZE_LIMIT`, pass a `cpkt_sqlite_i64 *` to
 `cpkt_sqlite_file_control()`. The same payload type is passed to facade VFS
-file-control callbacks. Other file-control payloads keep their SQLite-defined
-types.
+file-control callbacks. Use the typed int, unsigned, text, file, VFS, and
+FILESTAT calls for their documented operation IDs. File and VFS control
+handles own only facade metadata. They borrow SQLite's open file or registered
+VFS, so close each handle before its database or VFS is closed. A file view
+borrowed through a handle cannot close the database's file; close the handle
+to release the view metadata. A directly opened VFS file owns its native file
+and must be closed through its file methods. `cpkt_sqlite_vfs_find()` returns
+the original facade registration for a custom VFS, or a separately owned
+callable view of the native/default VFS; close the latter before unregistering
+its provider. Other opaque application payloads remain `void *`; native
+provider-private structs are not part of this C89 interface.
+
+`cpkt_sqlite_global_config_mutex_methods_get()` and the PCACHE2 getter
+return callable tables for native defaults as well as facade registrations.
+Each native table getter owns independent adapter metadata; release it with
+its matching `*_methods_release()` after its cache pages or mutexes are gone.
+The selected native function table is copied into that metadata, so a later
+configuration change does not retarget an earlier view. Facade registration
+getters return the registered application callback/context identities.
+Optional mutex held/not-held debug callbacks may be NULL.
 
 FTS5 extension registration is also facade-owned. `cpkt_sqlite_fts5_api_open()`
 returns a receiver scoped to its database connection. It registers locale-aware

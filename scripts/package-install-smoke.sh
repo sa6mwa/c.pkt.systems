@@ -417,6 +417,7 @@ assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/sasl-c89-facade-spec.md"
 assert_package_file "include/cpkt/sasl_plugin.h"
 assert_package_file "share/doc/c.pkt.systems/docs/sqlite-c89-facade-spec.md"
+assert_package_file "include/sqlite3ext.h"
 assert_package_file "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
 assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
 assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
@@ -492,6 +493,8 @@ mkdir -p "$cmake_source_dir" "$cmake_build_dir"
 cp "$source_file" "$cmake_source_dir/cpkt_all.c"
 cp "$repo_root/tests/pdf_facade_test.c" "$cmake_source_dir/cpkt_pdf_facade_strict.c"
 cp "$repo_root/tests/iodbc_driver_manager_test.c" "$cmake_source_dir/cpkt_iodbc_strict.c"
+cp "$repo_root/tests/sqlite_loadable_extension.c" "$cmake_source_dir/sqlite_extension_from_package.c"
+cp "$repo_root/tests/sqlite_loadable_extension_test.c" "$cmake_source_dir/sqlite_extension_package_consumer.c"
 cat > "$cmake_source_dir/cpkt_zlib.c" <<'EOF'
 #include <zlib.h>
 
@@ -1659,6 +1662,12 @@ cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c c
 cpkt_add_static_smoke(cpkt_cmake_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
 cpkt_add_shared_smoke(cpkt_cmake_sasl_facade_shared cpkt_sasl_facade_strict.c cpkt::sasl_shared)
 cpkt_add_static_smoke(cpkt_cmake_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
+add_library(sqlite_extension_from_package MODULE sqlite_extension_from_package.c)
+target_include_directories(sqlite_extension_from_package PRIVATE "$prefix/include")
+target_compile_options(sqlite_extension_from_package PRIVATE -std=c99 -Wall -Wextra -Wpedantic -Werror)
+add_executable(sqlite_extension_package_consumer sqlite_extension_package_consumer.c)
+target_link_libraries(sqlite_extension_package_consumer PRIVATE cpkt::sqlite)
+target_compile_options(sqlite_extension_package_consumer PRIVATE -std=c89 -Wall -Wextra -Wpedantic -Werror)
 cpkt_add_static_smoke(cpkt_cmake_iodbc cpkt_iodbc_strict.c cpkt::iodbc)
 cpkt_add_shared_smoke(cpkt_cmake_iodbc_shared cpkt_iodbc_strict.c cpkt::iodbc_shared)
 target_link_libraries(cpkt_cmake_iodbc_shared PRIVATE cpkt::iodbcinst_shared)
@@ -2617,6 +2626,8 @@ cpkt_run_example() {
   "${runner[@]}" "$@"
 }
 cpkt_run_example "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
+cpkt_run_example "$cmake_build_dir/sqlite_extension_package_consumer" \
+  "$cmake_build_dir/libsqlite_extension_from_package.so"
 cpkt_run_example "$example_pkg_config_output"
 cpkt_run_example "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
 cpkt_run_example "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"

@@ -1325,7 +1325,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     INSTALL_RPATH "$ORIGIN"
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
-add_library(cpkt_postgres_static STATIC src/postgres.c)
+add_library(cpkt_postgres_static STATIC src/postgres.c src/postgres_events.c
+  src/postgres_event_alloc.c)
 cpkt_configure_c89_target(cpkt_postgres_static)
 cpkt_add_repo_warning_errors(cpkt_postgres_static)
 target_include_directories(cpkt_postgres_static
@@ -1337,7 +1338,9 @@ set_target_properties(cpkt_postgres_static PROPERTIES
   OUTPUT_NAME cpkt_postgres
   POSITION_INDEPENDENT_CODE ON)
 
-add_library(cpkt_postgres_shared SHARED src/postgres.c)
+add_library(cpkt_postgres_shared SHARED src/postgres.c src/postgres_events.c
+  src/postgres_event_alloc.c)
+cpkt_apply_auth_export_catalog(cpkt_postgres_shared cpkt_postgres)
 cpkt_configure_c89_target(cpkt_postgres_shared)
 cpkt_add_repo_warning_errors(cpkt_postgres_shared)
 target_include_directories(cpkt_postgres_shared
@@ -1391,7 +1394,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
 
-add_library(cpkt_sqlite_static STATIC src/sqlite.c)
+add_library(cpkt_sqlite_static STATIC src/sqlite.c src/sqlite_native_views.c
+  src/sqlite_native_methods.c)
 cpkt_configure_c89_target(cpkt_sqlite_static)
 cpkt_add_repo_warning_errors(cpkt_sqlite_static)
 target_include_directories(cpkt_sqlite_static
@@ -1409,7 +1413,9 @@ set_target_properties(cpkt_sqlite_static PROPERTIES
   OUTPUT_NAME cpkt_sqlite
   POSITION_INDEPENDENT_CODE ON)
 
-add_library(cpkt_sqlite_shared SHARED src/sqlite.c)
+add_library(cpkt_sqlite_shared SHARED src/sqlite.c src/sqlite_native_views.c
+  src/sqlite_native_methods.c)
+cpkt_apply_auth_export_catalog(cpkt_sqlite_shared cpkt_sqlite)
 cpkt_configure_c89_target(cpkt_sqlite_shared)
 cpkt_add_repo_warning_errors(cpkt_sqlite_shared)
 target_include_directories(cpkt_sqlite_shared
@@ -1790,7 +1796,28 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_postgres_receiver_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_postgres_receiver_test)
     target_link_libraries(cpkt_postgres_receiver_test PRIVATE cpkt_postgres_static)
+    add_executable(cpkt_postgres_events_test tests/postgres_events_test.c)
+    cpkt_use_local_runtime(cpkt_postgres_events_test)
+    cpkt_configure_c89_target(cpkt_postgres_events_test)
+    cpkt_add_repo_warning_errors(cpkt_postgres_events_test)
+    target_link_libraries(cpkt_postgres_events_test PRIVATE cpkt_postgres_static)
+    add_executable(cpkt_postgres_event_concurrent_release_test
+      tests/postgres_event_concurrent_release_test.c)
+    cpkt_use_local_runtime(cpkt_postgres_event_concurrent_release_test)
+    cpkt_configure_c89_target(cpkt_postgres_event_concurrent_release_test)
+    cpkt_add_repo_warning_errors(cpkt_postgres_event_concurrent_release_test)
+    target_link_libraries(cpkt_postgres_event_concurrent_release_test PRIVATE
+      cpkt_postgres_static Threads::Threads)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_postgres_event_allocation_test
+        tests/postgres_event_allocation_test.c)
+      cpkt_use_local_runtime(cpkt_postgres_event_allocation_test)
+      cpkt_configure_c89_target(cpkt_postgres_event_allocation_test)
+      cpkt_add_repo_warning_errors(cpkt_postgres_event_allocation_test)
+      target_link_options(cpkt_postgres_event_allocation_test PRIVATE
+        "-Wl,--wrap=cpkt_postgres_event_allocate")
+      target_link_libraries(cpkt_postgres_event_allocation_test PRIVATE
+        cpkt_postgres_static)
       add_executable(cpkt_postgres_oauth_cleanup_test
         tests/postgres_oauth_cleanup_test.c)
       cpkt_use_local_runtime(cpkt_postgres_oauth_cleanup_test)
@@ -2059,6 +2086,36 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sqlite_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sqlite_facade_test)
     target_link_libraries(cpkt_sqlite_facade_test PRIVATE cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_log_native_peer_test
+      tests/sqlite_log_native_peer_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_log_native_peer_test)
+    target_compile_options(cpkt_sqlite_log_native_peer_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_log_native_peer_test)
+    target_link_libraries(cpkt_sqlite_log_native_peer_test PRIVATE
+      cpkt_sqlite_static cpkt::sqlite_static)
+    add_executable(cpkt_sqlite_error_code_native_peer_test
+      tests/sqlite_error_code_native_peer_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_error_code_native_peer_test)
+    target_compile_options(cpkt_sqlite_error_code_native_peer_test PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_error_code_native_peer_test)
+    target_link_libraries(cpkt_sqlite_error_code_native_peer_test PRIVATE
+      cpkt_sqlite_static cpkt::sqlite_static)
+    add_library(cpkt_sqlite_loadable_extension MODULE
+      tests/sqlite_loadable_extension.c)
+    target_compile_options(cpkt_sqlite_loadable_extension PRIVATE -std=c99)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_loadable_extension)
+    target_include_directories(cpkt_sqlite_loadable_extension PRIVATE
+      "$<TARGET_PROPERTY:cpkt::sqlite_static,INTERFACE_INCLUDE_DIRECTORIES>")
+    add_dependencies(cpkt_sqlite_loadable_extension cpkt_sqlite_static)
+    foreach(_sqlite_consumer_variant IN ITEMS static shared)
+      add_executable(cpkt_sqlite_loadable_extension_${_sqlite_consumer_variant}_test
+        tests/sqlite_loadable_extension_test.c)
+      cpkt_use_local_runtime(cpkt_sqlite_loadable_extension_${_sqlite_consumer_variant}_test)
+      cpkt_configure_c89_target(cpkt_sqlite_loadable_extension_${_sqlite_consumer_variant}_test)
+      cpkt_add_repo_warning_errors(cpkt_sqlite_loadable_extension_${_sqlite_consumer_variant}_test)
+      target_link_libraries(cpkt_sqlite_loadable_extension_${_sqlite_consumer_variant}_test
+        PRIVATE cpkt_sqlite_${_sqlite_consumer_variant})
+    endforeach()
     add_executable(cpkt_sqlite_rebase_collection_test
       tests/sqlite_rebase_collection_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_rebase_collection_test)
@@ -2151,6 +2208,40 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_page_cache_lifetime_test)
     target_link_libraries(cpkt_sqlite_page_cache_lifetime_test PRIVATE
       cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_native_views_test
+      tests/sqlite_native_views_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_native_views_test)
+    cpkt_configure_c89_target(cpkt_sqlite_native_views_test)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_native_views_test)
+    target_link_libraries(cpkt_sqlite_native_views_test PRIVATE
+      cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_completion_test
+      tests/sqlite_completion_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_completion_test)
+    cpkt_configure_c89_target(cpkt_sqlite_completion_test)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_completion_test)
+    target_link_libraries(cpkt_sqlite_completion_test PRIVATE
+      cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_stream_failure_test
+      tests/sqlite_stream_failure_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_stream_failure_test)
+    cpkt_configure_c89_target(cpkt_sqlite_stream_failure_test)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_stream_failure_test)
+    target_link_libraries(cpkt_sqlite_stream_failure_test PRIVATE
+      cpkt_sqlite_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_executable(cpkt_sqlite_temp_directory_test
+        tests/sqlite_temp_directory_test.c
+        tests/sqlite_temp_directory_native_peer.c)
+      cpkt_use_local_runtime(cpkt_sqlite_temp_directory_test)
+      cpkt_add_repo_warning_errors(cpkt_sqlite_temp_directory_test)
+      set_source_files_properties(tests/sqlite_temp_directory_test.c
+        PROPERTIES COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+      target_link_options(cpkt_sqlite_temp_directory_test PRIVATE
+        "-Wl,--wrap=sqlite3_mprintf")
+      target_link_libraries(cpkt_sqlite_temp_directory_test PRIVATE
+        cpkt_sqlite_static)
+    endif()
     add_executable(cpkt_sqlite_auto_extension_shutdown_test
       tests/sqlite_auto_extension_shutdown_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_auto_extension_shutdown_test)
@@ -2301,7 +2392,7 @@ if(CPKT_BUILD_TESTS)
 
   add_test(NAME opcua_types_exports_portability
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/opcua_types_exports_portability_test.py"
-      "${CMAKE_SOURCE_DIR}")
+      "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_C_COMPILER}")
   set_tests_properties(opcua_types_exports_portability PROPERTIES LABELS "packaging;opcua" TIMEOUT 30)
   foreach(_cpkt_types_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_types_${_cpkt_types_linkage}_test
@@ -2522,7 +2613,14 @@ if(CPKT_BUILD_TESTS)
         COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
+      add_test(NAME postgres_events COMMAND cpkt_postgres_events_test)
+      add_test(NAME postgres_event_concurrent_release
+        COMMAND cpkt_postgres_event_concurrent_release_test)
+      set_tests_properties(postgres_event_concurrent_release PROPERTIES
+        TIMEOUT 90)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME postgres_event_allocation
+          COMMAND cpkt_postgres_event_allocation_test)
         add_test(NAME postgres_oauth_cleanup
           COMMAND cpkt_postgres_oauth_cleanup_test)
       endif()
@@ -2546,6 +2644,20 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME mqttc_header_facade COMMAND cpkt_mqttc_header_facade_test)
       add_test(NAME mqttc_facade COMMAND cpkt_mqttc_facade_test)
       add_test(NAME sqlite_facade COMMAND cpkt_sqlite_facade_test)
+      add_test(NAME sqlite_log_native_peer COMMAND cpkt_sqlite_log_native_peer_test)
+      set_tests_properties(sqlite_log_native_peer PROPERTIES
+        LABELS "facade;memcheck;integration" TIMEOUT 30)
+      add_test(NAME sqlite_error_code_native_peer
+        COMMAND cpkt_sqlite_error_code_native_peer_test)
+      set_tests_properties(sqlite_error_code_native_peer PROPERTIES
+        LABELS "facade;memcheck;integration" TIMEOUT 30)
+      foreach(_sqlite_consumer_variant IN ITEMS static shared)
+        add_test(NAME sqlite_loadable_extension_${_sqlite_consumer_variant}
+          COMMAND cpkt_sqlite_loadable_extension_${_sqlite_consumer_variant}_test
+            "$<TARGET_FILE:cpkt_sqlite_loadable_extension>")
+        set_tests_properties(sqlite_loadable_extension_${_sqlite_consumer_variant}
+          PROPERTIES TIMEOUT 30 LABELS "facade;memcheck;integration")
+      endforeach()
       add_test(NAME sqlite_rebase_collection
         COMMAND cpkt_sqlite_rebase_collection_test)
       add_test(NAME sqlite_changeset_null_conflict
@@ -2609,6 +2721,26 @@ if(CPKT_BUILD_TESTS)
       endif()
       add_test(NAME sqlite_collation_failure
         COMMAND cpkt_sqlite_collation_failure_test)
+      file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/db-completion")
+      add_test(NAME sqlite_native_views
+        COMMAND cpkt_sqlite_native_views_test
+          "${CMAKE_BINARY_DIR}/db-completion/native-view.sqlite"
+          "${CMAKE_BINARY_DIR}/db-completion/sparse-view.sqlite")
+      set_tests_properties(sqlite_native_views PROPERTIES TIMEOUT 30)
+      add_test(NAME sqlite_completion
+        COMMAND cpkt_sqlite_completion_test
+          "${CMAKE_BINARY_DIR}/db-completion/completion.sqlite")
+      set_tests_properties(sqlite_completion PROPERTIES TIMEOUT 30)
+      add_test(NAME sqlite_stream_failure
+        COMMAND cpkt_sqlite_stream_failure_test
+          "${CMAKE_BINARY_DIR}/db-completion/stream-source.sqlite"
+          "${CMAKE_BINARY_DIR}/db-completion/stream-replica.sqlite")
+      set_tests_properties(sqlite_stream_failure PROPERTIES TIMEOUT 60)
+      if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME sqlite_temp_directory
+          COMMAND cpkt_sqlite_temp_directory_test)
+        set_tests_properties(sqlite_temp_directory PROPERTIES TIMEOUT 30)
+      endif()
       add_test(
         NAME postgres_e2e_harness
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_e2e_harness_test.sh")
@@ -2662,6 +2794,49 @@ if(CPKT_BUILD_TESTS)
           "${CPKT_EXTERNAL_ROOT}")
       set_tests_properties(gssapi_export_policy sasl_export_policy PROPERTIES
         LABELS "facade;packaging" TIMEOUT 30)
+      add_test(NAME db_api_contract
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/scripts/db_api_contract.py"
+          --target "${CPKT_TARGET_ID}")
+      set_tests_properties(db_api_contract PROPERTIES
+        LABELS "facade;packaging" TIMEOUT 120
+        ENVIRONMENT "CPKT_CONFIGURED_BINARY_DIR=${CMAKE_BINARY_DIR}")
+      if(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu")
+        add_test(NAME db_contract_mutations
+          COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/tests/db_contract_mutation_test.py")
+        set_tests_properties(db_contract_mutations PROPERTIES
+          LABELS "facade;packaging" TIMEOUT 120
+          ENVIRONMENT "CPKT_CONFIGURED_BINARY_DIR=${CMAKE_BINARY_DIR}")
+        add_test(NAME contracts_out_of_source
+          COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/tests/contracts_out_of_source_test.py"
+            "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${CMAKE_C_COMPILER}")
+        set_tests_properties(contracts_out_of_source PROPERTIES
+          LABELS "facade;packaging" TIMEOUT 240)
+        add_test(NAME sqlite_owned_source_contract
+          COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/tests/sqlite_owned_source_contract_test.py"
+            "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}")
+        set_tests_properties(sqlite_owned_source_contract PROPERTIES
+          LABELS "packaging;smoke" TIMEOUT 180)
+      endif()
+      if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(_cpkt_db_symbol_format macho)
+      else()
+        set(_cpkt_db_symbol_format elf)
+      endif()
+      foreach(_cpkt_db_provider IN ITEMS postgres sqlite)
+        add_test(NAME ${_cpkt_db_provider}_export_policy
+          COMMAND bash "${CMAKE_SOURCE_DIR}/tests/db_export_policy_test.sh"
+            "${_cpkt_db_provider}"
+            "$<TARGET_FILE:cpkt_${_cpkt_db_provider}_shared>"
+            "${CMAKE_SOURCE_DIR}/cmake/exports/cpkt_${_cpkt_db_provider}.txt"
+            "${_cpkt_db_symbol_format}" "${CMAKE_NM}"
+            "${CPKT_EXTERNAL_ROOT}")
+        set_tests_properties(${_cpkt_db_provider}_export_policy PROPERTIES
+          LABELS "facade;packaging" TIMEOUT 30)
+      endforeach()
       add_test(NAME auth_native_api_contract
         COMMAND "${Python3_EXECUTABLE}"
           "${CMAKE_SOURCE_DIR}/scripts/auth_api_contract.py"
@@ -2683,12 +2858,14 @@ if(CPKT_BUILD_TESTS)
           COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/tests/auth_contract_mutation_test.py")
         set_tests_properties(auth_contract_mutations PROPERTIES
-          LABELS "facade;packaging" TIMEOUT 120)
+          LABELS "facade;packaging" TIMEOUT 120
+          ENVIRONMENT "CPKT_CONFIGURED_BINARY_DIR=${CMAKE_BINARY_DIR}")
       endif()
       set_tests_properties(auth_native_api_contract
         auth_facade_binding_contract auth_facade_signature_contract
         auth_sasl_property_contract PROPERTIES
-        LABELS "facade;packaging" TIMEOUT 120)
+        LABELS "facade;packaging" TIMEOUT 120
+        ENVIRONMENT "CPKT_CONFIGURED_BINARY_DIR=${CMAKE_BINARY_DIR}")
       add_test(NAME krb5_error_format COMMAND cpkt_krb5_error_format_test)
       set_tests_properties(krb5_error_format PROPERTIES
         ENVIRONMENT "KRB5_CONFIG=/dev/null;LC_ALL=C")
@@ -2737,12 +2914,18 @@ if(CPKT_BUILD_TESTS)
         opcua_boundary_server_c89_client_c89
         opcua_facade_failure_modes
         postgres_receiver_shell
+        postgres_events
+        postgres_event_concurrent_release
         openssl_facade nghttp2_facade libssh2_header_facade libssh2_facade
         mqttc_header_facade mqttc_facade
         sqlite_facade sqlite_rebase_collection sqlite_changeset_null_conflict
         sqlite_vfs_wal_capability
         pdf_facade_static pdf_facade_shared
         sqlite_child_lifetime_concurrency sqlite_page_cache_lifetime
+        sqlite_native_views sqlite_completion sqlite_stream_failure
+        sqlite_log_native_peer
+        sqlite_error_code_native_peer
+        sqlite_loadable_extension_static sqlite_loadable_extension_shared
         sqlite_callback_synchronization sqlite_registration_concurrency
         sqlite_fts5_registration_concurrency sqlite_window_aggregate
         sqlite_unlock_notify_groups
@@ -2755,11 +2938,13 @@ if(CPKT_BUILD_TESTS)
         set_tests_properties(sqlite_unlock_notify_race PROPERTIES
           LABELS "facade;memcheck")
         set_tests_properties(sqlite_auto_extension_lock_order
-          postgres_oauth_cleanup PROPERTIES LABELS "facade;memcheck")
+          postgres_oauth_cleanup postgres_event_allocation PROPERTIES
+          LABELS "facade;memcheck")
       endif()
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         list(APPEND _cpkt_memcheck_facade_tests
-          libssh2_sftp_eof libssh2_poll_elapsed sqlite_page_cache_discard)
+          libssh2_sftp_eof libssh2_poll_elapsed sqlite_page_cache_discard
+          sqlite_temp_directory)
       endif()
       set_tests_properties(
         opcua_facade_integration

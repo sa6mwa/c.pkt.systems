@@ -35,7 +35,7 @@ def assert_rejected(gate, category):
 
 
 def main():
-    scratch = ROOT / "build/auth-completion"
+    scratch = native.output_dir(TARGET).parent
     scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=scratch, prefix="auth-mutation-") as tmp:
         include = pathlib.Path(tmp) / "include"

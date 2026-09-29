@@ -30,6 +30,57 @@ typedef struct cpkt_postgres_tls_object cpkt_postgres_tls_object;
 typedef struct cpkt_postgres_gss_context cpkt_postgres_gss_context;
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 typedef struct cpkt_postgres cpkt_postgres;
+/** Event registration owned by its connection and any surviving results. */
+typedef struct cpkt_postgres_event cpkt_postgres_event;
+
+/** PostgreSQL client event identifiers, in provider dispatch order. */
+typedef enum cpkt_postgres_event_id {
+  CPKT_POSTGRES_EVENT_REGISTER = 0,
+  CPKT_POSTGRES_EVENT_CONNECTION_RESET = 1,
+  CPKT_POSTGRES_EVENT_CONNECTION_DESTROY = 2,
+  CPKT_POSTGRES_EVENT_RESULT_CREATE = 3,
+  CPKT_POSTGRES_EVENT_RESULT_COPY = 4,
+  CPKT_POSTGRES_EVENT_RESULT_DESTROY = 5
+} cpkt_postgres_event_id;
+
+/** Callback-local event information; use the member selected by id. */
+typedef struct cpkt_postgres_event_info {
+  /** Borrowed identity of the registration currently receiving this event. */
+  cpkt_postgres_event *event;
+  cpkt_postgres_connection *connection;
+  cpkt_postgres_result *result;
+  const cpkt_postgres_result *source;
+  cpkt_postgres_result *destination;
+} cpkt_postgres_event_info;
+
+/** Return zero to decline initialization of a registration or result. */
+typedef int (*cpkt_postgres_event_callback)(
+    cpkt_postgres_event_id id, const cpkt_postgres_event_info *info,
+    void *context);
+
+/** Registers an event callback; returns NULL if its REGISTER callback fails.
+ * The returned identity is borrowed until connection and its results die.
+ * A callback pointer may be registered once per connection. */
+cpkt_postgres_event *
+cpkt_postgres_event_register(cpkt_postgres_connection *connection,
+                             cpkt_postgres_event_callback callback,
+                             const char *name, void *context);
+/** Sets or reads per-connection application data for a registration. */
+int cpkt_postgres_event_set_connection_data(
+    cpkt_postgres_connection *connection, cpkt_postgres_event *event,
+    void *data);
+void *
+cpkt_postgres_event_connection_data(const cpkt_postgres_connection *connection,
+                                    const cpkt_postgres_event *event);
+/** Sets or reads per-result application data for a registration. */
+int cpkt_postgres_event_set_result_data(cpkt_postgres_result *result,
+                                        cpkt_postgres_event *event, void *data);
+void *cpkt_postgres_event_result_data(const cpkt_postgres_result *result,
+                                      const cpkt_postgres_event *event);
+/** Fires pending result-create callbacks, including callbacks that failed
+ * on a prior attempt. Returns zero while any callback still fails. */
+int cpkt_postgres_event_fire_result_create(cpkt_postgres_connection *connection,
+                                           cpkt_postgres_result *result);
 
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 typedef void (*cpkt_postgres_notice_receiver)(
@@ -290,6 +341,44 @@ struct cpkt_postgres {
 #define CPKT_POSTGRES_QUERY_PARAMETER_MAXIMUM 65535
 #define CPKT_POSTGRES_TRACE_SUPPRESS_TIMESTAMPS 1
 #define CPKT_POSTGRES_TRACE_REGRESSION_MODE 2
+/* Pinned PostgreSQL 18.6 client capabilities, error-field selectors, and
+ * large-object access modes. Values are part of the C89 facade; no native
+ * header needed. */
+#define CPKT_POSTGRES_HAS_PIPELINING 1
+#define CPKT_POSTGRES_HAS_TRACE_FLAGS 1
+#define CPKT_POSTGRES_HAS_SSL_LIBRARY_DETECTION 1
+#define CPKT_POSTGRES_HAS_ASYNC_CANCEL 1
+#define CPKT_POSTGRES_HAS_CHANGE_PASSWORD 1
+#define CPKT_POSTGRES_HAS_CHUNK_MODE 1
+#define CPKT_POSTGRES_HAS_CLOSE_PREPARED 1
+#define CPKT_POSTGRES_HAS_SEND_PIPELINE_SYNC 1
+#define CPKT_POSTGRES_HAS_SOCKET_POLL 1
+#define CPKT_POSTGRES_HAS_FULL_PROTOCOL_VERSION 1
+#define CPKT_POSTGRES_HAS_PROMPT_OAUTH_DEVICE 1
+#define CPKT_POSTGRES_DIAG_SEVERITY 'S'
+#define CPKT_POSTGRES_DIAG_SEVERITY_NONLOCALIZED 'V'
+#define CPKT_POSTGRES_DIAG_SQLSTATE 'C'
+#define CPKT_POSTGRES_DIAG_MESSAGE_PRIMARY 'M'
+#define CPKT_POSTGRES_DIAG_MESSAGE_DETAIL 'D'
+#define CPKT_POSTGRES_DIAG_MESSAGE_HINT 'H'
+#define CPKT_POSTGRES_DIAG_STATEMENT_POSITION 'P'
+#define CPKT_POSTGRES_DIAG_INTERNAL_POSITION 'p'
+#define CPKT_POSTGRES_DIAG_INTERNAL_QUERY 'q'
+#define CPKT_POSTGRES_DIAG_CONTEXT 'W'
+#define CPKT_POSTGRES_DIAG_SCHEMA_NAME 's'
+#define CPKT_POSTGRES_DIAG_TABLE_NAME 't'
+#define CPKT_POSTGRES_DIAG_COLUMN_NAME 'c'
+#define CPKT_POSTGRES_DIAG_DATATYPE_NAME 'd'
+#define CPKT_POSTGRES_DIAG_CONSTRAINT_NAME 'n'
+#define CPKT_POSTGRES_DIAG_SOURCE_FILE 'F'
+#define CPKT_POSTGRES_DIAG_SOURCE_LINE 'L'
+#define CPKT_POSTGRES_DIAG_SOURCE_FUNCTION 'R'
+#define CPKT_POSTGRES_LARGE_OBJECT_WRITE 0x00020000
+#define CPKT_POSTGRES_LARGE_OBJECT_READ 0x00040000
+#define CPKT_POSTGRES_INVALID_OID 0UL
+#define CPKT_POSTGRES_OID_MAXIMUM 0xffffffffUL
+#define CPKT_POSTGRES_NO_PASSWORD_SUPPLIED_MESSAGE                             \
+  "fe_sendauth: no password supplied\n"
 
 /** Opens a connection and returns an owned receiver; close with self->close().
  */

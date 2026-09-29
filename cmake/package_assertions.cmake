@@ -1137,6 +1137,7 @@ foreach(_path
     "include/cpkt/sasl.h"
     "include/cpkt/sasl_plugin.h"
     "include/cpkt/postgres.h"
+    "include/sqlite3ext.h"
     "include/krb5.h"
     "include/com_err.h"
     "lib/libminiaudio.a"
@@ -1747,6 +1748,14 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sasl.${CPKT_BUNDLE_VERSION}.dylib"
     "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sasl.txt"
     "libcpkt_sasl extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_postgres.txt"
+    "libcpkt_postgres extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sqlite.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sqlite.txt"
+    "libcpkt_sqlite extracted SDK ABI surface")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
   cpkt_assert_archive_exact_matches(
@@ -2047,6 +2056,14 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}"
     "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sasl.txt"
     "libcpkt_sasl extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_postgres.txt"
+    "libcpkt_postgres extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sqlite.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sqlite.txt"
+    "libcpkt_sqlite extracted SDK ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

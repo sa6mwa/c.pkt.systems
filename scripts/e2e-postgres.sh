@@ -17,6 +17,6 @@ if [[ ${CPKT_POSTGRES_E2E_MEMCHECK:-0} == 1 ]]; then
     --show-leak-kinds=definite,indirect
     "--suppressions=$repo_root/tests/valgrind.supp" "$executable")
 fi
-"${runner[@]}" postgresql
-"${runner[@]}" cockroachdb
+timeout --signal=TERM 300s "${runner[@]}" postgresql
+timeout --signal=TERM 300s "${runner[@]}" cockroachdb
 printf '[e2e-postgres] PostgreSQL and CockroachDB passed\n'

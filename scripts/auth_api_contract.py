@@ -13,8 +13,9 @@ import re
 import subprocess
 import sys
 
+from configured_build import cache_value, scratch_dir
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-BUILD = ROOT / "build" / "auth-completion" / "contract"
 SNAPSHOT = ROOT / "tests" / "contracts" / "auth_native_api.json"
 TARGETS = (
     "x86_64-linux-gnu",
@@ -55,13 +56,11 @@ def run(command, input_text=None):
 
 
 def compiler(target):
-    preset = "debug" if target == "x86_64-linux-gnu" else target + "-release"
-    cache = (ROOT / "build" / preset / "CMakeCache.txt").read_text()
-    match = re.search(r"^CMAKE_C_COMPILER:(?:FILEPATH|STRING)=(.+)$", cache,
-                      re.MULTILINE)
-    if not match:
-        raise RuntimeError("configured compiler missing for " + target)
-    return match.group(1)
+    return cache_value(ROOT, target, "CMAKE_C_COMPILER")
+
+
+def output_dir(target):
+    return scratch_dir(ROOT, target, "auth-completion/contract")
 
 
 def source_file_for_line(preprocessed):
@@ -153,7 +152,7 @@ def inspect(target, provider, include_override=None):
     source = SOURCES[provider]
     preprocessed = run([cc, "-std=gnu99", "-E", "-x", "c", "-I",
                         str(include), "-"], source)
-    directory = BUILD / target
+    directory = output_dir(target) / target
     directory.mkdir(parents=True, exist_ok=True)
     prepared = directory / (provider + ".i")
     prepared.write_text(preprocessed)

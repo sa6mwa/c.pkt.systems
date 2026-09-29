@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "postgres_events_private.h"
 #include <libpq-fe.h>
 
 #if defined(_WIN32)
@@ -234,6 +235,11 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
   cpkt_postgres_hook_lock_release();
   if (binding != NULL && entry == NULL) {
     PQclear(result);
+    cpkt_postgres_event_result_release(result);
+    return NULL;
+  }
+  if (!cpkt_postgres_event_prepare_result((PGconn *)connection, result)) {
+    cpkt_postgres_result_free((cpkt_postgres_result *)result);
     return NULL;
   }
   return (cpkt_postgres_result *)result;
@@ -1902,6 +1908,7 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   /* Detach before PQclear can release this address for another result.
    * Keep the owner's reference until native cleanup is finished. */
   PQclear(native_result);
+  cpkt_postgres_event_result_release(native_result);
   if (entry != NULL) {
     cpkt_postgres_hook_lock_acquire();
     --entry->owner->result_count;
@@ -2029,9 +2036,16 @@ cpkt_postgres_result_new_empty(cpkt_postgres_connection *connection,
 cpkt_postgres_result *
 cpkt_postgres_result_copy(const cpkt_postgres_result *source, int flags) {
   const PGresult *native_source;
+  cpkt_postgres_result *result;
   native_source = cpkt_postgres_native_result_const(source);
-  return cpkt_postgres_track_result(PQcopyResult(native_source, flags), NULL,
-                                    native_source);
+  result = cpkt_postgres_track_result(PQcopyResult(native_source, flags), NULL,
+                                      native_source);
+  if (result != NULL && !cpkt_postgres_event_prepare_copy(
+                            native_source, (PGresult *)result, flags)) {
+    cpkt_postgres_result_free(result);
+    return NULL;
+  }
+  return result;
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation

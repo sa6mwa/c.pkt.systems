@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "sqlite_native_methods.h"
+#include "sqlite_native_views.h"
 #include <sqlite3.h>
 #include <sqlite3rtree.h>
 #include <sqlite3session.h>
@@ -148,6 +150,18 @@ typedef struct cpkt_sqlite_stream_output_context {
 
 typedef struct cpkt_sqlite_vfs_binding cpkt_sqlite_vfs_binding;
 typedef struct cpkt_sqlite_vfs_file cpkt_sqlite_vfs_file;
+
+struct cpkt_sqlite_file_handle {
+  sqlite3_file *native;
+  cpkt_sqlite_file *view;
+  int owns_view;
+};
+
+struct cpkt_sqlite_vfs_handle {
+  sqlite3_vfs *native;
+  cpkt_sqlite_vfs *view;
+  int owns_view;
+};
 
 struct cpkt_sqlite_vfs_binding {
   sqlite3_vfs native;
@@ -2047,19 +2061,26 @@ static int cpkt_sqlite_statement_scan_status_i64(
     unsigned long flags, cpkt_sqlite_i64 *value_out) {
   sqlite3_int64 value;
   int status;
-  if (self == NULL || value_out == NULL || flags > 0xffffffffUL)
+  if (self == NULL || value_out == NULL ||
+      (flags & ~(unsigned long)SQLITE_SCANSTAT_COMPLEX) != 0 ||
+      (operation != SQLITE_SCANSTAT_NLOOP &&
+       operation != SQLITE_SCANSTAT_NVISIT &&
+       operation != SQLITE_SCANSTAT_NCYCLE))
     return SQLITE_MISUSE;
   value = 0;
   status = sqlite3_stmt_scanstatus_v2(cpkt_sqlite_native_statement(self), index,
                                       operation, (int)flags, &value);
-  *value_out = cpkt_sqlite_public_i64(value);
+  if (status == SQLITE_OK)
+    *value_out = cpkt_sqlite_public_i64(value);
   return status;
 }
 
 static int cpkt_sqlite_statement_scan_status_double(
     const cpkt_sqlite_statement *self, int index, int operation,
     unsigned long flags, double *value_out) {
-  if (self == NULL || value_out == NULL || flags > 0xffffffffUL)
+  if (self == NULL || value_out == NULL ||
+      (flags & ~(unsigned long)SQLITE_SCANSTAT_COMPLEX) != 0 ||
+      operation != SQLITE_SCANSTAT_EST)
     return SQLITE_MISUSE;
   return sqlite3_stmt_scanstatus_v2(cpkt_sqlite_native_statement(self), index,
                                     operation, (int)flags, value_out);
@@ -2069,7 +2090,10 @@ static int
 cpkt_sqlite_statement_scan_status_int(const cpkt_sqlite_statement *self,
                                       int index, int operation,
                                       unsigned long flags, int *value_out) {
-  if (self == NULL || value_out == NULL || flags > 0xffffffffUL)
+  if (self == NULL || value_out == NULL ||
+      (flags & ~(unsigned long)SQLITE_SCANSTAT_COMPLEX) != 0 ||
+      (operation != SQLITE_SCANSTAT_SELECTID &&
+       operation != SQLITE_SCANSTAT_PARENTID))
     return SQLITE_MISUSE;
   return sqlite3_stmt_scanstatus_v2(cpkt_sqlite_native_statement(self), index,
                                     operation, (int)flags, value_out);
@@ -2078,7 +2102,10 @@ cpkt_sqlite_statement_scan_status_int(const cpkt_sqlite_statement *self,
 static int cpkt_sqlite_statement_scan_status_text(
     const cpkt_sqlite_statement *self, int index, int operation,
     unsigned long flags, const char **value_out) {
-  if (self == NULL || value_out == NULL || flags > 0xffffffffUL)
+  if (self == NULL || value_out == NULL ||
+      (flags & ~(unsigned long)SQLITE_SCANSTAT_COMPLEX) != 0 ||
+      (operation != SQLITE_SCANSTAT_NAME &&
+       operation != SQLITE_SCANSTAT_EXPLAIN))
     return SQLITE_MISUSE;
   return sqlite3_stmt_scanstatus_v2(cpkt_sqlite_native_statement(self), index,
                                     operation, (int)flags, value_out);
@@ -2352,6 +2379,56 @@ int cpkt_sqlite_prepare16(cpkt_sqlite *self, const void *sql, int byte_count,
   status = sqlite3_prepare16_v3(cpkt_sqlite_native(self), sql, byte_count,
                                 (unsigned int)flags, &native_statement,
                                 &native_tail);
+  if (tail_out != NULL)
+    *tail_out = native_tail;
+  if (status != SQLITE_OK)
+    return status;
+  return cpkt_sqlite_wrap_statement(self, native_statement, 0, statement_out);
+}
+
+int cpkt_sqlite_prepare_legacy(cpkt_sqlite *self, const char *sql,
+                               int byte_count,
+                               cpkt_sqlite_statement **statement_out,
+                               const char **tail_out) {
+  sqlite3_stmt *native_statement;
+  const char *native_tail;
+  int status;
+  if (statement_out != NULL)
+    *statement_out = NULL;
+  if (tail_out != NULL)
+    *tail_out = NULL;
+  if (self == NULL || cpkt_sqlite_native(self) == NULL || sql == NULL ||
+      statement_out == NULL)
+    return CPKT_SQLITE_MISUSE;
+  native_statement = NULL;
+  native_tail = NULL;
+  status = sqlite3_prepare(cpkt_sqlite_native(self), sql, byte_count,
+                           &native_statement, &native_tail);
+  if (tail_out != NULL)
+    *tail_out = native_tail;
+  if (status != SQLITE_OK)
+    return status;
+  return cpkt_sqlite_wrap_statement(self, native_statement, 0, statement_out);
+}
+
+int cpkt_sqlite_prepare_legacy16(cpkt_sqlite *self, const void *sql,
+                                 int byte_count,
+                                 cpkt_sqlite_statement **statement_out,
+                                 const void **tail_out) {
+  sqlite3_stmt *native_statement;
+  const void *native_tail;
+  int status;
+  if (statement_out != NULL)
+    *statement_out = NULL;
+  if (tail_out != NULL)
+    *tail_out = NULL;
+  if (self == NULL || cpkt_sqlite_native(self) == NULL || sql == NULL ||
+      statement_out == NULL)
+    return CPKT_SQLITE_MISUSE;
+  native_statement = NULL;
+  native_tail = NULL;
+  status = sqlite3_prepare16(cpkt_sqlite_native(self), sql, byte_count,
+                             &native_statement, &native_tail);
   if (tail_out != NULL)
     *tail_out = native_tail;
   if (status != SQLITE_OK)
@@ -3162,12 +3239,18 @@ int cpkt_sqlite_virtual_table_config_none(cpkt_sqlite *database,
                                           int operation) {
   if (database == NULL || cpkt_sqlite_native(database) == NULL)
     return SQLITE_MISUSE;
+  if (operation != SQLITE_VTAB_INNOCUOUS &&
+      operation != SQLITE_VTAB_DIRECTONLY &&
+      operation != SQLITE_VTAB_USES_ALL_SCHEMAS)
+    return SQLITE_MISUSE;
   return sqlite3_vtab_config(cpkt_sqlite_native(database), operation);
 }
 
 int cpkt_sqlite_virtual_table_config_int(cpkt_sqlite *database, int operation,
                                          int value) {
   if (database == NULL || cpkt_sqlite_native(database) == NULL)
+    return SQLITE_MISUSE;
+  if (operation != SQLITE_VTAB_CONSTRAINT_SUPPORT)
     return SQLITE_MISUSE;
   return sqlite3_vtab_config(cpkt_sqlite_native(database), operation, value);
 }
@@ -3262,6 +3345,33 @@ int cpkt_sqlite_database_config_int(cpkt_sqlite *self, int operation, int value,
   if (self == NULL || cpkt_sqlite_native(self) == NULL || result_out == NULL) {
     return CPKT_SQLITE_MISUSE;
   }
+  switch (operation) {
+  case SQLITE_DBCONFIG_ENABLE_FKEY:
+  case SQLITE_DBCONFIG_ENABLE_TRIGGER:
+  case SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER:
+  case SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION:
+  case SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE:
+  case SQLITE_DBCONFIG_ENABLE_QPSG:
+  case SQLITE_DBCONFIG_TRIGGER_EQP:
+  case SQLITE_DBCONFIG_RESET_DATABASE:
+  case SQLITE_DBCONFIG_DEFENSIVE:
+  case SQLITE_DBCONFIG_WRITABLE_SCHEMA:
+  case SQLITE_DBCONFIG_LEGACY_ALTER_TABLE:
+  case SQLITE_DBCONFIG_DQS_DML:
+  case SQLITE_DBCONFIG_DQS_DDL:
+  case SQLITE_DBCONFIG_ENABLE_VIEW:
+  case SQLITE_DBCONFIG_LEGACY_FILE_FORMAT:
+  case SQLITE_DBCONFIG_TRUSTED_SCHEMA:
+  case SQLITE_DBCONFIG_STMT_SCANSTATUS:
+  case SQLITE_DBCONFIG_REVERSE_SCANORDER:
+  case SQLITE_DBCONFIG_ENABLE_ATTACH_CREATE:
+  case SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE:
+  case SQLITE_DBCONFIG_ENABLE_COMMENTS:
+  case SQLITE_DBCONFIG_FP_DIGITS:
+    break;
+  default:
+    return SQLITE_MISUSE;
+  }
   return sqlite3_db_config(cpkt_sqlite_native(self), operation, value,
                            result_out);
 }
@@ -3314,6 +3424,12 @@ int cpkt_sqlite_error_code(const cpkt_sqlite *self) {
   if (self == NULL || cpkt_sqlite_native(self) == NULL)
     return CPKT_SQLITE_MISUSE;
   return sqlite3_extended_errcode(cpkt_sqlite_native(self));
+}
+
+int cpkt_sqlite_result_code(const cpkt_sqlite *self) {
+  if (self == NULL || cpkt_sqlite_native(self) == NULL)
+    return CPKT_SQLITE_MISUSE;
+  return sqlite3_errcode(cpkt_sqlite_native(self));
 }
 
 int cpkt_sqlite_set_error(cpkt_sqlite *self, int code, const char *message) {
@@ -3699,15 +3815,19 @@ cpkt_sqlite_vfs *cpkt_sqlite_vfs_find(const char *name) {
     binding = binding->next;
   }
   cpkt_sqlite_global_unlock(mutex);
-  return NULL;
+  return cpkt_sqlite_native_vfs_view(native_vfs);
 }
 
 cpkt_sqlite_file *cpkt_sqlite_vfs_database_file_object(const char *name) {
-  cpkt_sqlite_vfs_file *file;
+  sqlite3_file *native;
   if (name == NULL)
     return NULL;
-  file = cpkt_sqlite_vfs_file_from_native(sqlite3_database_file_object(name));
-  return file == NULL ? NULL : &file->public_file;
+  native = sqlite3_database_file_object(name);
+  if (native == NULL || native->pMethods == NULL)
+    return NULL;
+  if (native->pMethods->xClose == cpkt_sqlite_vfs_file_close)
+    return &cpkt_sqlite_vfs_file_from_native(native)->public_file;
+  return cpkt_sqlite_native_file_view(native);
 }
 
 int cpkt_sqlite_vfs_register(cpkt_sqlite_vfs *self, int make_default) {
@@ -3801,6 +3921,23 @@ int cpkt_sqlite_u64_compare(cpkt_sqlite_u64 left, cpkt_sqlite_u64 right) {
 }
 
 const char *cpkt_sqlite_library_version(void) { return sqlite3_libversion(); }
+const char *cpkt_sqlite_temp_directory_get(void) {
+  return sqlite3_temp_directory;
+}
+int cpkt_sqlite_temp_directory_set(const char *directory) {
+  char *replacement;
+  char *previous;
+  replacement = NULL;
+  if (directory != NULL) {
+    replacement = sqlite3_mprintf("%s", directory);
+    if (replacement == NULL)
+      return SQLITE_NOMEM;
+  }
+  previous = sqlite3_temp_directory;
+  sqlite3_temp_directory = replacement;
+  sqlite3_free(previous);
+  return SQLITE_OK;
+}
 const char *cpkt_sqlite_source_id(void) { return sqlite3_sourceid(); }
 int cpkt_sqlite_library_version_number(void) {
   return sqlite3_libversion_number();
@@ -3830,35 +3967,60 @@ int cpkt_sqlite_global_recover(void) { return sqlite3_global_recover(); }
 void cpkt_sqlite_thread_cleanup(void) { sqlite3_thread_cleanup(); }
 int cpkt_sqlite_sleep(int milliseconds) { return sqlite3_sleep(milliseconds); }
 int cpkt_sqlite_global_config_none(int operation) {
+  if (operation != SQLITE_CONFIG_SINGLETHREAD &&
+      operation != SQLITE_CONFIG_MULTITHREAD &&
+      operation != SQLITE_CONFIG_SERIALIZED)
+    return SQLITE_MISUSE;
   return sqlite3_config(operation);
 }
 int cpkt_sqlite_global_config_int(int operation, int value) {
+  if (operation != SQLITE_CONFIG_MEMSTATUS &&
+      operation != SQLITE_CONFIG_SMALL_MALLOC &&
+      operation != SQLITE_CONFIG_URI &&
+      operation != SQLITE_CONFIG_COVERING_INDEX_SCAN &&
+      operation != SQLITE_CONFIG_STMTJRNL_SPILL)
+    return SQLITE_MISUSE;
   return sqlite3_config(operation, value);
 }
 int cpkt_sqlite_global_config_two_int(int operation, int first, int second) {
+  if (operation != SQLITE_CONFIG_LOOKASIDE)
+    return SQLITE_MISUSE;
   return sqlite3_config(operation, first, second);
 }
 int cpkt_sqlite_global_config_pointer(int operation, void *value) {
-  return sqlite3_config(operation, value);
+  (void)operation;
+  (void)value;
+  return SQLITE_MISUSE;
 }
 int cpkt_sqlite_global_config_pointer_int_int(int operation, void *buffer,
                                               int first, int second) {
+  if (operation != SQLITE_CONFIG_PAGECACHE)
+    return SQLITE_MISUSE;
   return sqlite3_config(operation, buffer, first, second);
 }
 int cpkt_sqlite_global_config_i64(int operation, cpkt_sqlite_i64 value) {
+  if (operation != SQLITE_CONFIG_MEMDB_MAXSIZE)
+    return SQLITE_MISUSE;
   return sqlite3_config(operation, cpkt_sqlite_native_i64(value));
 }
 int cpkt_sqlite_global_config_two_i64(int operation, cpkt_sqlite_i64 first,
                                       cpkt_sqlite_i64 second) {
+  if (operation != SQLITE_CONFIG_MMAP_SIZE)
+    return SQLITE_MISUSE;
   return sqlite3_config(operation, cpkt_sqlite_native_i64(first),
                         cpkt_sqlite_native_i64(second));
 }
 int cpkt_sqlite_global_config_unsigned_int(int operation, unsigned long value) {
-  if (value > 0xffffffffUL)
+  if (operation != SQLITE_CONFIG_PMASZ)
+    return SQLITE_MISUSE;
+  if (sizeof(unsigned long) > 4 && value > 0xffffffffUL)
     return SQLITE_RANGE;
   return sqlite3_config(operation, (unsigned int)value);
 }
 int cpkt_sqlite_global_config_int_out(int operation, int *value_out) {
+  if (operation != SQLITE_CONFIG_PCACHE_HDRSZ &&
+      operation != SQLITE_CONFIG_ROWID_IN_VIEW)
+    return SQLITE_MISUSE;
   if (value_out == NULL)
     return SQLITE_MISUSE;
   return sqlite3_config(operation, value_out);
@@ -3868,35 +4030,31 @@ int cpkt_sqlite_global_config_log(cpkt_sqlite_log_callback callback,
   return sqlite3_config(SQLITE_CONFIG_LOG, callback, context);
 }
 
+/* The private entry is compiled in the pinned SQLite amalgamation. */
+extern void sqlite3__cpkt_log_v(int, const char *, va_list);
+extern void sqlite3__cpkt_log(int, const char *, ...);
+
 void cpkt_sqlite_log(int error_code, const char *format, ...) {
-  char message[1024];
   va_list arguments;
   if (format == NULL)
     return;
   va_start(arguments, format);
-  (void)sqlite3_vsnprintf((int)sizeof(message), message, format, arguments);
+  sqlite3__cpkt_log_v(error_code, format, arguments);
   va_end(arguments);
-  sqlite3_log(error_code, "%s", message);
 }
 
 void cpkt_sqlite_log_i64(int error_code, const char *format,
                          cpkt_sqlite_i64 value) {
-  char message[1024];
   if (format == NULL)
     return;
-  (void)sqlite3_snprintf((int)sizeof(message), message, format,
-                         cpkt_sqlite_native_i64(value));
-  sqlite3_log(error_code, "%s", message);
+  sqlite3__cpkt_log(error_code, format, cpkt_sqlite_native_i64(value));
 }
 
 void cpkt_sqlite_log_u64(int error_code, const char *format,
                          cpkt_sqlite_u64 value) {
-  char message[1024];
   if (format == NULL)
     return;
-  (void)sqlite3_snprintf((int)sizeof(message), message, format,
-                         cpkt_sqlite_native_u64(value));
-  sqlite3_log(error_code, "%s", message);
+  sqlite3__cpkt_log(error_code, format, cpkt_sqlite_native_u64(value));
 }
 int cpkt_sqlite_global_config_memory_methods_set(
     const cpkt_sqlite_memory_methods *methods) {
@@ -3942,6 +4100,183 @@ int cpkt_sqlite_global_config_memory_methods_get(
   methods_out->shutdown = native_methods.xShutdown;
   methods_out->context = native_methods.pAppData;
   return SQLITE_OK;
+}
+
+typedef struct cpkt_sqlite_mutex_adapter {
+  void *state;
+  int type;
+  struct cpkt_sqlite_mutex_adapter *next;
+} cpkt_sqlite_mutex_adapter;
+
+static cpkt_sqlite_mutex_methods cpkt_sqlite_mutex_methods_current;
+static int cpkt_sqlite_mutex_methods_are_set;
+static cpkt_sqlite_mutex_adapter *cpkt_sqlite_static_mutexes;
+static pthread_mutex_t cpkt_sqlite_static_mutex_lock =
+    PTHREAD_MUTEX_INITIALIZER;
+
+static int cpkt_sqlite_custom_mutex_init(void) {
+  if (cpkt_sqlite_mutex_methods_current.initialize == NULL)
+    return SQLITE_OK;
+  return cpkt_sqlite_mutex_methods_current.initialize(
+      cpkt_sqlite_mutex_methods_current.context);
+}
+
+static int cpkt_sqlite_custom_mutex_end(void) {
+  cpkt_sqlite_mutex_adapter *item;
+  cpkt_sqlite_mutex_adapter *next;
+  int status;
+  status = cpkt_sqlite_mutex_methods_current.shutdown == NULL
+               ? SQLITE_OK
+               : cpkt_sqlite_mutex_methods_current.shutdown(
+                     cpkt_sqlite_mutex_methods_current.context);
+  pthread_mutex_lock(&cpkt_sqlite_static_mutex_lock);
+  item = cpkt_sqlite_static_mutexes;
+  cpkt_sqlite_static_mutexes = NULL;
+  pthread_mutex_unlock(&cpkt_sqlite_static_mutex_lock);
+  while (item != NULL) {
+    next = item->next;
+    free(item);
+    item = next;
+  }
+  return status;
+}
+
+static sqlite3_mutex *cpkt_sqlite_custom_mutex_alloc(int type) {
+  cpkt_sqlite_mutex_adapter *item;
+  void *state;
+  if (type >= SQLITE_MUTEX_STATIC_MAIN) {
+    pthread_mutex_lock(&cpkt_sqlite_static_mutex_lock);
+    for (item = cpkt_sqlite_static_mutexes; item != NULL; item = item->next) {
+      if (item->type == type) {
+        pthread_mutex_unlock(&cpkt_sqlite_static_mutex_lock);
+        return (sqlite3_mutex *)item;
+      }
+    }
+  }
+  item = (cpkt_sqlite_mutex_adapter *)malloc(sizeof(*item));
+  if (item == NULL) {
+    if (type >= SQLITE_MUTEX_STATIC_MAIN)
+      pthread_mutex_unlock(&cpkt_sqlite_static_mutex_lock);
+    return NULL;
+  }
+  state = cpkt_sqlite_mutex_methods_current.allocate(
+      cpkt_sqlite_mutex_methods_current.context, type);
+  if (state == NULL) {
+    free(item);
+    if (type >= SQLITE_MUTEX_STATIC_MAIN)
+      pthread_mutex_unlock(&cpkt_sqlite_static_mutex_lock);
+    return NULL;
+  }
+  item->state = state;
+  item->type = type;
+  item->next = NULL;
+  if (type >= SQLITE_MUTEX_STATIC_MAIN) {
+    item->next = cpkt_sqlite_static_mutexes;
+    cpkt_sqlite_static_mutexes = item;
+    pthread_mutex_unlock(&cpkt_sqlite_static_mutex_lock);
+  }
+  return (sqlite3_mutex *)item;
+}
+
+static void cpkt_sqlite_custom_mutex_free(sqlite3_mutex *mutex) {
+  cpkt_sqlite_mutex_adapter *item;
+  item = (cpkt_sqlite_mutex_adapter *)mutex;
+  if (item == NULL)
+    return;
+  if (item->type >= SQLITE_MUTEX_STATIC_MAIN)
+    return;
+  cpkt_sqlite_mutex_methods_current.free(
+      cpkt_sqlite_mutex_methods_current.context, item->state);
+  free(item);
+}
+
+static void cpkt_sqlite_custom_mutex_enter(sqlite3_mutex *mutex) {
+  cpkt_sqlite_mutex_adapter *item;
+  item = (cpkt_sqlite_mutex_adapter *)mutex;
+  cpkt_sqlite_mutex_methods_current.enter(
+      cpkt_sqlite_mutex_methods_current.context, item->state);
+}
+
+static int cpkt_sqlite_custom_mutex_try(sqlite3_mutex *mutex) {
+  cpkt_sqlite_mutex_adapter *item;
+  item = (cpkt_sqlite_mutex_adapter *)mutex;
+  return cpkt_sqlite_mutex_methods_current.try_enter(
+      cpkt_sqlite_mutex_methods_current.context, item->state);
+}
+
+static void cpkt_sqlite_custom_mutex_leave(sqlite3_mutex *mutex) {
+  cpkt_sqlite_mutex_adapter *item;
+  item = (cpkt_sqlite_mutex_adapter *)mutex;
+  cpkt_sqlite_mutex_methods_current.leave(
+      cpkt_sqlite_mutex_methods_current.context, item->state);
+}
+
+static int cpkt_sqlite_custom_mutex_held(sqlite3_mutex *mutex) {
+  cpkt_sqlite_mutex_adapter *item;
+  item = (cpkt_sqlite_mutex_adapter *)mutex;
+  return cpkt_sqlite_mutex_methods_current.held(
+      cpkt_sqlite_mutex_methods_current.context, item->state);
+}
+
+static int cpkt_sqlite_custom_mutex_not_held(sqlite3_mutex *mutex) {
+  cpkt_sqlite_mutex_adapter *item;
+  item = (cpkt_sqlite_mutex_adapter *)mutex;
+  return cpkt_sqlite_mutex_methods_current.not_held(
+      cpkt_sqlite_mutex_methods_current.context, item->state);
+}
+
+int cpkt_sqlite_global_config_mutex_methods_set(
+    const cpkt_sqlite_mutex_methods *methods) {
+  sqlite3_mutex_methods native;
+  int status;
+  if (cpkt_sqlite_native_mutex_methods_unwrap(methods, &native)) {
+    status = sqlite3_config(SQLITE_CONFIG_MUTEX, &native);
+    if (status == SQLITE_OK)
+      cpkt_sqlite_mutex_methods_are_set = 0;
+    return status;
+  }
+  if (methods == NULL || methods->allocate == NULL || methods->free == NULL ||
+      methods->enter == NULL || methods->try_enter == NULL ||
+      methods->leave == NULL)
+    return SQLITE_MISUSE;
+  native.xMutexInit = cpkt_sqlite_custom_mutex_init;
+  native.xMutexEnd = cpkt_sqlite_custom_mutex_end;
+  native.xMutexAlloc = cpkt_sqlite_custom_mutex_alloc;
+  native.xMutexFree = cpkt_sqlite_custom_mutex_free;
+  native.xMutexEnter = cpkt_sqlite_custom_mutex_enter;
+  native.xMutexTry = cpkt_sqlite_custom_mutex_try;
+  native.xMutexLeave = cpkt_sqlite_custom_mutex_leave;
+  native.xMutexHeld =
+      methods->held == NULL ? NULL : cpkt_sqlite_custom_mutex_held;
+  native.xMutexNotheld =
+      methods->not_held == NULL ? NULL : cpkt_sqlite_custom_mutex_not_held;
+  status = sqlite3_config(SQLITE_CONFIG_MUTEX, &native);
+  if (status == SQLITE_OK) {
+    cpkt_sqlite_mutex_methods_current = *methods;
+    cpkt_sqlite_mutex_methods_are_set = 1;
+  }
+  return status;
+}
+
+int cpkt_sqlite_global_config_mutex_methods_get(
+    cpkt_sqlite_mutex_methods *methods_out) {
+  sqlite3_mutex_methods native;
+  int status;
+  if (methods_out == NULL)
+    return SQLITE_MISUSE;
+  status = sqlite3_config(SQLITE_CONFIG_GETMUTEX, &native);
+  if (status != SQLITE_OK)
+    return status;
+  if (cpkt_sqlite_mutex_methods_are_set &&
+      native.xMutexAlloc == cpkt_sqlite_custom_mutex_alloc) {
+    *methods_out = cpkt_sqlite_mutex_methods_current;
+    return SQLITE_OK;
+  }
+  return cpkt_sqlite_native_mutex_methods_get(&native, methods_out);
+}
+
+void cpkt_sqlite_mutex_methods_release(cpkt_sqlite_mutex_methods *methods) {
+  cpkt_sqlite_native_mutex_methods_release(methods);
 }
 
 static int cpkt_sqlite_page_cache_initialize(void *context) {
@@ -4101,6 +4436,12 @@ int cpkt_sqlite_global_config_page_cache_methods_set(
     const cpkt_sqlite_page_cache_methods *methods) {
   sqlite3_pcache_methods2 native_methods;
   int status;
+  if (cpkt_sqlite_native_page_cache_methods_unwrap(methods, &native_methods)) {
+    status = sqlite3_config(SQLITE_CONFIG_PCACHE2, &native_methods);
+    if (status == SQLITE_OK)
+      cpkt_sqlite_page_cache_methods_are_set = 0;
+    return status;
+  }
   if (methods == NULL || methods->create == NULL ||
       methods->cache_size == NULL || methods->page_count == NULL ||
       methods->fetch == NULL || methods->unpin == NULL ||
@@ -4137,12 +4478,19 @@ int cpkt_sqlite_global_config_page_cache_methods_get(
   status = sqlite3_config(SQLITE_CONFIG_GETPCACHE2, &native_methods);
   if (status != SQLITE_OK)
     return status;
-  if (!cpkt_sqlite_page_cache_methods_are_set ||
-      native_methods.pArg != &cpkt_sqlite_page_cache_methods_current ||
-      native_methods.xCreate != cpkt_sqlite_page_cache_create)
-    return SQLITE_NOTFOUND;
-  *methods_out = cpkt_sqlite_page_cache_methods_current;
-  return SQLITE_OK;
+  if (cpkt_sqlite_page_cache_methods_are_set &&
+      native_methods.pArg == &cpkt_sqlite_page_cache_methods_current &&
+      native_methods.xCreate == cpkt_sqlite_page_cache_create) {
+    *methods_out = cpkt_sqlite_page_cache_methods_current;
+    return SQLITE_OK;
+  }
+  return cpkt_sqlite_native_page_cache_methods_get(&native_methods,
+                                                   methods_out);
+}
+
+void cpkt_sqlite_page_cache_methods_release(
+    cpkt_sqlite_page_cache_methods *methods) {
+  cpkt_sqlite_native_page_cache_methods_release(methods);
 }
 
 static void cpkt_sqlite_mutex_enter(cpkt_sqlite_mutex *self) {
@@ -4923,6 +5271,7 @@ static void cpkt_sqlite_fts5_context_initialize(cpkt_sqlite_fts5_context *self,
                                                 const Fts5ExtensionApi *api,
                                                 Fts5Context *context,
                                                 cpkt_sqlite *database) {
+  self->version = api == NULL ? 0 : api->iVersion;
   self->user_data = cpkt_sqlite_fts5_context_user_data;
   self->column_count = cpkt_sqlite_fts5_context_column_count;
   self->row_count = cpkt_sqlite_fts5_context_row_count;
@@ -5031,6 +5380,133 @@ static int cpkt_sqlite_fts5_api_version(const cpkt_sqlite_fts5_api *self) {
   fts5_api *api;
   api = cpkt_sqlite_native_fts5_api(self);
   return api == NULL ? 0 : api->iVersion;
+}
+
+typedef struct cpkt_sqlite_fts5_found_binding {
+  fts5_tokenizer_v2 methods;
+  void *context;
+} cpkt_sqlite_fts5_found_binding;
+
+typedef struct cpkt_sqlite_fts5_instance_binding {
+  fts5_tokenizer_v2 methods;
+  Fts5Tokenizer *native;
+} cpkt_sqlite_fts5_instance_binding;
+
+static void
+cpkt_sqlite_fts5_found_close(cpkt_sqlite_fts5_found_tokenizer *self) {
+  if (self == NULL)
+    return;
+  free(self->internal);
+  free(self);
+}
+
+static void
+cpkt_sqlite_fts5_instance_close(cpkt_sqlite_fts5_tokenizer_instance *self) {
+  cpkt_sqlite_fts5_instance_binding *binding;
+  if (self == NULL)
+    return;
+  binding = (cpkt_sqlite_fts5_instance_binding *)self->internal;
+  if (binding != NULL) {
+    binding->methods.xDelete(binding->native);
+    free(binding);
+  }
+  free(self);
+}
+
+static int cpkt_sqlite_fts5_instance_tokenize(
+    cpkt_sqlite_fts5_tokenizer_instance *self, void *context, int flags,
+    const char *text, int text_byte_count, const char *locale,
+    int locale_byte_count, cpkt_sqlite_fts5_token_callback token) {
+  cpkt_sqlite_fts5_instance_binding *binding;
+  cpkt_sqlite_fts5_public_token_context token_context;
+  if (self == NULL || self->internal == NULL || text == NULL || token == NULL)
+    return SQLITE_MISUSE;
+  binding = (cpkt_sqlite_fts5_instance_binding *)self->internal;
+  token_context.user_context = context;
+  token_context.callback = token;
+  return binding->methods.xTokenize(
+      binding->native, &token_context, flags, text, text_byte_count, locale,
+      locale_byte_count, cpkt_sqlite_fts5_public_token_trampoline);
+}
+
+static int
+cpkt_sqlite_fts5_found_create(cpkt_sqlite_fts5_found_tokenizer *self,
+                              const char *const *arguments, int argument_count,
+                              cpkt_sqlite_fts5_tokenizer_instance **out) {
+  cpkt_sqlite_fts5_found_binding *found;
+  cpkt_sqlite_fts5_instance_binding *binding;
+  cpkt_sqlite_fts5_tokenizer_instance *instance;
+  int status;
+  if (out != NULL)
+    *out = NULL;
+  if (self == NULL || self->internal == NULL || out == NULL ||
+      argument_count < 0 || (argument_count != 0 && arguments == NULL))
+    return SQLITE_MISUSE;
+  found = (cpkt_sqlite_fts5_found_binding *)self->internal;
+  binding = (cpkt_sqlite_fts5_instance_binding *)calloc(1, sizeof(*binding));
+  instance =
+      (cpkt_sqlite_fts5_tokenizer_instance *)calloc(1, sizeof(*instance));
+  if (binding == NULL || instance == NULL) {
+    free(binding);
+    free(instance);
+    return SQLITE_NOMEM;
+  }
+  binding->methods = found->methods;
+  status = binding->methods.xCreate(found->context, (const char **)arguments,
+                                    argument_count, &binding->native);
+  if (status != SQLITE_OK) {
+    free(binding);
+    free(instance);
+    return status;
+  }
+  instance->tokenize = cpkt_sqlite_fts5_instance_tokenize;
+  instance->close = cpkt_sqlite_fts5_instance_close;
+  instance->internal = binding;
+  *out = instance;
+  return SQLITE_OK;
+}
+
+static int
+cpkt_sqlite_fts5_api_find_tokenizer(cpkt_sqlite_fts5_api *self,
+                                    const char *name,
+                                    cpkt_sqlite_fts5_found_tokenizer **out) {
+  fts5_api *api;
+  fts5_tokenizer_v2 *native;
+  cpkt_sqlite_fts5_found_tokenizer *found;
+  cpkt_sqlite_fts5_found_binding *binding;
+  sqlite3_mutex *mutex;
+  void *context;
+  int status;
+  if (out != NULL)
+    *out = NULL;
+  api = cpkt_sqlite_native_fts5_api(self);
+  if (api == NULL || api->iVersion < 3 || api->xFindTokenizer_v2 == NULL ||
+      name == NULL || out == NULL)
+    return SQLITE_MISUSE;
+  native = NULL;
+  context = NULL;
+  mutex = cpkt_sqlite_connection_lock(self->database);
+  status = api->xFindTokenizer_v2(api, name, &context, &native);
+  cpkt_sqlite_connection_unlock(mutex);
+  if (status != SQLITE_OK)
+    return status;
+  if (native == NULL || native->xCreate == NULL || native->xDelete == NULL ||
+      native->xTokenize == NULL)
+    return SQLITE_NOTFOUND;
+  found = (cpkt_sqlite_fts5_found_tokenizer *)calloc(1, sizeof(*found));
+  binding = (cpkt_sqlite_fts5_found_binding *)calloc(1, sizeof(*binding));
+  if (found == NULL || binding == NULL) {
+    free(found);
+    free(binding);
+    return SQLITE_NOMEM;
+  }
+  binding->methods = *native;
+  binding->context = context;
+  found->create = cpkt_sqlite_fts5_found_create;
+  found->close = cpkt_sqlite_fts5_found_close;
+  found->internal = binding;
+  *out = found;
+  return SQLITE_OK;
 }
 
 static int cpkt_sqlite_fts5_api_create_tokenizer(
@@ -5149,6 +5625,7 @@ int cpkt_sqlite_fts5_api_open(cpkt_sqlite *database,
   if (public_api == NULL)
     return SQLITE_NOMEM;
   public_api->version = cpkt_sqlite_fts5_api_version;
+  public_api->find_tokenizer = cpkt_sqlite_fts5_api_find_tokenizer;
   public_api->create_tokenizer = cpkt_sqlite_fts5_api_create_tokenizer;
   public_api->create_auxiliary = cpkt_sqlite_fts5_api_create_auxiliary;
   public_api->close = cpkt_sqlite_fts5_api_close;
@@ -5339,6 +5816,224 @@ int cpkt_sqlite_file_control(cpkt_sqlite *self, const char *database_name,
   if (status == SQLITE_OK)
     *(cpkt_sqlite_i64 *)argument = cpkt_sqlite_public_i64(native_value);
   return status;
+}
+
+int cpkt_sqlite_file_control_int(cpkt_sqlite *self, const char *database_name,
+                                 int operation, int *value) {
+  if (value == NULL)
+    return SQLITE_MISUSE;
+  switch (operation) {
+  case SQLITE_FCNTL_LOCKSTATE:
+  case SQLITE_FCNTL_CHUNK_SIZE:
+  case SQLITE_FCNTL_PERSIST_WAL:
+  case SQLITE_FCNTL_POWERSAFE_OVERWRITE:
+  case SQLITE_FCNTL_HAS_MOVED:
+  case SQLITE_FCNTL_LOCK_TIMEOUT:
+  case SQLITE_FCNTL_LAST_ERRNO:
+  case SQLITE_FCNTL_RESERVE_BYTES:
+  case SQLITE_FCNTL_EXTERNAL_READER:
+    break;
+  default:
+    return SQLITE_MISUSE;
+  }
+  return cpkt_sqlite_file_control(self, database_name, operation, value);
+}
+
+int cpkt_sqlite_file_control_unsigned(cpkt_sqlite *self,
+                                      const char *database_name, int operation,
+                                      unsigned long *value) {
+  unsigned int native_value;
+  int status;
+  if (value == NULL || operation != SQLITE_FCNTL_DATA_VERSION)
+    return SQLITE_MISUSE;
+  native_value = 0;
+  status =
+      cpkt_sqlite_file_control(self, database_name, operation, &native_value);
+  if (status == SQLITE_OK)
+    *value = (unsigned long)native_value;
+  return status;
+}
+
+int cpkt_sqlite_file_control_text(cpkt_sqlite *self, const char *database_name,
+                                  int operation, char **text_out) {
+  if (text_out == NULL || (operation != SQLITE_FCNTL_VFSNAME &&
+                           operation != SQLITE_FCNTL_TEMPFILENAME &&
+                           operation != SQLITE_FCNTL_GET_LOCKPROXYFILE))
+    return SQLITE_MISUSE;
+  *text_out = NULL;
+  return cpkt_sqlite_file_control(self, database_name, operation, text_out);
+}
+
+int cpkt_sqlite_file_control_text_input(cpkt_sqlite *self,
+                                        const char *database_name,
+                                        int operation, const char *text) {
+  if (text == NULL || (operation != SQLITE_FCNTL_TRACE &&
+                       operation != SQLITE_FCNTL_SET_LOCKPROXYFILE))
+    return SQLITE_MISUSE;
+  return cpkt_sqlite_file_control(self, database_name, operation, (void *)text);
+}
+
+int cpkt_sqlite_file_control_none(cpkt_sqlite *self, const char *database_name,
+                                  int operation) {
+  if (operation != SQLITE_FCNTL_RESET_CACHE &&
+      operation != SQLITE_FCNTL_BEGIN_ATOMIC_WRITE &&
+      operation != SQLITE_FCNTL_COMMIT_ATOMIC_WRITE &&
+      operation != SQLITE_FCNTL_ROLLBACK_ATOMIC_WRITE)
+    return SQLITE_MISUSE;
+  return cpkt_sqlite_file_control(self, database_name, operation, NULL);
+}
+
+int cpkt_sqlite_file_control_file(cpkt_sqlite *self, const char *database_name,
+                                  int operation,
+                                  cpkt_sqlite_file_handle **out) {
+  sqlite3_file *native;
+  cpkt_sqlite_file_handle *handle;
+  int status;
+  if (out != NULL)
+    *out = NULL;
+  if (out == NULL || (operation != SQLITE_FCNTL_FILE_POINTER &&
+                      operation != SQLITE_FCNTL_JOURNAL_POINTER))
+    return SQLITE_MISUSE;
+  native = NULL;
+  status = cpkt_sqlite_file_control(self, database_name, operation, &native);
+  if (status != SQLITE_OK)
+    return status;
+  if (native == NULL || native->pMethods == NULL)
+    return SQLITE_NOTFOUND;
+  handle = (cpkt_sqlite_file_handle *)calloc(1, sizeof(*handle));
+  if (handle == NULL)
+    return SQLITE_NOMEM;
+  handle->native = native;
+  if (native->pMethods->xClose == cpkt_sqlite_vfs_file_close) {
+    handle->view = &cpkt_sqlite_vfs_file_from_native(native)->public_file;
+  } else {
+    handle->view = cpkt_sqlite_native_file_view(native);
+    if (handle->view == NULL) {
+      free(handle);
+      return SQLITE_NOMEM;
+    }
+    handle->owns_view = 1;
+  }
+  *out = handle;
+  return SQLITE_OK;
+}
+
+int cpkt_sqlite_file_control_vfs(cpkt_sqlite *self, const char *database_name,
+                                 cpkt_sqlite_vfs_handle **out) {
+  sqlite3_vfs *native;
+  cpkt_sqlite_vfs_handle *handle;
+  int status;
+  if (out != NULL)
+    *out = NULL;
+  if (out == NULL)
+    return SQLITE_MISUSE;
+  native = NULL;
+  status = cpkt_sqlite_file_control(self, database_name,
+                                    SQLITE_FCNTL_VFS_POINTER, &native);
+  if (status != SQLITE_OK)
+    return status;
+  if (native == NULL)
+    return SQLITE_NOTFOUND;
+  handle = (cpkt_sqlite_vfs_handle *)calloc(1, sizeof(*handle));
+  if (handle == NULL)
+    return SQLITE_NOMEM;
+  handle->native = native;
+  handle->view = cpkt_sqlite_vfs_find(native->zName);
+  if (handle->view == NULL) {
+    free(handle);
+    return SQLITE_NOMEM;
+  }
+  handle->owns_view = cpkt_sqlite_native_vfs_view_is(handle->view);
+  *out = handle;
+  return SQLITE_OK;
+}
+
+int cpkt_sqlite_file_control_filestat(cpkt_sqlite *self,
+                                      const char *database_name,
+                                      cpkt_sqlite_string *output) {
+  if (output == NULL || output->string == NULL)
+    return SQLITE_MISUSE;
+  return cpkt_sqlite_file_control(self, database_name, SQLITE_FCNTL_FILESTAT,
+                                  output->string);
+}
+
+int cpkt_sqlite_file_handle_read(cpkt_sqlite_file_handle *self, void *buffer,
+                                 int byte_count, cpkt_sqlite_i64 offset) {
+  if (self == NULL || self->native == NULL || buffer == NULL ||
+      byte_count < 0 || self->native->pMethods->xRead == NULL)
+    return SQLITE_MISUSE;
+  return self->native->pMethods->xRead(self->native, buffer, byte_count,
+                                       cpkt_sqlite_native_i64(offset));
+}
+
+int cpkt_sqlite_file_handle_write(cpkt_sqlite_file_handle *self,
+                                  const void *buffer, int byte_count,
+                                  cpkt_sqlite_i64 offset) {
+  if (self == NULL || self->native == NULL || buffer == NULL ||
+      byte_count < 0 || self->native->pMethods->xWrite == NULL)
+    return SQLITE_MISUSE;
+  return self->native->pMethods->xWrite(self->native, buffer, byte_count,
+                                        cpkt_sqlite_native_i64(offset));
+}
+
+int cpkt_sqlite_file_handle_size(cpkt_sqlite_file_handle *self,
+                                 cpkt_sqlite_i64 *out) {
+  sqlite3_int64 native_value;
+  int status;
+  if (self == NULL || self->native == NULL || out == NULL ||
+      self->native->pMethods->xFileSize == NULL)
+    return SQLITE_MISUSE;
+  status = self->native->pMethods->xFileSize(self->native, &native_value);
+  if (status == SQLITE_OK)
+    *out = cpkt_sqlite_public_i64(native_value);
+  return status;
+}
+
+int cpkt_sqlite_file_handle_sync(cpkt_sqlite_file_handle *self, int flags) {
+  if (self == NULL || self->native == NULL ||
+      self->native->pMethods->xSync == NULL)
+    return SQLITE_MISUSE;
+  return self->native->pMethods->xSync(self->native, flags);
+}
+
+cpkt_sqlite_file *cpkt_sqlite_file_handle_view(cpkt_sqlite_file_handle *self) {
+  return self == NULL ? NULL : self->view;
+}
+
+void cpkt_sqlite_file_handle_close(cpkt_sqlite_file_handle *self) {
+  if (self == NULL)
+    return;
+  if (self->owns_view && self->view != NULL)
+    cpkt_sqlite_native_file_view_release(self->view);
+  free(self);
+}
+
+const char *cpkt_sqlite_vfs_handle_name(const cpkt_sqlite_vfs_handle *self) {
+  return self == NULL || self->native == NULL ? NULL : self->native->zName;
+}
+
+int cpkt_sqlite_vfs_handle_version(const cpkt_sqlite_vfs_handle *self) {
+  return self == NULL || self->native == NULL ? 0 : self->native->iVersion;
+}
+
+int cpkt_sqlite_vfs_handle_access(cpkt_sqlite_vfs_handle *self,
+                                  const char *path, int flags, int *out) {
+  if (self == NULL || self->native == NULL || path == NULL || out == NULL ||
+      self->native->xAccess == NULL)
+    return SQLITE_MISUSE;
+  return self->native->xAccess(self->native, path, flags, out);
+}
+
+cpkt_sqlite_vfs *cpkt_sqlite_vfs_handle_view(cpkt_sqlite_vfs_handle *self) {
+  return self == NULL ? NULL : self->view;
+}
+
+void cpkt_sqlite_vfs_handle_close(cpkt_sqlite_vfs_handle *self) {
+  if (self == NULL)
+    return;
+  if (self->owns_view && self->view != NULL)
+    self->view->close(self->view);
+  free(self);
 }
 
 int cpkt_sqlite_set_lock_timeout(cpkt_sqlite *self, int milliseconds,

@@ -49,6 +49,10 @@ typedef struct cpkt_sqlite_filename cpkt_sqlite_filename;
 typedef struct cpkt_sqlite_fts5_api cpkt_sqlite_fts5_api;
 /** Opaque tokenizer shell created only by an FTS5 create callback. */
 typedef struct cpkt_sqlite_fts5_tokenizer cpkt_sqlite_fts5_tokenizer;
+typedef struct cpkt_sqlite_fts5_found_tokenizer
+    cpkt_sqlite_fts5_found_tokenizer;
+typedef struct cpkt_sqlite_fts5_tokenizer_instance
+    cpkt_sqlite_fts5_tokenizer_instance;
 /** Callback-local FTS5 auxiliary context; never retain it. */
 typedef struct cpkt_sqlite_fts5_context cpkt_sqlite_fts5_context;
 /** FTS5 phrase iterator valid only during its enclosing callback. */
@@ -78,6 +82,8 @@ typedef struct cpkt_sqlite_module_methods cpkt_sqlite_module_methods;
 typedef struct cpkt_sqlite_vfs cpkt_sqlite_vfs;
 /** Application-owned open-file receiver used by a virtual filesystem. */
 typedef struct cpkt_sqlite_file cpkt_sqlite_file;
+typedef struct cpkt_sqlite_file_handle cpkt_sqlite_file_handle;
+typedef struct cpkt_sqlite_vfs_handle cpkt_sqlite_vfs_handle;
 /** Complete callback table for one virtual-filesystem file receiver. */
 typedef struct cpkt_sqlite_io_methods cpkt_sqlite_io_methods;
 /** Complete callback table for one virtual filesystem receiver. */
@@ -108,6 +114,22 @@ typedef struct cpkt_sqlite_memory_methods {
   void (*shutdown)(void *context);
   void *context;
 } cpkt_sqlite_memory_methods;
+
+/** Custom SQLite mutex backend. Install before initialization and keep its
+ * context alive through shutdown. Static mutex state belongs to the backend;
+ * dynamic mutex state is passed to free exactly once. */
+typedef struct cpkt_sqlite_mutex_methods {
+  void *context;
+  int (*initialize)(void *context);
+  int (*shutdown)(void *context);
+  void *(*allocate)(void *context, int mutex_type);
+  void (*free)(void *context, void *mutex);
+  void (*enter)(void *context, void *mutex);
+  int (*try_enter)(void *context, void *mutex);
+  void (*leave)(void *context, void *mutex);
+  int (*held)(void *context, void *mutex);
+  int (*not_held)(void *context, void *mutex);
+} cpkt_sqlite_mutex_methods;
 
 /** Output fields from cpkt_sqlite_table_column_metadata(). */
 typedef struct cpkt_sqlite_column_metadata {
@@ -1136,6 +1158,10 @@ struct cpkt_sqlite_filename {
 /* FTS5 registration receiver.  It borrows the database connection. */
 struct cpkt_sqlite_fts5_api {
   int (*version)(const cpkt_sqlite_fts5_api *self);
+  /** The returned factory borrows the registration until replacement or
+   * database close. The caller closes the factory and each instance. */
+  int (*find_tokenizer)(cpkt_sqlite_fts5_api *self, const char *name,
+                        cpkt_sqlite_fts5_found_tokenizer **out);
   int (*create_tokenizer)(cpkt_sqlite_fts5_api *self, const char *name,
                           void *context,
                           cpkt_sqlite_fts5_tokenizer_create_callback create,
@@ -1151,6 +1177,23 @@ struct cpkt_sqlite_fts5_api {
   cpkt_sqlite *database;
 };
 
+struct cpkt_sqlite_fts5_found_tokenizer {
+  int (*create)(cpkt_sqlite_fts5_found_tokenizer *self,
+                const char *const *arguments, int argument_count,
+                cpkt_sqlite_fts5_tokenizer_instance **out);
+  void (*close)(cpkt_sqlite_fts5_found_tokenizer *self);
+  void *internal;
+};
+
+struct cpkt_sqlite_fts5_tokenizer_instance {
+  int (*tokenize)(cpkt_sqlite_fts5_tokenizer_instance *self, void *context,
+                  int flags, const char *text, int text_byte_count,
+                  const char *locale, int locale_byte_count,
+                  cpkt_sqlite_fts5_token_callback token);
+  void (*close)(cpkt_sqlite_fts5_tokenizer_instance *self);
+  void *internal;
+};
+
 /* This shell is created by a tokenizer create callback and released by FTS5. */
 struct cpkt_sqlite_fts5_tokenizer {
   void *state;
@@ -1159,6 +1202,8 @@ struct cpkt_sqlite_fts5_tokenizer {
 
 /* Valid only during an FTS5 auxiliary or query-phrase callback. */
 struct cpkt_sqlite_fts5_context {
+  /** Native FTS5 extension API version for this callback invocation. */
+  int version;
   void *(*user_data)(const cpkt_sqlite_fts5_context *self);
   int (*column_count)(const cpkt_sqlite_fts5_context *self);
   int (*row_count)(const cpkt_sqlite_fts5_context *self, cpkt_sqlite_i64 *out);
@@ -1248,6 +1293,14 @@ cpkt_sqlite_u64 cpkt_sqlite_u64_make(unsigned long high, unsigned long low);
 int cpkt_sqlite_i64_compare(cpkt_sqlite_i64 left, cpkt_sqlite_i64 right);
 int cpkt_sqlite_u64_compare(cpkt_sqlite_u64 left, cpkt_sqlite_u64 right);
 const char *cpkt_sqlite_library_version(void);
+/** Borrowed SQLite temporary-directory value. Valid until the next native or
+ * facade assignment. Read only while all other SQLite use is quiescent. */
+const char *cpkt_sqlite_temp_directory_get(void);
+/** Set SQLite's legacy temporary-directory global. Copies UTF-8 with SQLite's
+ * allocator; NULL restores native directory search. Call during process setup
+ * with no open databases and no concurrent SQLite calls. As with the native
+ * variable, a later SQLite temp_store_directory pragma can replace it. */
+int cpkt_sqlite_temp_directory_set(const char *directory);
 const char *cpkt_sqlite_source_id(void);
 int cpkt_sqlite_library_version_number(void);
 int cpkt_sqlite_compile_option_used(const char *name);
@@ -1284,10 +1337,21 @@ int cpkt_sqlite_global_config_memory_methods_set(
     const cpkt_sqlite_memory_methods *methods);
 int cpkt_sqlite_global_config_memory_methods_get(
     cpkt_sqlite_memory_methods *methods_out);
+int cpkt_sqlite_global_config_mutex_methods_set(
+    const cpkt_sqlite_mutex_methods *methods);
+int cpkt_sqlite_global_config_mutex_methods_get(
+    cpkt_sqlite_mutex_methods *methods_out);
+/** Release a native GETMUTEX view after its callbacks and all derived mutex
+ * objects are no longer in use. Custom application tables require no release.
+ */
+void cpkt_sqlite_mutex_methods_release(cpkt_sqlite_mutex_methods *methods);
 int cpkt_sqlite_global_config_page_cache_methods_set(
     const cpkt_sqlite_page_cache_methods *methods);
 int cpkt_sqlite_global_config_page_cache_methods_get(
     cpkt_sqlite_page_cache_methods *methods_out);
+/** Release a native GETPCACHE2 view after its caches and pages are gone. */
+void cpkt_sqlite_page_cache_methods_release(
+    cpkt_sqlite_page_cache_methods *methods);
 /** APPLICATION mutexes are not used by facade bookkeeping. */
 cpkt_sqlite_mutex *cpkt_sqlite_mutex_new(int mutex_type);
 cpkt_sqlite_mutex *cpkt_sqlite_database_mutex(const cpkt_sqlite *database);
@@ -1358,9 +1422,13 @@ void cpkt_sqlite_auto_extension_reset(void);
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_new(const char *name,
                                      int maximum_pathname_bytes, void *state,
                                      const cpkt_sqlite_vfs_methods *methods);
-/* Finds a registered C89 facade VFS; native-only VFSes have no C89 shell. */
+/* Returns an existing facade VFS by borrowed identity, or an owned view of
+ * a native VFS. Close a native view when finished; closing never unregisters
+ * its provider. The provider must remain registered while the view is used. */
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_find(const char *name);
-/* Valid only for a journal or WAL name passed to a facade VFS open callback. */
+/* Valid only for a journal/WAL filename passed to a VFS open callback. A
+ * native result is an owned metadata view: methods->close releases the view
+ * without closing SQLite's database file. A facade result is borrowed. */
 cpkt_sqlite_file *cpkt_sqlite_vfs_database_file_object(const char *name);
 int cpkt_sqlite_vfs_register(cpkt_sqlite_vfs *self, int make_default);
 int cpkt_sqlite_vfs_unregister(cpkt_sqlite_vfs *self);
@@ -1386,6 +1454,16 @@ int cpkt_sqlite_prepare16(cpkt_sqlite *self, const void *sql, int byte_count,
                           unsigned long flags,
                           cpkt_sqlite_statement **statement_out,
                           const void **tail_out);
+/** Uses SQLite's original prepare semantics (no automatic reprepare). */
+int cpkt_sqlite_prepare_legacy(cpkt_sqlite *self, const char *sql,
+                               int byte_count,
+                               cpkt_sqlite_statement **statement_out,
+                               const char **tail_out);
+/** UTF-16 counterpart of cpkt_sqlite_prepare_legacy(). */
+int cpkt_sqlite_prepare_legacy16(cpkt_sqlite *self, const void *sql,
+                                 int byte_count,
+                                 cpkt_sqlite_statement **statement_out,
+                                 const void **tail_out);
 int cpkt_sqlite_busy_timeout(cpkt_sqlite *self, int milliseconds);
 int cpkt_sqlite_extended_result_codes(cpkt_sqlite *self, int enabled);
 int cpkt_sqlite_wal_auto_checkpoint(cpkt_sqlite *self, int page_count);
@@ -1462,9 +1540,52 @@ int cpkt_sqlite_table_column_metadata(
 int cpkt_sqlite_database_release_memory(cpkt_sqlite *self);
 int cpkt_sqlite_cache_flush(cpkt_sqlite *self);
 /** SIZE_HINT, MMAP_SIZE, and SIZE_LIMIT take cpkt_sqlite_i64 * arguments.
- * Other operation payloads retain their SQLite-defined types. */
+ * Use the typed operations below for native record and pointer outputs. */
 int cpkt_sqlite_file_control(cpkt_sqlite *self, const char *database_name,
                              int operation, void *argument);
+/** Restricts operation to the provider's int payload family. */
+int cpkt_sqlite_file_control_int(cpkt_sqlite *self, const char *database_name,
+                                 int operation, int *value);
+int cpkt_sqlite_file_control_unsigned(cpkt_sqlite *self,
+                                      const char *database_name, int operation,
+                                      unsigned long *value);
+/** The caller frees text with cpkt_sqlite_free(). */
+int cpkt_sqlite_file_control_text(cpkt_sqlite *self, const char *database_name,
+                                  int operation, char **text_out);
+/** String input for TRACE or Darwin's lock-proxy file path. */
+int cpkt_sqlite_file_control_text_input(cpkt_sqlite *self,
+                                        const char *database_name,
+                                        int operation, const char *text);
+/** File controls with no application payload, such as RESET_CACHE. */
+int cpkt_sqlite_file_control_none(cpkt_sqlite *self, const char *database_name,
+                                  int operation);
+/** FILE_POINTER/JOURNAL_POINTER return a borrowed file through a newly
+ * allocated receiver. Close only the receiver before closing the database. */
+int cpkt_sqlite_file_control_file(cpkt_sqlite *self, const char *database_name,
+                                  int operation, cpkt_sqlite_file_handle **out);
+/** Full callable file methods; borrowed until the handle is closed. */
+cpkt_sqlite_file *cpkt_sqlite_file_handle_view(cpkt_sqlite_file_handle *self);
+int cpkt_sqlite_file_control_vfs(cpkt_sqlite *self, const char *database_name,
+                                 cpkt_sqlite_vfs_handle **out);
+/** Full callable VFS methods; borrowed until the handle is closed. */
+cpkt_sqlite_vfs *cpkt_sqlite_vfs_handle_view(cpkt_sqlite_vfs_handle *self);
+int cpkt_sqlite_file_control_filestat(cpkt_sqlite *self,
+                                      const char *database_name,
+                                      cpkt_sqlite_string *output);
+int cpkt_sqlite_file_handle_read(cpkt_sqlite_file_handle *self, void *buffer,
+                                 int byte_count, cpkt_sqlite_i64 offset);
+int cpkt_sqlite_file_handle_write(cpkt_sqlite_file_handle *self,
+                                  const void *buffer, int byte_count,
+                                  cpkt_sqlite_i64 offset);
+int cpkt_sqlite_file_handle_size(cpkt_sqlite_file_handle *self,
+                                 cpkt_sqlite_i64 *out);
+int cpkt_sqlite_file_handle_sync(cpkt_sqlite_file_handle *self, int flags);
+void cpkt_sqlite_file_handle_close(cpkt_sqlite_file_handle *self);
+const char *cpkt_sqlite_vfs_handle_name(const cpkt_sqlite_vfs_handle *self);
+int cpkt_sqlite_vfs_handle_version(const cpkt_sqlite_vfs_handle *self);
+int cpkt_sqlite_vfs_handle_access(cpkt_sqlite_vfs_handle *self,
+                                  const char *path, int flags, int *out);
+void cpkt_sqlite_vfs_handle_close(cpkt_sqlite_vfs_handle *self);
 int cpkt_sqlite_set_lock_timeout(cpkt_sqlite *self, int milliseconds,
                                  unsigned long flags);
 int cpkt_sqlite_status_database(const cpkt_sqlite *self, int category,
@@ -1476,6 +1597,8 @@ int cpkt_sqlite_system_error(const cpkt_sqlite *self);
 const char *cpkt_sqlite_error(const cpkt_sqlite *self);
 const void *cpkt_sqlite_error16(const cpkt_sqlite *self);
 int cpkt_sqlite_error_code(const cpkt_sqlite *self);
+/** SQLite's current result code, respecting extended-result-code mode. */
+int cpkt_sqlite_result_code(const cpkt_sqlite *self);
 int cpkt_sqlite_set_error(cpkt_sqlite *self, int code, const char *message);
 int cpkt_sqlite_error_offset(const cpkt_sqlite *self);
 int cpkt_sqlite_set_busy_handler(cpkt_sqlite *self,
@@ -1732,6 +1855,8 @@ int cpkt_sqlite_changeset_apply_v3_strm(
 int cpkt_sqlite_rebaser_new(cpkt_sqlite_rebaser **out);
 int cpkt_sqlite_changegroup_new(cpkt_sqlite_changegroup **out);
 int cpkt_sqlite_statement_finalize(cpkt_sqlite_statement *self);
+
+#include <cpkt/sqlite_constants.h>
 
 /** @} */
 

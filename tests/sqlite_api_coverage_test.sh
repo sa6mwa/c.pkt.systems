@@ -43,6 +43,7 @@ while IFS= read -r api; do
     sqlite3_create_module) needle='sqlite3_create_module_v2' ;;
     sqlite3_db_handle) needle='cpkt_sqlite_statement_database' ;;
     sqlite3_open) needle='sqlite3_open_v2' ;;
+    sqlite3_log) needle='sqlite3__cpkt_log_v' ;;
     sqlite3_prepare|sqlite3_prepare16|sqlite3_prepare16_v2) needle='sqlite3_prepare16_v3' ;;
     sqlite3_snprintf) needle='sqlite3_vsnprintf' ;;
     sqlite3_soft_heap_limit) needle='sqlite3_soft_heap_limit64' ;;

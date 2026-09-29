@@ -152,6 +152,11 @@ function(cpkt_prepare_dependency_component)
     cpkt_append_dependency_recipe_function(_contract "${_function}")
   endforeach()
   foreach(_input_file IN LISTS component_INPUT_FILES)
+    # Ninja/Make must re-run configuration before deciding whether the
+    # component's installed artifacts are up to date. Recipe hashes alone
+    # only take effect after an explicit configure.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+      "${_input_file}")
     # Contract-engine and verified-archive cache changes govern bookkeeping,
     # not a component's compiled output. Hashing either invalidates every
     # component without changing a component build recipe.

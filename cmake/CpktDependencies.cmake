@@ -3065,6 +3065,11 @@ function(cpkt_add_postgresql)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
           "${source_dir}/src/include/postgres_ext.h"
           "${install_dir}/include/postgres_ext.h"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+          "${install_dir}/include/libpq"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${source_dir}/src/include/libpq/libpq-fs.h"
+          "${install_dir}/include/libpq/libpq-fs.h"
         COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}/share"
         COMMAND ${strip_install_command}
       BUILD_BYPRODUCTS "${static_library}" "${common_static_library}" "${port_static_library}" "${oauth_static_library}" "${oauth_shared_library}" "${shared_library}"
@@ -3092,6 +3097,7 @@ function(cpkt_add_postgresql)
     cpkt_require_dependency_file("${oauth_shared_library}" "PostgreSQL OAuth loadable module")
     cpkt_require_dependency_file("${shared_library}" "PostgreSQL libpq shared library")
     cpkt_require_dependency_file("${install_dir}/include/libpq-fe.h" "PostgreSQL libpq header")
+    cpkt_require_dependency_file("${install_dir}/include/libpq/libpq-fs.h" "PostgreSQL large-object flags header")
   endif()
   set(CPKT_POSTGRESQL_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
@@ -3244,7 +3250,7 @@ function(cpkt_add_sqlite)
   set(tmp_dir "${prefix_dir}/tmp")
   set(static_library "${install_dir}/lib/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(shared_library "${install_dir}/lib/libsqlite3${CMAKE_SHARED_LIBRARY_SUFFIX}")
-  set(source_amalgamation "${source_dir}/sqlite3.c")
+  set(source_amalgamation "${CMAKE_SOURCE_DIR}/src/sqlite_native_amalgamation.c")
   set(source_header "${source_dir}/sqlite3.h")
   cpkt_get_external_c_flags(external_cflags)
   separate_arguments(sqlite_cflags NATIVE_COMMAND "${external_cflags}")
@@ -3364,6 +3370,7 @@ function(cpkt_add_sqlite)
           ${sqlite_compile_definitions}
           ${sqlite_thread_flags}
           -fPIC
+          -I "${source_dir}"
           -c "${source_amalgamation}"
           -o "${build_dir}/sqlite3.o"
         COMMAND ${CMAKE_AR} rcs "${build_dir}/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}"
@@ -3380,6 +3387,8 @@ function(cpkt_add_sqlite)
       INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${install_dir}/include" "${install_dir}/lib"
         COMMAND ${CMAKE_COMMAND} -E copy "${source_header}" "${install_dir}/include/sqlite3.h"
+        COMMAND ${CMAKE_COMMAND} -E copy "${source_dir}/sqlite3ext.h"
+          "${install_dir}/include/sqlite3ext.h"
         COMMAND ${CMAKE_COMMAND} -E copy
           "${headers_source_dir}/ext/session/sqlite3session.h"
           "${install_dir}/include/sqlite3session.h"
@@ -3414,6 +3423,7 @@ function(cpkt_add_sqlite)
     cpkt_require_dependency_file("${static_library}" "SQLite static library")
     cpkt_require_dependency_file("${shared_library}" "SQLite shared library")
     cpkt_require_dependency_file("${install_dir}/include/sqlite3.h" "SQLite header")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3ext.h" "SQLite extension header")
     cpkt_require_dependency_file("${install_dir}/include/sqlite3session.h" "SQLite session header")
     cpkt_require_dependency_file("${install_dir}/include/sqlite3rtree.h" "SQLite RTree header")
     cpkt_require_dependency_file("${install_dir}/include/fts5.h" "SQLite FTS5 header")
@@ -3716,6 +3726,7 @@ function(cpkt_configure_dependencies)
     INPUT_FILES
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/src/sqlite_native_amalgamation.c"
     RECIPE_FUNCTIONS cpkt_add_sqlite)
 
   cpkt_add_openssl()

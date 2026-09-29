@@ -26,6 +26,17 @@ also available for every supported connection, result, COPY, pipeline,
 prepared statement, escaping, notification, large-object, and fast-path
 operation.
 
+Event registrations use `cpkt_postgres_event_register()`. Each callback
+receives `info->event`, the borrowed identity of its current registration,
+including during REGISTER before `register()` returns. That identity can be
+used immediately with the connection and result instance-data accessors.
+Registration callbacks may register another callback. A failed REGISTER is
+removed; a failed RESULT_CREATE remains eligible on a later explicit fire,
+and only initialized registrations receive COPY and DESTROY. A result retains
+its frozen registration list after its connection closes, and detached results
+may be cleared independently. A callback identity remains borrowed until the
+connection and all results that refer to it have been destroyed.
+
 `cpkt_postgres_i64` represents an exact signed 64-bit value as two 32-bit
 words (`high`, `low`) without requiring `long long`.  Values are two's
 complement bits; the facade performs the conversion for large-object offsets
@@ -59,4 +70,12 @@ connection strings. The gate covers receiver queries, parameters, asynchronous
 send/receive, prepared statements, transaction state, and an exact 64-bit
 `INT8` result. The integration executable reads connection strings directly
 from those environment variables; the harness never prints them or passes them
-as command-line arguments.
+as command-line arguments. Shared wire assertions cover result metadata,
+NULL and binary values, errors and recovery, event instance data, single-row
+and chunked delivery, nonblocking transport, escaping, prepared statements,
+transactions, and 64-bit text results on both servers. PostgreSQL-specific
+assertions cover
+pipeline error recovery, fragmented COPY in/out, notice and notification
+callbacks, cancellation/reset, and sparse large-object offsets above 4 GiB.
+Those assertions run only against PostgreSQL because CockroachDB does not
+promise those server-side features.

@@ -8,6 +8,8 @@ import re
 import subprocess
 import sys
 
+from configured_build import cache_value, scratch_dir
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TARGETS = (
     "x86_64-linux-gnu", "x86_64-linux-musl", "aarch64-linux-gnu",
@@ -17,23 +19,11 @@ TARGETS = (
 
 
 def compiler(target):
-    preset = "debug" if target == "x86_64-linux-gnu" else target + "-release"
-    cache = (ROOT / "build" / preset / "CMakeCache.txt").read_text()
-    match = re.search(r"^CMAKE_C_COMPILER:(?:FILEPATH|STRING)=(.+)$", cache,
-                      re.MULTILINE)
-    if not match:
-        raise RuntimeError("configured compiler missing for " + target)
-    return match.group(1)
+    return cache_value(ROOT, target, "CMAKE_C_COMPILER")
 
 
 def symbol_tool(target):
-    preset = "debug" if target == "x86_64-linux-gnu" else target + "-release"
-    cache = (ROOT / "build" / preset / "CMakeCache.txt").read_text()
-    match = re.search(r"^CMAKE_NM:(?:FILEPATH|STRING)=(.+)$", cache,
-                      re.MULTILINE)
-    if not match:
-        raise RuntimeError("configured symbol tool missing for " + target)
-    return match.group(1)
+    return cache_value(ROOT, target, "CMAKE_NM")
 
 
 def defined_symbols(target, static):
@@ -135,11 +125,11 @@ def check(selected_targets):
         else:
             lines.append("  (void)&{};".format(entry))
     lines.append("}")
-    directory = ROOT / "build/auth-completion/contract"
-    directory.mkdir(parents=True, exist_ok=True)
-    source = directory / "typed-bindings.c"
-    source.write_text("\n".join(lines) + "\n")
     for target in selected_targets:
+        directory = scratch_dir(ROOT, target, "auth-completion/contract")
+        directory.mkdir(parents=True, exist_ok=True)
+        source = directory / "typed-bindings.c"
+        source.write_text("\n".join(lines) + "\n")
         command = [compiler(target), "-std=c89", "-pedantic-errors", "-Werror",
                    "-I", str(ROOT / "include"), "-c", str(source), "-o",
                    str(directory / ("typed-bindings-" + target + ".o"))]
