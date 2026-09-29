@@ -116,6 +116,8 @@ gssapi_plan=$(cmake --build "$build_dir" --target cpkt_gssapi_static -- -n)
 require_plan_target "$gssapi_plan" cpkt_krb5_static_project "GSSAPI facade build plan"
 require_plan_target "$gssapi_plan" cpkt_krb5_shared_project "GSSAPI facade build plan"
 require_plan_target "$gssapi_plan" cpkt_openssl_project "GSSAPI facade build plan"
+gssapi_shared_plan=$(cmake --build "$build_dir" --target cpkt_gssapi_shared -- -n)
+require_plan_target "$gssapi_shared_plan" cpkt_krb5_shared_project "shared GSSAPI facade build plan"
 forbid_plan_targets "$gssapi_plan" "GSSAPI facade build plan" \
   cpkt_deps_all cpkt_cyrus_sasl_project cpkt_openldap_project \
   cpkt_postgresql_project cpkt_sqlite_project

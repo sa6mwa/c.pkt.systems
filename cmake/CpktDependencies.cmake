@@ -2252,6 +2252,7 @@ function(cpkt_add_krb5)
   set(profile_static_library "${install_dir}/lib/libprofile${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(verto_static_library "${install_dir}/lib/libverto${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(gssapi_shared_library "${install_dir}/lib/libgssapi_krb5${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(krb5_shared_library "${install_dir}/lib/libkrb5${CMAKE_SHARED_LIBRARY_SUFFIX}")
   set(com_err_header "${install_dir}/include/com_err.h")
   set(krb5_static_platform_libraries "")
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -2521,7 +2522,7 @@ function(cpkt_add_krb5)
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib/krb5/plugins/tls" "${install_dir}/lib/krb5/plugins/tls"
         COMMAND ${krb5_darwin_install_name_normalize_command}
         COMMAND ${strip_install_command}
-      BUILD_BYPRODUCTS "${gssapi_shared_library}" "${tls_module}"
+      BUILD_BYPRODUCTS "${gssapi_shared_library}" "${krb5_shared_library}" "${tls_module}"
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   endif()
 

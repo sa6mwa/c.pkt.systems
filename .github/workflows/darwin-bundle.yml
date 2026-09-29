@@ -29,6 +29,7 @@ jobs:
             -DCMAKE_OTOOL:FILEPATH="$(xcrun --find otool)"
       - name: Run portable build fixtures
         run: |
+          cmake --build --preset arm64-apple-darwin-native --target cpkt_gssapi_shared -- -n >/dev/null
           for fixture in patch_series_portability static_archive_member_cleanup postgresql_probe_rpaths; do
             ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
               --no-tests=error -R "^${fixture}$"
