@@ -2215,6 +2215,13 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_native_views_test)
     target_link_libraries(cpkt_sqlite_native_views_test PRIVATE
       cpkt_sqlite_static)
+    add_executable(cpkt_sqlite_rebaser_empty_test
+      tests/sqlite_rebaser_empty_test.c)
+    cpkt_use_local_runtime(cpkt_sqlite_rebaser_empty_test)
+    cpkt_configure_c89_target(cpkt_sqlite_rebaser_empty_test)
+    cpkt_add_repo_warning_errors(cpkt_sqlite_rebaser_empty_test)
+    target_link_libraries(cpkt_sqlite_rebaser_empty_test PRIVATE
+      cpkt_sqlite_static)
     add_executable(cpkt_sqlite_completion_test
       tests/sqlite_completion_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_completion_test)
@@ -2727,6 +2734,9 @@ if(CPKT_BUILD_TESTS)
           "${CMAKE_BINARY_DIR}/db-completion/native-view.sqlite"
           "${CMAKE_BINARY_DIR}/db-completion/sparse-view.sqlite")
       set_tests_properties(sqlite_native_views PROPERTIES TIMEOUT 30)
+      add_test(NAME sqlite_rebaser_empty
+        COMMAND cpkt_sqlite_rebaser_empty_test)
+      set_tests_properties(sqlite_rebaser_empty PROPERTIES TIMEOUT 30)
       add_test(NAME sqlite_completion
         COMMAND cpkt_sqlite_completion_test
           "${CMAKE_BINARY_DIR}/db-completion/completion.sqlite")
@@ -2922,7 +2932,8 @@ if(CPKT_BUILD_TESTS)
         sqlite_vfs_wal_capability
         pdf_facade_static pdf_facade_shared
         sqlite_child_lifetime_concurrency sqlite_page_cache_lifetime
-        sqlite_native_views sqlite_completion sqlite_stream_failure
+        sqlite_native_views sqlite_rebaser_empty sqlite_completion
+        sqlite_stream_failure
         sqlite_log_native_peer
         sqlite_error_code_native_peer
         sqlite_loadable_extension_static sqlite_loadable_extension_shared

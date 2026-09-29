@@ -9,6 +9,7 @@ int main(int argc, char **argv) {
   cpkt_sqlite_page_cache_methods second_cache_methods;
   cpkt_sqlite_page_cache *cache;
   cpkt_sqlite_page *page;
+  cpkt_sqlite_page *same_page;
   cpkt_sqlite_vfs *vfs;
   cpkt_sqlite_file sparse_file;
   cpkt_sqlite *database;
@@ -23,6 +24,7 @@ int main(int argc, char **argv) {
   char byte;
   char header[16];
   int accessible;
+  int index;
   int status;
   int stage;
   if (argc != 3)
@@ -65,10 +67,36 @@ int main(int argc, char **argv) {
   if (page == NULL || page->buffer == NULL || page->extra == NULL)
     goto fail;
   ((char *)page->buffer)[0] = 'x';
+  same_page = cache_methods.fetch(cache, 1UL, 0);
+  if (same_page != page || ((char *)same_page->buffer)[0] != 'x')
+    goto fail;
   cache_methods.unpin(cache, page, 1);
   page = NULL;
+  page = cache_methods.fetch(cache, 2UL, 2);
+  if (page == NULL)
+    goto fail;
+  cache_methods.rekey(cache, page, 2UL, 3UL);
+  if (cache_methods.fetch(cache, 3UL, 0) != page)
+    goto fail;
+  cache_methods.truncate(cache, 3UL);
+  page = NULL;
+  cache_methods.cache_size(cache, 512);
+  for (index = 10; index < 150; ++index) {
+    page = cache_methods.fetch(cache, (unsigned long)index, 2);
+    if (page == NULL)
+      goto fail;
+  }
+  if (cache_methods.fetch(cache, 10UL, 0) == NULL ||
+      cache_methods.fetch(cache, 149UL, 0) != page)
+    goto fail;
+  cache_methods.truncate(cache, 100UL);
+  page = NULL;
+  page = cache_methods.fetch(cache, 4UL, 2);
+  if (page == NULL)
+    goto fail;
   cache_methods.destroy(cache);
   cache = NULL;
+  page = NULL;
   cpkt_sqlite_page_cache_methods_release(&cache_methods);
   cpkt_sqlite_page_cache_methods_release(&second_cache_methods);
   stage = 3;

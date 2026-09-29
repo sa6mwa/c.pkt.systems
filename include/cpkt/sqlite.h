@@ -1098,7 +1098,9 @@ struct cpkt_sqlite_changeset_iterator {
 };
 
 struct cpkt_sqlite_rebaser {
+  /** Zero bytes may be supplied as NULL; nonempty input requires data. */
   int (*configure)(cpkt_sqlite_rebaser *self, const void *data, int byte_count);
+  /** On success, even an empty output is owned and must be freed. */
   int (*rebase)(cpkt_sqlite_rebaser *self, const void *data, int byte_count,
                 cpkt_sqlite_changeset **out);
   int (*rebase_strm)(cpkt_sqlite_rebaser *self,

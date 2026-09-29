@@ -8048,7 +8048,8 @@ int cpkt_sqlite_changeset_apply_v3_strm(
 
 static int cpkt_sqlite_rebaser_configure(cpkt_sqlite_rebaser *self,
                                          const void *data, int byte_count) {
-  if (cpkt_sqlite_native_rebaser(self) == NULL || data == NULL)
+  if (cpkt_sqlite_native_rebaser(self) == NULL || byte_count < 0 ||
+      (data == NULL && byte_count != 0))
     return CPKT_SQLITE_MISUSE;
   return sqlite3rebaser_configure(cpkt_sqlite_native_rebaser(self), byte_count,
                                   (const void *)data);
@@ -8062,7 +8063,8 @@ static int cpkt_sqlite_rebaser_rebase(cpkt_sqlite_rebaser *self,
   int status;
   if (out != NULL)
     *out = NULL;
-  if (cpkt_sqlite_native_rebaser(self) == NULL || data == NULL || out == NULL) {
+  if (cpkt_sqlite_native_rebaser(self) == NULL || byte_count < 0 ||
+      (data == NULL && byte_count != 0) || out == NULL) {
     return CPKT_SQLITE_MISUSE;
   }
   result = NULL;

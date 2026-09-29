@@ -11,6 +11,8 @@ typedef struct cpkt_sqlite_native_cache_view cpkt_sqlite_native_cache_view;
 typedef struct cpkt_sqlite_native_cache_item cpkt_sqlite_native_cache_item;
 typedef struct cpkt_sqlite_native_page_item cpkt_sqlite_native_page_item;
 
+enum { CPKT_SQLITE_CACHE_BUCKETS = 64 };
+
 struct cpkt_sqlite_native_mutex_item {
   sqlite3_mutex *native;
   int type;
@@ -33,11 +35,18 @@ struct cpkt_sqlite_native_cache_item {
   cpkt_sqlite_page_cache public_cache;
   sqlite3_pcache *native;
   cpkt_sqlite_native_cache_view *view;
+  cpkt_sqlite_native_page_item *small_buckets[CPKT_SQLITE_CACHE_BUCKETS];
+  cpkt_sqlite_native_page_item **buckets;
+  size_t bucket_count;
+  size_t page_count;
 };
 
 struct cpkt_sqlite_native_page_item {
   cpkt_sqlite_page public_page;
   sqlite3_pcache_page *native;
+  unsigned int key;
+  cpkt_sqlite_native_page_item *next;
+  cpkt_sqlite_native_page_item **previous;
 };
 
 static pthread_mutex_t cpkt_sqlite_native_method_lock =
@@ -302,6 +311,76 @@ cpkt_sqlite_cache_item(cpkt_sqlite_page_cache *cache) {
   return cache == NULL ? NULL : (cpkt_sqlite_native_cache_item *)cache->state;
 }
 
+static size_t
+cpkt_sqlite_cache_bucket(const cpkt_sqlite_native_cache_item *item,
+                         unsigned int key) {
+  return ((size_t)key) & (item->bucket_count - 1U);
+}
+
+static cpkt_sqlite_native_page_item *
+cpkt_sqlite_cache_page_find(cpkt_sqlite_native_cache_item *item,
+                            unsigned int key) {
+  cpkt_sqlite_native_page_item *page;
+  for (page = item->buckets[cpkt_sqlite_cache_bucket(item, key)]; page != NULL;
+       page = page->next)
+    if (page->key == key)
+      return page;
+  return NULL;
+}
+
+static void cpkt_sqlite_cache_page_link(cpkt_sqlite_native_cache_item *item,
+                                        cpkt_sqlite_native_page_item *page) {
+  cpkt_sqlite_native_page_item **slot;
+  slot = &item->buckets[cpkt_sqlite_cache_bucket(item, page->key)];
+  page->next = *slot;
+  page->previous = slot;
+  if (*slot != NULL)
+    (*slot)->previous = &page->next;
+  *slot = page;
+}
+
+static void cpkt_sqlite_cache_page_unlink(cpkt_sqlite_native_page_item *page) {
+  *page->previous = page->next;
+  if (page->next != NULL)
+    page->next->previous = page->previous;
+  page->next = NULL;
+  page->previous = NULL;
+}
+
+/* Rehash only when the pinned-page population grows. Repeated fetches do not
+ * allocate or traverse all pages. An allocation failure leaves the old index
+ * valid; a later insertion may retry growth. */
+static void cpkt_sqlite_cache_pages_grow(cpkt_sqlite_native_cache_item *item) {
+  cpkt_sqlite_native_page_item **buckets;
+  cpkt_sqlite_native_page_item **old_buckets;
+  cpkt_sqlite_native_page_item *page;
+  cpkt_sqlite_native_page_item *next;
+  size_t old_count;
+  size_t count;
+  size_t index;
+  if (item->page_count <= item->bucket_count * 2U ||
+      item->bucket_count > ((size_t)-1) / (2U * sizeof(*buckets)))
+    return;
+  old_count = item->bucket_count;
+  count = old_count * 2U;
+  buckets = (cpkt_sqlite_native_page_item **)calloc(count, sizeof(*buckets));
+  if (buckets == NULL)
+    return;
+  old_buckets = item->buckets;
+  item->buckets = buckets;
+  item->bucket_count = count;
+  for (index = 0; index < old_count; ++index) {
+    page = old_buckets[index];
+    while (page != NULL) {
+      next = page->next;
+      cpkt_sqlite_cache_page_link(item, page);
+      page = next;
+    }
+  }
+  if (old_buckets != item->small_buckets)
+    free(old_buckets);
+}
+
 static cpkt_sqlite_page_cache *cpkt_sqlite_cache_view_create(void *context,
                                                              int page_bytes,
                                                              int extra_bytes,
@@ -320,6 +399,8 @@ static cpkt_sqlite_page_cache *cpkt_sqlite_cache_view_create(void *context,
   }
   item->native = native;
   item->view = view;
+  item->buckets = item->small_buckets;
+  item->bucket_count = CPKT_SQLITE_CACHE_BUCKETS;
   item->public_cache.state = item;
   return &item->public_cache;
 }
@@ -352,15 +433,22 @@ cpkt_sqlite_cache_view_fetch(cpkt_sqlite_page_cache *cache, unsigned long key,
       item->view->native.xFetch(item->native, (unsigned int)key, create_flag);
   if (native == NULL)
     return NULL;
+  page = cpkt_sqlite_cache_page_find(item, (unsigned int)key);
+  if (page != NULL)
+    return &page->public_page;
   page = (cpkt_sqlite_native_page_item *)calloc(1, sizeof(*page));
   if (page == NULL) {
     item->view->native.xUnpin(item->native, native, 0);
     return NULL;
   }
   page->native = native;
+  page->key = (unsigned int)key;
   page->public_page.buffer = native->pBuf;
   page->public_page.extra = native->pExtra;
   page->public_page.state = page;
+  cpkt_sqlite_cache_page_link(item, page);
+  ++item->page_count;
+  cpkt_sqlite_cache_pages_grow(item);
   return &page->public_page;
 }
 
@@ -374,6 +462,8 @@ static void cpkt_sqlite_cache_view_unpin(cpkt_sqlite_page_cache *cache,
   if (item == NULL || native_page == NULL)
     return;
   item->view->native.xUnpin(item->native, native_page->native, discard);
+  cpkt_sqlite_cache_page_unlink(native_page);
+  --item->page_count;
   free(native_page);
 }
 
@@ -389,28 +479,58 @@ static void cpkt_sqlite_cache_view_rekey(cpkt_sqlite_page_cache *cache,
   if (item != NULL && native_page != NULL &&
       (sizeof(unsigned long) == sizeof(unsigned int) ||
        (old_key <= (unsigned long)UINT_MAX &&
-        new_key <= (unsigned long)UINT_MAX)))
+        new_key <= (unsigned long)UINT_MAX))) {
     item->view->native.xRekey(item->native, native_page->native,
                               (unsigned int)old_key, (unsigned int)new_key);
+    cpkt_sqlite_cache_page_unlink(native_page);
+    native_page->key = (unsigned int)new_key;
+    cpkt_sqlite_cache_page_link(item, native_page);
+  }
 }
 
 static void cpkt_sqlite_cache_view_truncate(cpkt_sqlite_page_cache *cache,
                                             unsigned long limit) {
   cpkt_sqlite_native_cache_item *item;
+  cpkt_sqlite_native_page_item *page;
+  cpkt_sqlite_native_page_item *next;
+  size_t index;
   item = cpkt_sqlite_cache_item(cache);
-  if (item != NULL)
-    item->view->native.xTruncate(item->native,
-                                 sizeof(unsigned long) > sizeof(unsigned int) &&
-                                         limit > (unsigned long)UINT_MAX
-                                     ? UINT_MAX
-                                     : (unsigned int)limit);
+  if (item == NULL || (sizeof(unsigned long) > sizeof(unsigned int) &&
+                       limit > (unsigned long)UINT_MAX))
+    return;
+  item->view->native.xTruncate(item->native, (unsigned int)limit);
+  for (index = 0; index < item->bucket_count; ++index) {
+    page = item->buckets[index];
+    while (page != NULL) {
+      next = page->next;
+      if (page->key >= (unsigned int)limit) {
+        cpkt_sqlite_cache_page_unlink(page);
+        --item->page_count;
+        free(page);
+      }
+      page = next;
+    }
+  }
 }
 
 static void cpkt_sqlite_cache_view_destroy(cpkt_sqlite_page_cache *cache) {
   cpkt_sqlite_native_cache_item *item;
+  cpkt_sqlite_native_page_item *page;
+  cpkt_sqlite_native_page_item *next;
+  size_t index;
   item = cpkt_sqlite_cache_item(cache);
   if (item != NULL) {
     item->view->native.xDestroy(item->native);
+    for (index = 0; index < item->bucket_count; ++index) {
+      page = item->buckets[index];
+      while (page != NULL) {
+        next = page->next;
+        free(page);
+        page = next;
+      }
+    }
+    if (item->buckets != item->small_buckets)
+      free(item->buckets);
     free(item);
   }
 }

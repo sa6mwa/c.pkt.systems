@@ -88,6 +88,9 @@ Extended changeset apply operations collect rebase output only when
 rebase allocation, including for `_strm` apply operations.
 An apply without a conflict callback aborts with `CPKT_SQLITE_ABORT` when a
 changeset conflicts with existing data.
+An empty session changeset may contain `data == NULL` and `byte_count == 0`.
+Rebaser `configure` and `rebase` accept that pair; an empty `rebase` result is
+still an owned changeset and must be freed.
 
 `db->close(db)` is the convenience destructor: it defers native teardown until
 facade-owned statements, blobs, and backups have been finalized or closed, so
@@ -129,6 +132,10 @@ provider-private structs are not part of this C89 interface.
 return callable tables for native defaults as well as facade registrations.
 Each native table getter owns independent adapter metadata; release it with
 its matching `*_methods_release()` after its cache pages or mutexes are gone.
+For a native PCACHE2 view, repeated fetches of a pinned key return the same
+page receiver. One unpin releases that receiver regardless of fetch count;
+truncate implicitly releases pinned receivers at or above its limit, and
+destroy releases all remaining page receivers.
 The selected native function table is copied into that metadata, so a later
 configuration change does not retarget an earlier view. Facade registration
 getters return the registered application callback/context identities.
