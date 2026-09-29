@@ -84,6 +84,9 @@
     "PQconninfoOption": {
       "facade": "cpkt_postgres_connection_option"
     },
+    "PQdiagnosticProcessor": {
+      "facade": "cpkt_postgres_diagnostic_sink"
+    },
     "PQnoticeProcessor": {
       "facade": "cpkt_postgres_notice_processor"
     },
@@ -95,6 +98,9 @@
     },
     "PQsslKeyPassHook_OpenSSL_type": {
       "facade": "cpkt_postgres_ssl_key_password_hook"
+    },
+    "PQtraceProcessor": {
+      "facade": "cpkt_postgres_trace_sink"
     },
     "PostgresPollingStatusType": {
       "facade": "cpkt_postgres_poll_status"

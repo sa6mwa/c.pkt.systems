@@ -1973,6 +1973,10 @@ function(cpkt_add_whisper)
         ${CMAKE_COMMAND}
           -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
           -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=<SOURCE_DIR>
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/whisper.series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=ON
         ${whisper_common_cmake_args}
@@ -2001,6 +2005,10 @@ function(cpkt_add_whisper)
         ${CMAKE_COMMAND}
           -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
           -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=<SOURCE_DIR>
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/whisper.series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=OFF
         ${whisper_common_cmake_args}
@@ -3013,6 +3021,10 @@ function(cpkt_add_postgresql)
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
       DEPENDS cpkt_openldap_project cpkt_cyrus_sasl_project cpkt_krb5_shared_project cpkt_curl_project cpkt_zlib_project cpkt_openssl_project
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/postgresql.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
         ${CMAKE_COMMAND} -E env ${postgresql_configure_env_args}
         "${source_dir}/configure"
@@ -3594,6 +3606,8 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/whisper.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/whisper_ggml_validation_logging.patch"
     RECIPE_FUNCTIONS cpkt_order_shared_install cpkt_add_whisper)
   cpkt_prepare_dependency_component(
     NAME mqttc
@@ -3655,6 +3669,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_const_correctness.patch"
       "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_tls_bundle.patch"
       "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_error_va_list.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_gss_trace_callback.patch"
     RECIPE_FUNCTIONS cpkt_add_krb5)
   cpkt_prepare_dependency_component(
     NAME cyrus-sasl
@@ -3688,6 +3703,8 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/remove_static_archive_member.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patches/openldap.series"
       "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_client_const.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_sasl_logging.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_c89_log_setter.patch"
     RECIPE_FUNCTIONS cpkt_add_openldap)
   cpkt_prepare_dependency_component(
     NAME postgresql
@@ -3700,6 +3717,8 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/remove_postgresql_probe_rpaths.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/postgresql.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/postgresql_logging.patch"
     RECIPE_FUNCTIONS cpkt_add_postgresql)
   cpkt_prepare_dependency_component(
     NAME iodbc

@@ -18,6 +18,14 @@ extern "C" {
 typedef struct cpkt_lua_runtime cpkt_lua_runtime;
 
 /**
+ * Receives one Lua warning fragment. `message` is borrowed until return.
+ * A nonzero `to_continue` means the next fragment belongs to this warning.
+ * The callback and context remain caller-owned. Do not longjmp across Lua.
+ */
+typedef void (*cpkt_lua_runtime_warning_fn)(void *context, const char *message,
+                                            int to_continue);
+
+/**
  * Result codes returned by strict Lua runtime facade operations.
  */
 typedef enum cpkt_lua_runtime_status {
@@ -190,6 +198,16 @@ void cpkt_lua_runtime_free(cpkt_lua_runtime *runtime);
  * The facade never dereferences or frees this pointer.
  */
 void cpkt_lua_runtime_set_context(cpkt_lua_runtime *runtime, void *context);
+
+/**
+ * Replaces the warning sink for this runtime. NULL suppresses warnings.
+ * Lua emits fragments; this facade passes each fragment through unchanged.
+ * Replacement during a warning takes effect on the next fragment. The
+ * callback can run during script execution and runtime destruction.
+ */
+void cpkt_lua_runtime_set_warning_callback(cpkt_lua_runtime *runtime,
+                                           cpkt_lua_runtime_warning_fn callback,
+                                           void *context);
 
 /**
  * Returns the embedder-owned context pointer currently stored on the runtime.

@@ -89,6 +89,20 @@ typedef void (*cpkt_postgres_notice_receiver)(
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 typedef void (*cpkt_postgres_notice_processor)(
     void *context, cpkt_postgres_connection *connection, const char *message);
+/** Diagnostic record outside server notices and result errors. The text is
+ * borrowed until return. Do not free the connection from this callback. */
+typedef void (*cpkt_postgres_diagnostic_sink)(
+    void *context, cpkt_postgres_connection *connection, int level,
+    const char *message);
+/** One formatted PostgreSQL protocol trace record. Bytes are borrowed until
+ * return. A record can contain connection credentials or query data. */
+typedef void (*cpkt_postgres_trace_sink)(void *context,
+                                         cpkt_postgres_connection *connection,
+                                         const char *record, size_t length);
+/** Warning level for a client-side diagnostic. */
+#define CPKT_POSTGRES_DIAGNOSTIC_WARNING 1
+/** Explicitly enabled developer tracing; may contain sensitive data. */
+#define CPKT_POSTGRES_DIAGNOSTIC_DEBUG 2
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 typedef void (*cpkt_postgres_thread_lock)(int acquire);
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
@@ -584,6 +598,22 @@ void cpkt_postgres_set_notice_processor(
     cpkt_postgres_notice_processor callback, void *context,
     cpkt_postgres_notice_processor *old_callback_out, void **old_context_out);
 
+/** Sets the process default before constructing connections or worker threads.
+ * Startup warnings are delivered even while connection options are parsed.
+ * Existing connections without an override use the current process default.
+ * NULL restores the provider's stderr default. Keep the context alive while
+ * set. */
+void cpkt_postgres_set_default_diagnostic_sink(
+    cpkt_postgres_diagnostic_sink callback, void *context);
+
+/** Replaces a connection's diagnostic sink after construction. Returns zero
+ * only if callback bookkeeping could not be allocated. NULL restores the
+ * current process default, or the provider's stderr default if none is
+ * installed. Keep context alive until replacement or connection destruction. */
+int cpkt_postgres_set_diagnostic_sink(cpkt_postgres_connection *connection,
+                                      cpkt_postgres_diagnostic_sink callback,
+                                      void *context);
+
 /* Process-global client hooks.  Register them before starting worker threads.
  */
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
@@ -607,6 +637,13 @@ cpkt_postgres_get_auth_data_hook(void **context_out);
 
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 void cpkt_postgres_trace(cpkt_postgres_connection *connection, FILE *stream);
+/** Selects a callback destination for formatted protocol trace records.
+ * Replaces a prior file or callback destination. Returns zero only when
+ * callback bookkeeping allocation fails. NULL disables tracing. Keep the
+ * context alive until replacement or connection destruction. */
+int cpkt_postgres_set_trace_sink(cpkt_postgres_connection *connection,
+                                 cpkt_postgres_trace_sink callback,
+                                 void *context);
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
 void cpkt_postgres_untrace(cpkt_postgres_connection *connection);
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */

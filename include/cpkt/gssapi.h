@@ -135,6 +135,19 @@ typedef struct cpkt_gss_krb_replay_cache cpkt_gss_krb_replay_cache;
 /** Kerberos PAC mapping exported by the GSS mspac name attribute module. */
 typedef struct cpkt_gss_pac cpkt_gss_pac;
 
+/** Receives one borrowed, formatted MIT Kerberos trace record at a time.
+ * The message is valid only for the duration of the callback. */
+typedef void (*cpkt_gss_trace_callback)(void *context, const char *message);
+
+/** Set the process-wide trace sink for subsequently created Kerberos GSS
+ * contexts, including SPNEGO/NegoEx. Register before starting worker threads.
+ * The context remains caller-owned and must outlive all callbacks. A null
+ * callback disables delivery; newly created contexts then retain native
+ * KRB5_TRACE file behavior. Existing contexts retain the bridge but stop
+ * delivering after it is disabled. */
+void cpkt_gss_set_trace_callback(cpkt_gss_trace_callback callback,
+                                 void *context);
+
 enum cpkt_gss_constants {
   CPKT_GSS_COMPLETE = 0,
   CPKT_GSS_CREDENTIAL_BOTH = 0,

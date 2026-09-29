@@ -579,6 +579,65 @@ static void test_failed_lua_module_registration_releases_chunk(void **state) {
   assert_int_equal(allocator.bytes_live, 0);
 }
 
+struct warning_capture {
+  char text[128];
+  size_t used;
+  int fragments;
+  int continuations;
+};
+
+static void on_warning(void *context, const char *message, int to_continue) {
+  struct warning_capture *capture;
+  size_t length;
+
+  capture = (struct warning_capture *)context;
+  length = strlen(message);
+  assert_true(capture->used + length < sizeof(capture->text));
+  memcpy(capture->text + capture->used, message, length + 1);
+  capture->used += length;
+  capture->fragments++;
+  capture->continuations += to_continue != 0;
+}
+
+static void test_warning_callback_lifetime_and_replacement(void **state) {
+  static const unsigned char source[] = "warn('alpha', 'beta')";
+  struct warning_capture first;
+  struct warning_capture second;
+  cpkt_lua_runtime *runtime;
+
+  (void)state;
+  memset(&first, 0, sizeof(first));
+  memset(&second, 0, sizeof(second));
+  runtime = NULL;
+  assert_int_equal(cpkt_lua_runtime_new(&runtime), CPKT_LUA_RUNTIME_OK);
+  assert_int_equal(
+      cpkt_lua_runtime_open_libs(runtime, CPKT_LUA_RUNTIME_LIB_BASE),
+      CPKT_LUA_RUNTIME_OK);
+  cpkt_lua_runtime_set_warning_callback(runtime, on_warning, &first);
+  assert_int_equal(cpkt_lua_runtime_run_buffer(runtime, source,
+                                               sizeof(source) - 1, "warn.lua",
+                                               0, NULL, 0),
+                   CPKT_LUA_RUNTIME_OK);
+  assert_string_equal(first.text, "alphabeta");
+  assert_true(first.fragments >= 2);
+  assert_true(first.continuations >= 1);
+
+  cpkt_lua_runtime_set_warning_callback(runtime, on_warning, &second);
+  assert_int_equal(cpkt_lua_runtime_run_buffer(runtime, source,
+                                               sizeof(source) - 1, "warn.lua",
+                                               0, NULL, 0),
+                   CPKT_LUA_RUNTIME_OK);
+  assert_string_equal(second.text, "alphabeta");
+  assert_string_equal(first.text, "alphabeta");
+  cpkt_lua_runtime_set_warning_callback(runtime, NULL, NULL);
+  assert_int_equal(cpkt_lua_runtime_run_buffer(runtime, source,
+                                               sizeof(source) - 1, "warn.lua",
+                                               0, NULL, 0),
+                   CPKT_LUA_RUNTIME_OK);
+  assert_string_equal(second.text, "alphabeta");
+  cpkt_lua_runtime_free(runtime);
+}
+
 int main(void) {
   const struct CMUnitTest tests[] = {
       cmocka_unit_test(test_invalid_allocator_config),
@@ -604,6 +663,7 @@ int main(void) {
       cmocka_unit_test(test_debug_sethook_is_disabled),
       cmocka_unit_test(test_package_requires_package_library),
       cmocka_unit_test(test_failed_lua_module_registration_releases_chunk),
+      cmocka_unit_test(test_warning_callback_lifetime_and_replacement),
   };
 
   return cmocka_run_group_tests(tests, NULL, NULL);

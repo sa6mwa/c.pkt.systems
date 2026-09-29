@@ -2,6 +2,7 @@
 
 #include <dirent.h>
 #include <limits.h>
+#include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -12,6 +13,8 @@
 #include <unistd.h>
 
 #include <cmocka.h>
+
+#include <ggml.h>
 
 #include <cpkt/sus.h>
 
@@ -228,6 +231,54 @@ static void test_log_callback_receives_backend_events(void **state) {
   assert_true(capture.last_level <= CPKT_SUS_LOG_ERROR);
   assert_non_null(capture.last_message);
   cpkt_sus_log_set(NULL, NULL);
+}
+
+struct ggml_validation_capture {
+  unsigned int count;
+  int level;
+  char message[160];
+};
+
+static void on_ggml_validation(const cpkt_sus_log_event *event, void *user) {
+  struct ggml_validation_capture *capture;
+
+  capture = (struct ggml_validation_capture *)user;
+  /* whisper_log_set forwards both whisper and GGML records as "whisper". */
+  if (strcmp(event->component, "whisper") != 0) {
+    return;
+  }
+  capture->count++;
+  capture->level = event->level;
+  snprintf(capture->message, sizeof(capture->message), "%s", event->message);
+}
+
+static void test_ggml_validation_uses_log_sink(void **state) {
+  struct ggml_validation_capture capture;
+  float invalid;
+  FILE *stderr_capture;
+  int saved_stderr;
+
+  (void)state;
+  memset(&capture, 0, sizeof(capture));
+  invalid = INFINITY;
+  stderr_capture = tmpfile();
+  assert_non_null(stderr_capture);
+  saved_stderr = dup(fileno(stderr));
+  assert_true(saved_stderr >= 0);
+  fflush(stderr);
+  assert_true(dup2(fileno(stderr_capture), fileno(stderr)) >= 0);
+  cpkt_sus_log_set(on_ggml_validation, &capture);
+  assert_false(
+      ggml_validate_row_data(GGML_TYPE_F32, &invalid, sizeof(invalid)));
+  cpkt_sus_log_set(NULL, NULL);
+  fflush(stderr);
+  assert_true(dup2(saved_stderr, fileno(stderr)) >= 0);
+  close(saved_stderr);
+  assert_int_equal(ftell(stderr_capture), 0);
+  fclose(stderr_capture);
+  assert_int_equal(capture.count, 1);
+  assert_int_equal(capture.level, CPKT_SUS_LOG_ERROR);
+  assert_non_null(strstr(capture.message, "inf value"));
 }
 
 static void test_open_model_rejects_invalid_arguments(void **state) {
@@ -751,6 +802,7 @@ int main(void) {
   const struct CMUnitTest tests[] = {
       cmocka_unit_test(test_backend_metadata),
       cmocka_unit_test(test_log_callback_receives_backend_events),
+      cmocka_unit_test(test_ggml_validation_uses_log_sink),
       cmocka_unit_test(test_open_model_rejects_invalid_arguments),
       cmocka_unit_test(test_open_model_reports_load_failure),
       cmocka_unit_test(test_model_helpers_reject_invalid_arguments),

@@ -1533,9 +1533,19 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_openldap_${_cpkt_ldap_linkage}_test)
     target_link_libraries(cpkt_openldap_${_cpkt_ldap_linkage}_test PRIVATE
       cpkt::openldap_${_cpkt_ldap_linkage})
+    add_executable(cpkt_openldap_sasl_logging_${_cpkt_ldap_linkage}_test
+      tests/openldap_sasl_logging_test.c)
+    cpkt_use_local_runtime(cpkt_openldap_sasl_logging_${_cpkt_ldap_linkage}_test)
+    cpkt_configure_c89_target(cpkt_openldap_sasl_logging_${_cpkt_ldap_linkage}_test)
+    cpkt_add_repo_warning_errors(cpkt_openldap_sasl_logging_${_cpkt_ldap_linkage}_test)
+    target_link_libraries(cpkt_openldap_sasl_logging_${_cpkt_ldap_linkage}_test
+      PRIVATE cpkt::openldap_${_cpkt_ldap_linkage})
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND
         _cpkt_ldap_linkage STREQUAL "shared")
       set_target_properties(cpkt_openldap_shared_test PROPERTIES
+        BUILD_RPATH
+          "${CPKT_EXTERNAL_ROOT}/openldap/install/lib;${CPKT_EXTERNAL_ROOT}/cyrus-sasl/install/lib;${CPKT_EXTERNAL_ROOT}/openssl/install/lib;${CPKT_EXTERNAL_ROOT}/krb5/install/lib")
+      set_target_properties(cpkt_openldap_sasl_logging_shared_test PROPERTIES
         BUILD_RPATH
           "${CPKT_EXTERNAL_ROOT}/openldap/install/lib;${CPKT_EXTERNAL_ROOT}/cyrus-sasl/install/lib;${CPKT_EXTERNAL_ROOT}/openssl/install/lib;${CPKT_EXTERNAL_ROOT}/krb5/install/lib")
     endif()
@@ -1808,6 +1818,13 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_postgres_receiver_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_postgres_receiver_test)
     target_link_libraries(cpkt_postgres_receiver_test PRIVATE cpkt_postgres_static)
+    add_executable(cpkt_postgres_diagnostic_test
+      tests/postgres_diagnostic_test.c)
+    cpkt_use_local_runtime(cpkt_postgres_diagnostic_test)
+    cpkt_configure_c89_target(cpkt_postgres_diagnostic_test)
+    cpkt_add_repo_warning_errors(cpkt_postgres_diagnostic_test)
+    target_link_libraries(cpkt_postgres_diagnostic_test PRIVATE
+      cpkt_postgres_static)
     add_executable(cpkt_postgres_events_test tests/postgres_events_test.c)
     cpkt_use_local_runtime(cpkt_postgres_events_test)
     cpkt_configure_c89_target(cpkt_postgres_events_test)
@@ -1911,6 +1928,11 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_gssapi_facade_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_gssapi_facade_test)
     target_link_libraries(cpkt_gssapi_facade_test PRIVATE cpkt_gssapi_static)
+    add_executable(cpkt_gssapi_logging_test tests/gssapi_logging_test.c)
+    cpkt_use_local_runtime(cpkt_gssapi_logging_test)
+    target_compile_options(cpkt_gssapi_logging_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_gssapi_logging_test)
+    target_link_libraries(cpkt_gssapi_logging_test PRIVATE cpkt_gssapi_static)
     add_executable(cpkt_gssapi_extended_test
       tests/gssapi_extended_test.c)
     cpkt_use_local_runtime(cpkt_gssapi_extended_test)
@@ -2512,6 +2534,10 @@ if(CPKT_BUILD_TESTS)
     foreach(_cpkt_ldap_linkage IN ITEMS static shared)
       add_test(NAME openldap_${_cpkt_ldap_linkage}
         COMMAND cpkt_openldap_${_cpkt_ldap_linkage}_test)
+      add_test(NAME openldap_sasl_logging_${_cpkt_ldap_linkage}
+        COMMAND cpkt_openldap_sasl_logging_${_cpkt_ldap_linkage}_test)
+      set_tests_properties(openldap_sasl_logging_${_cpkt_ldap_linkage}
+        PROPERTIES LABELS "integration;memcheck" TIMEOUT 15)
       set_tests_properties(openldap_${_cpkt_ldap_linkage} PROPERTIES
         LABELS "integration;smoke" TIMEOUT 10)
     endforeach()
@@ -2692,6 +2718,10 @@ if(CPKT_BUILD_TESTS)
         COMMAND cpkt_opcua_facade_test server-is-c89-and-client-is-c89)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
+      add_test(NAME postgres_diagnostic
+        COMMAND cpkt_postgres_diagnostic_test)
+      set_tests_properties(postgres_diagnostic PROPERTIES
+        LABELS "facade;memcheck")
       add_test(NAME postgres_events COMMAND cpkt_postgres_events_test)
       add_test(NAME postgres_nested_copy_notice
         COMMAND cpkt_postgres_nested_copy_notice_test)
@@ -2858,6 +2888,10 @@ if(CPKT_BUILD_TESTS)
         LABELS "packaging;smoke"
         TIMEOUT 30)
       add_test(NAME gssapi_facade COMMAND cpkt_gssapi_facade_test)
+      add_test(NAME gssapi_logging COMMAND cpkt_gssapi_logging_test)
+      set_tests_properties(gssapi_logging PROPERTIES
+        ENVIRONMENT "KRB5CCNAME=FILE:${CMAKE_CURRENT_BINARY_DIR}/missing-gss-trace-cache;KRB5_CONFIG=/dev/null"
+        LABELS "facade;memcheck" TIMEOUT 30)
       add_test(NAME gssapi_extended COMMAND cpkt_gssapi_extended_test)
       add_test(NAME gssapi_lucid_conversion
         COMMAND cpkt_gssapi_lucid_conversion_test)

@@ -114,6 +114,7 @@ cpkt_gss_set_name_attribute
 cpkt_gss_set_negotiation_mechanisms
 cpkt_gss_sign
 cpkt_gss_status_is_error
+cpkt_gss_set_trace_callback
 cpkt_gss_store_credential
 cpkt_gss_unseal
 cpkt_gss_unwrap

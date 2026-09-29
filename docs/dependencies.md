@@ -29,6 +29,20 @@ shared libraries are shipped; the 32-bit `SQLBIGINT` declaration is patched to
 retain its 64-bit ABI while compiling under the supported strict-C89 toolchains.
 Applications must supply an ODBC driver to connect to a database. The SDK does
 not create or modify host ODBC configuration files.
+The native iODBC headers are strict C89 on supported targets. Applications
+can select a trace file with `SQLSetConnectAttr(dbc, SQL_ATTR_TRACEFILE, path,
+SQL_NTS)` and enable or disable file tracing through `SQL_ATTR_TRACE` with
+`SQL_OPT_TRACE_ON` or `SQL_OPT_TRACE_OFF`. Read operation diagnostics with
+`SQLGetDiagRec` (or the matching ODBC diagnostic APIs). The trace file is an
+iODBC manager facility and is caller-configured; there is no `cpkt_iodbc`
+wrapper or SDK logger dependency. The static and shared C89 consumer tests
+verify file output and diagnostic records.
+
+OpenLDAP's bundled liblber adds `ber_set_log_print_fn` as a typed C89 entry
+point to its existing global print hook. Its previous callback is returned for
+later restoration, and a null argument restores the native default. LDAP's
+Cyrus SASL client status lines and Cyrus diagnostics use that same destination;
+the static and shared local-socket integration tests assert callback delivery.
 
 Dependency upgrades follow the published bundle compatibility policy in
 [AGENTS.md](../AGENTS.md). Release-specific selection and verification evidence

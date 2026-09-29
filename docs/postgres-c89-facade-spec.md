@@ -26,6 +26,29 @@ also available for every supported connection, result, COPY, pipeline,
 prepared statement, escaping, notification, large-object, and fast-path
 operation.
 
+## Diagnostic and trace delivery
+
+Register `cpkt_postgres_set_default_diagnostic_sink()` before creating a
+connection when startup warnings must be captured. It receives client-side
+warnings from option parsing, passfile inspection, TLS, and OAuth, including
+messages emitted before a connection handle is available (the callback then
+receives a null connection). `cpkt_postgres_set_diagnostic_sink()` overrides
+delivery for an existing connection; passing null restores the current process
+default. The callback receives `CPKT_POSTGRES_DIAGNOSTIC_WARNING` or
+`CPKT_POSTGRES_DIAGNOSTIC_DEBUG` and a borrowed, complete message. An
+unregistered process default retains libpq's stderr behavior. Register or
+replace the process default before starting worker threads; keep callback
+context storage alive while registered. Server notices use the separate notice
+receiver/processor callbacks, and result errors remain available through the
+result and connection error accessors.
+
+`cpkt_postgres_set_trace_sink()` receives each already formatted libpq protocol
+record once, with borrowed bytes and an explicit length. It replaces
+`cpkt_postgres_trace()`'s file destination; `cpkt_postgres_untrace()` stops
+either destination. Trace flags apply to both. Protocol records can include
+credentials and query contents, so enable them only where the receiving logger
+is configured for that data. The facade does not stage a sequence of records.
+
 Event registrations use `cpkt_postgres_event_register()`. Each callback
 receives `info->event`, the borrowed identity of its current registration,
 including during REGISTER before `register()` returns. That identity can be
@@ -97,6 +120,7 @@ send/receive, prepared statements, transaction state, and an exact 64-bit
 `INT8` result. The integration executable reads connection strings directly
 from those environment variables; the harness never prints them or passes them
 as command-line arguments. Shared wire assertions cover result metadata,
+protocol trace callback delivery and destination replacement,
 NULL and binary values, errors and recovery, event instance data, single-row
 and chunked delivery, nonblocking transport, escaping, prepared statements,
 transactions, and 64-bit text results on both servers. PostgreSQL-specific

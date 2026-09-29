@@ -32,6 +32,10 @@ typedef struct cpkt_postgres_notice_snapshot {
 
 typedef struct cpkt_postgres_notice_binding {
   PGconn *connection;
+  cpkt_postgres_diagnostic_sink diagnostic_callback;
+  void *diagnostic_context;
+  cpkt_postgres_trace_sink trace_callback;
+  void *trace_context;
   cpkt_postgres_notice_snapshot *latest;
   cpkt_postgres_notice_snapshot *snapshots;
   size_t result_count;
@@ -71,6 +75,9 @@ static cpkt_postgres_ssl_key_password_hook
     cpkt_postgres_ssl_key_password_callback = NULL;
 static cpkt_postgres_auth_data_hook cpkt_postgres_auth_data_callback = NULL;
 static void *cpkt_postgres_auth_data_context = NULL;
+static cpkt_postgres_diagnostic_sink cpkt_postgres_default_diagnostic_callback =
+    NULL;
+static void *cpkt_postgres_default_diagnostic_context = NULL;
 
 #if defined(_WIN32)
 static INIT_ONCE cpkt_postgres_hook_lock_once = INIT_ONCE_STATIC_INIT;
@@ -370,6 +377,57 @@ static void cpkt_postgres_native_notice_processor(void *argument,
   cpkt_postgres_hook_lock_release();
   if (callback != NULL) {
     callback(context, (cpkt_postgres_connection *)argument, message);
+  }
+}
+
+static void cpkt_postgres_native_default_diagnostic(void *argument,
+                                                    PGconn *connection,
+                                                    int level,
+                                                    const char *message) {
+  cpkt_postgres_diagnostic_sink callback;
+  void *context;
+
+  (void)argument;
+  cpkt_postgres_hook_lock_acquire();
+  callback = cpkt_postgres_default_diagnostic_callback;
+  context = cpkt_postgres_default_diagnostic_context;
+  cpkt_postgres_hook_lock_release();
+  if (callback != NULL) {
+    callback(context, (cpkt_postgres_connection *)connection, level, message);
+  }
+}
+
+static void cpkt_postgres_native_connection_diagnostic(void *argument,
+                                                       PGconn *connection,
+                                                       int level,
+                                                       const char *message) {
+  cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_diagnostic_sink callback;
+  void *context;
+
+  binding = (cpkt_postgres_notice_binding *)argument;
+  cpkt_postgres_hook_lock_acquire();
+  callback = binding->diagnostic_callback;
+  context = binding->diagnostic_context;
+  cpkt_postgres_hook_lock_release();
+  if (callback != NULL) {
+    callback(context, (cpkt_postgres_connection *)connection, level, message);
+  }
+}
+
+static void cpkt_postgres_native_trace(void *argument, PGconn *connection,
+                                       const char *record, size_t length) {
+  cpkt_postgres_notice_binding *binding;
+  cpkt_postgres_trace_sink callback;
+  void *context;
+
+  binding = (cpkt_postgres_notice_binding *)argument;
+  cpkt_postgres_hook_lock_acquire();
+  callback = binding->trace_callback;
+  context = binding->trace_context;
+  cpkt_postgres_hook_lock_release();
+  if (callback != NULL) {
+    callback(context, (cpkt_postgres_connection *)connection, record, length);
   }
 }
 
@@ -1322,6 +1380,52 @@ void cpkt_postgres_set_notice_processor(
   }
 }
 
+/** Installs the process default before connection option parsing. */
+void cpkt_postgres_set_default_diagnostic_sink(
+    cpkt_postgres_diagnostic_sink callback, void *context) {
+  cpkt_postgres_hook_lock_acquire();
+  cpkt_postgres_default_diagnostic_callback = callback;
+  cpkt_postgres_default_diagnostic_context = context;
+  cpkt_postgres_hook_lock_release();
+  PQsetDefaultDiagnosticProcessor(
+      callback != NULL ? cpkt_postgres_native_default_diagnostic : NULL, NULL);
+}
+
+/** Installs a connection-specific client diagnostic sink. */
+int cpkt_postgres_set_diagnostic_sink(cpkt_postgres_connection *connection,
+                                      cpkt_postgres_diagnostic_sink callback,
+                                      void *context) {
+  PGconn *native_connection;
+  cpkt_postgres_notice_binding *binding;
+
+  if (connection == NULL) {
+    return 0;
+  }
+  native_connection = cpkt_postgres_native_connection(connection);
+  binding = NULL;
+  if (callback != NULL) {
+    binding = cpkt_postgres_ensure_notice_binding(native_connection);
+    if (binding == NULL) {
+      return 0;
+    }
+  } else {
+    cpkt_postgres_hook_lock_acquire();
+    binding = cpkt_postgres_find_notice_binding(native_connection);
+    cpkt_postgres_hook_lock_release();
+  }
+  if (binding != NULL) {
+    cpkt_postgres_hook_lock_acquire();
+    binding->diagnostic_callback = callback;
+    binding->diagnostic_context = context;
+    cpkt_postgres_hook_lock_release();
+  }
+  PQsetDiagnosticProcessor(
+      native_connection,
+      callback != NULL ? cpkt_postgres_native_connection_diagnostic : NULL,
+      binding);
+  return 1;
+}
+
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_register_thread_lock. */
 cpkt_postgres_thread_lock
@@ -1410,12 +1514,68 @@ cpkt_postgres_get_auth_data_hook(void **context_out) {
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_trace. */
 void cpkt_postgres_trace(cpkt_postgres_connection *connection, FILE *stream) {
-  PQtrace(cpkt_postgres_native_connection(connection), stream);
+  PGconn *native_connection;
+  cpkt_postgres_notice_binding *binding;
+
+  native_connection = cpkt_postgres_native_connection(connection);
+  cpkt_postgres_hook_lock_acquire();
+  binding = cpkt_postgres_find_notice_binding(native_connection);
+  if (binding != NULL) {
+    binding->trace_callback = NULL;
+    binding->trace_context = NULL;
+  }
+  cpkt_postgres_hook_lock_release();
+  PQtrace(native_connection, stream);
+}
+
+/** Selects the formatted protocol trace callback destination. */
+int cpkt_postgres_set_trace_sink(cpkt_postgres_connection *connection,
+                                 cpkt_postgres_trace_sink callback,
+                                 void *context) {
+  PGconn *native_connection;
+  cpkt_postgres_notice_binding *binding;
+
+  if (connection == NULL) {
+    return 0;
+  }
+  native_connection = cpkt_postgres_native_connection(connection);
+  binding = NULL;
+  if (callback != NULL) {
+    binding = cpkt_postgres_ensure_notice_binding(native_connection);
+    if (binding == NULL) {
+      return 0;
+    }
+  } else {
+    cpkt_postgres_hook_lock_acquire();
+    binding = cpkt_postgres_find_notice_binding(native_connection);
+    cpkt_postgres_hook_lock_release();
+  }
+  if (binding != NULL) {
+    cpkt_postgres_hook_lock_acquire();
+    binding->trace_callback = callback;
+    binding->trace_context = context;
+    cpkt_postgres_hook_lock_release();
+  }
+  PQsetTraceProcessor(native_connection,
+                      callback != NULL ? cpkt_postgres_native_trace : NULL,
+                      binding);
+  return 1;
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_untrace. */
 void cpkt_postgres_untrace(cpkt_postgres_connection *connection) {
-  PQuntrace(cpkt_postgres_native_connection(connection));
+  PGconn *native_connection;
+  cpkt_postgres_notice_binding *binding;
+
+  native_connection = cpkt_postgres_native_connection(connection);
+  cpkt_postgres_hook_lock_acquire();
+  binding = cpkt_postgres_find_notice_binding(native_connection);
+  if (binding != NULL) {
+    binding->trace_callback = NULL;
+    binding->trace_context = NULL;
+  }
+  cpkt_postgres_hook_lock_release();
+  PQuntrace(native_connection);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_set_trace_flags. */

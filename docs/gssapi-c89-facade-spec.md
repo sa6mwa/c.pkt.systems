@@ -12,6 +12,16 @@ operations, PAC mapping, and lucid context export. Narrow Kerberos context,
 cache, keytab, principal, and replay-cache handles are provided where those
 extensions require them; they are not a general Kerberos API.
 
+`cpkt_gss_set_trace_callback()` registers a process-wide destination for
+formatted MIT Kerberos trace records from subsequently created Kerberos GSS
+contexts, including SPNEGO/NegoEx. Register before concurrent GSS operations.
+The callback receives one borrowed record per call and its caller-owned context
+must remain valid while registered. Passing null stops delivery; new contexts
+then keep native `KRB5_TRACE` file behavior. Existing contexts retain the
+bridge but stop delivering after registration is cleared. This is a trace hook,
+not a GSS major/minor status replacement: callers should continue to inspect
+operation results with the status accessors.
+
 Statuses, flags, QOP values, and lifetimes are exact unsigned 32-bit values
 carried in `unsigned long`. Calls reject values that exceed the native range.
 Lucid context sequence numbers use separate high and low 32-bit words, so

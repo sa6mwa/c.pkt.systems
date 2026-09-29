@@ -309,6 +309,11 @@
         "cpkt_gss_krb5_set_credential_replay_cache"
       ]
     },
+    "gss_krb5_set_trace_callback": {
+      "facade": [
+        "cpkt_gss_set_trace_callback"
+      ]
+    },
     "gss_localname": {
       "facade": [
         "cpkt_gss_local_name"

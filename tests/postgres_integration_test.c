@@ -24,6 +24,72 @@ static int require_command(const cpkt_postgres_result *result) {
                             CPKT_POSTGRES_RESULT_COMMAND_OK;
 }
 
+typedef struct trace_capture {
+  int records;
+  int frontend;
+  int backend;
+  int invalid;
+} trace_capture;
+
+static void on_protocol_trace(void *context,
+                              cpkt_postgres_connection *connection,
+                              const char *record, size_t length) {
+  trace_capture *capture;
+
+  capture = (trace_capture *)context;
+  if (connection == NULL || record == NULL || length < 3 ||
+      record[length - 1] != '\n' || record[1] != '\t') {
+    capture->invalid++;
+    return;
+  }
+  capture->records++;
+  if (record[0] == 'F')
+    capture->frontend++;
+  else if (record[0] == 'B')
+    capture->backend++;
+  else
+    capture->invalid++;
+}
+
+static int protocol_trace_smoke(cpkt_postgres_connection *connection) {
+  trace_capture capture;
+  cpkt_postgres_result *result;
+  FILE *trace_file;
+  int before;
+  int ok;
+
+  memset(&capture, 0, sizeof(capture));
+  if (!cpkt_postgres_set_trace_sink(connection, on_protocol_trace, &capture))
+    return 0;
+  cpkt_postgres_set_trace_flags(connection,
+                                CPKT_POSTGRES_TRACE_SUPPRESS_TIMESTAMPS);
+  result = cpkt_postgres_execute(connection, "SELECT 1");
+  ok = require_value(result, "1");
+  cpkt_postgres_result_free(result);
+  if (capture.frontend < 1 || capture.backend < 1 || capture.invalid != 0)
+    ok = 0;
+  before = capture.records;
+  cpkt_postgres_untrace(connection);
+  result = cpkt_postgres_execute(connection, "SELECT 1");
+  if (!require_value(result, "1") || capture.records != before)
+    ok = 0;
+  cpkt_postgres_result_free(result);
+
+  trace_file = tmpfile();
+  if (trace_file == NULL)
+    return 0;
+  cpkt_postgres_trace(connection, trace_file);
+  result = cpkt_postgres_execute(connection, "SELECT 1");
+  if (!require_value(result, "1"))
+    ok = 0;
+  cpkt_postgres_result_free(result);
+  cpkt_postgres_untrace(connection);
+  if (ftell(trace_file) <= 0 || capture.records != before)
+    ok = 0;
+  fclose(trace_file);
+  return ok;
+}
+
 typedef struct live_events {
   cpkt_postgres_event *identity;
   int registrations;
@@ -530,6 +596,7 @@ static int run_integration(const char *server_name,
                                    &events) == NULL)
     ok = 0;
   if (!shared_metadata_and_errors(pg->connection) ||
+      !protocol_trace_smoke(pg->connection) ||
       !shared_single_rows(pg->connection) ||
       !shared_chunked_rows(pg->connection) ||
       !shared_escaping(pg->connection) || !shared_nonblocking(pg->connection))

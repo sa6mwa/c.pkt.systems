@@ -43,6 +43,7 @@ Makefile
 README.md
 devenv.yaml.in
 docs/dependencies.md
+docs/logging-hooks.md
 docs/opcua-c89-facade-spec.md
 docs/gssapi-c89-facade-spec.md
 docs/sasl-c89-facade-spec.md
@@ -190,6 +191,14 @@ tests/libssh2_poll_elapsed_test.c
 cmake/patch_libssh2_poll_elapsed.cmake
 tests/krb5_error_format_test.c
 cmake/patches/krb5_error_va_list.patch
+tests/gssapi_logging_test.c
+cmake/patches/krb5_gss_trace_callback.patch
+tests/openldap_sasl_logging_test.c
+cmake/patches/openldap_sasl_logging.patch
+cmake/patches/openldap_c89_log_setter.patch
+tests/postgres_diagnostic_test.c
+cmake/patches/postgresql_logging.patch
+cmake/patches/whisper_ggml_validation_logging.patch
 tools/opcua/public_api_contract.json
 tests/opcua_public_api_test.py
 tests/opcua_types_test.c

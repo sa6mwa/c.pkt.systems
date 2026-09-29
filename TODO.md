@@ -9,19 +9,26 @@
   interface. Expose missing hooks through the facade first. Patch upstream only
   when no suitable public hook exists. Do not invent logging for dependencies
   that do not emit diagnostics.
-- [ ] Add regression coverage for each actual gap: destination replacement,
-  levels/categories, formatting, callback lifetimes, and suppression of the
-  default destination. Keep optional logger integrations in tests; never make
-  libpslog a shipped SDK dependency.
+- [x] Verify OpenLDAP's Cyrus SASL status path through a local LDAPI socket in
+  both static and shared builds. Keep optional logger integrations in tests;
+  never make libpslog a shipped SDK dependency.
 
-Known starting points (not a completed inventory):
+Implemented destinations and the remaining audit are described in
+[the logging-hook guide](docs/logging-hooks.md).
+
+Current inventory:
 
 | Component | Existing facility / follow-up |
 | --- | --- |
 | open62541 / `cpkt_opcua` | Implemented: first-class C89 callbacks before construction and for existing client/server handles, preserving security/event-loop references. The key-derivation stdout bypass is patched and covered by injected-failure tests. See the [logging contract](docs/opcua-c89-facade-spec.md#logging-plugin). |
 | SQLite / `cpkt_sqlite` | Already exposes `cpkt_sqlite_global_config_log`, corresponding to SQLite's process-wide `SQLITE_CONFIG_LOG`. Respect SQLite's configuration timing and callback reentrancy rules. Check existing coverage before adding work. |
-| PostgreSQL libpq / `cpkt_postgres` | Already exposes notice receiver and processor callbacks. Connection/result errors also have explicit retrieval APIs. Audit optional protocol tracing separately: `PQtrace` / `cpkt_postgres_trace` currently accept `FILE *`, not a record callback. Establish whether an upstream hook exists before proposing changes. |
-| Remaining shipped components | Audit OpenSSL, zlib, curl, nghttp2, libssh2, libxml2, libpng, libHaru, iODBC (manager and configuration library), Lua, miniaudio, whisper.cpp/ggml, MQTT-C, MIT Kerberos, Cyrus SASL, and OpenLDAP, including embedded/transitive diagnostic paths. No missing hook is presumed until output and its available controls have been inspected. |
+| PostgreSQL libpq / `cpkt_postgres` | Process default and connection-specific client diagnostic callbacks now cover client warnings/debug including pre-connection option parsing; existing notice callbacks and result errors remain distinct. Formatted protocol trace records have a callback as well as the existing file destination. |
+| Lua / `cpkt_lua_runtime` | Runtime warning fragments and continuation flags reach a per-runtime callback; the direct generated Lua facade exposes `cpkt_lua_setwarnf`. |
+| whisper.cpp/ggml / `cpkt_sus` | Recoverable GGML validation messages now use the existing level-bearing `cpkt_sus_log_set` path. |
+| MIT Kerberos / `cpkt_gssapi` | Process-wide trace registration is applied to new internal Kerberos GSS contexts, including NegoEx. |
+| OpenLDAP/Cyrus SASL | LDAP's Cyrus log and status paths use typed C89 `ber_set_log_print_fn` and the global BER print callback; direct Cyrus clients retain the level-bearing C89 callback. |
+| iODBC | Native strict C89 tracing to a caller-selected file and ODBC diagnostics are documented and tested; no facade is needed. |
+| Other shipped components | Finish the diagnostic-output audit for OpenSSL, zlib, curl, nghttp2, libssh2, libxml2, miniaudio, and MQTT-C, including transitive paths. No missing hook is presumed until output and controls are inspected. |
 
 The public upstream SDK surface and C89 facade are both part of this audit.
 Native callbacks requiring upstream headers do not replace a usable C89 logging

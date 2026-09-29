@@ -29,6 +29,8 @@ struct cpkt_lua_runtime {
   struct cpkt_lua_runtime_allocator allocator;
   char *last_error;
   void *context;
+  cpkt_lua_runtime_warning_fn warning_callback;
+  void *warning_context;
   struct cpkt_lua_runtime_chunk *chunks;
   int traceback_enabled;
   int instruction_limit;
@@ -109,6 +111,20 @@ static char cpkt_lua_runtime_registry_key;
 
 static int cpkt_lua_runtime_c_module_loader(lua_State *state);
 static int cpkt_lua_runtime_lua_module_loader(lua_State *state);
+
+static void cpkt_lua_runtime_native_warning(void *context, const char *message,
+                                            int to_continue) {
+  cpkt_lua_runtime *runtime;
+  cpkt_lua_runtime_warning_fn callback;
+  void *callback_context;
+
+  runtime = (cpkt_lua_runtime *)context;
+  callback = runtime->warning_callback;
+  callback_context = runtime->warning_context;
+  if (callback != NULL) {
+    callback(callback_context, message, to_continue);
+  }
+}
 
 static void *cpkt_lua_runtime_default_alloc(void *user, size_t size) {
   (void)user;
@@ -1107,6 +1123,7 @@ cpkt_lua_runtime_status cpkt_lua_runtime_new_with_allocator(
   }
 
   runtime->state = state;
+  lua_setwarnf(state, cpkt_lua_runtime_native_warning, runtime);
   status = cpkt_lua_runtime_protected_call(
       runtime, cpkt_lua_runtime_store_state_protected, runtime, 0,
       CPKT_LUA_RUNTIME_ERR_RUNTIME);
@@ -1150,6 +1167,16 @@ void cpkt_lua_runtime_free(cpkt_lua_runtime *runtime) {
 void cpkt_lua_runtime_set_context(cpkt_lua_runtime *runtime, void *context) {
   if (runtime != NULL) {
     runtime->context = context;
+  }
+}
+
+/** Implements the public Lua warning callback operation. */
+void cpkt_lua_runtime_set_warning_callback(cpkt_lua_runtime *runtime,
+                                           cpkt_lua_runtime_warning_fn callback,
+                                           void *context) {
+  if (runtime != NULL) {
+    runtime->warning_callback = callback;
+    runtime->warning_context = context;
   }
 }
 

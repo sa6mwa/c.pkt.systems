@@ -156,6 +156,16 @@
       "facade": "CPKT_POSTGRES_TRACE_SUPPRESS_TIMESTAMPS",
       "native_value": "(1<<0)"
     },
+    "PQ_DIAGNOSTIC_DEBUG": {
+      "facade": "CPKT_POSTGRES_DIAGNOSTIC_DEBUG",
+      "facade_value": "2",
+      "native_value": "2"
+    },
+    "PQ_DIAGNOSTIC_WARNING": {
+      "facade": "CPKT_POSTGRES_DIAGNOSTIC_WARNING",
+      "facade_value": "1",
+      "native_value": "1"
+    },
     "PQ_QUERY_PARAM_MAX_LIMIT": {
       "facade": "CPKT_POSTGRES_QUERY_PARAMETER_MAXIMUM",
       "native_value": "65535"

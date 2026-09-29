@@ -28,6 +28,8 @@ typedef double lua_Number;
 typedef long lua_Integer;
 typedef int (*lua_CFunction)(lua_State *state);
 typedef void *(*lua_Alloc)(void *user, void *ptr, size_t osize, size_t nsize);
+typedef void (*lua_WarnFunction)(void *user, const char *message,
+                                 int to_continue);
 
 struct lua_Debug {
   int unused;
@@ -35,6 +37,7 @@ struct lua_Debug {
 
 lua_State *lua_newstate(lua_Alloc alloc_fn, void *user, int seed);
 void lua_close(lua_State *state);
+void lua_setwarnf(lua_State *state, lua_WarnFunction callback, void *user);
 void lua_pushlightuserdata(lua_State *state, void *value);
 void lua_gettable(lua_State *state, int index);
 void *lua_touserdata(lua_State *state, int index);

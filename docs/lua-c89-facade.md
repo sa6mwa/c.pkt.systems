@@ -37,3 +37,9 @@ For an embedding interface with policy controls rather than direct stack
 access, use `<cpkt/lua_runtime.h>` and `cpkt::lua_runtime`. That facade owns
 its state, exposes memory and instruction limits, and offers module/search
 path helpers. It does not provide arbitrary Lua values or stack operations.
+`cpkt_lua_runtime_set_warning_callback()` replaces Lua's warning destination
+for that owned state. Each call forwards one native warning fragment with its
+`to_continue` flag and a borrowed message, preserving Lua's multipart warning
+semantics. Pass null to suppress runtime warnings; keep the callback context
+alive until replacement or runtime destruction. Direct `cpkt_lua` states can
+use Lua's native `cpkt_lua_setwarnf()` binding instead.

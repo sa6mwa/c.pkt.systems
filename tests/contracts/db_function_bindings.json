@@ -747,6 +747,16 @@
         "cpkt_postgres_set_client_encoding"
       ]
     },
+    "PQsetDefaultDiagnosticProcessor": {
+      "facade": [
+        "cpkt_postgres_set_default_diagnostic_sink"
+      ]
+    },
+    "PQsetDiagnosticProcessor": {
+      "facade": [
+        "cpkt_postgres_set_diagnostic_sink"
+      ]
+    },
     "PQsetErrorContextVisibility": {
       "facade": [
         "cpkt_postgres_set_error_context_visibility"
@@ -790,6 +800,11 @@
     "PQsetTraceFlags": {
       "facade": [
         "cpkt_postgres_set_trace_flags"
+      ]
+    },
+    "PQsetTraceProcessor": {
+      "facade": [
+        "cpkt_postgres_set_trace_sink"
       ]
     },
     "PQsetdbLogin": {

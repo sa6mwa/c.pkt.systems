@@ -8,6 +8,12 @@
 #include <gssapi/gssapi_ext.h>
 #include <gssapi/gssapi_krb5.h>
 
+/** Applies the documented process-wide Kerberos trace callback. */
+void cpkt_gss_set_trace_callback(cpkt_gss_trace_callback callback,
+                                 void *context) {
+  gss_krb5_set_trace_callback(callback, context);
+}
+
 struct cpkt_gss_krb_replay_cache {
   krb5_rcache native;
   krb5_auth_context cleanup_owner;
