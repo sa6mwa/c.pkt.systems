@@ -34,6 +34,9 @@ int cpkt_postgres_event_prepare_notice(PGconn *connection,
 void cpkt_postgres_event_release_notice(const PGresult *result);
 int cpkt_postgres_event_prepare_copy(const PGresult *source, PGresult *dest,
                                      int flags);
+/* Drop only uninitialized native-dispatcher metadata before PQclear can free
+ * and reuse the result address. Initialized metadata belongs to DESTROY. */
+void cpkt_postgres_event_release_uninitialized(const PGresult *result);
 void cpkt_postgres_event_result_release(const PGresult *result);
 
 #endif

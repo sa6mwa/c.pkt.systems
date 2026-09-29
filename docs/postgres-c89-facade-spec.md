@@ -52,6 +52,10 @@ During RESULT_DESTROY, `info->result` remains borrowed through the callback.
 A notice-hooks copy made there also retains its source callback and context
 after the original result and connection are freed. The borrow ends when the
 destroy callback returns; later uses of `info->result` are invalid.
+When a result is freed, native-initialized event state is released by libpq's
+RESULT_DESTROY dispatch while the result remains valid. Frozen state for a
+native-uninitialized result is released before native clear, which does not
+dispatch DESTROY; a later result reusing that address keeps its own state.
 The borrowed notice's event state ends when its receiver returns because
 libpq does not send RESULT_DESTROY for an uninitialized notice. If an
 application explicitly fires RESULT_CREATE on that borrowed result, libpq

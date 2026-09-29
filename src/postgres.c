@@ -302,8 +302,8 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
   }
   cpkt_postgres_hook_lock_release();
   if (binding != NULL && entry == NULL) {
+    cpkt_postgres_event_release_uninitialized(result);
     PQclear(result);
-    cpkt_postgres_event_result_release(result);
     return NULL;
   }
   if (!cpkt_postgres_event_prepare_result((PGconn *)connection, result)) {
@@ -1990,9 +1990,11 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   }
   cpkt_postgres_hook_lock_release();
   /* Detach before PQclear can release this address for another result.
-   * Keep the owner's reference until native cleanup is finished. */
+   * Keep the owner's reference until native cleanup is finished. Native
+   * DESTROY releases initialized event state; uninitialized state has no
+   * callback and must be released before the address becomes reusable. */
+  cpkt_postgres_event_release_uninitialized(native_result);
   PQclear(native_result);
-  cpkt_postgres_event_result_release(native_result);
   if (entry != NULL) {
     cpkt_postgres_hook_lock_acquire();
     pending_slot = &cpkt_postgres_pending_clears;

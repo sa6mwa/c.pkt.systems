@@ -1849,6 +1849,18 @@ if(CPKT_BUILD_TESTS)
         "-Wl,--wrap=cpkt_postgres_event_allocate")
       target_link_libraries(cpkt_postgres_event_allocation_test PRIVATE
         cpkt_postgres_static)
+      add_executable(cpkt_postgres_event_address_reuse_test
+        tests/postgres_event_address_reuse_test.c)
+      cpkt_use_local_runtime(cpkt_postgres_event_address_reuse_test)
+      cpkt_configure_c89_target(cpkt_postgres_event_address_reuse_test)
+      cpkt_add_repo_warning_errors(cpkt_postgres_event_address_reuse_test)
+      target_include_directories(cpkt_postgres_event_address_reuse_test PRIVATE
+        "$<TARGET_PROPERTY:cpkt::postgresql_static,INTERFACE_INCLUDE_DIRECTORIES>")
+      target_link_options(cpkt_postgres_event_address_reuse_test PRIVATE
+        "-Wl,--wrap=PQclear" "-Wl,--wrap=PQmakeEmptyPGresult"
+        "-Wl,--wrap=malloc" "-Wl,--wrap=free")
+      target_link_libraries(cpkt_postgres_event_address_reuse_test PRIVATE
+        cpkt_postgres_static)
       add_executable(cpkt_postgres_oauth_cleanup_test
         tests/postgres_oauth_cleanup_test.c)
       cpkt_use_local_runtime(cpkt_postgres_oauth_cleanup_test)
@@ -2693,6 +2705,8 @@ if(CPKT_BUILD_TESTS)
           COMMAND cpkt_postgres_notice_event_lifetime_test)
         add_test(NAME postgres_event_allocation
           COMMAND cpkt_postgres_event_allocation_test)
+        add_test(NAME postgres_event_address_reuse
+          COMMAND cpkt_postgres_event_address_reuse_test)
         add_test(NAME postgres_oauth_cleanup
           COMMAND cpkt_postgres_oauth_cleanup_test)
       endif()
@@ -3043,7 +3057,8 @@ if(CPKT_BUILD_TESTS)
         set_tests_properties(sqlite_unlock_notify_race PROPERTIES
           LABELS "facade;memcheck")
         set_tests_properties(sqlite_auto_extension_lock_order
-          postgres_oauth_cleanup postgres_event_allocation PROPERTIES
+          postgres_oauth_cleanup postgres_event_allocation
+          postgres_event_address_reuse PROPERTIES
           LABELS "facade;memcheck")
       endif()
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

@@ -37,6 +37,7 @@ struct cpkt_postgres_event_result {
   cpkt_postgres_event_state *states;
   unsigned long create_fired_count;
   int last_create_complete;
+  int native_initialized;
   cpkt_postgres_event_result *next;
 };
 
@@ -272,6 +273,7 @@ static int cpkt_postgres_native_event(PGEventId id, void *native_info,
         cpkt_postgres_event_create(result, native->conn);
     cpkt_postgres_notice_callback_end(&notice_scope);
     ++result->create_fired_count;
+    result->native_initialized = 1;
     return 1;
   }
   if (id == PGEVT_RESULTCOPY) {
@@ -300,6 +302,7 @@ static int cpkt_postgres_native_event(PGEventId id, void *native_info,
       source_state = source_state->next;
     }
     cpkt_postgres_notice_callback_end(&notice_scope);
+    result->native_initialized = 1;
     return 1;
   }
   if (id != PGEVT_RESULTDESTROY)
@@ -549,15 +552,21 @@ int cpkt_postgres_event_prepare_notice(PGconn *connection,
 
 /** Release an uninitialized native notice after its receiver returns. */
 void cpkt_postgres_event_release_notice(const PGresult *result) {
+  /* PQclear skips RESULTDESTROY on ordinary notices. An explicit create
+   * initializes libpq's native event and makes its later destroy responsible
+   * for releasing the source role instead. */
+  cpkt_postgres_event_release_uninitialized(result);
+}
+
+/** Release frozen metadata while the native address still belongs to this
+ * result, but leave initialized dispatchers for libpq's valid DESTROY event. */
+void cpkt_postgres_event_release_uninitialized(const PGresult *result) {
   cpkt_postgres_event_result *entry;
   int native_initialized;
   (void)pthread_mutex_lock(&cpkt_postgres_events_mutex);
   entry = cpkt_postgres_event_find_result(result);
-  native_initialized = entry != NULL && entry->create_fired_count != 0UL;
+  native_initialized = entry != NULL && entry->native_initialized;
   (void)pthread_mutex_unlock(&cpkt_postgres_events_mutex);
-  /* PQclear skips RESULTDESTROY on ordinary notices. An explicit create
-   * initializes libpq's native event and makes its later destroy responsible
-   * for releasing the source role instead. */
   if (!native_initialized)
     cpkt_postgres_event_result_release(result);
 }
