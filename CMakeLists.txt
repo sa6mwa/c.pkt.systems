@@ -111,30 +111,42 @@ endfunction()
 
 # Authentication facades ship only the functions declared in their exact
 # source-controlled export catalogs. The generated linker files are build
-# artifacts; the catalogs remain the reviewed SDK boundary.
+# artifacts; the catalogs remain the reviewed SDK boundary. Catalog-only edits
+# reconfigure the map and relink the affected shared target incrementally.
 function(cpkt_apply_auth_export_catalog target_name catalog_name)
   set(_catalog "${CMAKE_SOURCE_DIR}/cmake/exports/${catalog_name}.txt")
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_catalog}")
   file(STRINGS "${_catalog}" _symbols REGEX "^cpkt_")
   if(NOT _symbols)
     message(FATAL_ERROR "empty authentication export catalog: ${_catalog}")
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(_linker_file "${CMAKE_BINARY_DIR}/${catalog_name}.exports")
-    file(WRITE "${_linker_file}" "")
+    set(_linker_contents "")
     foreach(_symbol IN LISTS _symbols)
-      file(APPEND "${_linker_file}" "_${_symbol}\n")
+      string(APPEND _linker_contents "_${_symbol}\n")
     endforeach()
     target_link_options(${target_name} PRIVATE
       "-Wl,-exported_symbols_list,${_linker_file}")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(_linker_file "${CMAKE_BINARY_DIR}/${catalog_name}.map")
-    file(WRITE "${_linker_file}" "{\n  global:\n")
+    set(_linker_contents "{\n  global:\n")
     foreach(_symbol IN LISTS _symbols)
-      file(APPEND "${_linker_file}" "    ${_symbol};\n")
+      string(APPEND _linker_contents "    ${_symbol};\n")
     endforeach()
-    file(APPEND "${_linker_file}" "  local: *;\n};\n")
+    string(APPEND _linker_contents "  local: *;\n};\n")
     target_link_options(${target_name} PRIVATE
       "-Wl,--version-script,${_linker_file}" "-Wl,--exclude-libs,ALL")
+  endif()
+  if(DEFINED _linker_file)
+    if(EXISTS "${_linker_file}")
+      file(READ "${_linker_file}" _previous_linker_contents)
+    endif()
+    if(NOT "${_previous_linker_contents}" STREQUAL "${_linker_contents}")
+      file(WRITE "${_linker_file}" "${_linker_contents}")
+    endif()
+    set_property(TARGET ${target_name} APPEND PROPERTY LINK_DEPENDS
+      "${_linker_file}")
   endif()
 endfunction()
 
@@ -2934,6 +2946,20 @@ if(CPKT_BUILD_TESTS)
         set_tests_properties(auth_contract_mutations PROPERTIES
           LABELS "facade;packaging" TIMEOUT 120
           ENVIRONMENT "CPKT_CONFIGURED_BINARY_DIR=${CMAKE_BINARY_DIR}")
+        foreach(_cpkt_catalog_generator IN ITEMS Ninja Makefiles)
+          if(_cpkt_catalog_generator STREQUAL "Ninja")
+            set(_cpkt_catalog_generator_name "Ninja")
+          else()
+            set(_cpkt_catalog_generator_name "Unix Makefiles")
+          endif()
+          add_test(NAME export_catalog_dependency_${_cpkt_catalog_generator}
+            COMMAND "${Python3_EXECUTABLE}"
+              "${CMAKE_SOURCE_DIR}/tests/export_catalog_dependency_test.py"
+              --configured-binary-dir "${CMAKE_BINARY_DIR}"
+              --generator "${_cpkt_catalog_generator_name}")
+          set_tests_properties(export_catalog_dependency_${_cpkt_catalog_generator}
+            PROPERTIES LABELS "facade;packaging" TIMEOUT 180)
+        endforeach()
       endif()
       set_tests_properties(auth_native_api_contract
         auth_facade_binding_contract auth_facade_signature_contract
