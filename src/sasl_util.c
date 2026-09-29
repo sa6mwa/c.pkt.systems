@@ -8,11 +8,13 @@
 #include <sasl/sasl.h>
 #include <sasl/saslutil.h>
 
+/** Release metadata views owned by one facade property wrapper. */
 static void cpkt_sasl_property_discard_views(cpkt_sasl_property_context *ctx) {
   if (ctx != NULL) {
     free(ctx->views);
     ctx->views = NULL;
     ctx->view_count = 0;
+    ctx->view_capacity = 0;
   }
 }
 
@@ -23,26 +25,37 @@ void cpkt_sasl_property_discard_borrowed_views(
   cpkt_sasl_property_discard_views(context);
 }
 
+/** Refresh borrowed native metadata, retaining storage while it still fits. */
 static cpkt_sasl_property_value *
-cpkt_sasl_property_copy_views(cpkt_sasl_property_context *ctx,
-                              const struct propval *native, size_t count) {
+cpkt_sasl_property_refresh_views(cpkt_sasl_property_context *ctx,
+                                 const struct propval *native, size_t count) {
   cpkt_sasl_property_value *views;
   size_t i;
-  cpkt_sasl_property_discard_views(ctx);
-  if (count == 0)
+  if (count == 0) {
+    ctx->view_count = 0;
     return NULL;
-  if (count > ((size_t)-1) / sizeof(*views))
+  }
+  if (count > ((size_t)-1) / sizeof(*views)) {
+    cpkt_sasl_property_discard_views(ctx);
     return NULL;
-  views = (cpkt_sasl_property_value *)calloc(count, sizeof(*views));
-  if (views == NULL)
-    return NULL;
+  }
+  if (count > ctx->view_capacity) {
+    views = (cpkt_sasl_property_value *)calloc(count, sizeof(*views));
+    if (views == NULL) {
+      cpkt_sasl_property_discard_views(ctx);
+      return NULL;
+    }
+    free(ctx->views);
+    ctx->views = views;
+    ctx->view_capacity = count;
+  }
+  views = ctx->views;
   for (i = 0; i < count; ++i) {
     views[i].name = native[i].name;
     views[i].values = native[i].values;
     views[i].value_count = native[i].nvalues;
     views[i].total_value_bytes = native[i].valsize;
   }
-  ctx->views = views;
   ctx->view_count = count;
   return views;
 }
@@ -117,24 +130,23 @@ int cpkt_sasl_property_request(cpkt_sasl_property_context *context,
 const cpkt_sasl_property_value *
 cpkt_sasl_property_get(cpkt_sasl_property_context *context, size_t *count_out) {
   const struct propval *native;
+  cpkt_sasl_property_value *views;
   size_t count = 0;
   if (count_out != NULL)
     *count_out = 0;
   if (context == NULL)
     return NULL;
-  if (context->views != NULL) {
-    if (count_out != NULL)
-      *count_out = context->view_count;
-    return context->views;
-  }
   native = prop_get(context->native);
-  if (native == NULL)
+  if (native == NULL) {
+    cpkt_sasl_property_discard_views(context);
     return NULL;
+  }
   while (native[count].name != NULL)
     ++count;
-  if (count_out != NULL)
+  views = cpkt_sasl_property_refresh_views(context, native, count);
+  if (count_out != NULL && (views != NULL || count == 0))
     *count_out = count;
-  return cpkt_sasl_property_copy_views(context, native, count);
+  return views;
 }
 
 /** C89 facade contract for cpkt_sasl_property_getnames; see the public header

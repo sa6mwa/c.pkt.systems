@@ -19,8 +19,10 @@ typedef struct cpkt_sasl cpkt_sasl;
 typedef struct cpkt_sasl_property_context cpkt_sasl_property_context;
 typedef struct cpkt_sasl_random cpkt_sasl_random;
 
-/** Names and values are borrowed until the property context is mutated or
- * disposed. Repeated get/getnames calls leave an existing get view valid. */
+/** Names and values are borrowed until the native property context is mutated
+ * or disposed. Repeated get/getnames calls without mutation leave an existing
+ * get view valid. A later get refreshes metadata after mutation through any
+ * wrapper or the native provider. */
 typedef struct cpkt_sasl_property_value {
   const char *name;
   const char *const *values;
@@ -467,6 +469,11 @@ int cpkt_sasl_property_duplicate(cpkt_sasl_property_context *source,
                                  cpkt_sasl_property_context **copy_out);
 int cpkt_sasl_property_request(cpkt_sasl_property_context *context,
                                const char *const *names);
+/** Return borrowed native property metadata. Each call observes the current
+ * native values, including mutations through another wrapper or plugin. The
+ * record array remains stable across unchanged reads; it may be resized when
+ * the number of requested names grows. NULL with count zero also reports an
+ * empty request list or a metadata allocation failure. */
 const cpkt_sasl_property_value *
 cpkt_sasl_property_get(cpkt_sasl_property_context *context, size_t *count_out);
 /** Fill caller-owned view records for requested names. At least one record per

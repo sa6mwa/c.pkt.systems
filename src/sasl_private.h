@@ -11,6 +11,7 @@ struct cpkt_sasl_property_context {
   struct propctx *native;
   cpkt_sasl_property_value *views;
   size_t view_count;
+  size_t view_capacity;
   int borrowed;
 };
 

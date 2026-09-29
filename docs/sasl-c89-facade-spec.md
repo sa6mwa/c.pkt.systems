@@ -46,8 +46,12 @@ upstream library's bounded unsigned length.
 call; it does not join the ranges. Its output has the same provider-owned
 lifetime as `encode`. Property contexts own their request and value storage.
 Their returned `cpkt_sasl_property_value` views are borrowed until mutation
-or disposal. Repeating `property_get` or `property_getnames` does not invalidate
-an earlier get view. `property_getnames` fills a caller-owned array with one
+or disposal. Repeating `property_get` or `property_getnames` without mutation
+does not invalidate an earlier get view. Each `property_get` refreshes its
+metadata from the native context, so changes made through another wrapper or
+by a plugin appear on the next read. The record array is reused while its
+capacity suffices; native name and value pointers retain their native borrow
+lifetime. `property_getnames` fills a caller-owned array with one
 view per requested name, including names with no values; its return count
 includes those names. `auxiliary_context` returns a borrowed wrapper over the
 connection's native property context; do not dispose it. The property

@@ -1930,6 +1930,17 @@ if(CPKT_BUILD_TESTS)
     target_compile_options(cpkt_sasl_property_lifetime_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_sasl_property_lifetime_test)
     target_link_libraries(cpkt_sasl_property_lifetime_test PRIVATE cpkt_sasl_static)
+    add_executable(cpkt_sasl_property_coherence_test
+      tests/sasl_property_coherence_test.c)
+    cpkt_use_local_runtime(cpkt_sasl_property_coherence_test)
+    cpkt_configure_c89_target(cpkt_sasl_property_coherence_test)
+    cpkt_add_repo_warning_errors(cpkt_sasl_property_coherence_test)
+    target_link_libraries(cpkt_sasl_property_coherence_test PRIVATE
+      cpkt_sasl_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      target_link_options(cpkt_sasl_property_coherence_test PRIVATE
+        "-Wl,--wrap=calloc")
+    endif()
     add_executable(cpkt_sasl_connection_property_test
       tests/sasl_connection_property_test.c)
     cpkt_use_local_runtime(cpkt_sasl_connection_property_test)
@@ -2936,6 +2947,8 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME sasl_plugin_facade COMMAND cpkt_sasl_plugin_facade_test)
       add_test(NAME sasl_property_lifetime
         COMMAND cpkt_sasl_property_lifetime_test)
+      add_test(NAME sasl_property_coherence
+        COMMAND cpkt_sasl_property_coherence_test)
       add_test(NAME sasl_connection_property
         COMMAND cpkt_sasl_connection_property_test)
       add_test(NAME sasl_idle_registration
@@ -2952,7 +2965,7 @@ if(CPKT_BUILD_TESTS)
         set_tests_properties(sasl_utility_allocation_failure PROPERTIES
           LABELS "facade;memcheck" TIMEOUT 30)
       endif()
-      set_tests_properties(sasl_property_lifetime PROPERTIES
+      set_tests_properties(sasl_property_lifetime sasl_property_coherence PROPERTIES
         LABELS "facade;memcheck" TIMEOUT 30)
       set_tests_properties(sasl_connection_property PROPERTIES
         LABELS "facade;memcheck" TIMEOUT 30)
