@@ -1801,6 +1801,13 @@ if(CPKT_BUILD_TESTS)
     cpkt_configure_c89_target(cpkt_postgres_events_test)
     cpkt_add_repo_warning_errors(cpkt_postgres_events_test)
     target_link_libraries(cpkt_postgres_events_test PRIVATE cpkt_postgres_static)
+    add_executable(cpkt_postgres_nested_copy_notice_test
+      tests/postgres_nested_copy_notice_test.c)
+    cpkt_use_local_runtime(cpkt_postgres_nested_copy_notice_test)
+    cpkt_configure_c89_target(cpkt_postgres_nested_copy_notice_test)
+    cpkt_add_repo_warning_errors(cpkt_postgres_nested_copy_notice_test)
+    target_link_libraries(cpkt_postgres_nested_copy_notice_test PRIVATE
+      cpkt_postgres_static)
     add_executable(cpkt_postgres_event_concurrent_release_test
       tests/postgres_event_concurrent_release_test.c)
     cpkt_use_local_runtime(cpkt_postgres_event_concurrent_release_test)
@@ -2651,6 +2658,9 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME opcua_facade_failure_modes COMMAND cpkt_opcua_facade_test failure-modes)
       add_test(NAME postgres_receiver_shell COMMAND cpkt_postgres_receiver_test)
       add_test(NAME postgres_events COMMAND cpkt_postgres_events_test)
+      add_test(NAME postgres_nested_copy_notice
+        COMMAND cpkt_postgres_nested_copy_notice_test)
+      set_tests_properties(postgres_nested_copy_notice PROPERTIES TIMEOUT 30)
       add_test(NAME postgres_event_concurrent_release
         COMMAND cpkt_postgres_event_concurrent_release_test)
       set_tests_properties(postgres_event_concurrent_release PROPERTIES
@@ -2968,6 +2978,7 @@ if(CPKT_BUILD_TESTS)
         opcua_facade_failure_modes
         postgres_receiver_shell
         postgres_events
+        postgres_nested_copy_notice
         postgres_event_concurrent_release
         openssl_facade nghttp2_facade libssh2_header_facade libssh2_facade
         mqttc_header_facade mqttc_facade

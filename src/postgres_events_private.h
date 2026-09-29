@@ -4,6 +4,22 @@
 #include <libpq-fe.h>
 #include <stddef.h>
 
+typedef struct cpkt_postgres_callback_result {
+  const PGresult *result;
+  struct cpkt_postgres_notice_binding *owner;
+  struct cpkt_postgres_callback_result *next;
+} cpkt_postgres_callback_result;
+
+/* Borrow a result identity during native event dispatch. Create/copy
+ * callbacks run before lasting result tracking; destroy callbacks run after
+ * that tracking is detached. Nested copies can retain the source snapshot
+ * only during the native callback's valid result borrow. */
+void cpkt_postgres_notice_callback_begin(const PGconn *connection,
+                                         const PGresult *source,
+                                         const PGresult *borrowed,
+                                         cpkt_postgres_callback_result *scope);
+void cpkt_postgres_notice_callback_end(cpkt_postgres_callback_result *scope);
+
 /* Private allocation boundary used by native-peer fault regressions. */
 void *cpkt_postgres_event_allocate(size_t size);
 

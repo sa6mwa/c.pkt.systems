@@ -45,11 +45,16 @@ typedef struct cpkt_postgres_result_binding {
   struct cpkt_postgres_result_binding *next;
 } cpkt_postgres_result_binding;
 
-typedef struct cpkt_postgres_callback_result {
+typedef struct cpkt_postgres_pending_clear {
   const PGresult *result;
   cpkt_postgres_notice_binding *owner;
-  struct cpkt_postgres_callback_result *next;
-} cpkt_postgres_callback_result;
+#if defined(_WIN32)
+  DWORD thread;
+#else
+  pthread_t thread;
+#endif
+  struct cpkt_postgres_pending_clear *next;
+} cpkt_postgres_pending_clear;
 
 typedef struct cpkt_postgres_oauth_request_state {
   cpkt_postgres_oauth_async async;
@@ -60,6 +65,7 @@ typedef struct cpkt_postgres_oauth_request_state {
 static cpkt_postgres_notice_binding *cpkt_postgres_notice_bindings = NULL;
 static cpkt_postgres_result_binding *cpkt_postgres_result_bindings = NULL;
 static cpkt_postgres_callback_result *cpkt_postgres_callback_results = NULL;
+static cpkt_postgres_pending_clear *cpkt_postgres_pending_clears = NULL;
 static cpkt_postgres_thread_lock cpkt_postgres_thread_lock_callback = NULL;
 static cpkt_postgres_ssl_key_password_hook
     cpkt_postgres_ssl_key_password_callback = NULL;
@@ -110,6 +116,86 @@ cpkt_postgres_find_notice_binding(const PGconn *connection) {
     binding = binding->next;
   }
   return binding;
+}
+
+static void
+cpkt_postgres_dispose_notice_binding(cpkt_postgres_notice_binding *binding);
+
+/** Match only the thread executing the native clear callback. */
+static int cpkt_postgres_pending_clear_is_current(
+    const cpkt_postgres_pending_clear *entry) {
+#if defined(_WIN32)
+  return entry->thread == GetCurrentThreadId();
+#else
+  return pthread_equal(entry->thread, pthread_self()) != 0;
+#endif
+}
+
+/** Find the notice owner of a lasting or callback-local result under lock. */
+static cpkt_postgres_notice_binding *
+cpkt_postgres_find_result_notice_owner_locked(const PGresult *source) {
+  cpkt_postgres_result_binding *result;
+  cpkt_postgres_callback_result *callback;
+  cpkt_postgres_pending_clear *pending;
+  for (result = cpkt_postgres_result_bindings; result != NULL;
+       result = result->next) {
+    if (result->result == source)
+      return result->owner;
+  }
+  for (callback = cpkt_postgres_callback_results; callback != NULL;
+       callback = callback->next) {
+    if (callback->result == source)
+      return callback->owner;
+  }
+  for (pending = cpkt_postgres_pending_clears; pending != NULL;
+       pending = pending->next) {
+    if (pending->result == source &&
+        cpkt_postgres_pending_clear_is_current(pending))
+      return pending->owner;
+  }
+  return NULL;
+}
+
+/** Pin a notice owner and expose an event callback's borrowed result. */
+void cpkt_postgres_notice_callback_begin(const PGconn *connection,
+                                         const PGresult *source,
+                                         const PGresult *borrowed,
+                                         cpkt_postgres_callback_result *scope) {
+  cpkt_postgres_notice_binding *owner;
+  scope->result = borrowed;
+  scope->owner = NULL;
+  scope->next = NULL;
+  cpkt_postgres_hook_lock_acquire();
+  owner =
+      connection == NULL ? NULL : cpkt_postgres_find_notice_binding(connection);
+  if (source != NULL)
+    owner = cpkt_postgres_find_result_notice_owner_locked(source);
+  if (owner != NULL) {
+    scope->owner = owner;
+    scope->next = cpkt_postgres_callback_results;
+    cpkt_postgres_callback_results = scope;
+    ++owner->result_count;
+  }
+  cpkt_postgres_hook_lock_release();
+}
+
+/** Release a callback-local notice borrow after all nested calls return. */
+void cpkt_postgres_notice_callback_end(cpkt_postgres_callback_result *scope) {
+  cpkt_postgres_callback_result **slot;
+  cpkt_postgres_notice_binding *dispose;
+  if (scope->owner == NULL)
+    return;
+  cpkt_postgres_hook_lock_acquire();
+  slot = &cpkt_postgres_callback_results;
+  while (*slot != scope)
+    slot = &(*slot)->next;
+  *slot = scope->next;
+  --scope->owner->result_count;
+  dispose = scope->owner->closed && scope->owner->result_count == 0U
+                ? scope->owner
+                : NULL;
+  cpkt_postgres_hook_lock_release();
+  cpkt_postgres_dispose_notice_binding(dispose);
 }
 
 static cpkt_postgres_notice_binding *
@@ -194,7 +280,6 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
                            const PGresult *source) {
   cpkt_postgres_notice_binding *binding;
   cpkt_postgres_result_binding *entry;
-  cpkt_postgres_result_binding *cursor;
 
   if (result == NULL) {
     return NULL;
@@ -202,25 +287,8 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
   cpkt_postgres_hook_lock_acquire();
   binding =
       connection == NULL ? NULL : cpkt_postgres_find_notice_binding(connection);
-  if (source != NULL) {
-    for (cursor = cpkt_postgres_result_bindings; cursor != NULL;
-         cursor = cursor->next) {
-      if (cursor->result == source) {
-        binding = cursor->owner;
-        break;
-      }
-    }
-    if (cursor == NULL) {
-      cpkt_postgres_callback_result *callback_result;
-      for (callback_result = cpkt_postgres_callback_results;
-           callback_result != NULL; callback_result = callback_result->next) {
-        if (callback_result->result == source) {
-          binding = callback_result->owner;
-          break;
-        }
-      }
-    }
-  }
+  if (source != NULL)
+    binding = cpkt_postgres_find_result_notice_owner_locked(source);
   entry = NULL;
   if (binding != NULL) {
     entry = (cpkt_postgres_result_binding *)malloc(sizeof(*entry));
@@ -1896,6 +1964,8 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   PGresult *native_result;
   cpkt_postgres_result_binding **slot;
   cpkt_postgres_result_binding *entry;
+  cpkt_postgres_pending_clear pending;
+  cpkt_postgres_pending_clear **pending_slot;
   cpkt_postgres_notice_binding *dispose;
 
   native_result = cpkt_postgres_native_result(result);
@@ -1908,6 +1978,15 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   dispose = NULL;
   if (entry != NULL) {
     *slot = entry->next;
+    pending.result = native_result;
+    pending.owner = entry->owner;
+#if defined(_WIN32)
+    pending.thread = GetCurrentThreadId();
+#else
+    pending.thread = pthread_self();
+#endif
+    pending.next = cpkt_postgres_pending_clears;
+    cpkt_postgres_pending_clears = &pending;
   }
   cpkt_postgres_hook_lock_release();
   /* Detach before PQclear can release this address for another result.
@@ -1916,6 +1995,10 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   cpkt_postgres_event_result_release(native_result);
   if (entry != NULL) {
     cpkt_postgres_hook_lock_acquire();
+    pending_slot = &cpkt_postgres_pending_clears;
+    while (*pending_slot != &pending)
+      pending_slot = &(*pending_slot)->next;
+    *pending_slot = pending.next;
     --entry->owner->result_count;
     if (entry->owner->closed && entry->owner->result_count == 0U)
       dispose = entry->owner;

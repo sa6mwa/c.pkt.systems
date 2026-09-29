@@ -41,6 +41,17 @@ fire RESULT_CREATE for the borrowed notice. A receiver may copy the notice
 with `CPKT_POSTGRES_COPY_RESULT_EVENTS`; the copy keeps its frozen event owner
 after the callback and connection close. Fire RESULT_CREATE explicitly if the
 application needs create callbacks on that copy, then free the copy normally.
+During RESULT_COPY dispatch, the destination is a borrowed result identity.
+An application callback may copy it again, including with notice hooks only;
+the nested copy keeps the source's notice callback and context snapshot after
+the connection, source, and outer copy have been released. Libpq initializes
+the outer copy's event only after that callback returns, so a nested copy made
+inside the callback does not receive RESULT_COPY for that still-uninitialized
+native event. A later explicit RESULT_CREATE may initialize its copied event.
+During RESULT_DESTROY, `info->result` remains borrowed through the callback.
+A notice-hooks copy made there also retains its source callback and context
+after the original result and connection are freed. The borrow ends when the
+destroy callback returns; later uses of `info->result` are invalid.
 The borrowed notice's event state ends when its receiver returns because
 libpq does not send RESULT_DESTROY for an uninitialized notice. If an
 application explicitly fires RESULT_CREATE on that borrowed result, libpq

@@ -839,7 +839,9 @@ void cpkt_postgres_bytea_free(unsigned char *memory);
 cpkt_postgres_result *
 cpkt_postgres_result_new_empty(cpkt_postgres_connection *connection,
                                cpkt_postgres_result_status status);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Copy native result fields selected by flags. A copy made inside a result
+ * event callback may outlive its source and connection; copied notice hooks
+ * retain their original callback context until that copy is freed. */
 cpkt_postgres_result *
 cpkt_postgres_result_copy(const cpkt_postgres_result *source, int flags);
 /** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */

@@ -214,6 +214,7 @@ static int cpkt_postgres_native_event(PGEventId id, void *native_info,
   cpkt_postgres_event *event;
   cpkt_postgres_event *last;
   cpkt_postgres_event_info info;
+  cpkt_postgres_callback_result notice_scope;
   PGresult *native_result;
   int dispose;
 
@@ -263,10 +264,13 @@ static int cpkt_postgres_native_event(PGEventId id, void *native_info,
       result = cpkt_postgres_event_make_result(owner, native->result, NULL);
     if (result == NULL)
       return 0;
+    cpkt_postgres_notice_callback_begin(native->conn, NULL, native->result,
+                                        &notice_scope);
     /* The native dispatcher stays initialized so each successful facade
      * callback still receives its own destroy event after a peer declines. */
     result->last_create_complete =
         cpkt_postgres_event_create(result, native->conn);
+    cpkt_postgres_notice_callback_end(&notice_scope);
     ++result->create_fired_count;
     return 1;
   }
@@ -281,6 +285,8 @@ static int cpkt_postgres_native_event(PGEventId id, void *native_info,
     result = cpkt_postgres_event_make_result(owner, native->dest, source);
     if (result == NULL)
       return 0;
+    cpkt_postgres_notice_callback_begin(NULL, native->src, native->dest,
+                                        &notice_scope);
     info.source = (const cpkt_postgres_result *)native->src;
     info.destination = (cpkt_postgres_result *)native->dest;
     state = result->states;
@@ -293,6 +299,7 @@ static int cpkt_postgres_native_event(PGEventId id, void *native_info,
       state = state->next;
       source_state = source_state->next;
     }
+    cpkt_postgres_notice_callback_end(&notice_scope);
     return 1;
   }
   if (id != PGEVT_RESULTDESTROY)
@@ -303,12 +310,15 @@ static int cpkt_postgres_native_event(PGEventId id, void *native_info,
   (void)pthread_mutex_unlock(&cpkt_postgres_events_mutex);
   if (result == NULL)
     return 1;
+  cpkt_postgres_notice_callback_begin(NULL, native_result, native_result,
+                                      &notice_scope);
   info.result = (cpkt_postgres_result *)native_result;
   for (state = result->states; state != NULL; state = state->next) {
     if (state->initialized)
       (void)cpkt_postgres_event_call(state->event,
                                      CPKT_POSTGRES_EVENT_RESULT_DESTROY, &info);
   }
+  cpkt_postgres_notice_callback_end(&notice_scope);
   (void)pthread_mutex_lock(&cpkt_postgres_events_mutex);
   slot = &cpkt_postgres_event_results;
   while (*slot != result)
