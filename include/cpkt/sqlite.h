@@ -1429,11 +1429,14 @@ cpkt_sqlite_vfs *cpkt_sqlite_vfs_new(const char *name,
                                      const cpkt_sqlite_vfs_methods *methods);
 /* Returns an existing facade VFS by borrowed identity, or an owned view of
  * a native VFS. Close a native view when finished; closing never unregisters
- * its provider. The provider must remain registered while the view is used. */
+ * its provider. Direct register/unregister and receiver methods act on that
+ * provider. Restore a native default after unregistering it. The provider
+ * must remain registered while the view is used. */
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_find(const char *name);
 /* Valid only for a journal/WAL filename passed to a VFS open callback. A
- * native result is an owned metadata view: methods->close releases the view
- * without closing SQLite's database file. A facade result is borrowed. */
+ * native result is an independently owned metadata view: methods->close
+ * releases it without closing SQLite's database file. A facade result is
+ * borrowed. File-control handle views instead close through their handle. */
 cpkt_sqlite_file *cpkt_sqlite_vfs_database_file_object(const char *name);
 int cpkt_sqlite_vfs_register(cpkt_sqlite_vfs *self, int make_default);
 int cpkt_sqlite_vfs_unregister(cpkt_sqlite_vfs *self);

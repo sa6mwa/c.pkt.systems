@@ -3834,7 +3834,7 @@ cpkt_sqlite_file *cpkt_sqlite_vfs_database_file_object(const char *name) {
     return NULL;
   if (native->pMethods->xClose == cpkt_sqlite_vfs_file_close)
     return &cpkt_sqlite_vfs_file_from_native(native)->public_file;
-  return cpkt_sqlite_native_file_view(native);
+  return cpkt_sqlite_native_file_metadata_view(native);
 }
 
 int cpkt_sqlite_vfs_register(cpkt_sqlite_vfs *self, int make_default) {
@@ -3842,6 +3842,8 @@ int cpkt_sqlite_vfs_register(cpkt_sqlite_vfs *self, int make_default) {
   int status;
   if (self == NULL || self->internal == NULL)
     return SQLITE_MISUSE;
+  if (cpkt_sqlite_native_vfs_view_is(self))
+    return cpkt_sqlite_native_vfs_view_register(self, make_default);
   binding = (cpkt_sqlite_vfs_binding *)self->internal;
   status = sqlite3_vfs_register(&binding->native, make_default);
   if (status == SQLITE_OK)
@@ -3854,6 +3856,8 @@ int cpkt_sqlite_vfs_unregister(cpkt_sqlite_vfs *self) {
   int status;
   if (self == NULL || self->internal == NULL)
     return SQLITE_MISUSE;
+  if (cpkt_sqlite_native_vfs_view_is(self))
+    return cpkt_sqlite_native_vfs_view_unregister(self);
   binding = (cpkt_sqlite_vfs_binding *)self->internal;
   status = sqlite3_vfs_unregister(&binding->native);
   if (status == SQLITE_OK)
@@ -3867,6 +3871,10 @@ void cpkt_sqlite_vfs_close(cpkt_sqlite_vfs *self) {
   pthread_mutex_t *mutex;
   if (self == NULL)
     return;
+  if (cpkt_sqlite_native_vfs_view_is(self)) {
+    cpkt_sqlite_native_vfs_view_close(self);
+    return;
+  }
   binding = (cpkt_sqlite_vfs_binding *)self->internal;
   if (binding != NULL && binding->registered) {
     (void)sqlite3_vfs_unregister(&binding->native);

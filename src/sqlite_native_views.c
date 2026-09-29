@@ -75,6 +75,16 @@ void cpkt_sqlite_native_file_view_release(cpkt_sqlite_file *view) {
   free(binding);
 }
 
+/** Free an independently owned view, retaining SQLite's underlying file. */
+static int cpkt_sqlite_view_file_metadata_close(cpkt_sqlite_file *file) {
+  cpkt_sqlite_native_file_binding *binding;
+  binding = cpkt_sqlite_view_file(file);
+  if (binding == NULL || binding->owns_native || !binding->owns_public)
+    return SQLITE_MISUSE;
+  cpkt_sqlite_native_file_view_release(file);
+  return SQLITE_OK;
+}
+
 static int cpkt_sqlite_view_file_read(cpkt_sqlite_file *file, void *buffer,
                                       int count, cpkt_sqlite_i64 offset) {
   cpkt_sqlite_native_file_binding *binding;
@@ -324,6 +334,18 @@ cpkt_sqlite_file *cpkt_sqlite_native_file_view(sqlite3_file *native) {
   binding = cpkt_sqlite_view_file(file);
   binding->owns_public = 1;
   return file;
+}
+
+/** Own only the metadata for a borrowed journal/WAL database-file view. */
+cpkt_sqlite_file *cpkt_sqlite_native_file_metadata_view(sqlite3_file *native) {
+  cpkt_sqlite_file *view;
+  cpkt_sqlite_native_file_binding *binding;
+  view = cpkt_sqlite_native_file_view(native);
+  if (view == NULL)
+    return NULL;
+  binding = cpkt_sqlite_view_file(view);
+  binding->methods.close = cpkt_sqlite_view_file_metadata_close;
+  return view;
 }
 
 static sqlite3_vfs *cpkt_sqlite_view_vfs(cpkt_sqlite_vfs *view) {
@@ -590,4 +612,25 @@ cpkt_sqlite_vfs *cpkt_sqlite_native_vfs_view(sqlite3_vfs *native) {
 /** Identify a native VFS view when converting file-control payloads. */
 int cpkt_sqlite_native_vfs_view_is(const cpkt_sqlite_vfs *view) {
   return view != NULL && view->close == cpkt_sqlite_view_vfs_close;
+}
+
+/** Register the provider referenced by an owned native VFS view. */
+int cpkt_sqlite_native_vfs_view_register(cpkt_sqlite_vfs *view,
+                                         int make_default) {
+  return cpkt_sqlite_native_vfs_view_is(view)
+             ? cpkt_sqlite_view_vfs_register(view, make_default)
+             : SQLITE_MISUSE;
+}
+
+/** Unregister the provider referenced by an owned native VFS view. */
+int cpkt_sqlite_native_vfs_view_unregister(cpkt_sqlite_vfs *view) {
+  return cpkt_sqlite_native_vfs_view_is(view)
+             ? cpkt_sqlite_view_vfs_unregister(view)
+             : SQLITE_MISUSE;
+}
+
+/** Release a native VFS view without unregistering its provider. */
+void cpkt_sqlite_native_vfs_view_close(cpkt_sqlite_vfs *view) {
+  if (cpkt_sqlite_native_vfs_view_is(view))
+    cpkt_sqlite_view_vfs_close(view);
 }

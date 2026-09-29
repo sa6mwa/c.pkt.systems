@@ -128,6 +128,16 @@ callable view of the native/default VFS; close the latter before unregistering
 its provider. Other opaque application payloads remain `void *`; native
 provider-private structs are not part of this C89 interface.
 
+Direct `cpkt_sqlite_vfs_register()` and `cpkt_sqlite_vfs_unregister()` work on
+both custom registrations and native/default views. A native view's close
+releases only view metadata and leaves its provider registration alone. If the
+native default is unregistered, register it again before opening another
+database. `cpkt_sqlite_vfs_database_file_object()` accepts a journal or WAL
+filename during a VFS open callback. For a native database file it returns
+independent metadata that its file `close` releases without closing SQLite's
+file. A file-control handle view remains borrowed from its handle: its file
+`close` returns misuse, and the handle releases its metadata.
+
 `cpkt_sqlite_global_config_mutex_methods_get()` and the PCACHE2 getter
 return callable tables for native defaults as well as facade registrations.
 Each native table getter owns independent adapter metadata; release it with
