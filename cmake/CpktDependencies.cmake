@@ -62,17 +62,12 @@ endmacro()
 
 function(cpkt_order_shared_install shared_project static_project)
   # Both variants write common package metadata into one install prefix.
-  # Leave compilation parallel, but install shared metadata last.
-  ExternalProject_Get_Property(${static_project} STAMP_DIR)
-  get_property(multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-  if(multi_config)
-    set(static_install_stamp "${STAMP_DIR}/$<CONFIG>/${static_project}-install")
-  else()
-    set(static_install_stamp "${STAMP_DIR}/${static_project}-install")
-  endif()
-  # A target dependency would serialize the whole external project. The install
-  # stamp is a file dependency, preserving independent configure/build steps.
-  ExternalProject_Add_StepDependencies(${shared_project} install "${static_install_stamp}")
+  # CMP0114 NEW makes each step target own its command. Keep the shared build
+  # as a separately schedulable prerequisite of the shared install.
+  ExternalProject_Add_StepTargets(${static_project} install)
+  ExternalProject_Add_StepTargets(${shared_project} build install)
+  ExternalProject_Add_StepDependencies(${shared_project} install
+    ${static_project}-install)
 endfunction()
 
 function(cpkt_record_dependency_target target_name)
