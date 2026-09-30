@@ -7,6 +7,8 @@ trap 'cmake -E remove_directory "$fixture"' EXIT
 mkdir -p "$fixture/scripts" "$fixture/bin" "$fixture/pods"
 cp "$repo_root/scripts/devenv.sh" "$fixture/scripts/devenv.sh"
 cp "$repo_root/scripts/clean.sh" "$fixture/scripts/clean.sh"
+cp "$repo_root/scripts/test-e2e.sh" "$fixture/scripts/test-e2e.sh"
+cp "$repo_root/scripts/e2e-postgres.sh" "$fixture/scripts/e2e-postgres.sh"
 cp "$repo_root/devenv.yaml.in" "$fixture/devenv.yaml.in"
 
 cat > "$fixture/bin/podman" <<'SH'
@@ -28,9 +30,12 @@ case "$1 $2" in
     ;;
   'kube down')
     [[ ${CPKT_MOCK_POD_RM_FAIL:-} != 1 ]] || exit 1
+    had_pods=0
     while read -r pod; do
+      if [[ -f $CPKT_MOCK_PODS/$pod ]]; then had_pods=1; fi
       cmake -E rm -f "$CPKT_MOCK_PODS/$pod"
     done < <(awk '/^  name: cpkt-/{print $2}' "${@: -1}")
+    if [[ ${CPKT_MOCK_KUBE_DOWN_FAIL:-} == 1 && $had_pods == 1 ]]; then exit 1; fi
     ;;
   'exec '*) ;;
   *) printf 'unexpected mock Podman command: %s\n' "$*" >&2; exit 1 ;;
@@ -46,6 +51,10 @@ manifest="$fixture/build/devenv/devenv.yaml"
 
 bash "$devenv" up >/dev/null
 bash "$devenv" is-up
+if ! grep -q '^kube play --network=pasta ' "$CPKT_MOCK_PODMAN_LOG"; then
+  printf 'devenv did not select per-pod rootless networking\n' >&2
+  exit 11
+fi
 if CPKT_DEV_POSTGRES_PORT=5543 bash "$devenv" is-up; then
   printf 'devenv accepted a partial port match\n' >&2
   exit 1
@@ -93,6 +102,20 @@ if [[ -e $fixture/build/devenv ]] || find "$CPKT_MOCK_PODS" -type f | grep -q .;
   printf 'devenv reset left state or pods behind\n' >&2
   exit 7
 fi
+
+# Even when Podman removes both pods, a teardown error must fail the public
+# e2e command rather than disappear behind a successful integration result.
+if CPKT_MOCK_KUBE_DOWN_FAIL=1 bash "$fixture/scripts/test-e2e.sh" /bin/true \
+    >"$fixture/e2e.log" 2>&1; then
+  printf 'e2e succeeded after Podman reported a teardown error\n' >&2
+  exit 12
+fi
+if find "$CPKT_MOCK_PODS" -type f | grep -q .; then
+  printf 'e2e did not finish removing pods after a teardown error\n' >&2
+  exit 13
+fi
+grep -q 'failed to stop database pods' "$fixture/e2e.log"
+grep -q 'PostgreSQL and CockroachDB passed' "$fixture/e2e.log"
 
 bash "$devenv" up >/dev/null
 mkdir -p "$fixture/.cache" "$fixture/dist"

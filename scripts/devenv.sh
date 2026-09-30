@@ -92,7 +92,7 @@ up() {
   else
     down
     render
-    podman kube play --userns=keep-id:uid=70,gid=70 "$manifest"
+    podman kube play --network=pasta --userns=keep-id:uid=70,gid=70 "$manifest"
   fi
   readiness postgresql "$postgres_pod-postgres" pg_isready -h 127.0.0.1 -U postgres
   readiness cockroachdb "$cockroach_pod-cockroach" /cockroach/cockroach sql --insecure --host=127.0.0.1:26257 --execute='SELECT 1'
@@ -101,20 +101,21 @@ up() {
 }
 
 down() {
-  local pod
+  local pod status=0
   require_podman
   if [[ -f $manifest ]]; then
-    podman kube down "$manifest" || true
+    podman kube down "$manifest" || status=$?
   fi
   for pod in "$postgres_pod" "$cockroach_pod"; do
     if podman pod exists "$pod"; then
-      podman pod rm --force "$pod"
+      podman pod rm --force "$pod" || status=$?
     fi
   done
   if podman pod exists "$postgres_pod" || podman pod exists "$cockroach_pod"; then
     printf '[devenv] database pods remain after shutdown\n' >&2
     return 1
   fi
+  return "$status"
 }
 
 case ${1:-} in

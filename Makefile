@@ -229,7 +229,7 @@ valgrind:
 	@command -v valgrind >/dev/null || { printf 'valgrind is required for make valgrind; install it with the host OS package manager\n' >&2; exit 1; }
 	$(CMAKE) --preset debug
 	$(CMAKE) --build --preset debug
-	$(CTEST) --test-dir build/debug -T memcheck -L memcheck --no-tests=error --output-on-failure --overwrite 'MemoryCheckCommandOptions=--error-exitcode=1 --leak-check=full --track-origins=yes --show-leak-kinds=definite,indirect' --overwrite 'MemoryCheckSuppressionFile=$(CURDIR)/tests/valgrind.supp'
+	$(CTEST) --test-dir build/debug -T memcheck -L memcheck --stop-on-failure --no-tests=error --output-on-failure --overwrite 'MemoryCheckCommandOptions=--error-exitcode=1 --leak-check=full --track-origins=yes --show-leak-kinds=definite,indirect' --overwrite 'MemoryCheckSuppressionFile=$(CURDIR)/tests/valgrind.supp'
 	CPKT_POSTGRES_E2E_MEMCHECK=1 bash ./scripts/test-e2e.sh "$$(pwd)/build/debug/cpkt_postgres_integration_test"
 
 fuzz-smoke:

@@ -614,8 +614,11 @@ query, parameter, asynchronous receive, prepared statement, and transaction
 checks against both. No credentials are required for these loopback-only test
 services. Run `make e2e-postgres` or `make test-e2e`; both start and stop the
 pods automatically. `make dev-up`, `make dev-down`, `make dev-ps`,
-`make dev-logs`, and `make dev-reset` manage them manually. The default host
-ports are 55432 and 56257; override them with `CPKT_DEV_POSTGRES_PORT` and
+`make dev-logs`, and `make dev-reset` manage them manually. The network mode
+is per-pod `pasta`, supplied by the host Podman installation.
+Teardown command errors fail the e2e gate even if the pods were removed.
+The default host ports are 55432 and 56257; override them with
+`CPKT_DEV_POSTGRES_PORT` and
 `CPKT_DEV_COCKROACH_PORT`. The e2e runner stops both pods after success or
 failure, including when they were already running. All database state and the
 rendered manifest are under ignored `build/devenv/`; `make dev-reset` removes
