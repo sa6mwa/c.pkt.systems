@@ -55,3 +55,37 @@ string(REPLACE "${_subdir_debug_done}" "" _installvars_content "${_installvars_c
 if(NOT _installvars_content STREQUAL _installvars_original)
   file(WRITE "${_mkinstallvars}" "${_installvars_content}")
 endif()
+
+# OpenSSL's build-only metadata recipe omits three directory inputs used by
+# mkinstallvars.pl. Supply its intended build-root defaults explicitly rather
+# than leaving unset values to produce Perl warnings. Installed metadata uses
+# the separate installdata.pm recipe and keeps its configured install paths.
+set(_build_info "${OPENSSL_SOURCE_DIR}/build.info")
+file(READ "${_build_info}" _build_info_content)
+set(_build_info_old [=[    ENGINESDIR=engines MODULESDIR=providers \]=])
+set(_build_info_new [=[    ENGINESDIR=engines MODULESDIR=providers libdir=. PKGCONFIGDIR=. CMAKECONFIGDIR=. \]=])
+string(FIND "${_build_info_content}" "${_build_info_new}" _already_patched)
+if(_already_patched LESS 0)
+  string(FIND "${_build_info_content}" "${_build_info_old}" _patch_site)
+  if(_patch_site LESS 0)
+    message(FATAL_ERROR "OpenSSL build-data recipe does not match expected content")
+  endif()
+  string(REPLACE "${_build_info_old}" "${_build_info_new}"
+    _build_info_content "${_build_info_content}")
+  file(WRITE "${_build_info}" "${_build_info_content}")
+endif()
+
+set(_export_info "${OPENSSL_SOURCE_DIR}/exporters/build.info")
+file(READ "${_export_info}" _export_info_content)
+set(_export_info_old [=[    "PREFIX=$(INSTALLTOP)" BINDIR=bin]=])
+set(_export_info_new [=[    COMMENT= "PREFIX=$(INSTALLTOP)" BINDIR=bin]=])
+string(FIND "${_export_info_content}" "${_export_info_new}" _already_patched)
+if(_already_patched LESS 0)
+  string(FIND "${_export_info_content}" "${_export_info_old}" _patch_site)
+  if(_patch_site LESS 0)
+    message(FATAL_ERROR "OpenSSL install-data recipe does not match expected content")
+  endif()
+  string(REPLACE "${_export_info_old}" "${_export_info_new}"
+    _export_info_content "${_export_info_content}")
+  file(WRITE "${_export_info}" "${_export_info_content}")
+endif()

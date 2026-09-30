@@ -2896,6 +2896,12 @@ if(CPKT_BUILD_TESTS)
       add_test(NAME devenv_lifecycle
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/devenv_lifecycle_test.sh"
           "${CMAKE_SOURCE_DIR}")
+      add_test(NAME openssl_builddata
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tests/openssl_builddata_test.py"
+          "${CMAKE_SOURCE_DIR}"
+          "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl/src"
+          "${CMAKE_BINARY_DIR}")
       add_test(
         NAME postgres_oauth_loader_patch
         COMMAND bash "${CMAKE_SOURCE_DIR}/tests/postgres_oauth_loader_patch_test.sh")
