@@ -41,8 +41,10 @@ verify file output and diagnostic records.
 OpenLDAP's bundled liblber adds `ber_set_log_print_fn` as a typed C89 entry
 point to its existing global print hook. Its previous callback is returned for
 later restoration, and a null argument restores the native default. LDAP's
-Cyrus SASL client status lines and Cyrus diagnostics use that same destination;
-the static and shared local-socket integration tests assert callback delivery.
+Cyrus SASL client status lines and Cyrus diagnostics use that same destination
+when a custom sink is installed before LDAP/Cyrus initialization; otherwise
+Cyrus diagnostics retain their native syslog destination. The static and shared
+local-socket integration tests assert callback delivery.
 
 Dependency upgrades follow the published bundle compatibility policy in
 [AGENTS.md](../AGENTS.md). Release-specific selection and verification evidence

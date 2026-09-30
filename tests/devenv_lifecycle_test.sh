@@ -6,6 +6,7 @@ fixture=$(mktemp -d "$repo_root/build/devenv-lifecycle.XXXXXX")
 trap 'cmake -E remove_directory "$fixture"' EXIT
 mkdir -p "$fixture/scripts" "$fixture/bin" "$fixture/pods"
 cp "$repo_root/scripts/devenv.sh" "$fixture/scripts/devenv.sh"
+cp "$repo_root/scripts/clean.sh" "$fixture/scripts/clean.sh"
 cp "$repo_root/devenv.yaml.in" "$fixture/devenv.yaml.in"
 
 cat > "$fixture/bin/podman" <<'SH'
@@ -16,13 +17,17 @@ case "$1 $2" in
   'info --format') printf 'true\n' ;;
   'pod exists') test -f "$CPKT_MOCK_PODS/$3" ;;
   'pod inspect') printf 'Running\n' ;;
-  'pod rm') cmake -E rm -f "$CPKT_MOCK_PODS/${@: -1}" ;;
+  'pod rm')
+    [[ ${CPKT_MOCK_POD_RM_FAIL:-} != 1 ]] || exit 1
+    cmake -E rm -f "$CPKT_MOCK_PODS/${@: -1}"
+    ;;
   'kube play')
     while read -r pod; do
       touch "$CPKT_MOCK_PODS/$pod"
     done < <(awk '/^  name: cpkt-/{print $2}' "${@: -1}")
     ;;
   'kube down')
+    [[ ${CPKT_MOCK_POD_RM_FAIL:-} != 1 ]] || exit 1
     while read -r pod; do
       cmake -E rm -f "$CPKT_MOCK_PODS/$pod"
     done < <(awk '/^  name: cpkt-/{print $2}' "${@: -1}")
@@ -87,4 +92,25 @@ bash "$devenv" reset
 if [[ -e $fixture/build/devenv ]] || find "$CPKT_MOCK_PODS" -type f | grep -q .; then
   printf 'devenv reset left state or pods behind\n' >&2
   exit 7
+fi
+
+bash "$devenv" up >/dev/null
+mkdir -p "$fixture/.cache" "$fixture/dist"
+: > "$fixture/.cache/keep-on-teardown-failure"
+: > "$fixture/dist/keep-on-teardown-failure"
+if CPKT_MOCK_POD_RM_FAIL=1 bash "$fixture/scripts/clean.sh" all >/dev/null 2>&1; then
+  printf 'clean succeeded while database pods remained running\n' >&2
+  exit 8
+fi
+if [[ ! -d $fixture/build/devenv || ! -f $fixture/.cache/keep-on-teardown-failure ||
+      ! -f $fixture/dist/keep-on-teardown-failure ]] ||
+    ! find "$CPKT_MOCK_PODS" -type f | grep -q .; then
+  printf 'clean deleted generated state after pod teardown failed\n' >&2
+  exit 9
+fi
+bash "$fixture/scripts/clean.sh" all
+if [[ -e $fixture/build || -e $fixture/.cache || -e $fixture/dist ]] ||
+    find "$CPKT_MOCK_PODS" -type f | grep -q .; then
+  printf 'clean left database pods or generated state behind\n' >&2
+  exit 10
 fi

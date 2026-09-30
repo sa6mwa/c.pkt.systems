@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include <ldap.h>
+#include <sasl/sasl.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -16,13 +17,22 @@ static void capture_log(const char *message) {
     ++sasl_status_count;
 }
 
-static int no_interaction(LDAP *ldap, unsigned flags, void *defaults,
-                          void *interact) {
+static int answer_empty_user(LDAP *ldap, unsigned flags, void *defaults,
+                             void *interact) {
+  sasl_interact_t *prompt = (sasl_interact_t *)interact;
+
   (void)ldap;
   (void)flags;
   (void)defaults;
-  (void)interact;
-  return LDAP_PARAM_ERROR;
+  if (prompt == NULL)
+    return LDAP_PARAM_ERROR;
+  for (; prompt->id != SASL_CB_LIST_END; ++prompt) {
+    if (prompt->id != SASL_CB_USER)
+      return LDAP_PARAM_ERROR;
+    prompt->result = "";
+    prompt->len = 0;
+  }
+  return LDAP_SUCCESS;
 }
 
 int main(void) {
@@ -75,7 +85,7 @@ int main(void) {
   }
   if (result == LDAP_SUCCESS) {
     result = ldap_sasl_interactive_bind(ldap, NULL, "EXTERNAL", NULL, NULL,
-                                        LDAP_SASL_AUTOMATIC, no_interaction,
+                                        LDAP_SASL_AUTOMATIC, answer_empty_user,
                                         NULL, NULL, &mechanism, &msgid);
     (void)ldap_unbind_ext(ldap, NULL, NULL);
   }

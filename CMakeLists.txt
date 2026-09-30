@@ -1550,6 +1550,17 @@ if(CPKT_BUILD_TESTS)
           "${CPKT_EXTERNAL_ROOT}/openldap/install/lib;${CPKT_EXTERNAL_ROOT}/cyrus-sasl/install/lib;${CPKT_EXTERNAL_ROOT}/openssl/install/lib;${CPKT_EXTERNAL_ROOT}/krb5/install/lib")
     endif()
   endforeach()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(cpkt_openldap_sasl_default_logging_test
+      tests/openldap_sasl_default_logging_test.c)
+    cpkt_use_local_runtime(cpkt_openldap_sasl_default_logging_test)
+    cpkt_configure_c89_target(cpkt_openldap_sasl_default_logging_test)
+    cpkt_add_repo_warning_errors(cpkt_openldap_sasl_default_logging_test)
+    target_link_libraries(cpkt_openldap_sasl_default_logging_test PRIVATE
+      cpkt::openldap_static)
+    target_link_options(cpkt_openldap_sasl_default_logging_test PRIVATE
+      "-Wl,--wrap=sasl_client_new")
+  endif()
   set(_cpkt_lua_runtime_example_file "${CMAKE_CURRENT_BINARY_DIR}/lua-runtime-c89-example-file.lua")
   file(WRITE "${_cpkt_lua_runtime_example_file}"
     "local host = require('example_host')\n"
@@ -2541,6 +2552,14 @@ if(CPKT_BUILD_TESTS)
       set_tests_properties(openldap_${_cpkt_ldap_linkage} PROPERTIES
         LABELS "integration;smoke" TIMEOUT 10)
     endforeach()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      foreach(_cpkt_ldap_sink IN ITEMS default custom)
+        add_test(NAME openldap_sasl_${_cpkt_ldap_sink}_sink
+          COMMAND cpkt_openldap_sasl_default_logging_test ${_cpkt_ldap_sink})
+        set_tests_properties(openldap_sasl_${_cpkt_ldap_sink}_sink PROPERTIES
+          LABELS "integration;memcheck" TIMEOUT 15)
+      endforeach()
+    endif()
     add_test(NAME curl_server_bind
       COMMAND "${CPKT_PYTHON3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/curl_async_dns_server_test.py")

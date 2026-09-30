@@ -619,7 +619,9 @@ ports are 55432 and 56257; override them with `CPKT_DEV_POSTGRES_PORT` and
 `CPKT_DEV_COCKROACH_PORT`. The e2e runner stops both pods after success or
 failure, including when they were already running. All database state and the
 rendered manifest are under ignored `build/devenv/`; `make dev-reset` removes
-them as the host user.
+them as the host user. `make clean` and the initial clean in `make release`
+stop checkout-owned pods before removing that state; cleanup stops if pod
+shutdown fails.
 The local e2e gate runs before native hardening and the release matrix.
 
 `make test-all` combines `debug`, local database e2e, `clangd-surface`,

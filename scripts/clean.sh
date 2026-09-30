@@ -30,6 +30,12 @@ mode=${1:-all}
 
 case "$mode" in
   all)
+    if [ -d "$repo_root/build/devenv" ]; then
+      bash "$repo_root/scripts/devenv.sh" down || {
+        printf 'refusing to clean generated state while database pods may be running\n' >&2
+        exit 1
+      }
+    fi
     clean_legacy_package_assertions
     clean_one "$repo_root/build"
     clean_one "$repo_root/.cache"
