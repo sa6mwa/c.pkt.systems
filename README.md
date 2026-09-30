@@ -79,9 +79,9 @@ AFL++ is built for the selected GCC collection; its plugin cache is not reused
 across collection changes.
 
 The current glibc SDKs require **glibc 2.43 or newer** for the complete shared
-library dependency set on x86_64, aarch64, and armhf. The published 0.9.0 SDKs
-required at most glibc 2.38. This is a deployment compatibility change despite
-unchanged facade ABI majors and `libc.so.6`. The SDK does not bundle glibc.
+library dependency set on x86_64, aarch64, and armhf. This requirement was
+introduced in the published 0.10.0 SDKs; 0.9.0 required at most glibc 2.38.
+The SDK does not bundle glibc.
 Linking SDK static archives into an otherwise dynamically linked executable does
 not remove its libc requirement. Fully static musl builds avoid a dynamic glibc
 requirement; their OS and runtime behavior still needs application verification.
@@ -172,9 +172,8 @@ second transfer remains active, checks LDAP/BER linkage, and verifies the C89
 Lua facade targets from the extracted SDK. Native OPC UA checks cover static and
 shared type conversions, callbacks, plugins, transports, logging, generated
 schema fixtures, C++98 consumers, public API completeness, and export privacy.
-Check this workflow before a Darwin
-release. The release's Darwin archive is still built from this repository with the
-local osxcross release preset. Source
+Check this workflow before a Darwin release. The release's Darwin archive is
+still built from this repository with the local osxcross release preset. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,
 verifies that non-git version resolution uses the injected `VERSION` file, and
 builds/runs the facade-only local tests from the extracted tree.
@@ -456,6 +455,7 @@ replacement for the full `cpkt_lua` C API. Consumers of the runtime facade can:
 - require modules for side effects,
 - register named C module loaders,
 - register named Lua preload chunks,
+- forward Lua warning fragments through a caller-owned callback,
 - pass an opaque embedder context through to C module loaders.
 
 The runtime facade does not expose a general stack/value API. Consumers that
