@@ -18,17 +18,19 @@
 
 /** Opaque native connection; release with cpkt_postgres_connection_free(). */
 typedef struct cpkt_postgres_connection cpkt_postgres_connection;
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Owned query result; release with cpkt_postgres_result_free(). */
 typedef struct cpkt_postgres_result cpkt_postgres_result;
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Owned legacy cancel handle; release with cpkt_postgres_cancel_free(). */
 typedef struct cpkt_postgres_cancel cpkt_postgres_cancel;
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Owned asynchronous cancel connection; finish with
+ * cpkt_postgres_cancel_connection_free(). */
 typedef struct cpkt_postgres_cancel_connection cpkt_postgres_cancel_connection;
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Borrowed TLS implementation object; valid while its connection lives. */
 typedef struct cpkt_postgres_tls_object cpkt_postgres_tls_object;
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Borrowed GSS security context; valid while its connection lives. */
 typedef struct cpkt_postgres_gss_context cpkt_postgres_gss_context;
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Receiver shell for one connection; close it while freeing results
+ * separately. */
 typedef struct cpkt_postgres cpkt_postgres;
 /** Event registration owned by its connection and any surviving results. */
 typedef struct cpkt_postgres_event cpkt_postgres_event;
@@ -82,11 +84,11 @@ void *cpkt_postgres_event_result_data(const cpkt_postgres_result *result,
 int cpkt_postgres_event_fire_result_create(cpkt_postgres_connection *connection,
                                            cpkt_postgres_result *result);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Receives a borrowed notice result; retain a copy if needed after return. */
 typedef void (*cpkt_postgres_notice_receiver)(
     void *context, cpkt_postgres_connection *connection,
     const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Receives borrowed notice text during dispatch; do not retain it. */
 typedef void (*cpkt_postgres_notice_processor)(
     void *context, cpkt_postgres_connection *connection, const char *message);
 /** Diagnostic record outside server notices and result errors. The text is
@@ -103,24 +105,25 @@ typedef void (*cpkt_postgres_trace_sink)(void *context,
 #define CPKT_POSTGRES_DIAGNOSTIC_WARNING 1
 /** Explicitly enabled developer tracing; may contain sensitive data. */
 #define CPKT_POSTGRES_DIAGNOSTIC_DEBUG 2
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Process-wide lock callback; nonzero acquires and zero releases. */
 typedef void (*cpkt_postgres_thread_lock)(int acquire);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Fills the supplied buffer with a private-key password for TLS startup. */
 typedef int (*cpkt_postgres_ssl_key_password_hook)(
     char *buffer, int buffer_size, cpkt_postgres_connection *connection);
 
 /* PostgreSQL OIDs are unsigned 32-bit protocol identifiers. */
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** PostgreSQL protocol object identifier, carried as an unsigned 32-bit value.
+ */
 typedef unsigned long cpkt_postgres_oid;
 
 /* Exact 64-bit two's-complement bits, represented without a non-C89 scalar. */
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Signed 64-bit value split into high and low 32-bit words for C89. */
 typedef struct cpkt_postgres_i64 {
   unsigned long high;
   unsigned long low;
 } cpkt_postgres_i64;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Connection state returned by status and asynchronous polling. */
 typedef enum cpkt_postgres_connection_status {
   CPKT_POSTGRES_CONNECTION_OK = 0,
   CPKT_POSTGRES_CONNECTION_BAD = 1,
@@ -140,7 +143,7 @@ typedef enum cpkt_postgres_connection_status {
   CPKT_POSTGRES_CONNECTION_AUTHENTICATING = 15
 } cpkt_postgres_connection_status;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Next socket readiness action for an asynchronous operation. */
 typedef enum cpkt_postgres_poll_status {
   CPKT_POSTGRES_POLL_FAILED = 0,
   CPKT_POSTGRES_POLL_READING = 1,
@@ -149,19 +152,19 @@ typedef enum cpkt_postgres_poll_status {
   CPKT_POSTGRES_POLL_ACTIVE = 4
 } cpkt_postgres_poll_status;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Authentication payload kind passed to the custom auth hook. */
 typedef enum cpkt_postgres_auth_data_kind {
   CPKT_POSTGRES_AUTH_DATA_PROMPT_OAUTH_DEVICE = 0,
   CPKT_POSTGRES_AUTH_DATA_OAUTH_BEARER_TOKEN = 1
 } cpkt_postgres_auth_data_kind;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Socket identifier split into words for C89 platform compatibility. */
 typedef struct cpkt_postgres_async_socket {
   unsigned long high;
   unsigned long low;
 } cpkt_postgres_async_socket;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Borrowed device authorization URL, code, and expiry for an OAuth prompt. */
 typedef struct cpkt_postgres_oauth_device_prompt {
   const char *verification_uri;
   const char *user_code;
@@ -169,15 +172,15 @@ typedef struct cpkt_postgres_oauth_device_prompt {
   int expires_in;
 } cpkt_postgres_oauth_device_prompt;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** OAuth bearer request and response fields used by the async hook. */
 typedef struct cpkt_postgres_oauth_bearer_request
     cpkt_postgres_oauth_bearer_request;
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Starts or advances an asynchronous OAuth exchange. */
 typedef cpkt_postgres_poll_status (*cpkt_postgres_oauth_async)(
     cpkt_postgres_connection *connection,
     cpkt_postgres_oauth_bearer_request *request,
     cpkt_postgres_async_socket *alternate_socket);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Releases resources held by an asynchronous OAuth exchange. */
 typedef void (*cpkt_postgres_oauth_cleanup)(
     cpkt_postgres_connection *connection,
     cpkt_postgres_oauth_bearer_request *request);
@@ -192,12 +195,12 @@ struct cpkt_postgres_oauth_bearer_request {
 };
 
 /* The data argument is a device prompt or bearer request, by kind. */
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Receives authentication data during connection establishment. */
 typedef int (*cpkt_postgres_auth_data_hook)(
     cpkt_postgres_auth_data_kind kind, cpkt_postgres_connection *connection,
     void *data, void *context);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Server command, tuple, copy, pipeline, or error outcome. */
 typedef enum cpkt_postgres_result_status {
   CPKT_POSTGRES_RESULT_EMPTY_QUERY = 0,
   CPKT_POSTGRES_RESULT_COMMAND_OK = 1,
@@ -214,7 +217,7 @@ typedef enum cpkt_postgres_result_status {
   CPKT_POSTGRES_RESULT_TUPLES_CHUNK = 12
 } cpkt_postgres_result_status;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Transaction state of a live connection. */
 typedef enum cpkt_postgres_transaction_status {
   CPKT_POSTGRES_TRANSACTION_IDLE = 0,
   CPKT_POSTGRES_TRANSACTION_ACTIVE = 1,
@@ -223,7 +226,7 @@ typedef enum cpkt_postgres_transaction_status {
   CPKT_POSTGRES_TRANSACTION_UNKNOWN = 4
 } cpkt_postgres_transaction_status;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Controls how much detail is included in client error text. */
 typedef enum cpkt_postgres_verbosity {
   CPKT_POSTGRES_ERRORS_TERSE = 0,
   CPKT_POSTGRES_ERRORS_DEFAULT = 1,
@@ -231,14 +234,14 @@ typedef enum cpkt_postgres_verbosity {
   CPKT_POSTGRES_ERRORS_SQLSTATE = 3
 } cpkt_postgres_verbosity;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Controls inclusion of server CONTEXT fields in error text. */
 typedef enum cpkt_postgres_context_visibility {
   CPKT_POSTGRES_CONTEXT_NEVER = 0,
   CPKT_POSTGRES_CONTEXT_ERRORS = 1,
   CPKT_POSTGRES_CONTEXT_ALWAYS = 2
 } cpkt_postgres_context_visibility;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Outcome of a server reachability probe without retaining a connection. */
 typedef enum cpkt_postgres_ping_status {
   CPKT_POSTGRES_PING_OK = 0,
   CPKT_POSTGRES_PING_REJECT = 1,
@@ -246,14 +249,14 @@ typedef enum cpkt_postgres_ping_status {
   CPKT_POSTGRES_PING_NO_ATTEMPT = 3
 } cpkt_postgres_ping_status;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Whether pipeline mode is active or aborted. */
 typedef enum cpkt_postgres_pipeline_status {
   CPKT_POSTGRES_PIPELINE_OFF = 0,
   CPKT_POSTGRES_PIPELINE_ON = 1,
   CPKT_POSTGRES_PIPELINE_ABORTED = 2
 } cpkt_postgres_pipeline_status;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** One connection keyword with its current, default, and environment values. */
 typedef struct cpkt_postgres_connection_option {
   char *keyword;
   char *environment_variable;
@@ -264,7 +267,7 @@ typedef struct cpkt_postgres_connection_option {
   int display_size;
 } cpkt_postgres_connection_option;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Column name, type, size, and format for a constructed result. */
 typedef struct cpkt_postgres_result_attribute {
   char *name;
   cpkt_postgres_oid table_oid;
@@ -275,7 +278,7 @@ typedef struct cpkt_postgres_result_attribute {
   int type_modifier;
 } cpkt_postgres_result_attribute;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** One binary or integer argument for a server fast-path function. */
 typedef struct cpkt_postgres_fastpath_argument {
   int length;
   int is_integer;
@@ -283,14 +286,15 @@ typedef struct cpkt_postgres_fastpath_argument {
   int integer_value;
 } cpkt_postgres_fastpath_argument;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Owned asynchronous notification; free with
+ * cpkt_postgres_notification_free(). */
 typedef struct cpkt_postgres_notification {
   char *channel;
   int backend_pid;
   char *payload;
 } cpkt_postgres_notification;
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Formatting controls for the legacy result printer. */
 typedef struct cpkt_postgres_print_options {
   char header;
   char align;
@@ -313,6 +317,7 @@ struct cpkt_postgres {
   /** Runs a query and returns an owned result, or NULL if none can be produced.
    */
   cpkt_postgres_result *(*tx)(cpkt_postgres *self, const char *query);
+  /** Runs a parameterized query and returns an independently owned result. */
   cpkt_postgres_result *(*tx_params)(cpkt_postgres *self, const char *command,
                                      int parameter_count,
                                      const cpkt_postgres_oid *parameter_types,
@@ -320,31 +325,52 @@ struct cpkt_postgres {
                                      const int *parameter_lengths,
                                      const int *parameter_formats,
                                      int result_format);
+  /** Queues a query; use receive() to collect each owned result. */
   int (*send)(cpkt_postgres *self, const char *query);
+  /** Queues a query with typed parameters. */
   int (*send_params)(cpkt_postgres *self, const char *command,
                      int parameter_count,
                      const cpkt_postgres_oid *parameter_types,
                      const char *const *parameter_values,
                      const int *parameter_lengths, const int *parameter_formats,
                      int result_format);
+  /** Returns the next owned result, or NULL after all results are drained. */
   cpkt_postgres_result *(*receive)(cpkt_postgres *self);
+  /** Reads available network input into connection state. */
   int (*consume)(cpkt_postgres *self);
+  /** Reports whether receive() needs more network input. */
   int (*busy)(cpkt_postgres *self);
+  /** Attempts to send queued output; retry when the socket is writable. */
   int (*flush)(cpkt_postgres *self);
+  /** Changes whether connection I/O may block. */
   int (*set_nonblocking)(cpkt_postgres *self, int enabled);
+  /** Returns the current nonblocking I/O setting. */
   int (*is_nonblocking)(const cpkt_postgres *self);
+  /** Enables pipeline mode for overlapping requests. */
   int (*begin_pipeline)(cpkt_postgres *self);
+  /** Leaves pipeline mode after its queued work is complete. */
   int (*end_pipeline)(cpkt_postgres *self);
+  /** Queues a pipeline synchronization point. */
   int (*pipeline_sync)(cpkt_postgres *self);
+  /** Sends bytes to an active COPY IN operation. */
   int (*copy_write)(cpkt_postgres *self, const char *bytes, int byte_count);
+  /** Ends COPY IN, optionally reporting client-side failure text. */
   int (*copy_finish)(cpkt_postgres *self, const char *error_message);
+  /** Reads one COPY OUT chunk; release returned bytes with text_free(). */
   int (*copy_read)(cpkt_postgres *self, char **bytes_out, int asynchronous);
+  /** Starts a nonblocking connection reset. */
   int (*reset_start)(cpkt_postgres *self);
+  /** Advances a reset after the socket becomes ready. */
   cpkt_postgres_poll_status (*reset_poll)(cpkt_postgres *self);
+  /** Resets the connection synchronously; inspect status afterward. */
   void (*reset)(cpkt_postgres *self);
+  /** Returns the connection's current state. */
   cpkt_postgres_connection_status (*status)(const cpkt_postgres *self);
+  /** Returns connection-owned diagnostic text; do not free it. */
   char *(*error)(const cpkt_postgres *self);
+  /** Closes the receiver; separately owned results remain valid. */
   void (*close)(cpkt_postgres *self);
+  /** Borrowed native connection; do not free it before close(). */
   cpkt_postgres_connection *connection;
 };
 
@@ -405,176 +431,181 @@ cpkt_postgres *cpkt_postgres_new_params(const char *const *keywords,
  */
 void cpkt_postgres_close(cpkt_postgres *self);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Starts a nonblocking connection; finish with connect_poll and then free it.
+ */
 cpkt_postgres_connection *
 cpkt_postgres_connect_start(const char *connection_info);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Starts a nonblocking connection from keyword/value arrays. */
 cpkt_postgres_connection *
 cpkt_postgres_connect_start_params(const char *const *keywords,
                                    const char *const *values,
                                    int expand_database_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Advances a connection after the socket becomes ready as requested. */
 cpkt_postgres_poll_status
 cpkt_postgres_connect_poll(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Opens an owned connection using a connection string. */
 cpkt_postgres_connection *cpkt_postgres_connect(const char *connection_info);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Opens an owned connection from keyword/value arrays. */
 cpkt_postgres_connection *
 cpkt_postgres_connect_params(const char *const *keywords,
                              const char *const *values,
                              int expand_database_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Opens an owned connection from explicit login fields. */
 cpkt_postgres_connection *cpkt_postgres_connect_login(
     const char *host, const char *port, const char *options, const char *tty,
     const char *database, const char *user, const char *password);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Closes an owned native connection; separately owned results survive. */
 void cpkt_postgres_connection_free(cpkt_postgres_connection *connection);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns an owned array of connection options; free with
+ * connection_options_free(). */
 cpkt_postgres_connection_option *cpkt_postgres_connection_defaults(void);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Parses connection text into owned options; free options and any error text.
+ */
 cpkt_postgres_connection_option *
 cpkt_postgres_connection_parse(const char *connection_info,
                                char **error_message);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns an owned snapshot of a connection's options. */
 cpkt_postgres_connection_option *
 cpkt_postgres_connection_options(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Releases an option array returned by the provider. */
 void cpkt_postgres_connection_options_free(
     cpkt_postgres_connection_option *options);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Starts a nonblocking connection reset; continue with reset_poll(). */
 int cpkt_postgres_reset_start(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Advances a reset after the socket becomes ready as requested. */
 cpkt_postgres_poll_status
 cpkt_postgres_reset_poll(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Resets a connection synchronously; inspect status afterward. */
 void cpkt_postgres_reset(cpkt_postgres_connection *connection);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Creates an owned asynchronous cancel connection tied to the query
+ * connection. */
 cpkt_postgres_cancel_connection *
 cpkt_postgres_cancel_connection_create(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Starts a cancellation request on a cancel connection. */
 int cpkt_postgres_cancel_start(
     cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Completes a cancellation request synchronously. */
 int cpkt_postgres_cancel_blocking(
     cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Advances cancellation after the socket becomes ready as requested. */
 cpkt_postgres_poll_status
 cpkt_postgres_cancel_poll(cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports the current state of a cancel connection. */
 cpkt_postgres_connection_status cpkt_postgres_cancel_status(
     const cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the descriptor to poll for asynchronous cancellation. */
 int cpkt_postgres_cancel_socket(
     const cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns error text borrowed from the cancel connection. */
 char *cpkt_postgres_cancel_error_message(
     cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Resets a cancel connection for another cancellation request. */
 void cpkt_postgres_cancel_reset(
     cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Closes an asynchronous cancel connection. */
 void cpkt_postgres_cancel_connection_free(
     cpkt_postgres_cancel_connection *cancel_connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Creates an owned legacy cancel handle for a live connection. */
 cpkt_postgres_cancel *
 cpkt_postgres_cancel_create(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Releases a legacy cancel handle. */
 void cpkt_postgres_cancel_free(cpkt_postgres_cancel *cancel);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Requests cancellation and writes failure detail to the supplied buffer. */
 int cpkt_postgres_cancel_request(cpkt_postgres_cancel *cancel,
                                  char *error_buffer, int error_buffer_size);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Requests cancellation directly from the query connection. */
 int cpkt_postgres_request_cancel(cpkt_postgres_connection *connection);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the connection-owned database name; do not free it. */
 char *cpkt_postgres_database(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the connection-owned user name; do not free it. */
 char *cpkt_postgres_user(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the connection-owned password; treat it as sensitive. */
 char *cpkt_postgres_password(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the connection-owned host name; do not free it. */
 char *cpkt_postgres_host(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the connection-owned numeric host address; do not free it. */
 char *cpkt_postgres_host_address(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the connection-owned port text; do not free it. */
 char *cpkt_postgres_port(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the connection-owned legacy tty option; do not free it. */
 char *cpkt_postgres_tty(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns connection-owned startup options; do not free them. */
 char *cpkt_postgres_options(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the live connection state; BAD requires error inspection or reset.
+ */
 cpkt_postgres_connection_status
 cpkt_postgres_connection_status_get(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the current transaction state of a connection. */
 cpkt_postgres_transaction_status cpkt_postgres_transaction_status_get(
     const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a borrowed server parameter value, or NULL when absent. */
 const char *
 cpkt_postgres_parameter_status(const cpkt_postgres_connection *connection,
                                const char *name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the negotiated PostgreSQL wire protocol major version. */
 int cpkt_postgres_protocol_version(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the complete negotiated wire protocol version. */
 int cpkt_postgres_full_protocol_version(
     const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the server version encoded as an integer. */
 int cpkt_postgres_server_version(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns connection-owned diagnostic text; do not free it. */
 char *cpkt_postgres_error_message(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the live connection socket descriptor for polling. */
 int cpkt_postgres_socket(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the server process ID for this connection. */
 int cpkt_postgres_backend_pid(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns whether the connection is in or has aborted pipeline mode. */
 cpkt_postgres_pipeline_status
 cpkt_postgres_pipeline_status_get(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether authentication needs a password. */
 int cpkt_postgres_connection_needs_password(
     const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether this connection authenticated with a password. */
 int cpkt_postgres_connection_used_password(
     const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether this connection authenticated with GSSAPI. */
 int cpkt_postgres_connection_used_gssapi(
     const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the current client encoding identifier. */
 int cpkt_postgres_client_encoding(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Changes client encoding; returns zero on success. */
 int cpkt_postgres_set_client_encoding(cpkt_postgres_connection *connection,
                                       const char *encoding);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether this connection currently uses TLS. */
 int cpkt_postgres_tls_in_use(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a borrowed implementation TLS object selected by name. */
 cpkt_postgres_tls_object *
 cpkt_postgres_tls_object_get(cpkt_postgres_connection *connection,
                              const char *object_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a borrowed TLS attribute value, or NULL if unavailable. */
 const char *cpkt_postgres_tls_attribute(cpkt_postgres_connection *connection,
                                         const char *attribute_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns borrowed names of TLS attributes supported by the provider. */
 const char *const *
 cpkt_postgres_tls_attribute_names(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the borrowed OpenSSL connection object, when available. */
 cpkt_postgres_tls_object *
 cpkt_postgres_openssl_get(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Selects whether the client initializes its TLS library automatically. */
 void cpkt_postgres_init_tls(int initialize);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Selects automatic TLS and crypto-library initialization. */
 void cpkt_postgres_init_openssl(int initialize_tls, int initialize_crypto);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether this connection uses GSS-encrypted transport. */
 int cpkt_postgres_gss_encryption_in_use(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a borrowed transport GSS context, when present. */
 cpkt_postgres_gss_context *
 cpkt_postgres_gss_context_get(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Changes client error detail level and returns the previous level. */
 cpkt_postgres_verbosity
 cpkt_postgres_set_error_verbosity(cpkt_postgres_connection *connection,
                                   cpkt_postgres_verbosity verbosity);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Changes CONTEXT display and returns the previous mode. */
 cpkt_postgres_context_visibility cpkt_postgres_set_error_context_visibility(
     cpkt_postgres_connection *connection,
     cpkt_postgres_context_visibility visibility);
@@ -587,12 +618,14 @@ cpkt_postgres_context_visibility cpkt_postgres_set_error_context_visibility(
  * that context valid until the result is freed. If a result outlives its
  * connection, the callback receives a NULL connection pointer.
  */
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Replaces the connection notice-result callback and returns the previous
+ * binding. */
 void cpkt_postgres_set_notice_receiver(
     cpkt_postgres_connection *connection,
     cpkt_postgres_notice_receiver callback, void *context,
     cpkt_postgres_notice_receiver *old_callback_out, void **old_context_out);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Replaces the connection notice-text callback and returns the previous
+ * binding. */
 void cpkt_postgres_set_notice_processor(
     cpkt_postgres_connection *connection,
     cpkt_postgres_notice_processor callback, void *context,
@@ -616,26 +649,28 @@ int cpkt_postgres_set_diagnostic_sink(cpkt_postgres_connection *connection,
 
 /* Process-global client hooks.  Register them before starting worker threads.
  */
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Installs a process-wide thread-lock callback and returns the prior callback.
+ */
 cpkt_postgres_thread_lock
 cpkt_postgres_register_thread_lock(cpkt_postgres_thread_lock callback);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Installs a process-wide private-key password callback; returns the prior
+ * hook. */
 cpkt_postgres_ssl_key_password_hook cpkt_postgres_set_ssl_key_password_hook(
     cpkt_postgres_ssl_key_password_hook callback);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the currently installed private-key password callback. */
 cpkt_postgres_ssl_key_password_hook
 cpkt_postgres_get_ssl_key_password_hook(void);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Invokes the provider's default private-key password handling. */
 int cpkt_postgres_default_ssl_key_password_hook(
     char *buffer, int buffer_size, cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Installs a process-wide authentication-data callback and context. */
 void cpkt_postgres_set_auth_data_hook(cpkt_postgres_auth_data_hook callback,
                                       void *context);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the current authentication-data callback and context. */
 cpkt_postgres_auth_data_hook
 cpkt_postgres_get_auth_data_hook(void **context_out);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Writes protocol trace records to the supplied FILE until disabled. */
 void cpkt_postgres_trace(cpkt_postgres_connection *connection, FILE *stream);
 /** Selects a callback destination for formatted protocol trace records.
  * Replaces a prior file or callback destination. Returns zero only when
@@ -644,38 +679,39 @@ void cpkt_postgres_trace(cpkt_postgres_connection *connection, FILE *stream);
 int cpkt_postgres_set_trace_sink(cpkt_postgres_connection *connection,
                                  cpkt_postgres_trace_sink callback,
                                  void *context);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Stops writing protocol trace records for this connection. */
 void cpkt_postgres_untrace(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Changes protocol trace formatting flags for this connection. */
 void cpkt_postgres_set_trace_flags(cpkt_postgres_connection *connection,
                                    int flags);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Runs a query synchronously and returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_execute(cpkt_postgres_connection *connection, const char *query);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Runs a parameterized query synchronously; returns an owned result. */
 cpkt_postgres_result *cpkt_postgres_execute_params(
     cpkt_postgres_connection *connection, const char *command,
     int parameter_count, const cpkt_postgres_oid *parameter_types,
     const char *const *parameter_values, const int *parameter_lengths,
     const int *parameter_formats, int result_format);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Creates a named server-side prepared statement; returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_prepare(cpkt_postgres_connection *connection,
                       const char *statement_name, const char *query,
                       int parameter_count,
                       const cpkt_postgres_oid *parameter_types);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Runs a named prepared statement and returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_execute_prepared(cpkt_postgres_connection *connection,
                                const char *statement_name, int parameter_count,
                                const char *const *parameter_values,
                                const int *parameter_lengths,
                                const int *parameter_formats, int result_format);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues a query for asynchronous execution; retrieve results with
+ * get_result(). */
 int cpkt_postgres_send_query(cpkt_postgres_connection *connection,
                              const char *query);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues a parameterized query for asynchronous execution. */
 int cpkt_postgres_send_query_params(cpkt_postgres_connection *connection,
                                     const char *command, int parameter_count,
                                     const cpkt_postgres_oid *parameter_types,
@@ -683,12 +719,12 @@ int cpkt_postgres_send_query_params(cpkt_postgres_connection *connection,
                                     const int *parameter_lengths,
                                     const int *parameter_formats,
                                     int result_format);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues creation of a named prepared statement. */
 int cpkt_postgres_send_prepare(cpkt_postgres_connection *connection,
                                const char *statement_name, const char *query,
                                int parameter_count,
                                const cpkt_postgres_oid *parameter_types);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues execution of a named prepared statement. */
 int cpkt_postgres_send_query_prepared(cpkt_postgres_connection *connection,
                                       const char *statement_name,
                                       int parameter_count,
@@ -696,183 +732,184 @@ int cpkt_postgres_send_query_prepared(cpkt_postgres_connection *connection,
                                       const int *parameter_lengths,
                                       const int *parameter_formats,
                                       int result_format);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Requests one row per result for the active async query. */
 int cpkt_postgres_set_single_row_mode(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Requests results in bounded row chunks for the active async query. */
 int cpkt_postgres_set_chunked_rows_mode(cpkt_postgres_connection *connection,
                                         int chunk_size);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the next owned async result; NULL means the query is drained. */
 cpkt_postgres_result *
 cpkt_postgres_get_result(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether more input is needed before get_result() can proceed. */
 int cpkt_postgres_is_busy(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reads pending socket data into the provider's connection state. */
 int cpkt_postgres_consume_input(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Enables submission of multiple queries without waiting between them. */
 int cpkt_postgres_enter_pipeline_mode(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Leaves pipeline mode after its queued work is complete. */
 int cpkt_postgres_exit_pipeline_mode(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues a pipeline synchronization point. */
 int cpkt_postgres_pipeline_sync(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues a request for the server to flush pending output. */
 int cpkt_postgres_send_flush_request(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues a protocol synchronization message in pipeline mode. */
 int cpkt_postgres_send_pipeline_sync(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the next owned asynchronous server notification, if any. */
 cpkt_postgres_notification *
 cpkt_postgres_notification_next(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Releases an owned asynchronous server notification. */
 void cpkt_postgres_notification_free(cpkt_postgres_notification *notification);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Sends bytes while a COPY IN operation is active. */
 int cpkt_postgres_put_copy_data(cpkt_postgres_connection *connection,
                                 const char *buffer, int byte_count);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Ends COPY IN; optional text reports a client-side failure. */
 int cpkt_postgres_put_copy_end(cpkt_postgres_connection *connection,
                                const char *error_message);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Receives one COPY OUT chunk; release allocated bytes with text_free(). */
 int cpkt_postgres_get_copy_data(cpkt_postgres_connection *connection,
                                 char **buffer_out, int asynchronous);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reads one legacy COPY OUT line into a caller buffer. */
 int cpkt_postgres_getline(cpkt_postgres_connection *connection, char *buffer,
                           int length);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Writes one legacy COPY IN line from caller memory. */
 int cpkt_postgres_putline(cpkt_postgres_connection *connection,
                           const char *line);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reads available legacy COPY OUT bytes without blocking. */
 int cpkt_postgres_getline_async(cpkt_postgres_connection *connection,
                                 char *buffer, int buffer_size);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Writes raw bytes in the legacy COPY protocol. */
 int cpkt_postgres_put_bytes(cpkt_postgres_connection *connection,
                             const char *buffer, int byte_count);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Completes a legacy COPY operation and reports its status. */
 int cpkt_postgres_end_copy(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Enables or disables nonblocking socket operation. */
 int cpkt_postgres_set_nonblocking(cpkt_postgres_connection *connection,
                                   int enabled);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether nonblocking socket operation is active. */
 int cpkt_postgres_is_nonblocking(const cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether the bundled client supports concurrent calls. */
 int cpkt_postgres_is_threadsafe(void);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Probes a server without retaining a connection. */
 cpkt_postgres_ping_status cpkt_postgres_ping(const char *connection_info);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Probes a server using keyword/value connection options. */
 cpkt_postgres_ping_status cpkt_postgres_ping_params(const char *const *keywords,
                                                     const char *const *values,
                                                     int expand_database_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Attempts to send queued output; caller may need socket writability. */
 int cpkt_postgres_flush(cpkt_postgres_connection *connection);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Calls a server fast-path function and returns an owned result. */
 cpkt_postgres_result *cpkt_postgres_fastpath(
     cpkt_postgres_connection *connection, int function_id, int *result_buffer,
     int *result_length_out, int result_is_integer,
     const cpkt_postgres_fastpath_argument *arguments, int argument_count);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the server outcome code carried by this result. */
 cpkt_postgres_result_status
 cpkt_postgres_result_status_get(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns provider-owned text naming a result status; do not free it. */
 char *cpkt_postgres_result_status_text(cpkt_postgres_result_status status);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns result-owned diagnostic text; do not free it. */
 char *cpkt_postgres_result_error_message(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Builds detailed error text; free it with text_free(). */
 char *cpkt_postgres_result_verbose_error_message(
     const cpkt_postgres_result *result, cpkt_postgres_verbosity verbosity,
     cpkt_postgres_context_visibility visibility);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a borrowed diagnostic field selected by its field code. */
 char *cpkt_postgres_result_error_field(const cpkt_postgres_result *result,
                                        int field_code);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the number of rows in this result. */
 int cpkt_postgres_result_row_count(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the number of columns in this result. */
 int cpkt_postgres_result_field_count(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether all result columns use binary format. */
 int cpkt_postgres_result_is_binary(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a borrowed column name for a zero-based field index. */
 char *cpkt_postgres_result_field_name(const cpkt_postgres_result *result,
                                       int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Finds a zero-based column index by name; returns -1 if absent. */
 int cpkt_postgres_result_field_number(const cpkt_postgres_result *result,
                                       const char *field_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the originating table OID for a column, if available. */
 cpkt_postgres_oid
 cpkt_postgres_result_field_table_oid(const cpkt_postgres_result *result,
                                      int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the originating table's column number, if available. */
 int cpkt_postgres_result_field_table_column(const cpkt_postgres_result *result,
                                             int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the wire format of a result column: text or binary. */
 int cpkt_postgres_result_field_format(const cpkt_postgres_result *result,
                                       int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the type OID of a result column. */
 cpkt_postgres_oid
 cpkt_postgres_result_field_type(const cpkt_postgres_result *result,
                                 int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the declared size of a result column's type. */
 int cpkt_postgres_result_field_size(const cpkt_postgres_result *result,
                                     int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the server type modifier for a result column. */
 int cpkt_postgres_result_field_modifier(const cpkt_postgres_result *result,
                                         int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns result-owned command-tag text; do not free it. */
 char *cpkt_postgres_result_command_status(cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns result-owned text for the legacy inserted OID. */
 char *cpkt_postgres_result_oid_status(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the legacy inserted OID, if the command reports one. */
 cpkt_postgres_oid
 cpkt_postgres_result_oid_value(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns result-owned text for the affected-row count. */
 char *cpkt_postgres_result_command_tuples(cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns result-owned bytes for a row and column; inspect null and length
+ * separately. */
 char *cpkt_postgres_result_value(const cpkt_postgres_result *result,
                                  int row_index, int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the byte length of one result cell. */
 int cpkt_postgres_result_value_length(const cpkt_postgres_result *result,
                                       int row_index, int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether one result cell is SQL NULL. */
 int cpkt_postgres_result_value_is_null(const cpkt_postgres_result *result,
                                        int row_index, int field_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the number of parameters of a prepared statement description. */
 int cpkt_postgres_result_parameter_count(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the type OID of a described statement parameter. */
 cpkt_postgres_oid
 cpkt_postgres_result_parameter_type(const cpkt_postgres_result *result,
                                     int parameter_index);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Describes a named prepared statement; returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_describe_prepared(cpkt_postgres_connection *connection,
                                 const char *statement_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Describes a named portal; returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_describe_portal(cpkt_postgres_connection *connection,
                               const char *portal_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues a description request for a named prepared statement. */
 int cpkt_postgres_send_describe_prepared(cpkt_postgres_connection *connection,
                                          const char *statement_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues a description request for a named portal. */
 int cpkt_postgres_send_describe_portal(cpkt_postgres_connection *connection,
                                        const char *portal_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Closes a named prepared statement; returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_close_prepared(cpkt_postgres_connection *connection,
                              const char *statement_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Closes a named portal; returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_close_portal(cpkt_postgres_connection *connection,
                            const char *portal_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues closure of a named prepared statement. */
 int cpkt_postgres_send_close_prepared(cpkt_postgres_connection *connection,
                                       const char *statement_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Queues closure of a named portal. */
 int cpkt_postgres_send_close_portal(cpkt_postgres_connection *connection,
                                     const char *portal_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Releases an owned result and its borrowed rows and fields. */
 void cpkt_postgres_result_free(cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Releases provider-allocated text and COPY buffers. */
 void cpkt_postgres_text_free(char *memory);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Releases provider-allocated escaped or decoded bytea data. */
 void cpkt_postgres_bytea_free(unsigned char *memory);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Constructs an owned result with the requested status. */
 cpkt_postgres_result *
 cpkt_postgres_result_new_empty(cpkt_postgres_connection *connection,
                                cpkt_postgres_result_status status);
@@ -881,150 +918,150 @@ cpkt_postgres_result_new_empty(cpkt_postgres_connection *connection,
  * retain their original callback context until that copy is freed. */
 cpkt_postgres_result *
 cpkt_postgres_result_copy(const cpkt_postgres_result *source, int flags);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Sets column metadata on a constructed result. */
 int cpkt_postgres_result_set_attributes(
     cpkt_postgres_result *result, int attribute_count,
     cpkt_postgres_result_attribute *attributes);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Allocates bytes from a constructed result's lifetime arena. */
 unsigned char *cpkt_postgres_result_allocate(cpkt_postgres_result *result,
                                              size_t byte_count);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the memory occupied by a result and its owned data. */
 size_t cpkt_postgres_result_memory_size(const cpkt_postgres_result *result);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Copies a value into a constructed result cell. */
 int cpkt_postgres_result_set_value(cpkt_postgres_result *result, int row_index,
                                    int field_index, char *value,
                                    int value_length);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Escapes a string into caller storage using connection encoding. */
 size_t
 cpkt_postgres_escape_string_connection(cpkt_postgres_connection *connection,
                                        char *destination, const char *source,
                                        size_t source_length, int *error_out);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Quotes and escapes a SQL literal; free returned text with text_free(). */
 char *cpkt_postgres_escape_literal(cpkt_postgres_connection *connection,
                                    const char *source, size_t source_length);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Quotes and escapes a SQL identifier; free returned text with text_free(). */
 char *cpkt_postgres_escape_identifier(cpkt_postgres_connection *connection,
                                       const char *source, size_t source_length);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Escapes binary data for SQL text; free returned bytes with bytea_free(). */
 unsigned char *cpkt_postgres_escape_bytea_connection(
     cpkt_postgres_connection *connection, const unsigned char *source,
     size_t source_length, size_t *destination_length_out);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Decodes escaped bytea text; free returned bytes with bytea_free(). */
 unsigned char *cpkt_postgres_unescape_bytea(const unsigned char *source,
                                             size_t *destination_length_out);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Escapes text without a connection; caller supplies destination storage. */
 size_t cpkt_postgres_escape_string(char *destination, const char *source,
                                    size_t source_length);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Escapes binary data without a connection; free with bytea_free(). */
 unsigned char *cpkt_postgres_escape_bytea(const unsigned char *source,
                                           size_t source_length,
                                           size_t *destination_length_out);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Writes a result to a FILE using legacy formatting options. */
 void cpkt_postgres_print(FILE *stream, const cpkt_postgres_result *result,
                          const cpkt_postgres_print_options *options);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Writes result tuples to a FILE using display formatting. */
 void cpkt_postgres_display_tuples(const cpkt_postgres_result *result,
                                   FILE *stream, int fill_align,
                                   const char *field_separator, int print_header,
                                   int quiet);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Writes result tuples to a FILE using legacy tuple formatting. */
 void cpkt_postgres_print_tuples(const cpkt_postgres_result *result,
                                 FILE *stream, int print_attribute_names,
                                 int terse_output, int column_width);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Opens a server large object and returns a descriptor for this connection. */
 int cpkt_postgres_large_object_open(cpkt_postgres_connection *connection,
                                     cpkt_postgres_oid object_oid, int mode);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Closes an open large-object descriptor. */
 int cpkt_postgres_large_object_close(cpkt_postgres_connection *connection,
                                      int descriptor);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reads large-object bytes into a caller buffer. */
 int cpkt_postgres_large_object_read(cpkt_postgres_connection *connection,
                                     int descriptor, char *buffer,
                                     size_t byte_count);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Writes caller bytes to an open large object. */
 int cpkt_postgres_large_object_write(cpkt_postgres_connection *connection,
                                      int descriptor, const char *buffer,
                                      size_t byte_count);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Moves a large-object cursor using a 32-bit offset. */
 int cpkt_postgres_large_object_seek(cpkt_postgres_connection *connection,
                                     int descriptor, int offset, int whence);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Moves a large-object cursor using a split 64-bit offset. */
 cpkt_postgres_i64
 cpkt_postgres_large_object_seek64(cpkt_postgres_connection *connection,
                                   int descriptor, cpkt_postgres_i64 offset,
                                   int whence);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Creates a large object using the legacy default-OID API. */
 cpkt_postgres_oid
 cpkt_postgres_large_object_create_legacy(cpkt_postgres_connection *connection,
                                          int mode);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Creates a large object with an optional requested OID. */
 cpkt_postgres_oid
 cpkt_postgres_large_object_create(cpkt_postgres_connection *connection,
                                   cpkt_postgres_oid object_oid);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the current 32-bit large-object cursor position. */
 int cpkt_postgres_large_object_tell(cpkt_postgres_connection *connection,
                                     int descriptor);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the current split 64-bit large-object cursor position. */
 cpkt_postgres_i64
 cpkt_postgres_large_object_tell64(cpkt_postgres_connection *connection,
                                   int descriptor);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Changes large-object length using a 32-bit value. */
 int cpkt_postgres_large_object_truncate(cpkt_postgres_connection *connection,
                                         int descriptor, size_t byte_count);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Changes large-object length using a split 64-bit value. */
 int cpkt_postgres_large_object_truncate64(cpkt_postgres_connection *connection,
                                           int descriptor,
                                           cpkt_postgres_i64 byte_count);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Deletes a large object by OID. */
 int cpkt_postgres_large_object_unlink(cpkt_postgres_connection *connection,
                                       cpkt_postgres_oid object_oid);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Imports a local file into a new server large object. */
 cpkt_postgres_oid
 cpkt_postgres_large_object_import(cpkt_postgres_connection *connection,
                                   const char *file_name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Imports a local file using a requested large-object OID. */
 cpkt_postgres_oid
 cpkt_postgres_large_object_import_with_oid(cpkt_postgres_connection *connection,
                                            const char *file_name,
                                            cpkt_postgres_oid object_oid);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Exports a server large object to a local file. */
 int cpkt_postgres_large_object_export(cpkt_postgres_connection *connection,
                                       cpkt_postgres_oid object_oid,
                                       const char *file_name);
 
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the bundled PostgreSQL client version encoded as an integer. */
 int cpkt_postgres_library_version(void);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Waits for socket readability or writability using provider polling rules. */
 int cpkt_postgres_socket_poll(int socket_descriptor, int wait_for_read,
                               int wait_for_write, cpkt_postgres_i64 end_time);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the current time in split 64-bit microseconds. */
 cpkt_postgres_i64 cpkt_postgres_current_time_microseconds(void);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the byte width of the next character in the specified encoding. */
 int cpkt_postgres_multibyte_length(const char *text, int encoding);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a character's byte width bounded by the input's terminator. */
 int cpkt_postgres_multibyte_length_bounded(const char *text, int encoding);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the display width of the next encoded character. */
 int cpkt_postgres_multibyte_display_length(const char *text, int encoding);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns the encoding selected from the process environment. */
 int cpkt_postgres_environment_encoding(void);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Produces an encrypted password string; free it with text_free(). */
 char *cpkt_postgres_encrypt_password(const char *password, const char *user);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Encrypts a password using the connection's selected algorithm. */
 char *cpkt_postgres_encrypt_password_connection(
     cpkt_postgres_connection *connection, const char *password,
     const char *user, const char *algorithm);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Requests a server-side password change; returns an owned result. */
 cpkt_postgres_result *
 cpkt_postgres_change_password(cpkt_postgres_connection *connection,
                               const char *user, const char *password);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Looks up a PostgreSQL encoding identifier by name. */
 int cpkt_postgres_encoding_from_name(const char *name);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Returns a static name for an encoding identifier. */
 const char *cpkt_postgres_encoding_name(int encoding);
-/** C89 PostgreSQL facade declaration. See docs/postgres-c89-facade-spec.md. */
+/** Reports whether an encoding identifier is valid for server storage. */
 int cpkt_postgres_server_encoding_is_valid(int encoding);
 
 /** @} */

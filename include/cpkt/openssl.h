@@ -173,13 +173,13 @@
 
 /* Exact unsigned 64-bit bits represented without a C99 scalar. The byte
  * storage is exactly eight bytes so it can back upstream pointer APIs. */
-/** C89 OpenSSL facade declaration. */
+/** Exact unsigned 64-bit bits in eight bytes; use the C89 word helpers. */
 typedef struct cpkt_openssl_u64 {
   unsigned char bytes[8];
 } cpkt_openssl_u64;
 
 /* Exact signed 64-bit two's-complement bits in exactly eight bytes. */
-/** C89 OpenSSL facade declaration. */
+/** Exact signed 64-bit bits in eight bytes; use the C89 word helpers. */
 typedef struct cpkt_openssl_i64 {
   unsigned char bytes[8];
 } cpkt_openssl_i64;
@@ -266,7 +266,7 @@ typedef struct cpkt_openssl_ssl_poll_item {
   cpkt_openssl_u64 returned_events;
 } cpkt_openssl_ssl_poll_item;
 
-/** C89 OpenSSL facade declaration. */
+/** Constructs an exact unsigned 64-bit value from two 32-bit words. */
 CPKT_OPENSSL_API cpkt_openssl_u64 cpkt_openssl_u64_make(unsigned long high,
                                                         unsigned long low);
 /** Returns the most-significant 32-bit word of an exact unsigned value. */
@@ -275,10 +275,10 @@ cpkt_openssl_u64_high_word(cpkt_openssl_u64 value);
 /** Returns the least-significant 32-bit word of an exact unsigned value. */
 CPKT_OPENSSL_API unsigned long
 cpkt_openssl_u64_low_word(cpkt_openssl_u64 value);
-/** C89 OpenSSL facade declaration. */
+/** Compares both words of two C89 unsigned 64-bit values. */
 CPKT_OPENSSL_API int cpkt_openssl_u64_equal(cpkt_openssl_u64 left,
                                             cpkt_openssl_u64 right);
-/** C89 OpenSSL facade declaration. */
+/** Returns nonzero when both 32-bit words are zero. */
 CPKT_OPENSSL_API int cpkt_openssl_u64_is_zero(cpkt_openssl_u64 value);
 /** Creates exact signed 64-bit two's-complement bits from two 32-bit words. */
 CPKT_OPENSSL_API cpkt_openssl_i64 cpkt_openssl_i64_make(unsigned long high,

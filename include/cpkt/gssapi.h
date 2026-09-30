@@ -30,13 +30,15 @@
 
 /** Opaque GSS name; release owned instances with cpkt_gss_release_name(). */
 typedef struct cpkt_gss_name cpkt_gss_name;
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Opaque credential; release an owned instance with
+ * cpkt_gss_release_credential(). */
 typedef struct cpkt_gss_credential cpkt_gss_credential;
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Opaque security context; delete an owned instance with
+ * cpkt_gss_delete_context(). */
 typedef struct cpkt_gss_context cpkt_gss_context;
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Mechanism or name-type identifier; standard constants are borrowed. */
 typedef struct cpkt_gss_oid cpkt_gss_oid;
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Owned identifier set; release with cpkt_gss_release_oid_set(). */
 typedef struct cpkt_gss_oid_set cpkt_gss_oid_set;
 /** Provider-owned set of byte buffers. Members are borrowed until release. */
 typedef struct cpkt_gss_buffer_set cpkt_gss_buffer_set;
@@ -57,13 +59,13 @@ void cpkt_gss_allocation_free(void *value);
 
 /* GSSAPI status, QOP, lifetime, and flag values are exact unsigned 32-bit
  * values carried in an unsigned long on every supported target. */
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** GSS major or mechanism-specific minor status carried in 32 bits. */
 typedef unsigned long cpkt_gss_status;
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Quality-of-protection selector carried in 32 bits. */
 typedef unsigned long cpkt_gss_qop;
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Credential or context lifetime in seconds, carried in 32 bits. */
 typedef unsigned long cpkt_gss_lifetime;
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Requested or returned GSS context flags carried in 32 bits. */
 typedef unsigned long cpkt_gss_flags;
 
 /** Provider-owned output byte buffer; release with cpkt_gss_release_buffer().
@@ -73,7 +75,8 @@ typedef struct cpkt_gss_buffer {
   void *value;
 } cpkt_gss_buffer;
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Caller-owned endpoint and application binding bytes for context negotiation.
+ */
 typedef struct cpkt_gss_channel_bindings {
   unsigned long initiator_address_type;
   cpkt_gss_buffer initiator_address;
@@ -269,17 +272,17 @@ enum cpkt_gss_constants {
 
 /** Returns nonzero when the major status contains a GSSAPI error. */
 int cpkt_gss_status_is_error(cpkt_gss_status status);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Borrowed OID for a user-name string. */
 const cpkt_gss_oid *cpkt_gss_name_type_user(void);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Borrowed OID for a machine-specific numeric user ID. */
 const cpkt_gss_oid *cpkt_gss_name_type_machine_uid(void);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Borrowed OID for a textual user ID. */
 const cpkt_gss_oid *cpkt_gss_name_type_string_uid(void);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Borrowed OID for a host-based service name. */
 const cpkt_gss_oid *cpkt_gss_name_type_hostbased_service(void);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Borrowed OID for an anonymous name. */
 const cpkt_gss_oid *cpkt_gss_name_type_anonymous(void);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Borrowed OID for an exported binary name. */
 const cpkt_gss_oid *cpkt_gss_name_type_exported_name(void);
 /** Borrowed descriptor bytes; valid while the OID or its set is alive. */
 int cpkt_gss_oid_view(const cpkt_gss_oid *oid, const void **bytes_out,
@@ -342,45 +345,45 @@ int cpkt_gss_local_login_attribute(const void **bytes_out, size_t *length_out);
 /** Releases provider-owned bytes and clears the buffer on success. */
 cpkt_gss_status cpkt_gss_release_buffer(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_buffer *buffer);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Releases a dynamically owned OID through the GSS provider. */
 cpkt_gss_status cpkt_gss_release_oid(cpkt_gss_status *minor_status_out,
                                      cpkt_gss_oid **oid_in_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Releases an owned OID set; its member OIDs then become invalid. */
 cpkt_gss_status cpkt_gss_release_oid_set(cpkt_gss_status *minor_status_out,
                                          cpkt_gss_oid_set **set_in_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Releases an owned name and clears its handle. */
 cpkt_gss_status cpkt_gss_release_name(cpkt_gss_status *minor_status_out,
                                       cpkt_gss_name **name_in_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Releases an owned credential and clears its handle. */
 cpkt_gss_status
 cpkt_gss_release_credential(cpkt_gss_status *minor_status_out,
                             cpkt_gss_credential **credential_in_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Deletes a security context and may produce a final output token. */
 cpkt_gss_status cpkt_gss_delete_context(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_context **context_in_out,
                                         cpkt_gss_buffer *output_token);
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Returns an owned set of mechanisms supported by the provider. */
 cpkt_gss_status cpkt_gss_indicate_mechanisms(cpkt_gss_status *minor_status_out,
                                              cpkt_gss_oid_set **set_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Returns the number of entries in a borrowed or owned OID set. */
 size_t cpkt_gss_oid_set_count(const cpkt_gss_oid_set *set);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Returns a borrowed OID member; keep the set alive while using it. */
 const cpkt_gss_oid *cpkt_gss_oid_set_at(const cpkt_gss_oid_set *set,
                                         size_t index);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Creates an empty, owned OID set. */
 cpkt_gss_status cpkt_gss_create_oid_set(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_oid_set **set_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Adds an OID to a mutable set, copying its identifier bytes. */
 cpkt_gss_status cpkt_gss_add_oid_to_set(cpkt_gss_status *minor_status_out,
                                         const cpkt_gss_oid *oid,
                                         cpkt_gss_oid_set **set_in_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Reports whether the given OID is present in a set. */
 cpkt_gss_status cpkt_gss_oid_set_contains(cpkt_gss_status *minor_status_out,
                                           const cpkt_gss_oid *oid,
                                           const cpkt_gss_oid_set *set,
                                           int *present_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Parses dotted-decimal OID text into an owned identifier. */
 cpkt_gss_status cpkt_gss_oid_from_text(cpkt_gss_status *minor_status_out,
                                        const cpkt_gss_buffer *text,
                                        cpkt_gss_oid **oid_out);
@@ -389,54 +392,55 @@ cpkt_gss_status cpkt_gss_oid_from_text(cpkt_gss_status *minor_status_out,
 cpkt_gss_status cpkt_gss_oid_from_bytes(cpkt_gss_status *minor_status_out,
                                         const void *bytes, size_t length,
                                         cpkt_gss_oid **oid_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Formats an OID into a provider-owned output buffer. */
 cpkt_gss_status cpkt_gss_oid_to_text(cpkt_gss_status *minor_status_out,
                                      const cpkt_gss_oid *oid,
                                      cpkt_gss_buffer *text_out);
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Imports external name bytes as an owned GSS name. */
 cpkt_gss_status cpkt_gss_import_name(cpkt_gss_status *minor_status_out,
                                      const cpkt_gss_buffer *input,
                                      const cpkt_gss_oid *name_type,
                                      cpkt_gss_name **name_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Formats a name into a provider-owned output buffer. */
 cpkt_gss_status cpkt_gss_display_name(cpkt_gss_status *minor_status_out,
                                       const cpkt_gss_name *name,
                                       cpkt_gss_buffer *text_out,
                                       const cpkt_gss_oid **name_type_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Reports whether two GSS names identify the same principal. */
 cpkt_gss_status cpkt_gss_compare_names(cpkt_gss_status *minor_status_out,
                                        const cpkt_gss_name *left,
                                        const cpkt_gss_name *right,
                                        int *equal_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Creates an independent owned copy of a GSS name. */
 cpkt_gss_status cpkt_gss_duplicate_name(cpkt_gss_status *minor_status_out,
                                         const cpkt_gss_name *source,
                                         cpkt_gss_name **copy_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Converts a name to a mechanism-specific owned name. */
 cpkt_gss_status cpkt_gss_canonicalize_name(cpkt_gss_status *minor_status_out,
                                            const cpkt_gss_name *source,
                                            const cpkt_gss_oid *mechanism,
                                            cpkt_gss_name **canonical_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Serializes a mechanism name into a provider-owned output buffer. */
 cpkt_gss_status cpkt_gss_export_name(cpkt_gss_status *minor_status_out,
                                      const cpkt_gss_name *name,
                                      cpkt_gss_buffer *token_out);
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Obtains an owned credential for the requested usage and mechanisms. */
 cpkt_gss_status cpkt_gss_acquire_credential(
     cpkt_gss_status *minor_status_out, const cpkt_gss_name *desired_name,
     cpkt_gss_lifetime requested_lifetime,
     const cpkt_gss_oid_set *desired_mechanisms, int usage,
     cpkt_gss_credential **credential_out,
     cpkt_gss_oid_set **actual_mechanisms_out, cpkt_gss_lifetime *lifetime_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Reads a credential's name, lifetime, usage, and mechanism set. */
 cpkt_gss_status cpkt_gss_inquire_credential(
     cpkt_gss_status *minor_status_out, const cpkt_gss_credential *credential,
     cpkt_gss_name **name_out, cpkt_gss_lifetime *lifetime_out, int *usage_out,
     cpkt_gss_oid_set **mechanisms_out);
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Advances initiator-side context negotiation; exchange output tokens with the
+ * peer. */
 cpkt_gss_status cpkt_gss_init_context(
     cpkt_gss_status *minor_status_out, const cpkt_gss_credential *credential,
     cpkt_gss_context **context_in_out, const cpkt_gss_name *target,
@@ -446,7 +450,8 @@ cpkt_gss_status cpkt_gss_init_context(
     const cpkt_gss_buffer *input_token,
     const cpkt_gss_oid **actual_mechanism_out, cpkt_gss_buffer *output_token,
     cpkt_gss_flags *returned_flags_out, cpkt_gss_lifetime *lifetime_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Advances acceptor-side context negotiation; exchange output tokens with the
+ * peer. */
 cpkt_gss_status cpkt_gss_accept_context(
     cpkt_gss_status *minor_status_out, cpkt_gss_context **context_in_out,
     const cpkt_gss_credential *credential, const cpkt_gss_buffer *input_token,
@@ -455,38 +460,38 @@ cpkt_gss_status cpkt_gss_accept_context(
     cpkt_gss_buffer *output_token, cpkt_gss_flags *returned_flags_out,
     cpkt_gss_lifetime *lifetime_out,
     cpkt_gss_credential **delegated_credential_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Returns the remaining lifetime of an established context. */
 cpkt_gss_status cpkt_gss_context_lifetime(cpkt_gss_status *minor_status_out,
                                           const cpkt_gss_context *context,
                                           cpkt_gss_lifetime *lifetime_out);
 
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Computes a message integrity token in a provider-owned buffer. */
 cpkt_gss_status cpkt_gss_get_mic(cpkt_gss_status *minor_status_out,
                                  const cpkt_gss_context *context,
                                  cpkt_gss_qop qop,
                                  const cpkt_gss_buffer *message,
                                  cpkt_gss_buffer *token_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Verifies a message integrity token against the supplied message. */
 cpkt_gss_status cpkt_gss_verify_mic(cpkt_gss_status *minor_status_out,
                                     const cpkt_gss_context *context,
                                     const cpkt_gss_buffer *message,
                                     const cpkt_gss_buffer *token,
                                     cpkt_gss_qop *qop_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Protects a message and returns provider-owned output bytes. */
 cpkt_gss_status cpkt_gss_wrap(cpkt_gss_status *minor_status_out,
                               const cpkt_gss_context *context,
                               int confidentiality_requested, cpkt_gss_qop qop,
                               const cpkt_gss_buffer *input,
                               int *confidentiality_out,
                               cpkt_gss_buffer *output_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Removes message protection and returns provider-owned plaintext. */
 cpkt_gss_status cpkt_gss_unwrap(cpkt_gss_status *minor_status_out,
                                 const cpkt_gss_context *context,
                                 const cpkt_gss_buffer *input,
                                 cpkt_gss_buffer *output_out,
                                 int *confidentiality_out,
                                 cpkt_gss_qop *qop_out);
-/** C89 GSSAPI facade declaration. See docs/gssapi-c89-facade-spec.md. */
+/** Formats one status fragment; continue while message_context is nonzero. */
 cpkt_gss_status cpkt_gss_display_status(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_status status, int status_type,
                                         const cpkt_gss_oid *mechanism,

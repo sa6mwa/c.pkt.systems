@@ -39,7 +39,7 @@ typedef int (*cpkt_sasl_mutex_lock_callback)(void *);
 typedef int (*cpkt_sasl_mutex_unlock_callback)(void *);
 typedef void (*cpkt_sasl_mutex_free_callback)(void *);
 
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Connection security bounds, flags, and allowed property names. */
 typedef struct cpkt_sasl_security_properties {
   unsigned long minimum_ssf;
   unsigned long maximum_ssf;
@@ -57,7 +57,7 @@ typedef struct cpkt_sasl_channel_binding {
   const unsigned char *data;
 } cpkt_sasl_channel_binding;
 
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Borrowed HTTP request fields for the HTTP SASL mechanism. */
 typedef struct cpkt_sasl_http_request {
   const char *method;
   const char *uri;
@@ -91,60 +91,60 @@ typedef struct cpkt_sasl_secret {
   unsigned long byte_count;
 } cpkt_sasl_secret;
 
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Returns a borrowed plugin option value to the native provider. */
 typedef int (*cpkt_sasl_option_callback)(void *context, const char *plugin_name,
                                          const char *option,
                                          const char **result,
                                          unsigned long *result_byte_count);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Receives one SASL diagnostic message with its provider severity. */
 typedef int (*cpkt_sasl_log_callback)(void *context, int level,
                                       const char *message);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Returns a borrowed plugin-search path to the native provider. */
 typedef int (*cpkt_sasl_path_callback)(void *context, const char **path);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Approves or rejects a SASL configuration or plugin file. */
 typedef int (*cpkt_sasl_verify_file_callback)(void *context, const char *path,
                                               int type);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Returns a configuration-search path to the native provider. */
 typedef int (*cpkt_sasl_configuration_path_callback)(void *context,
                                                      char **path_out);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Provides a borrowed identity or other simple credential value. */
 typedef int (*cpkt_sasl_simple_callback)(void *context, int id,
                                          const char **result,
                                          unsigned long *result_byte_count);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Provides password bytes; the facade copies them before returning. */
 typedef int (*cpkt_sasl_secret_callback)(cpkt_sasl *connection, void *context,
                                          int id,
                                          const cpkt_sasl_secret **secret_out);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Answers a mechanism challenge with a borrowed response. */
 typedef int (*cpkt_sasl_challenge_callback)(void *context, int id,
                                             const char *challenge,
                                             const char *prompt,
                                             const char *default_result,
                                             const char **result,
                                             unsigned long *result_byte_count);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Selects one realm from a borrowed list of available realms. */
 typedef int (*cpkt_sasl_realm_callback)(void *context, int id,
                                         const char *const *available_realms,
                                         const char **result);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Decides whether an authenticated identity may act as the requested user. */
 typedef int (*cpkt_sasl_authorize_callback)(
     cpkt_sasl *connection, void *context, const char *requested_user,
     unsigned long requested_length, const char *authentication_identity,
     unsigned long authentication_length, const char *default_realm,
     unsigned long realm_length);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Verifies supplied password bytes for a user. */
 typedef int (*cpkt_sasl_check_password_callback)(cpkt_sasl *connection,
                                                  void *context,
                                                  const char *user,
                                                  const char *password,
                                                  unsigned long password_length);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Changes or disables a user's mechanism password. */
 typedef int (*cpkt_sasl_set_password_callback)(cpkt_sasl *connection,
                                                void *context, const char *user,
                                                const char *password,
                                                unsigned long password_length,
                                                unsigned long flags);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Writes a canonical identity into the supplied output buffer. */
 typedef int (*cpkt_sasl_canonicalize_callback)(
     cpkt_sasl *connection, void *context, const char *input,
     unsigned long input_length, unsigned long flags, const char *realm,
@@ -400,7 +400,8 @@ struct cpkt_sasl {
                         unsigned long host_flag);
 };
 
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Returns the implementation identity and version of the bundled SASL
+ * provider. */
 void cpkt_sasl_version(const char **implementation_out,
                        const char **version_out, int *major_out, int *minor_out,
                        int *step_out, int *patch_out);
@@ -408,25 +409,27 @@ void cpkt_sasl_version(const char **implementation_out,
  * consumers. Both returned text pointers are provider-owned. */
 void cpkt_sasl_legacy_version(const char **implementation_out,
                               int *version_out);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Returns provider-owned text for a SASL status code; do not free it. */
 const char *cpkt_sasl_error_string(int status, const char *languages,
                                    const char **language_out);
 /** Native idle/precomputation operation. A null receiver requests global
  * work before connection creation. Returns 1 for work done, 0 otherwise. */
 int cpkt_sasl_idle(cpkt_sasl *self);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Sets a process-wide SASL path before library initialization. */
 int cpkt_sasl_set_path(int type, const char *path);
 /* Global callbacks provide fallbacks for connection callbacks and receive the
  * current public receiver. Repeated initialization retains the first
  * successful callback record until its matching final finish call. */
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Initializes client mechanisms and process-wide callbacks. */
 int cpkt_sasl_client_initialize(const cpkt_sasl_callbacks *callbacks);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Initializes server mechanisms and process-wide callbacks. */
 int cpkt_sasl_server_initialize(const cpkt_sasl_callbacks *callbacks,
                                 const char *application_name);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Releases a client initialization reference after closing client receivers.
+ */
 int cpkt_sasl_client_finish(void);
-/** C89 Cyrus SASL facade declaration. See docs/sasl-c89-facade-spec.md. */
+/** Releases a server initialization reference after closing server receivers.
+ */
 int cpkt_sasl_server_finish(void);
 /** Releases one initialization reference for each role, as sasl_done does.
  * Plugin and callback storage remains valid while that role has references.
