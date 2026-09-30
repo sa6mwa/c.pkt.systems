@@ -3731,6 +3731,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
       "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc.series"
       "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc_c89_sqlbigint.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc_diag_native_error.patch"
       "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
     RECIPE_FUNCTIONS cpkt_add_iodbc)
   cpkt_prepare_dependency_component(

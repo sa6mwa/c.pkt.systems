@@ -37,6 +37,10 @@ SQL_NTS)` and enable or disable file tracing through `SQL_ATTR_TRACE` with
 iODBC manager facility and is caller-configured; there is no `cpkt_iodbc`
 wrapper or SDK logger dependency. The static and shared C89 consumer tests
 verify file output and diagnostic records.
+The bundled source patch initializes the native error output to zero for
+driver-manager diagnostics. Static and shared consumers verify that output
+through `SQLGetDiagRec`, `SQLGetDiagRecA`, and `SQLGetDiagRecW`, including with
+file tracing enabled; the same cases run under Valgrind.
 
 OpenLDAP's bundled liblber adds `ber_set_log_print_fn` as a typed C89 entry
 point to its existing global print hook. Its previous callback is returned for

@@ -71,11 +71,23 @@ int main(void) {
     return 11;
   memset(sqlstate, 0, sizeof(sqlstate));
   memset(message, 0, sizeof(message));
+  native_error = -1;
+  message_length = -1;
   status = SQLGetDiagRec(SQL_HANDLE_DBC, connection, 1, sqlstate, &native_error,
                          message, sizeof(message), &message_length);
   if (!SQL_SUCCEEDED(status) || strcmp((const char *)sqlstate, "HY024") != 0 ||
-      message_length <= 0)
+      native_error != 0 || message_length <= 0)
     return 12;
+  native_error = -1;
+  status = SQLGetDiagRecA(SQL_HANDLE_DBC, connection, 1, NULL, &native_error,
+                          NULL, 0, NULL);
+  if (!SQL_SUCCEEDED(status) || native_error != 0)
+    return 16;
+  native_error = -1;
+  status = SQLGetDiagRecW(SQL_HANDLE_DBC, connection, 1, NULL, &native_error,
+                          NULL, 0, NULL);
+  if (!SQL_SUCCEEDED(status) || native_error != 0)
+    return 17;
   status = SQLSetConnectAttr(connection, SQL_ATTR_TRACE,
                              (SQLPOINTER)(unsigned long)SQL_OPT_TRACE_OFF, 0);
   if (!SQL_SUCCEEDED(status))
