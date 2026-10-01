@@ -228,6 +228,7 @@ tests/opcua_callbacks_test.h
 tests/opcua_types_native_peer.c
 tests/opcua_types_peer.h
 tests/opcua_types_alloc_failure.c
+tests/opcua_stdout_contention_test.c
 tests/opcua_types_fixture.bsd
 tests/opcua_types_fixture_test.c
 tests/opcua_types_cpp_test.cpp
@@ -302,6 +303,7 @@ vendor/open62541/patches/0023-pin-reverse-connect-iteration-handles.patch
 vendor/open62541/patches/0024-define-discovery-callback-and-unavailable-policies.patch
 vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch
 vendor/open62541/patches/0026-count-json-string-closing-quote.patch
+vendor/open62541/patches/0027-block-on-posix-stdout-lock.patch
 '
 
 make_archive() {

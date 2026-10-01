@@ -17,6 +17,10 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+double cpkt_types_peer_monotonic(void) {
+  return (double)UA_DateTime_nowMonotonic() / (double)UA_DATETIME_SEC;
+}
+
 unsigned int cpkt_types_native_empty(size_t index, unsigned char **bytes,
                                      size_t *length) {
   void *value;
@@ -1996,11 +2000,6 @@ UA_StatusCode __wrap_UA_Client_readValueAttribute_async(
 #endif
 
 /* Independent native observations for the full core client boundary. */
-void cpkt_types_peer_functional_timeout(void *client) {
-  /* Instrumentation can delay the peer beyond the native five-second default.
-   * This fixture exercises successful transfer, not timeout policy. */
-  UA_Client_getConfig(client)->timeout = 30000;
-}
 void cpkt_types_peer_state(void *client, unsigned int *values) {
   UA_SecureChannelState channel;
   UA_SessionState session;

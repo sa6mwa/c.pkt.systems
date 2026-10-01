@@ -313,9 +313,11 @@ void cpkt_types_test_certificates(void) {
   cpkt_opcua_ByteString key, certificate, decoded, input, password;
   cpkt_opcua_log_config logger;
   cpkt_opcua_StatusCode status;
-  cpkt_opcua_UInt16 days = 3, bits = 2048;
+  /* Synthetic local fixtures exercise both encodings and policy factories,
+   * not RSA prime-search performance or secure-channel key-strength policy. */
+  cpkt_opcua_UInt16 days = 3, bits = 1024;
   cpkt_opcua_DateTime date = {0x12345678U, 0xabcdef01U};
-  size_t i, position;
+  size_t i, position, generated_bits;
   int injected;
   unsigned int encoding;
   names[0] = cpkt_opcua_STRING("DNS:localhost");
@@ -338,6 +340,11 @@ void cpkt_types_test_certificates(void) {
           &logger, &subject, 1, names, 2,
           (cpkt_opcua_CertificateFormat)encoding, &params, &key, &certificate));
       CHECK(key.length && certificate.length);
+      if (!i) {
+        CHECK(!cpkt_opcua_CertificateUtils_getKeySize(&certificate,
+                                                      &generated_bits));
+        CHECK(generated_bits == bits);
+      }
       inspect(&certificate, &key);
       if (encoding == 0) {
         certificate_groups(&certificate);

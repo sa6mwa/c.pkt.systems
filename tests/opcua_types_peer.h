@@ -102,7 +102,7 @@ struct cpkt_external_observed {
 unsigned int cpkt_types_peer_external(void *server, unsigned int id,
                                       struct cpkt_external_observed *out);
 void cpkt_types_peer_state(void *client, unsigned int *values);
-void cpkt_types_peer_functional_timeout(void *client);
+double cpkt_types_peer_monotonic(void);
 unsigned int cpkt_types_peer_session_endpoint(void *recipient, void *donor,
                                               const char *url);
 unsigned int cpkt_types_peer_discovery(void *client, const char *url, int kind,

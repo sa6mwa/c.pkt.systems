@@ -54,6 +54,7 @@ jobs:
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
             --target cpkt_opcua_logging_static_test cpkt_opcua_logging_shared_test \
               cpkt_opcua_types_static_test cpkt_opcua_types_shared_test \
+              cpkt_opcua_stdout_static_test cpkt_opcua_stdout_shared_test \
               cpkt_opcua_types_fixture_test cpkt_opcua_types_cpp_test \
               cpkt_opcua_c89_example cpkt_opcua_public_api_complete
           ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \

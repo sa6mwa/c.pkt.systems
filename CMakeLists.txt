@@ -307,7 +307,7 @@ set(CPKT_CYRUS_SASL_VERSION "2.1.28" CACHE STRING "Pinned Cyrus SASL release.")
 set(CPKT_OPENLDAP_VERSION "2.6.15" CACHE STRING "Pinned OpenLDAP LTS release.")
 set(CPKT_POSTGRESQL_VERSION "18.6" CACHE STRING "Pinned PostgreSQL/libpq release.")
 set(CPKT_SQLITE_VERSION "3.53.4" CACHE STRING "Pinned SQLite release.")
-set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-crypto-logging-23" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
+set(CPKT_OPEN62541_PATCHSET "mqtt-prefix-packet-headers-crypto-logging-24" CACHE STRING "c.pkt.systems open62541 patchset identity." FORCE)
 set(CPKT_LUA_ABI_VERSION "0" CACHE STRING "Lua C89 facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_LUA_RUNTIME_ABI_VERSION "0" CACHE STRING "Lua runtime facade ABI major. Do not bump without maintainer approval.")
 set(CPKT_AUDIO_ABI_VERSION "0" CACHE STRING "Audio facade ABI major. Do not bump without maintainer approval.")
@@ -2447,6 +2447,27 @@ if(CPKT_BUILD_TESTS)
         -P "${CMAKE_SOURCE_DIR}/tests/open62541_openssl_provenance_test.cmake")
     set_tests_properties(open62541_openssl_provenance PROPERTIES LABELS "packaging;opcua" TIMEOUT 30)
   endif()
+  foreach(_cpkt_stdout_linkage IN ITEMS static shared)
+    add_executable(cpkt_opcua_stdout_${_cpkt_stdout_linkage}_test
+      tests/opcua_stdout_contention_test.c)
+    cpkt_use_local_runtime(cpkt_opcua_stdout_${_cpkt_stdout_linkage}_test
+      cpkt::open62541_shared cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared)
+    cpkt_add_repo_warning_errors(cpkt_opcua_stdout_${_cpkt_stdout_linkage}_test)
+    target_compile_options(cpkt_opcua_stdout_${_cpkt_stdout_linkage}_test PRIVATE -std=c99)
+    target_link_libraries(cpkt_opcua_stdout_${_cpkt_stdout_linkage}_test PRIVATE
+      cpkt::open62541_${_cpkt_stdout_linkage} Threads::Threads)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND _cpkt_stdout_linkage STREQUAL "static")
+      target_compile_definitions(cpkt_opcua_stdout_static_test PRIVATE CPKT_TEST_STDOUT_LOCK_WRAP)
+      target_link_options(cpkt_opcua_stdout_static_test PRIVATE -Wl,--wrap=printf,--wrap=flockfile)
+    endif()
+    if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+      add_test(NAME opcua_stdout_contention_${_cpkt_stdout_linkage}
+        COMMAND cpkt_opcua_stdout_${_cpkt_stdout_linkage}_test
+          "${CMAKE_CURRENT_BINARY_DIR}/opcua-stdout-${_cpkt_stdout_linkage}.log")
+      set_tests_properties(opcua_stdout_contention_${_cpkt_stdout_linkage} PROPERTIES
+        LABELS "facade;opcua;memcheck" TIMEOUT 10)
+    endif()
+  endforeach()
   set(_cpkt_fixture_dir "${CMAKE_CURRENT_BINARY_DIR}/generated/opcua-fixture")
   add_custom_command(
     OUTPUT "${_cpkt_fixture_dir}/cpkt/opcua_types.h"

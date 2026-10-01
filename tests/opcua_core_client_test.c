@@ -25,11 +25,6 @@ static cpkt_opcua_status native_state(void *client, void *user) {
   cpkt_types_peer_state(client, user);
   return 0;
 }
-static cpkt_opcua_status functional_timeout(void *client, void *user) {
-  (void)user;
-  cpkt_types_peer_functional_timeout(client);
-  return 0;
-}
 struct transfer_config {
   void *donor;
   const char *url;
@@ -424,10 +419,6 @@ static void sessions(const char *url) {
   for (asynchronous = 0; asynchronous < 2; ++asynchronous) {
     CHECK(cpkt_opcua_client_new(&donor) == CPKT_OPCUA_OK);
     CHECK(cpkt_opcua_client_new(&recipient) == CPKT_OPCUA_OK);
-    CHECK(cpkt_opcua_client_native(donor, functional_timeout, NULL) ==
-          CPKT_OPCUA_OK);
-    CHECK(cpkt_opcua_client_native(recipient, functional_timeout, NULL) ==
-          CPKT_OPCUA_OK);
     CHECK(cpkt_opcua_client_getSessionAuthenticationToken_typed(
               donor, &token, &nonce) == CPKT_OPCUA_STATUSCODE_BADSESSIONCLOSED);
     CHECK(!token.identifier.numeric && !nonce.length && !nonce.data);

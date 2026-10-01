@@ -23,3 +23,4 @@
 0024-define-discovery-callback-and-unavailable-policies.patch
 0025-preserve-accept-all-certificate-logger.patch
 0026-count-json-string-closing-quote.patch
+0027-block-on-posix-stdout-lock.patch

@@ -3659,6 +3659,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0024-define-discovery-callback-and-unavailable-policies.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0026-count-json-string-closing-quote.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0027-block-on-posix-stdout-lock.patch"
     RECIPE_FUNCTIONS cpkt_add_open62541)
   cpkt_prepare_dependency_component(
     NAME krb5

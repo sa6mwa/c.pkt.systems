@@ -256,6 +256,28 @@ fails. The creation/constructor allocation sweep and string argument-ID tests
 run under Valgrind and catch both leaks. Native creation/call algorithms and
 public API/ABI identities remain unchanged.
 
+## OPC UA stdout logger contention
+
+`0027-block-on-posix-stdout-lock.patch` replaces the default logger's global
+busy-spin lock with POSIX `flockfile(stdout)` / `funlockfile(stdout)` on Linux
+and Darwin. Waiting writers sleep instead of starving client/server progress
+under Valgrind. The recursive stream lock also permits logging while the caller
+already owns stdout, without the old spinlock/stream-lock inversion. Log levels,
+formatting, flushing, and whole-record serialization are preserved; custom
+logging callbacks are unaffected. No public API or ABI changes.
+
+Static/shared regression tests verify concurrent records and log filtering.
+The Linux static test forces the lock inversion deterministically and must
+finish within ten seconds, including under Memcheck. The full allocation-failure
+suite retains every failure position and its 120-second timeout; session
+transfer uses the native default service timeout instead of a 30-second override.
+Phase durations are recorded in CTest output. Certificate facade fixtures use
+synthetic RSA-1024 keys to avoid spending the gate on variable prime searches
+under instrumentation. They assert the requested key size in both DER and PEM,
+and retain EC generation, native-peer comparisons, all stock policy factories,
+and the allocation-failure sweep. These local keys are not handshake fixtures
+or a recommended application security configuration.
+
 ## OPC UA runtime warning in local package checks
 
 The strict C89 package consumer constructs a server from a minimal JSON

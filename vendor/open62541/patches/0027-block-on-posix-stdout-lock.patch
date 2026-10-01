@@ -1,0 +1,51 @@
+--- a/plugins/ua_log_stdout.c
++++ b/plugins/ua_log_stdout.c
+@@ -44,16 +44,26 @@
+     {"network", "channel", "session", "server", "client",
+      "application", "security", "eventloop", "pubsub", "discovery"};
+ 
+-/* Protect crosstalk during logging via global lock. Use a spinlock as we cannot
+- * statically initialize a global lock across all platforms. */
++/* Keep whole records together. POSIX stream locks block instead of spinning
++ * while another thread writes, and are recursive for callers holding stdout.
++ * Retain the portable fallback for non-POSIX architectures. */
+ #if UA_MULTITHREADING >= 100
++# ifdef UA_ARCHITECTURE_POSIX
++static UA_INLINE void logLock(void) {
++    flockfile(stdout);
++}
++static UA_INLINE void logUnLock(void) {
++    funlockfile(stdout);
++}
++# else
+ static void *logSpinLock = NULL;
+-static UA_INLINE void spinLock(void) {
++static UA_INLINE void logLock(void) {
+     while(UA_atomic_cmpxchg(&logSpinLock, NULL, (void*)0x1) != NULL) {}
+ }
+-static UA_INLINE void spinUnLock(void) {
++static UA_INLINE void logUnLock(void) {
+     UA_atomic_xchg(&logSpinLock, NULL);
+ }
++# endif
+ #endif
+ 
+ #ifdef __clang__
+@@ -76,7 +86,7 @@
+ 
+     /* Lock */
+ #if UA_MULTITHREADING >= 100
+-    spinLock();
++    logLock();
+ #endif
+ 
+ #define STDOUT_LOGBUFSIZE 512
+@@ -93,7 +103,7 @@
+ 
+     /* Unlock */
+ #if UA_MULTITHREADING >= 100
+-    spinUnLock();
++    logUnLock();
+ #endif
+ }
+ 
