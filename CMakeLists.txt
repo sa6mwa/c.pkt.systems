@@ -1730,6 +1730,37 @@ if(CPKT_BUILD_TESTS)
     cpkt_sqlite_static)
   set_target_properties(cpkt_static_archive_pic_smoke_facades PROPERTIES
     LINKER_LANGUAGE CXX)
+  add_executable(cpkt_sqlite_vfs_wal_capability_test
+    tests/sqlite_vfs_wal_capability_test.c tests/sqlite_vfs_handle_views_test.c)
+  cpkt_use_local_runtime(cpkt_sqlite_vfs_wal_capability_test cpkt::sqlite_shared)
+  target_compile_options(cpkt_sqlite_vfs_wal_capability_test PRIVATE -std=c99)
+  set_source_files_properties(tests/sqlite_vfs_handle_views_test.c PROPERTIES
+    COMPILE_OPTIONS "-std=c89;-pedantic-errors")
+  cpkt_add_repo_warning_errors(cpkt_sqlite_vfs_wal_capability_test)
+  target_link_libraries(cpkt_sqlite_vfs_wal_capability_test PRIVATE
+    cpkt_sqlite_static cpkt::sqlite_static)
+  add_executable(cpkt_sqlite_vfs_handles_shared_test
+    tests/sqlite_vfs_wal_capability_test.c tests/sqlite_vfs_handle_views_test.c)
+  cpkt_use_local_runtime(cpkt_sqlite_vfs_handles_shared_test cpkt::sqlite_shared)
+  target_compile_options(cpkt_sqlite_vfs_handles_shared_test PRIVATE -std=c99)
+  cpkt_add_repo_warning_errors(cpkt_sqlite_vfs_handles_shared_test)
+  target_link_libraries(cpkt_sqlite_vfs_handles_shared_test PRIVATE
+    cpkt_sqlite_shared cpkt::sqlite_shared)
+  if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+    foreach(_cpkt_vfs_case IN ITEMS borrowed-file provider-identity)
+      string(REPLACE "-" "_" _cpkt_vfs_test_name "${_cpkt_vfs_case}")
+      add_test(NAME sqlite_vfs_${_cpkt_vfs_test_name}
+        COMMAND cpkt_sqlite_vfs_wal_capability_test
+          "${CMAKE_BINARY_DIR}/sqlite-vfs-${_cpkt_vfs_case}.db" "${_cpkt_vfs_case}")
+      set_tests_properties(sqlite_vfs_${_cpkt_vfs_test_name} PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+      add_test(NAME sqlite_vfs_${_cpkt_vfs_test_name}_shared
+        COMMAND cpkt_sqlite_vfs_handles_shared_test
+          "${CMAKE_BINARY_DIR}/sqlite-vfs-${_cpkt_vfs_case}-shared.db" "${_cpkt_vfs_case}")
+      set_tests_properties(sqlite_vfs_${_cpkt_vfs_test_name}_shared PROPERTIES
+        LABELS "facade;memcheck" TIMEOUT 30)
+    endforeach()
+  endif()
   foreach(_cpkt_bio_linkage IN ITEMS static shared)
     add_executable(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test
       tests/openssl_bio_lifecycle_test.c)
@@ -2247,13 +2278,6 @@ if(CPKT_BUILD_TESTS)
     cpkt_add_repo_warning_errors(cpkt_sqlite_changeset_null_conflict_test)
     target_link_libraries(cpkt_sqlite_changeset_null_conflict_test PRIVATE
       cpkt_sqlite_static)
-    add_executable(cpkt_sqlite_vfs_wal_capability_test
-      tests/sqlite_vfs_wal_capability_test.c)
-    cpkt_use_local_runtime(cpkt_sqlite_vfs_wal_capability_test)
-    target_compile_options(cpkt_sqlite_vfs_wal_capability_test PRIVATE -std=c99)
-    cpkt_add_repo_warning_errors(cpkt_sqlite_vfs_wal_capability_test)
-    target_link_libraries(cpkt_sqlite_vfs_wal_capability_test PRIVATE
-      cpkt_sqlite_static cpkt::sqlite_static)
     add_executable(cpkt_sqlite_child_lifetime_concurrency_test
       tests/sqlite_child_lifetime_concurrency_test.c)
     cpkt_use_local_runtime(cpkt_sqlite_child_lifetime_concurrency_test)

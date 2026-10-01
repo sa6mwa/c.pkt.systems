@@ -121,7 +121,11 @@ FILESTAT calls for their documented operation IDs. File and VFS control
 handles own only facade metadata. They borrow SQLite's open file or registered
 VFS, so close each handle before its database or VFS is closed. A file view
 borrowed through a handle cannot close the database's file; close the handle
-to release the view metadata. A directly opened VFS file owns its native file
+to release the view metadata. Custom facade VFS files follow this same rule;
+each handle has independent borrowed-view metadata. A VFS handle's methods refer
+to the exact provider retained by its database, including after same-name
+replacement or unregistration. Keep that provider alive until the database and
+its handles are closed. A directly opened VFS file owns its native file
 and must be closed through its file methods. `cpkt_sqlite_vfs_find()` returns
 the original facade registration for a custom VFS, or a separately owned
 callable view of the native/default VFS; close the latter before unregistering

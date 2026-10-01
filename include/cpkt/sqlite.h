@@ -1571,11 +1571,16 @@ int cpkt_sqlite_file_control_none(cpkt_sqlite *self, const char *database_name,
  * allocated receiver. Close only the receiver before closing the database. */
 int cpkt_sqlite_file_control_file(cpkt_sqlite *self, const char *database_name,
                                   int operation, cpkt_sqlite_file_handle **out);
-/** Full callable file methods; borrowed until the handle is closed. */
+/** Full callable file methods; borrowed until the handle is closed. The view's
+ * close returns CPKT_SQLITE_MISUSE, including for custom facade VFS files.
+ * Release its metadata with cpkt_sqlite_file_handle_close(). */
 cpkt_sqlite_file *cpkt_sqlite_file_handle_view(cpkt_sqlite_file_handle *self);
 int cpkt_sqlite_file_control_vfs(cpkt_sqlite *self, const char *database_name,
                                  cpkt_sqlite_vfs_handle **out);
-/** Full callable VFS methods; borrowed until the handle is closed. */
+/** Full callable VFS methods; borrowed until the handle is closed. The view
+ * refers to the database's actual provider even after another VFS is registered
+ * with the same name or that provider is unregistered. Keep the provider alive
+ * and release the view metadata with cpkt_sqlite_vfs_handle_close(). */
 cpkt_sqlite_vfs *cpkt_sqlite_vfs_handle_view(cpkt_sqlite_vfs_handle *self);
 int cpkt_sqlite_file_control_filestat(cpkt_sqlite *self,
                                       const char *database_name,

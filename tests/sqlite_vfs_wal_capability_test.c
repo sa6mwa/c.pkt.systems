@@ -11,6 +11,10 @@ static cpkt_sqlite_io_methods io_methods;
 static int mmap_control_calls;
 static int size_hint_control_calls;
 static int size_limit_control_calls;
+static int file_close_calls;
+int cpkt_test_borrowed_file_view(cpkt_sqlite *database, int *close_calls);
+int cpkt_test_vfs_provider_identity(cpkt_sqlite *database,
+                                    cpkt_sqlite_vfs *original);
 
 static sqlite3_file *native_file(cpkt_sqlite_file *file) {
   return (sqlite3_file *)file->state;
@@ -25,6 +29,7 @@ static sqlite3_int64 native_offset(cpkt_sqlite_i64 offset) {
 static int file_close(cpkt_sqlite_file *file) {
   sqlite3_file *native = native_file(file);
   int status = native->pMethods->xClose(native);
+  ++file_close_calls;
   free(native);
   return status;
 }
@@ -142,7 +147,10 @@ static int vfs_delete(cpkt_sqlite_vfs *vfs, const char *name, int sync_dir) {
 
 static int vfs_access(cpkt_sqlite_vfs *vfs, const char *name, int flags,
                       int *result_out) {
-  (void)vfs;
+  if (strcmp(name, "cpkt-vfs-identity-probe") == 0) {
+    *result_out = *(int *)vfs->state;
+    return SQLITE_OK;
+  }
   return base_vfs->xAccess(base_vfs, name, flags, result_out);
 }
 
@@ -184,8 +192,9 @@ int main(int argc, char **argv) {
   char journal_mode[16] = {0};
   cpkt_sqlite_i64 control_value;
   int status;
+  int marker = 11;
 
-  if (argc != 2 || cpkt_sqlite_initialize() != CPKT_SQLITE_OK)
+  if ((argc != 2 && argc != 3) || cpkt_sqlite_initialize() != CPKT_SQLITE_OK)
     return 1;
   base_vfs = sqlite3_vfs_find(NULL);
   if (base_vfs == NULL)
@@ -213,7 +222,7 @@ int main(int argc, char **argv) {
   methods.randomness = vfs_randomness;
   methods.sleep = vfs_sleep;
   methods.current_time = vfs_current_time;
-  vfs = cpkt_sqlite_vfs_new("cpkt-no-shm-vfs", 1024, NULL, &methods);
+  vfs = cpkt_sqlite_vfs_new("cpkt-no-shm-vfs", 1024, &marker, &methods);
   if (vfs == NULL || vfs->register_vfs(vfs, 0) != CPKT_SQLITE_OK)
     return 3;
   (void)remove(argv[1]);
@@ -222,6 +231,23 @@ int main(int argc, char **argv) {
       "cpkt-no-shm-vfs");
   if (database == NULL)
     return 4;
+  if (argc == 3) {
+    if (strcmp(argv[2], "borrowed-file") == 0)
+      status = cpkt_test_borrowed_file_view(database, &file_close_calls);
+    else if (strcmp(argv[2], "provider-identity") == 0)
+      status = cpkt_test_vfs_provider_identity(database, vfs);
+    else
+      return 11;
+    if (status != 0)
+      return status;
+    status = file_close_calls;
+    database->close(database);
+    if (strcmp(argv[2], "borrowed-file") == 0 && file_close_calls != status + 1)
+      return 12;
+    vfs->close(vfs);
+    (void)remove(argv[1]);
+    return 0;
+  }
   status = database->tx(database, "PRAGMA journal_mode=WAL",
                         capture_journal_mode, journal_mode);
   if (status != CPKT_SQLITE_OK || strcmp(journal_mode, "delete") != 0) {

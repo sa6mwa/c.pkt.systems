@@ -5919,16 +5919,12 @@ int cpkt_sqlite_file_control_file(cpkt_sqlite *self, const char *database_name,
   if (handle == NULL)
     return SQLITE_NOMEM;
   handle->native = native;
-  if (native->pMethods->xClose == cpkt_sqlite_vfs_file_close) {
-    handle->view = &cpkt_sqlite_vfs_file_from_native(native)->public_file;
-  } else {
-    handle->view = cpkt_sqlite_native_file_view(native);
-    if (handle->view == NULL) {
-      free(handle);
-      return SQLITE_NOMEM;
-    }
-    handle->owns_view = 1;
+  handle->view = cpkt_sqlite_native_file_view(native);
+  if (handle->view == NULL) {
+    free(handle);
+    return SQLITE_NOMEM;
   }
+  handle->owns_view = 1;
   *out = handle;
   return SQLITE_OK;
 }
@@ -5953,12 +5949,12 @@ int cpkt_sqlite_file_control_vfs(cpkt_sqlite *self, const char *database_name,
   if (handle == NULL)
     return SQLITE_NOMEM;
   handle->native = native;
-  handle->view = cpkt_sqlite_vfs_find(native->zName);
+  handle->view = cpkt_sqlite_native_vfs_view(native);
   if (handle->view == NULL) {
     free(handle);
     return SQLITE_NOMEM;
   }
-  handle->owns_view = cpkt_sqlite_native_vfs_view_is(handle->view);
+  handle->owns_view = 1;
   *out = handle;
   return SQLITE_OK;
 }

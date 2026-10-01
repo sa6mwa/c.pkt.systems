@@ -44,6 +44,7 @@ README.md
 scripts/run-selected-tests.py
 tests/selected_test_executables_test.py
 tests/darwin_bio_runtime_paths_test.py
+tests/sqlite_vfs_handle_views_test.c
 devenv.yaml.in
 docs/dependencies.md
 docs/logging-hooks.md

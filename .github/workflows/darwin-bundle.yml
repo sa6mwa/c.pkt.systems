@@ -59,6 +59,12 @@ jobs:
               cpkt_opcua_c89_example cpkt_opcua_public_api_complete
           python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
             --regex '^opcua_'
+      - name: Verify SQLite borrowed VFS handles
+        run: |
+          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
+            --target cpkt_sqlite_vfs_wal_capability_test cpkt_sqlite_vfs_handles_shared_test
+          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
+            --regex '^sqlite_vfs_(borrowed_file|provider_identity)(_shared)?$'
       - name: Verify bundled OpenSSL provenance
         run: python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --regex '^open62541_openssl_provenance$'
       - name: Package SDK
