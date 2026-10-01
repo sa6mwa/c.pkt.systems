@@ -1773,7 +1773,8 @@ if(CPKT_BUILD_TESTS)
       tests/postgres_pending_registration_test.c)
     cpkt_use_local_runtime(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test
       cpkt::postgresql_shared cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared
-      cpkt::gssapi_krb5_shared cpkt::openldap_shared cpkt::cyrus_sasl_shared)
+      cpkt::gssapi_krb5_shared cpkt::openldap_shared cpkt::cyrus_sasl_shared
+      cpkt::curl_shared cpkt::nghttp2_shared cpkt::libssh2_shared cpkt::zlib_shared)
     cpkt_configure_c89_target(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test)
     cpkt_add_repo_warning_errors(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test)
     target_link_libraries(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test
@@ -1798,11 +1799,29 @@ if(CPKT_BUILD_TESTS)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_test(NAME darwin_bio_runtime_paths
       COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_SOURCE_DIR}/tests/darwin_bio_runtime_paths_test.py"
+        "${CMAKE_SOURCE_DIR}/tests/darwin_test_runtime_paths_test.py"
         "${CMAKE_BINARY_DIR}" "${CMAKE_MAKE_PROGRAM}"
+        cpkt_openssl_bio_lifecycle_shared_test
         "$<TARGET_FILE_DIR:cpkt::openssl_ssl_shared>"
         "$<TARGET_FILE_DIR:cpkt::openssl_crypto_shared>")
     set_tests_properties(darwin_bio_runtime_paths PROPERTIES
+      LABELS "packaging;smoke" TIMEOUT 30)
+    add_test(NAME darwin_postgres_runtime_paths
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tests/darwin_test_runtime_paths_test.py"
+        "${CMAKE_BINARY_DIR}" "${CMAKE_MAKE_PROGRAM}"
+        cpkt_postgres_pending_registration_shared_test
+        "$<TARGET_FILE_DIR:cpkt::postgresql_shared>"
+        "$<TARGET_FILE_DIR:cpkt::openssl_ssl_shared>"
+        "$<TARGET_FILE_DIR:cpkt::openssl_crypto_shared>"
+        "$<TARGET_FILE_DIR:cpkt::gssapi_krb5_shared>"
+        "$<TARGET_FILE_DIR:cpkt::openldap_shared>"
+        "$<TARGET_FILE_DIR:cpkt::cyrus_sasl_shared>"
+        "$<TARGET_FILE_DIR:cpkt::curl_shared>"
+        "$<TARGET_FILE_DIR:cpkt::nghttp2_shared>"
+        "$<TARGET_FILE_DIR:cpkt::libssh2_shared>"
+        "$<TARGET_FILE_DIR:cpkt::zlib_shared>")
+    set_tests_properties(darwin_postgres_runtime_paths PROPERTIES
       LABELS "packaging;smoke" TIMEOUT 30)
     set_target_properties(cpkt_abi_smoke_shared PROPERTIES
       BUILD_RPATH "@executable_path/../lib"
