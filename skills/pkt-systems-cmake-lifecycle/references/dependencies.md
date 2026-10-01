@@ -51,7 +51,7 @@ Known upstream components:
 
 ## Shared Verified Archive Cache
 
-All external dependency archives use the shared cache below, regardless of whether they are pkt.systems SDK bundles or third-party sources:
+All external dependency archives use the shared cache below, including pkt.systems SDK bundles, third-party sources, and test-only dependencies:
 
 ```sh
 ${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}
@@ -73,6 +73,9 @@ deps/
 - Keep extraction, build, install, and stamp state under the consuming repository's `.cache/`, keyed only by the target ID and the dependency name. Do not put dependency-set IDs, toolchain IDs, version hashes, URLs, compiler metadata, build-option hashes, or other semantic cache IDs in repo-local path names. Repo-local dependency roots are disposable build state; lifecycle entrypoints may delete them freely, and the next dependency acquisition must reuse the verified global archive without network access.
 - Key each archive by its required SHA-256. Archive names are for diagnostics only; never accept an archive because its filename, component name, version, or URL happens to match.
 - Before every cache reuse, calculate SHA-256 and compare it to the dependency's pinned expected digest. A corrupt entry is not a cache hit.
+- A verified digest hit must make zero network requests, including HEAD requests, URL probes, or release-metadata refreshes. Reuse identical verified bytes even when the requested asset name or URL changes; names are diagnostic aliases, not cache identities. Ignore unpublished partial downloads when searching the digest entry.
+- Source-archive reconstruction, test registration fixtures, temporary consumers, and fresh configurations retain the resolved shared archive cache. Empty extracted/build/install state does not imply an empty archive cache. Never replace it with `${CMAKE_SOURCE_DIR}/.cache/...` or a temporary directory for real packages; synthetic cache-contract fixtures may use isolated caches under `build/`.
+- Forward an explicit cache override to nested configure/test commands instead of independently selecting another cache. Test-only status changes the install/package boundary, not download policy. Verified archives in a former local cache may seed the shared cache through the common acquisition helper before local state is cleaned.
 - Serialize writers with a per-digest lock. The lifecycle serializes project operations, but independent downstream repositories can acquire the same shared cache concurrently.
 - On a miss or corrupt entry, download to a uniquely named temporary file in the archive's final cache directory, verify the expected SHA-256, then atomically rename it to the final path. Never publish a partial download. Remove only the temporary or corrupt archive entry covered by the held lock.
 - If a verified cache entry cannot be reused and the download fails, report the component, URL, expected digest, cache path, and download failure. Do not silently substitute a host package, a differently named file, an unpinned URL, or an unchecked archive.
@@ -82,6 +85,8 @@ deps/
 Implement acquisition behind one project-owned CMake helper, for example `project_acquire_verified_archive()`, rather than letting each `FetchContent`, `ExternalProject`, or custom dependency builder download independently. The helper must accept a component identity, HTTPS URL, expected SHA-256, and output archive path. It must serialize writers with CMake `file(LOCK ...)`, hash an existing archive, download with `file(DOWNLOAD ... TLS_VERIFY ON)` only when needed, hash the temporary file explicitly against the expected digest, and use same-directory `file(RENAME ...)` publication. Do not rely on `EXPECTED_HASH` for this helper: a transfer or hash failure can terminate CMake before the helper removes its temporary path or tries a fallback URL. Consumers then extract or stage the returned archive into their repository-local `.cache/` tree. `FetchContent` and `ExternalProject` may consume that staged local result, but their default build-tree download cache is not the lifecycle cache.
 
 Add executable cache-contract tests that prove: an initial miss downloads and publishes only a verified archive; deleting local extracted dependency state permits an offline cache hit; a corrupt cached archive is rejected and never extracted; concurrent acquisition does not expose a partial archive; `make clean` preserves the global archive; and package/privacy checks reject global-cache paths in released output.
+
+Count requests to a local HTTP origin and assert zero requests on verified digest hits, including changed filenames/URLs and fresh source roots. Exercise real test-dependency acquisition as well as SDK/source acquisition, and run these checks in the early local gate before the expensive release matrix.
 
 Rules for component downloads:
 

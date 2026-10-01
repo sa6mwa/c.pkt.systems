@@ -7,8 +7,11 @@ libpq, and SQLite. CMocka is used for build tests. OPC UA logging tests use
 MIT-licensed [libpslog 0.11.0](https://github.com/sa6mwa/libpslog/releases/tag/v0.11.0)'s
 target-specific static release binaries, verified against the
 SHA-256 pins in [CpktTestPslog.cmake](../cmake/CpktTestPslog.cmake). They are
-acquired only with `CPKT_BUILD_TESTS=ON`, remain in the test cache/build tree,
-and are not installed, linked into SDK libraries, or listed in SDK dependency
+acquired only with `CPKT_BUILD_TESTS=ON`. Their verified archives use the same
+shared dependency cache as shipped sources; extraction stays in the test build
+tree, including during source-archive reconstruction. A verified digest hit
+makes no network requests. The binaries are not installed, linked into SDK
+libraries, or listed in SDK dependency
 metadata. No host libpslog installation is required. Some components are
 transitive dependencies of others; each independently shipped library has
 its own SDK package metadata.

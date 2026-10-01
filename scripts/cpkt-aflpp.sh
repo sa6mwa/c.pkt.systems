@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/cpkt-archive-cache.sh"
 
 version=5.02c
 build_revision=1
@@ -78,10 +79,8 @@ afl_ready() {
 download_archive() {
   local archive_root=$1 archive=$2 temporary
   mkdir -p "$archive_root"
-  if [[ -f "$archive" ]] && printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum -c - >/dev/null 2>&1; then
-    return
-  fi
-  rm -f "$archive"
+  cpkt_restore_cached_archive "$archive" "$archive_sha256"
+  [[ ! -f "$archive" ]] || return 0
   temporary="$archive.tmp.$$"
   install_cleanup_trap -f "$temporary"
   if command -v curl >/dev/null 2>&1; then

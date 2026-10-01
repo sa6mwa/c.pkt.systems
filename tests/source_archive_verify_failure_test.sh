@@ -255,6 +255,9 @@ tests/sqlite_api_coverage_test.sh
 tests/sqlite_header_facade_test.sh
 examples/opcua-c89/main.c
 scripts/package-source.sh
+scripts/cpkt-archive-cache.sh
+skills/pkt-systems-cmake-lifecycle/scripts/cpkt-archive-cache.sh
+tests/dependency_cache_network_hits_test.py
 scripts/e2e-postgres.sh
 scripts/devenv.sh
 scripts/test-e2e.sh

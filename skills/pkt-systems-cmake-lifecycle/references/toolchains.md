@@ -39,6 +39,13 @@ ${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains
 
 The cache survives project cleans and is shared by all downstream pkt.systems projects. Do not create project-local compiler caches.
 
+Before a download, reuse any archive in `archives/` whose verified SHA-256
+matches the pin, even if its filename differs. A digest hit must make zero
+network requests. Ignore temporary/unpublished files; verify copied bytes before
+atomic publication under the requested name. Local copy/publication errors fail
+provisioning instead of falling back to downloading the same bytes. Bootlin,
+host MIG, and AFL++ share this rule through `scripts/cpkt-archive-cache.sh`.
+
 ## Provisioning
 
 Use the lifecycle resolvers directly or vendor their exact content into a downstream repository:

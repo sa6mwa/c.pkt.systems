@@ -359,21 +359,10 @@ if(CPKT_CXX_LIBGCC_STATIC_LIBRARY STREQUAL "" AND CMAKE_CXX_COMPILER_ID MATCHES 
       "Static GCC runtime archive used by C-facing static SDK metadata." FORCE)
   endif()
 endif()
-if(CPKT_BUILD_DEPENDENCIES)
-  if(NOT DEFINED CPKT_DEPENDENCY_CACHE OR "${CPKT_DEPENDENCY_CACHE}" STREQUAL "")
-    if(DEFINED ENV{CPKT_DEPENDENCY_CACHE} AND NOT "$ENV{CPKT_DEPENDENCY_CACHE}" STREQUAL "")
-      set(_cpkt_dependency_cache_default "$ENV{CPKT_DEPENDENCY_CACHE}")
-    elseif(DEFINED ENV{XDG_CACHE_HOME} AND NOT "$ENV{XDG_CACHE_HOME}" STREQUAL "")
-      set(_cpkt_dependency_cache_default "$ENV{XDG_CACHE_HOME}/c.pkt.systems/deps")
-    elseif(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
-      set(_cpkt_dependency_cache_default "$ENV{HOME}/.cache/c.pkt.systems/deps")
-    else()
-      message(FATAL_ERROR "CPKT_DEPENDENCY_CACHE, XDG_CACHE_HOME, or HOME is required for the shared dependency archive cache")
-    endif()
-    set(CPKT_DEPENDENCY_CACHE "${_cpkt_dependency_cache_default}" CACHE PATH "Shared verified dependency archive cache." FORCE)
-  endif()
+include(cmake/CpktDependencyArchiveCache.cmake)
+if(CPKT_BUILD_DEPENDENCIES OR CPKT_BUILD_TESTS)
+  cpkt_initialize_dependency_cache()
 endif()
-unset(_cpkt_dependency_cache_default)
 set(CPKT_DEPENDENCY_CACHE_LOCK_TIMEOUT "120" CACHE STRING "Maximum shared dependency archive cache lock wait in seconds.")
 set(CPKT_DOWNLOAD_ROOT "${CMAKE_SOURCE_DIR}/.cache/downloads" CACHE PATH "Local ExternalProject archive staging root.")
 set(CPKT_DIST_DIR "${CMAKE_SOURCE_DIR}/dist" CACHE PATH "Output directory for package archives.")
@@ -3239,6 +3228,11 @@ if(CPKT_BUILD_TESTS)
         COMMAND
           "${CMAKE_SOURCE_DIR}/tests/dependency_archive_cache_test.sh"
           "${CMAKE_SOURCE_DIR}")
+      add_test(NAME dependency_cache_network_hits
+        COMMAND "${Python3_EXECUTABLE}"
+          "${CMAKE_SOURCE_DIR}/tests/dependency_cache_network_hits_test.py"
+          "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(dependency_cache_network_hits PROPERTIES LABELS "packaging;smoke" TIMEOUT 60)
       add_test(
         NAME dependency_cache_disabled
         COMMAND
@@ -3435,6 +3429,8 @@ if(CPKT_BUILD_TESTS)
           bash
           "${CMAKE_SOURCE_DIR}/tests/lua_symbol_test_registration_test.sh"
           "${CMAKE_SOURCE_DIR}")
+      set_tests_properties(lua_symbol_test_registration PROPERTIES
+        ENVIRONMENT "CPKT_DEPENDENCY_CACHE=${CPKT_DEPENDENCY_CACHE}" TIMEOUT 60)
       if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         set(_cpkt_openssl_catalog_symbol_format macho)
         set(_cpkt_openssl_catalog_symbol_tool "${CMAKE_NM}")

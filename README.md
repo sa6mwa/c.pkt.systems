@@ -72,6 +72,13 @@ and install trees remain under this repository's `.cache/` and are disposable;
 `make clean` and `make release` never remove the shared archive cache. Set
 `-DCPKT_DEPENDENCY_CACHE=/path/to/deps` to use a different shared cache.
 
+Test-only packages use the same shared archive cache. Verified SHA-256 hits make
+no network requests, including when an asset name changes or the source archive
+is extracted into a fresh directory. Only extraction/build state starts empty;
+source reconstruction and nested test configurations reuse the shared cache.
+Bootlin, host MIG, and AFL++ follow the same digest-hit/no-network rule in their
+separate shared toolchain cache, including reuse under a different archive name.
+
 The Linux compiler collections are pinned to Bootlin stable `2026.08-1`
 (GCC 15.3.0, binutils 2.45.1, Linux headers 5.10.269, glibc 2.44 or musl 1.2.6).
 The repository resolver and bundled lifecycle skill use the same archive hashes.

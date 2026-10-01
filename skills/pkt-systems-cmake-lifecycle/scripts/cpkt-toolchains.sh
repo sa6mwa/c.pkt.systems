@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/cpkt-archive-cache.sh"
 
 # Resolve only lifecycle-pinned compiler collections. Linux must never fall
 # back to a host-installed compiler or binutils collection.
@@ -185,10 +186,7 @@ install_host_mig_locked() {
 
   archive_dir="$(cache_root)/archives"; archive="$archive_dir/$archive_name"
   mkdir -p "$archive_dir" "$(cache_root)/roots"
-  if [[ -f "$archive" ]] && [[ "$(sha256_file "$archive")" != "$sha256" ]]; then
-    printf 'cpkt-toolchains: discarding corrupt cached archive: %s\n' "$archive" >&2
-    rm -f -- "$archive"
-  fi
+  cpkt_restore_cached_archive "$archive" "$sha256"
   if [[ ! -f "$archive" ]]; then
     tmp="$archive.tmp.$$"; install_cleanup_trap "$tmp" -f
     download_file "https://codeload.github.com/PureDarwin/PureDarwin/tar.gz/$revision" "$tmp"
@@ -243,13 +241,7 @@ install_bootlin_locked() {
   if bootlin_ready "$root" "$prefix" "$root/$sysroot_rel"; then return; fi
   archive_dir="$(cache_root)/archives"; archive="$archive_dir/$name.tar.xz"
   mkdir -p "$archive_dir" "$(cache_root)/roots"
-  if [[ -f "$archive" ]]; then
-    actual=$(sha256_file "$archive")
-    if [[ "$actual" != "$sha256" ]]; then
-      printf 'cpkt-toolchains: discarding corrupt cached archive: %s\n' "$archive" >&2
-      rm -f -- "$archive"
-    fi
-  fi
+  cpkt_restore_cached_archive "$archive" "$sha256"
   if [[ ! -f "$archive" ]]; then
     tmp="$archive.tmp.$$"; install_cleanup_trap "$tmp" -f
     download_file "https://toolchains.bootlin.com/downloads/releases/toolchains/$arch/tarballs/$name.tar.xz" "$tmp"

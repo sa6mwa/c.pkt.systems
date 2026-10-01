@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Provision native AFL++ GCC-plugin instrumentation for the pkt.systems lifecycle.
 set -euo pipefail
+source "$(dirname -- "${BASH_SOURCE[0]}")/cpkt-archive-cache.sh"
 
 version=5.02c
 revision=1
@@ -79,7 +80,8 @@ ensure_locked() {
   ready "$r" "$id" && return
   [[ -x "$cc" && -x "$cxx" && -f "$br/include/gmp.h" ]] || die 'Bootlin GCC plugin headers are incomplete'
   mkdir -p "$c/archives"
-  if ! [[ -f "$archive" ]] || ! printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum -c - >/dev/null 2>&1; then
+  cpkt_restore_cached_archive "$archive" "$archive_sha256"
+  if [[ ! -f "$archive" ]]; then
     rm -f "$archive"; dl="$archive.tmp.$$"
     install_cleanup_trap -f "$dl"
     if command -v curl >/dev/null; then

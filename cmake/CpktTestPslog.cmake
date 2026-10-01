@@ -16,11 +16,14 @@ function(cpkt_add_test_pslog)
     message(FATAL_ERROR "No test-only libpslog binary for ${CPKT_TARGET_ID}")
   endif()
   set(name "libpslog-${version}-${CPKT_TARGET_ID}")
-  # Keep test acquisition inside this repository; no host installation needed.
-  set(CPKT_DEPENDENCY_CACHE "${CMAKE_SOURCE_DIR}/.cache/test-dependencies")
+  cpkt_initialize_dependency_cache()
+  # Reuse verified archives from the former local cache without downloading
+  # them again. Extraction and imported targets remain build-local.
+  set(legacy_archive "${CMAKE_SOURCE_DIR}/.cache/test-dependencies/archives/sha256/${hash_${key}}/${name}.tar.gz")
   cpkt_acquire_dependency_archive(archive
     NAME "${name}.tar.gz" SHA256 "${hash_${key}}"
-    URLS "https://github.com/sa6mwa/libpslog/releases/download/v${version}/${name}.tar.gz")
+    URLS "https://github.com/sa6mwa/libpslog/releases/download/v${version}/${name}.tar.gz"
+    SEED_PATHS "${legacy_archive}")
   set(root "${CMAKE_BINARY_DIR}/test-dependencies")
   file(MAKE_DIRECTORY "${root}")
   file(ARCHIVE_EXTRACT INPUT "${archive}" DESTINATION "${root}")

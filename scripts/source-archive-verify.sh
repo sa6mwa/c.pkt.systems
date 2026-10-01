@@ -325,6 +325,9 @@ for required in \
   tests/sqlite_header_facade_test.sh \
   examples/opcua-c89/main.c \
   scripts/package-source.sh \
+  scripts/cpkt-archive-cache.sh \
+  skills/pkt-systems-cmake-lifecycle/scripts/cpkt-archive-cache.sh \
+  tests/dependency_cache_network_hits_test.py \
   scripts/e2e-postgres.sh \
   scripts/devenv.sh \
   scripts/test-e2e.sh \
@@ -393,6 +396,12 @@ cmake \
   -P "$repo_root/tests/privacy_scan.cmake"
 
 build_dir="$work_dir/build"
+# Preserve a configured native cache override across source reconstruction.
+# The archive contains no local cache; it reuses the host's verified bytes.
+if [ -z "${CPKT_DEPENDENCY_CACHE:-}" ] && [ -f "$repo_root/build/debug/CMakeCache.txt" ]; then
+  CPKT_DEPENDENCY_CACHE=$(sed -n 's/^CPKT_DEPENDENCY_CACHE:PATH=//p' "$repo_root/build/debug/CMakeCache.txt" | tail -n 1)
+  export CPKT_DEPENDENCY_CACHE
+fi
 source_toolchain_file=${CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE:-\
 "$source_root/cmake/toolchains/x86_64-linux-gnu.cmake"}
 if [ ! -f "$source_toolchain_file" ]; then
