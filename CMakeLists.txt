@@ -1724,6 +1724,15 @@ if(CPKT_BUILD_TESTS)
     cpkt_sqlite_static)
   set_target_properties(cpkt_static_archive_pic_smoke_facades PROPERTIES
     LINKER_LANGUAGE CXX)
+  foreach(_cpkt_bio_linkage IN ITEMS static shared)
+    add_executable(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test
+      tests/openssl_bio_lifecycle_test.c)
+    cpkt_use_local_runtime(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test)
+    target_compile_options(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test PRIVATE -std=c89)
+    cpkt_add_repo_warning_errors(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test)
+    target_link_libraries(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test PRIVATE
+      cpkt_openssl_${_cpkt_bio_linkage})
+  endforeach()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set_target_properties(cpkt_abi_smoke_shared PROPERTIES
       BUILD_RPATH "@executable_path/../lib"
@@ -2602,6 +2611,12 @@ if(CPKT_BUILD_TESTS)
     set_tests_properties(patch_series_portability static_archive_member_cleanup
       postgresql_probe_rpaths PROPERTIES LABELS "packaging;smoke" TIMEOUT 30)
     add_test(NAME lua_facade_unit COMMAND cpkt_lua_facade_test)
+    foreach(_cpkt_bio_linkage IN ITEMS static shared)
+      add_test(NAME openssl_bio_lifecycle_${_cpkt_bio_linkage}
+        COMMAND cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test)
+      set_tests_properties(openssl_bio_lifecycle_${_cpkt_bio_linkage}
+        PROPERTIES LABELS "facade;memcheck" TIMEOUT 15)
+    endforeach()
     add_test(
       NAME lua_runtime_c89_example
       COMMAND cpkt_lua_runtime_c89_example "${_cpkt_lua_runtime_example_file}")

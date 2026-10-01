@@ -59,17 +59,10 @@ struct cpkt_openssl_bio {
 static CRYPTO_ONCE cpkt_openssl_bio_ex_data_once = CRYPTO_ONCE_STATIC_INIT;
 static int cpkt_openssl_bio_ex_data_index = -1;
 
-static void cpkt_openssl_bio_ex_data_free(void *parent, void *pointer,
-                                          CRYPTO_EX_DATA *data, int index,
-                                          long argument, void *context) {
-  cpkt_openssl_bio *bio;
+/* Release the same method reservation after an unfinished constructor or
+ * after the last native BIO reference releases its ex-data owner. */
+static void cpkt_openssl_bio_release_shell(cpkt_openssl_bio *bio) {
   cpkt_openssl_bio_method *method;
-  (void)parent;
-  (void)data;
-  (void)index;
-  (void)argument;
-  (void)context;
-  bio = (cpkt_openssl_bio *)pointer;
   if (bio == NULL)
     return;
   method = bio->method;
@@ -78,6 +71,17 @@ static void cpkt_openssl_bio_ex_data_free(void *parent, void *pointer,
     CRYPTO_THREAD_unlock(method->lock);
   }
   free(bio);
+}
+
+static void cpkt_openssl_bio_ex_data_free(void *parent, void *pointer,
+                                          CRYPTO_EX_DATA *data, int index,
+                                          long argument, void *context) {
+  (void)parent;
+  (void)data;
+  (void)index;
+  (void)argument;
+  (void)context;
+  cpkt_openssl_bio_release_shell((cpkt_openssl_bio *)pointer);
 }
 
 static int cpkt_openssl_bio_ex_data_dup(CRYPTO_EX_DATA *to,
@@ -536,6 +540,7 @@ cpkt_openssl_bio_new_internal(OSSL_LIB_CTX *library_context,
                               void *callback_context) {
   cpkt_openssl_bio *facade_bio;
   BIO *native_bio;
+  BIO_METHOD *native_method;
 
   if (!CRYPTO_THREAD_run_once(&cpkt_openssl_bio_ex_data_once,
                               cpkt_openssl_bio_ex_data_initialize) ||
@@ -552,25 +557,27 @@ cpkt_openssl_bio_new_internal(OSSL_LIB_CTX *library_context,
     CRYPTO_THREAD_unlock(method->lock);
     return NULL;
   }
-  native_bio = BIO_new_ex(library_context, method->native);
+  /* Native construction and destruction invoke application callbacks. Pin
+   * the method before unlocking so those callbacks can safely reenter its
+   * facade, but cannot close it while construction remains in progress. */
+  facade_bio->method = method;
+  facade_bio->callback_context = callback_context;
+  native_method = method->native;
+  ++method->active_bios;
+  CRYPTO_THREAD_unlock(method->lock);
+  native_bio = BIO_new_ex(library_context, native_method);
   if (native_bio == NULL) {
-    free(facade_bio);
-    CRYPTO_THREAD_unlock(method->lock);
+    cpkt_openssl_bio_release_shell(facade_bio);
     return NULL;
   }
   if (!BIO_set_ex_data(native_bio, cpkt_openssl_bio_ex_data_index,
                        facade_bio)) {
     BIO_free(native_bio);
-    free(facade_bio);
-    CRYPTO_THREAD_unlock(method->lock);
+    cpkt_openssl_bio_release_shell(facade_bio);
     return NULL;
   }
   facade_bio->native = native_bio;
-  facade_bio->method = method;
-  facade_bio->callback_context = callback_context;
   BIO_set_callback_arg(native_bio, (char *)facade_bio);
-  ++method->active_bios;
-  CRYPTO_THREAD_unlock(method->lock);
   return facade_bio;
 }
 

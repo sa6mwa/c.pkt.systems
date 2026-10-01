@@ -627,8 +627,9 @@ cpkt_openssl_BIO_sendmmsg(BIO *bio, cpkt_openssl_bio_message *messages,
 /** Creates a custom method for C89 batch callbacks. Close it after its BIOs. */
 CPKT_OPENSSL_API cpkt_openssl_bio_method *
 cpkt_openssl_BIO_meth_new(int type, const char *name);
-/** Frees a method only after its native BIOs reach their final reference and
- * no callback runs. An up-ref'd native BIO can outlive its facade BIO. */
+/** Frees a method only after construction finishes, its native BIOs reach
+ * their final reference, and no callback runs. Otherwise returns zero without
+ * freeing it. An up-ref'd native BIO can outlive its facade BIO. */
 CPKT_OPENSSL_API int
 cpkt_openssl_BIO_meth_close(cpkt_openssl_bio_method *method);
 /** Returns a borrowed native method for C89-native BIO configuration calls. */
@@ -649,7 +650,9 @@ cpkt_openssl_BIO_meth_set_recvmmsg(cpkt_openssl_bio_method *method,
 CPKT_OPENSSL_API cpkt_openssl_bio_mmsg_callback
 cpkt_openssl_BIO_meth_get_recvmmsg(const cpkt_openssl_bio_method *method);
 /** Creates a facade BIO. Keep callback context valid until the final native
- * BIO reference is freed, which may follow cpkt_openssl_BIO_close. */
+ * BIO reference is freed, which may follow cpkt_openssl_BIO_close. Native
+ * create callbacks may access this method or create another BIO with it;
+ * method close is rejected until construction or failure cleanup finishes. */
 CPKT_OPENSSL_API cpkt_openssl_bio *
 cpkt_openssl_BIO_new(cpkt_openssl_bio_method *method, void *callback_context);
 /** Creates a library-context facade BIO with the same callback lifetime. */

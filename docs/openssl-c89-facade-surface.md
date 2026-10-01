@@ -41,6 +41,16 @@ is freed. Keep application-owned callback context valid until then. A close
 attempt from a batch callback, or a method close while a native BIO or callback
 remains active, returns zero and leaves ownership unchanged.
 
+Native create and destroy callbacks configured through the borrowed method
+may access its facade callback getters/setters or construct another BIO with
+that method. Construction reserves the method lifetime before calling OpenSSL
+and invokes application callbacks without holding the method lock. Method close
+returns zero during construction and native destruction. A failed constructor
+releases only its own reservation after native cleanup; other BIOs created by
+its callbacks keep their independent ownership. Static and shared regression
+tests cover nested creation, create rejection, ex-data allocation failure,
+reentrant destruction, and retained native references under Memcheck.
+
 The facade's legacy and extended BIO callback setters use the same pinned
 context. When their operation identifies send or receive message batches, the
 argument is a borrowed `cpkt_openssl_bio_mmsg_callback_args`; its messages and

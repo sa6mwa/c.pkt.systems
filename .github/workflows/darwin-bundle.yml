@@ -42,6 +42,13 @@ jobs:
         run: |
           ctest --test-dir build/arm64-apple-darwin-native --verbose \
             --no-tests=error -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
+      - name: Verify reentrant OpenSSL BIO lifecycle
+        run: |
+          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
+            --target cpkt_openssl_bio_lifecycle_static_test \
+              cpkt_openssl_bio_lifecycle_shared_test
+          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
+            --no-tests=error -R '^openssl_bio_lifecycle_(static|shared)$'
       - name: Verify native OPC UA public facade
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
