@@ -78,10 +78,11 @@ contract; native Darwin runtime checks run in the macOS workflow.
 
 ## Other inspected dependency diagnostics
 
-- OpenSSL's metadata generator reports omitted `CMAKECONFIGDIR`,
-  `PKGCONFIGDIR`, and `libdir` fields when creating its build-only metadata,
-  and an omitted `COMMENT` when creating install metadata. Its upstream
-  Makefile passes the actual install paths to the install metadata command.
+- OpenSSL's upstream metadata recipes omit `CMAKECONFIGDIR`, `PKGCONFIGDIR`,
+  and `libdir` for build-only metadata and `COMMENT` for install metadata.
+  The bundle patches those recipes to supply the missing inputs, preserving
+  upstream's actual install paths. The `openssl_builddata` regression executes
+  both generators and requires warning-free output and correct directory values.
   The SDK supplies its own consumer metadata; the provenance gate checks the
   selected bundled shared libraries in either Ninja or Unix Makefiles link
   plans, with negative fixtures for incorrect paths and linkage.
