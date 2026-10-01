@@ -1768,6 +1768,23 @@ if(CPKT_BUILD_TESTS)
         LABELS "facade;memcheck" TIMEOUT 30)
     endforeach()
   endif()
+  foreach(_cpkt_pending_linkage IN ITEMS static shared)
+    add_executable(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test
+      tests/postgres_pending_registration_test.c)
+    cpkt_use_local_runtime(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test
+      cpkt::postgresql_shared cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared
+      cpkt::gssapi_krb5_shared cpkt::openldap_shared cpkt::cyrus_sasl_shared)
+    cpkt_configure_c89_target(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test)
+    cpkt_add_repo_warning_errors(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test)
+    target_link_libraries(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test
+      PRIVATE cpkt_postgres_${_cpkt_pending_linkage})
+    if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+      add_test(NAME postgres_pending_registration_${_cpkt_pending_linkage}
+        COMMAND cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test)
+      set_tests_properties(postgres_pending_registration_${_cpkt_pending_linkage}
+        PROPERTIES LABELS "facade;memcheck" TIMEOUT 30)
+    endif()
+  endforeach()
   foreach(_cpkt_bio_linkage IN ITEMS static shared)
     add_executable(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test
       tests/openssl_bio_lifecycle_test.c)

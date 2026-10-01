@@ -65,6 +65,13 @@ jobs:
             --target cpkt_sqlite_vfs_wal_capability_test cpkt_sqlite_vfs_handles_shared_test
           python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
             --regex '^sqlite_vfs_(borrowed_file|provider_identity)(_shared)?$'
+      - name: Verify PostgreSQL registration snapshots
+        run: |
+          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
+            --target cpkt_postgres_pending_registration_static_test \
+              cpkt_postgres_pending_registration_shared_test
+          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
+            --regex '^postgres_pending_registration_(static|shared)$'
       - name: Verify bundled OpenSSL provenance
         run: python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --regex '^open62541_openssl_provenance$'
       - name: Package SDK

@@ -52,9 +52,14 @@ is configured for that data. The facade does not stage a sequence of records.
 Event registrations use `cpkt_postgres_event_register()`. Each callback
 receives `info->event`, the borrowed identity of its current registration,
 including during REGISTER before `register()` returns. That identity can be
-used immediately with the connection and result instance-data accessors.
-Registration callbacks may register another callback. A failed REGISTER is
-removed; a failed RESULT_CREATE remains eligible on a later explicit fire,
+used immediately with the connection instance-data accessors. A result freezes
+only registrations whose REGISTER callbacks have already succeeded. Results
+created during REGISTER exclude that pending registration even if it later
+succeeds; successful nested registrations are included in subsequently created
+results. Registration callbacks may register another callback. A failed REGISTER
+is removed and receives no later callbacks, so its application context may be
+released when registration returns NULL. A failed RESULT_CREATE remains eligible
+on a later explicit fire,
 and only initialized registrations receive COPY and DESTROY. A result retains
 its frozen registration list after its connection closes, and detached results
 may be cleared independently. A callback identity remains borrowed until the

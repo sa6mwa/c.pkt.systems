@@ -62,6 +62,9 @@ typedef int (*cpkt_postgres_event_callback)(
 
 /** Registers an event callback; returns NULL if its REGISTER callback fails.
  * The returned identity is borrowed until connection and its results die.
+ * Results created during REGISTER exclude this pending registration, even
+ * if it later succeeds. A failed registration receives no later callbacks;
+ * its application context may be released when this function returns NULL.
  * A callback pointer may be registered once per connection. */
 cpkt_postgres_event *
 cpkt_postgres_event_register(cpkt_postgres_connection *connection,

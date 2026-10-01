@@ -148,6 +148,13 @@ cpkt_postgres_event_make_result(cpkt_postgres_event_owner *owner,
   source_state = source == NULL ? NULL : source->states;
   event = source == NULL ? owner->head : NULL;
   while (source_state != NULL || event != NULL) {
+    /* REGISTER may create a result before accepting its registration. The
+     * result freezes only callbacks that have already accepted; a rejected
+     * callback's context can be released when register returns NULL. */
+    if (source == NULL && !event->registered) {
+      event = event->next;
+      continue;
+    }
     state = (cpkt_postgres_event_state *)cpkt_postgres_event_allocate(
         sizeof(*state));
     if (state == NULL) {
