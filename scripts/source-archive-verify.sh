@@ -146,6 +146,8 @@ for required in \
   CMakeLists.txt \
   Makefile \
   README.md \
+  scripts/run-selected-tests.py \
+  tests/selected_test_executables_test.py \
   devenv.yaml.in \
   docs/dependencies.md \
   docs/logging-hooks.md \

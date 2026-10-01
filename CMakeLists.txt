@@ -1448,6 +1448,12 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
 if(CPKT_BUILD_TESTS)
+  add_test(NAME selected_test_executables
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/selected_test_executables_test.py"
+      "${CMAKE_SOURCE_DIR}")
+  set_tests_properties(selected_test_executables PROPERTIES
+    LABELS "packaging;smoke" TIMEOUT 30)
   include(cmake/CpktTestPslog.cmake)
   # Host-side compiler fixture: also register it for Darwin cross builds,
   # whose executable tests are otherwise supplied by the native smoke bundle.

@@ -183,6 +183,12 @@ second transfer remains active, checks LDAP/BER linkage, and verifies the C89
 Lua facade targets from the extracted SDK. Native OPC UA checks cover static and
 shared type conversions, callbacks, plugins, transports, logging, generated
 schema fixtures, C++98 consumers, public API completeness, and export privacy.
+Each CTest group checks that every selected test command exists and is executable
+before running any test. Missing build targets fail at that preflight instead of
+partway through the group. Changes affecting macOS require a successful workflow
+run on the exact candidate commit. The cmocka-based legacy OPC UA facade tests
+remain Linux-only; native Darwin exercises the standalone C89 types, plugin,
+callback, logging, and public API tests above.
 Check this workflow before a Darwin release. The release's Darwin archive is
 still built from this repository with the local osxcross release preset. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,

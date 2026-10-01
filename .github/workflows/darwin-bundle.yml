@@ -30,9 +30,9 @@ jobs:
       - name: Run portable build fixtures
         run: |
           cmake --build --preset arm64-apple-darwin-native --target cpkt_gssapi_shared -- -n >/dev/null
-          for fixture in krb5_trace_prototypes patch_series_portability static_archive_member_cleanup postgresql_probe_rpaths; do
-            ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
-              --no-tests=error -R "^${fixture}$"
+          for fixture in selected_test_executables krb5_trace_prototypes patch_series_portability static_archive_member_cleanup postgresql_probe_rpaths; do
+            python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
+              --regex "^${fixture}$"
           done
       - name: Build curl test binaries
         run: |
@@ -40,15 +40,15 @@ jobs:
             --target cpkt_curl_async_dns_static_test cpkt_curl_async_dns_shared_test
       - name: Run native curl tests
         run: |
-          ctest --test-dir build/arm64-apple-darwin-native --verbose \
-            --no-tests=error -R '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
+          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --verbose \
+            --regex '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
       - name: Verify reentrant OpenSSL BIO lifecycle
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
             --target cpkt_openssl_bio_lifecycle_static_test \
               cpkt_openssl_bio_lifecycle_shared_test
-          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
-            --no-tests=error -R '^openssl_bio_lifecycle_(static|shared)$'
+          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
+            --regex '^openssl_bio_lifecycle_(static|shared)$'
       - name: Verify native OPC UA public facade
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
@@ -57,17 +57,17 @@ jobs:
               cpkt_opcua_stdout_static_test cpkt_opcua_stdout_shared_test \
               cpkt_opcua_types_fixture_test cpkt_opcua_types_cpp_test \
               cpkt_opcua_c89_example cpkt_opcua_public_api_complete
-          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure \
-            --no-tests=error -R '^opcua_'
+          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
+            --regex '^opcua_'
       - name: Verify bundled OpenSSL provenance
-        run: ctest --test-dir build/arm64-apple-darwin-native --output-on-failure --no-tests=error -R '^open62541_openssl_provenance$'
+        run: python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --regex '^open62541_openssl_provenance$'
       - name: Package SDK
         run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
       - name: Verify OpenLDAP build target closure
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
             --target cpkt_openldap_static_test cpkt_openldap_shared_test
-          ctest --test-dir build/arm64-apple-darwin-native --output-on-failure --no-tests=error -R '^openldap_(static|shared)$'
+          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --regex '^openldap_(static|shared)$'
       - name: Test packaged curl, OpenLDAP, and Lua static and shared
         run: bash tests/darwin_curl_package_test.sh dist/*-arm64-apple-darwin.tar.gz
       - name: Preserve diagnostic SDK archive

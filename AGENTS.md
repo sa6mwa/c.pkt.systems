@@ -82,6 +82,11 @@
 
 ## Completion gate
 
+- For changes affecting macOS, push the candidate branch and require the native
+  Darwin GitHub Actions workflow to succeed on that exact commit. Inspect failed
+  runs, fix actionable issues, and repeat until it succeeds before declaring the
+  work complete. A local cross-compile or an earlier successful commit is not a
+  substitute for this gate.
 - Run `make finalize-slice` after each implementation iteration. It formats
   project-owned C and headers, runs the debug and clangd checks, then asserts
   that formatting is clean.
