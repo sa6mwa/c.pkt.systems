@@ -59,6 +59,11 @@ belongs in the release record, rather than a date-stamped audit in this source
 tree. Host tools such as Clang, clangd, clang-format, Valgrind, QEMU, Podman,
 and osxcross are development prerequisites, not SDK dependencies.
 
+The Darwin OpenSSL BIO lifecycle test executables use build-only runtime paths
+to the bundled OpenSSL libraries. The workflow checks the shared test's actual
+link plan before building dependencies, then runs both linkage variants natively.
+These development paths are not installed or shipped in SDK artifacts.
+
 ## Known open62541 build diagnostics
 
 The pinned open62541/OpenSSL combination has these inspected diagnostics:

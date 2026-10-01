@@ -148,6 +148,7 @@ for required in \
   README.md \
   scripts/run-selected-tests.py \
   tests/selected_test_executables_test.py \
+  tests/darwin_bio_runtime_paths_test.py \
   devenv.yaml.in \
   docs/dependencies.md \
   docs/logging-hooks.md \

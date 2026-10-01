@@ -30,7 +30,7 @@ jobs:
       - name: Run portable build fixtures
         run: |
           cmake --build --preset arm64-apple-darwin-native --target cpkt_gssapi_shared -- -n >/dev/null
-          for fixture in selected_test_executables krb5_trace_prototypes patch_series_portability static_archive_member_cleanup postgresql_probe_rpaths; do
+          for fixture in selected_test_executables darwin_bio_runtime_paths krb5_trace_prototypes patch_series_portability static_archive_member_cleanup postgresql_probe_rpaths; do
             python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
               --regex "^${fixture}$"
           done

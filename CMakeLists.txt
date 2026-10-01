@@ -1733,13 +1733,22 @@ if(CPKT_BUILD_TESTS)
   foreach(_cpkt_bio_linkage IN ITEMS static shared)
     add_executable(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test
       tests/openssl_bio_lifecycle_test.c)
-    cpkt_use_local_runtime(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test)
+    cpkt_use_local_runtime(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test
+      cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared)
     target_compile_options(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test)
     target_link_libraries(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test PRIVATE
       cpkt_openssl_${_cpkt_bio_linkage})
   endforeach()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    add_test(NAME darwin_bio_runtime_paths
+      COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tests/darwin_bio_runtime_paths_test.py"
+        "${CMAKE_BINARY_DIR}" "${CMAKE_MAKE_PROGRAM}"
+        "$<TARGET_FILE_DIR:cpkt::openssl_ssl_shared>"
+        "$<TARGET_FILE_DIR:cpkt::openssl_crypto_shared>")
+    set_tests_properties(darwin_bio_runtime_paths PROPERTIES
+      LABELS "packaging;smoke" TIMEOUT 30)
     set_target_properties(cpkt_abi_smoke_shared PROPERTIES
       BUILD_RPATH "@executable_path/../lib"
     )
