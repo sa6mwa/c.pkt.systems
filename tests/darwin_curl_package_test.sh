@@ -32,6 +32,8 @@ if [ "$prefix_count" -ne 1 ] || [ ! -f "$prefix/lib/libcurl.a" ] ||
   printf 'SDK archive has no unique prefix with static and shared libcurl\n' >&2
   exit 1
 fi
+python3 "$repo_root/tests/auth_package_discovery_test.py" "$repo_root" \
+  --scratch "$work_root" --compiler "$(xcrun --find clang)" --sdk-prefix "$prefix"
 cat > "$work_root/consumer/lua_facade.c" <<'EOF'
 #include <cpkt/lua.h>
 int main(void) {

@@ -1800,6 +1800,10 @@ if [ -n "$cmake_toolchain_file" ]; then
   cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_configure_consumer_runtime "$cmake_source_dir"
+cpkt_run_checked "cmake isolated authentication package discovery" \
+  python3 "$repo_root/tests/auth_package_discovery_test.py" "$repo_root" \
+    --scratch "$work_root" --compiler "$cc" "--toolchain=$cmake_toolchain_file" \
+    --sdk-prefix "$prefix"
 cpkt_run_checked "cmake aggregate consumer configure" cmake "${cmake_args[@]}"
 cpkt_cmake_build_checked "cmake aggregate consumer build" "$cmake_build_dir"
 # Reuse exactly the helper's linker options for non-CMake consumers as well.

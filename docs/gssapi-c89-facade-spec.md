@@ -4,6 +4,12 @@
 GSSAPI. It intentionally keeps provider headers, fixed-width integer typedefs,
 and C++ linkage declarations outside the consumer boundary.
 
+CMake consumers can locate the SDK using only `CpktGssapi_DIR` or
+`Kerberos5_DIR`. Each package resolves OpenSSL from its adjacent SDK directory;
+no separate `OpenSSL_DIR` or host OpenSSL installation is needed. Package
+verification tests this discovery independently, including after relocation and
+with a competing OpenSSL package in the search path.
+
 The facade covers mechanism and attribute discovery, OID conversion, names and
 name attributes, credential acquisition and storage, initiator and acceptor
 contexts, status rendering, buffer sets, MIC, AEAD, PRF, token handling, and

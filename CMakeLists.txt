@@ -1448,6 +1448,13 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     BUILD_WITH_INSTALL_RPATH ON)
 endif()
 if(CPKT_BUILD_TESTS)
+  add_test(NAME auth_package_discovery
+    COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/auth_package_discovery_test.py" "${CMAKE_SOURCE_DIR}"
+      --scratch "${CMAKE_BINARY_DIR}" --compiler "${CMAKE_C_COMPILER}"
+      "--toolchain=${CMAKE_TOOLCHAIN_FILE}")
+  set_tests_properties(auth_package_discovery PROPERTIES
+    LABELS "packaging;smoke" TIMEOUT 60)
   add_test(NAME selected_test_executables
     COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_SOURCE_DIR}/tests/selected_test_executables_test.py"

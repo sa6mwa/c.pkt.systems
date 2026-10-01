@@ -1262,9 +1262,10 @@ endif()
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/Kerberos5")
 file(WRITE "${_stage_root}/lib/cmake/Kerberos5/Kerberos5Config.cmake"
   "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_krb5_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_krb5_prefix}/lib/cmake/OpenSSL\")\n"
   "find_dependency(Threads REQUIRED)\n"
   "find_dependency(OpenSSL CONFIG REQUIRED)\n"
-  "get_filename_component(_cpkt_krb5_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
   "set(Kerberos5_FOUND TRUE)\n"
   "set(Kerberos5_VERSION \"${CPKT_KRB5_VERSION}\")\n"
   "set(Kerberos5_INCLUDE_DIRS \"\${_cpkt_krb5_prefix}/include\")\n"
@@ -1409,9 +1410,10 @@ endif()
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktGssapi")
 file(WRITE "${_stage_root}/lib/cmake/CpktGssapi/CpktGssapiConfig.cmake"
   "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_gssapi_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_gssapi_prefix}/lib/cmake/OpenSSL\")\n"
   "find_dependency(Threads REQUIRED)\n"
   "find_dependency(OpenSSL CONFIG REQUIRED)\n"
-  "get_filename_component(_cpkt_gssapi_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
   "set(CpktGssapi_FOUND TRUE)\n"
   "set(CpktGssapi_VERSION \"${CPKT_KRB5_VERSION}\")\n"
   "if(NOT TARGET cpkt::gssapi)\n"
