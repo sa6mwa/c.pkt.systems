@@ -2266,6 +2266,8 @@ function(cpkt_add_krb5)
   # Kerberos configure probes use K&R declarations to inspect libc prototypes.
   # Their C23 interpretation incorrectly disables reentrant libc functions.
   string(APPEND external_cflags " -std=gnu17")
+  # The GSSAPI build commands below make missing prototypes fatal for our trace
+  # bridge, including when upstream replaces WARN_CFLAGS or only warns on Darwin.
   set(krb5_openssl_prefix "${CPKT_OPENSSL_shared_PREFIX}")
   set(env_args "")
   cpkt_append_pinned_external_toolchain_env_args(env_args)
@@ -2392,6 +2394,7 @@ function(cpkt_add_krb5)
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/krb5 -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/gssapi -j${CPKT_DEPENDENCY_BUILD_JOBS}
+          "CFLAGS=${external_cflags} -fPIC -DCPKT_KRB5_STATIC_TLS -Werror=missing-prototypes"
         COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
         ${CMAKE_COMMAND} -E env ${static_env_args} make -C plugins/tls/k5tls -j${CPKT_DEPENDENCY_BUILD_JOBS}
       INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
@@ -2491,6 +2494,7 @@ function(cpkt_add_krb5)
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib/krb5 -j${CPKT_DEPENDENCY_BUILD_JOBS}
         COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C lib/gssapi -j${CPKT_DEPENDENCY_BUILD_JOBS}
+          "CFLAGS=${external_cflags} -fPIC -Werror=missing-prototypes"
         COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
         ${CMAKE_COMMAND} -E env ${env_args} make -C plugins/tls/k5tls -j${CPKT_DEPENDENCY_BUILD_JOBS}
           "${krb5_plugin_ldflags}"

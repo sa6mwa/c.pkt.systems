@@ -109,6 +109,10 @@ individual test-case progress, and reports a failed command's exit status or a
 signal received by the package script. Failures stop the matrix immediately.
 Before building dependencies, it configures every target and runs the archive,
 patch, and PostgreSQL build-probe fixtures across all six Linux toolchains.
+It also compiles the Kerberos trace patch with strict prototype diagnostics
+using all seven target compilers, including Darwin. Missing or conflicting
+declarations fail this preflight; both actual GSSAPI builds make missing
+prototypes fatal as well.
 Those fixtures use the selected collection runtime or configured QEMU sysroot.
 An exit status such as 143 can mean SIGTERM or an explicit `exit(143)`; it cannot
 identify who sent a signal. Shell traps likewise cannot recover sender identity.

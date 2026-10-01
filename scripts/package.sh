@@ -58,6 +58,11 @@ done
 
 # Exercise fixtures that compile their own consumers before the expensive
 # dependency matrix. These catch target runtime and archive-tool assumptions.
+for preset in $release_presets arm64-apple-darwin-release; do
+  package_phase fixture
+  "$CTEST" --test-dir "$repo_root/build/$preset" -R '^krb5_trace_prototypes$' \
+    --no-tests=error --output-on-failure
+done
 for preset in $release_presets; do
   package_phase fixture
   for fixture in patch_series_portability static_archive_member_cleanup postgresql_probe_rpaths dependency_install_order_Ninja dependency_install_order_Makefiles open62541_openssl_provenance_Ninja open62541_openssl_provenance_Makefiles zlib_feature_namespace source_archive_verify_failure; do

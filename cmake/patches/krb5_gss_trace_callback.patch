@@ -15,6 +15,14 @@
  
 --- a/src/lib/gssapi/krb5/init_sec_context.c
 +++ b/src/lib/gssapi/krb5/init_sec_context.c
+@@ -99,6 +99,7 @@
+ 
+ #include "k5-int.h"
+ #include "gssapiP_krb5.h"
++#include "gssapiP_trace.h"
+ #ifdef HAVE_MEMORY_H
+ #include <memory.h>
+ #endif
 @@ -992,6 +992,34 @@
  static int kdc_flag = 0;
  #endif
@@ -78,7 +86,7 @@
  #include <generic/gssapiP_generic.h>
  #include "k5-input.h"
  
-+extern krb5_error_code krb5_gss_apply_trace(krb5_context context);
++#include "gssapiP_trace.h"
 +
  static void
  release_auth_mech(struct negoex_auth_mech *mech);
@@ -107,3 +115,15 @@
  gss_krb5_copy_ccache
  gss_krb5_export_lucid_sec_context
  gss_krb5_free_lucid_sec_context
+--- /dev/null
++++ b/src/lib/gssapi/generic/gssapiP_trace.h
+@@ -0,0 +1,9 @@
++/* c.pkt.systems private trace bridge shared by Kerberos and SPNEGO. */
++#ifndef GSSAPIP_TRACE_H
++#define GSSAPIP_TRACE_H
++
++#include <krb5.h>
++
++krb5_error_code krb5_gss_apply_trace(krb5_context context);
++
++#endif

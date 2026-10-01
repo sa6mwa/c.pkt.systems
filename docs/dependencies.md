@@ -121,6 +121,22 @@ contract; native Darwin runtime checks run in the macOS workflow.
 
 ## Kerberos error formatting and inspected Darwin diagnostics
 
+The bundled GSS trace bridge shares one private declaration between its
+definition and the SPNEGO caller. Both static and shared GSSAPI builds make
+`-Wmissing-prototypes` fatal. Upstream's Darwin warning profile previously
+reported the bridge's missing declaration without failing the build; the
+Linux override did not enable that diagnostic. A successful build therefore
+did not establish that this project-owned patch was warning-clean.
+
+The `krb5_trace_prototypes` compiler regression checks the actual patch
+additions with strict warnings and rejects missing or conflicting declarations.
+It uses minimal native type declarations to isolate this compile contract;
+the complete GSSAPI builds exercise the real generated Kerberos headers.
+Packaging runs this fixture with every configured target compiler, including
+Darwin, before starting any dependency build. The native macOS workflow runs
+it in its initial portable fixtures as well. The packaging failure regression
+verifies that a Darwin fixture failure prevents every matrix build.
+
 MIT Kerberos 1.22.2's `krb5_vprepend_error_message` incorrectly forwarded its
 `va_list` to the variadic `krb5_wrap_error_message`. The bundled
 `krb5_error_va_list.patch` forwards it to `krb5_vwrap_error_message` instead.

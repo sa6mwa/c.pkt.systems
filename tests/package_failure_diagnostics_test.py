@@ -39,7 +39,7 @@ else
   phase=configure
 fi
 printf '%s\n' "$phase" >> "$DIAG_CALLS"
-if [[ $phase == "$DIAG_PHASE" ]]; then
+if [[ $phase == "$DIAG_PHASE" && ( -z ${DIAG_TARGET:-} || ${2:-} == "$DIAG_TARGET" ) ]]; then
   case "$DIAG_MODE" in
     fail) printf 'injected command failure\n' >&2; exit "$DIAG_STATUS" ;;
     child) kill -TERM "$$"; exit 99 ;;
@@ -71,7 +71,7 @@ fi
     cases = []
 
     def run(name, phase="", mode="fail", status=23,
-            signum=signal.SIGTERM, via_make=False):
+            signum=signal.SIGTERM, via_make=False, target=""):
         env = os.environ.copy()
         for key in ("MAKEFLAGS", "MFLAGS", "MAKELEVEL"):
             env.pop(key, None)
@@ -81,6 +81,7 @@ fi
                    OSXCROSS_ROOT=str(cross),
                    CPKT_OSXCROSS_HOST="arm64-apple-darwin25",
                    DIAG_PHASE=phase, DIAG_MODE=mode, DIAG_STATUS=str(status),
+                   DIAG_TARGET=target,
                    DIAG_READY=str(ready), DIAG_CALLS=str(calls))
         command = ["make", "--no-print-directory"] if via_make else [
             "bash", "scripts/package.sh"]
@@ -109,15 +110,15 @@ fi
         context = name + ":\n" + output
         if not phase:
             assert process.returncode == 0, context
-            assert actual_calls == ["configure"] * 7 + ["fixture"] * 54 + [
+            assert actual_calls == ["configure"] * 7 + ["fixture"] * 61 + [
                 "build", "test", "package"] * 6 + ["build", "package"], context
         else:
             if phase == "configure":
                 expected_calls = ["configure"]
             elif phase == "fixture":
-                expected_calls = ["configure"] * 7 + ["fixture"]
+                expected_calls = ["configure"] * 7 + ["fixture"] * (7 if target else 1)
             else:
-                expected_calls = ["configure"] * 7 + ["fixture"] * 54 + [
+                expected_calls = ["configure"] * 7 + ["fixture"] * 61 + [
                     "build", "test", "package"][:["build", "test", "package"].index(phase) + 1]
             assert actual_calls == expected_calls, context
             prefix = "[package] " + (
@@ -126,7 +127,8 @@ fi
                            if line.startswith(prefix)]
             assert len(diagnostics) == 1, context
             diagnostic = diagnostics[0]
-            assert "target=x86_64-linux-gnu-release" in diagnostic, context
+            expected_target = Path(target).name if target else "x86_64-linux-gnu-release"
+            assert "target=" + expected_target in diagnostic, context
             assert "phase=" + phase in diagnostic, context
             if mode in ("group", "parent"):
                 expected = signal.Signals(signum).name
@@ -147,6 +149,8 @@ fi
 
     for phase in ("configure", "fixture", "build", "test", "package"):
         run("failure-" + phase, phase)
+    run("darwin-prototype-fixture", "fixture",
+        target=str(root / "build/arm64-apple-darwin-release"))
     run("explicit-143", "test", status=143)
     run("child-term", "test", mode="child")
     run("parent-term", "test", mode="parent")

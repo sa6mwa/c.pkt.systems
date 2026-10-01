@@ -1460,6 +1460,12 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 if(CPKT_BUILD_TESTS)
   include(cmake/CpktTestPslog.cmake)
+  # Host-side compiler fixture: also register it for Darwin cross builds,
+  # whose executable tests are otherwise supplied by the native smoke bundle.
+  add_test(NAME krb5_trace_prototypes
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/krb5_trace_prototypes_test.py"
+      "${CMAKE_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_C_COMPILER}")
+  set_tests_properties(krb5_trace_prototypes PROPERTIES LABELS "packaging;smoke" TIMEOUT 30)
   cpkt_add_test_pslog()
   foreach(_cpkt_opcua_logging_linkage IN ITEMS static shared)
     add_executable(cpkt_opcua_logging_${_cpkt_opcua_logging_linkage}_test
