@@ -6,6 +6,42 @@
 int cpkt_test_borrowed_file_view(cpkt_sqlite *database, int *close_calls);
 int cpkt_test_vfs_provider_identity(cpkt_sqlite *database,
                                     cpkt_sqlite_vfs *original);
+const char *cpkt_test_proxy_path(int mode);
+void cpkt_test_proxy_path_changed(void);
+
+static int owned_control_text(cpkt_sqlite *database) {
+  const char *borrowed;
+  char *owned;
+  char expected[64];
+  int mode;
+  int status;
+  for (mode = 0; mode < 5; ++mode) {
+    borrowed = cpkt_test_proxy_path(mode);
+    strcpy(expected, borrowed);
+    owned = (char *)borrowed;
+    status = cpkt_sqlite_file_control_text(
+        database, "main", CPKT_SQLITE_FCNTL_GET_LOCKPROXYFILE, &owned);
+    (void)cpkt_test_proxy_path(0); /* Clear allocation fault after the call. */
+    if (mode == 3 || mode == 4) {
+      if (status != (mode == 3 ? CPKT_SQLITE_IOERR : CPKT_SQLITE_NOMEM) ||
+          owned != NULL)
+        return 50 + mode;
+    } else if (status != CPKT_SQLITE_OK ||
+               (mode == 2 ? owned != NULL
+                          : owned == NULL || owned == borrowed ||
+                                strcmp(owned, expected) != 0)) {
+      fprintf(stderr, "lock-proxy file control returned borrowed text\n");
+      return 50 + mode;
+    }
+    if (mode == 1) {
+      cpkt_test_proxy_path_changed();
+      if (strcmp(owned, expected) != 0)
+        return 55;
+    }
+    cpkt_sqlite_free(owned);
+  }
+  return 0;
+}
 
 int cpkt_test_borrowed_file_view(cpkt_sqlite *database, int *close_calls) {
   cpkt_sqlite_file_handle *first;
@@ -13,11 +49,16 @@ int cpkt_test_borrowed_file_view(cpkt_sqlite *database, int *close_calls) {
   cpkt_sqlite_file *view;
   cpkt_sqlite_i64 size;
   int before;
+  int status;
   first = NULL;
   second = NULL;
   if (database->tx(database, "CREATE TABLE borrowed(value INTEGER)", NULL,
-                   NULL) != CPKT_SQLITE_OK ||
-      cpkt_sqlite_file_control_file(database, "main",
+                   NULL) != CPKT_SQLITE_OK)
+    return 30;
+  status = owned_control_text(database);
+  if (status != 0)
+    return status;
+  if (cpkt_sqlite_file_control_file(database, "main",
                                     CPKT_SQLITE_FCNTL_FILE_POINTER,
                                     &first) != CPKT_SQLITE_OK ||
       cpkt_sqlite_file_control_file(database, "main",

@@ -1557,7 +1557,10 @@ int cpkt_sqlite_file_control_int(cpkt_sqlite *self, const char *database_name,
 int cpkt_sqlite_file_control_unsigned(cpkt_sqlite *self,
                                       const char *database_name, int operation,
                                       unsigned long *value);
-/** The caller frees text with cpkt_sqlite_free(). */
+/** Owned text for VFSNAME, TEMPFILENAME, or GET_LOCKPROXYFILE; free with
+ * cpkt_sqlite_free(). Borrowed native lock-proxy text is copied. Its copy
+ * returns NOMEM with a NULL output on allocation failure; provider errors
+ * also leave that output NULL. A successful NULL proxy path stays NULL. */
 int cpkt_sqlite_file_control_text(cpkt_sqlite *self, const char *database_name,
                                   int operation, char **text_out);
 /** String input for TRACE or Darwin's lock-proxy file path. */

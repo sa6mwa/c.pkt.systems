@@ -5871,11 +5871,23 @@ int cpkt_sqlite_file_control_unsigned(cpkt_sqlite *self,
 
 int cpkt_sqlite_file_control_text(cpkt_sqlite *self, const char *database_name,
                                   int operation, char **text_out) {
+  const char *borrowed;
+  int status;
   if (text_out == NULL || (operation != SQLITE_FCNTL_VFSNAME &&
                            operation != SQLITE_FCNTL_TEMPFILENAME &&
                            operation != SQLITE_FCNTL_GET_LOCKPROXYFILE))
     return SQLITE_MISUSE;
   *text_out = NULL;
+  if (operation == SQLITE_FCNTL_GET_LOCKPROXYFILE) {
+    borrowed = NULL;
+    status =
+        cpkt_sqlite_file_control(self, database_name, operation, &borrowed);
+    if (status != SQLITE_OK || borrowed == NULL)
+      return status;
+    /* Native proxy locking returns provider-owned or static text. */
+    *text_out = sqlite3_mprintf("%s", borrowed);
+    return *text_out == NULL ? SQLITE_NOMEM : SQLITE_OK;
+  }
   return cpkt_sqlite_file_control(self, database_name, operation, text_out);
 }
 

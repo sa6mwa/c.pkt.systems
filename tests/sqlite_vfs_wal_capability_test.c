@@ -12,9 +12,28 @@ static int mmap_control_calls;
 static int size_hint_control_calls;
 static int size_limit_control_calls;
 static int file_close_calls;
+static sqlite3_mem_methods original_memory;
+static int fail_proxy_allocation;
+static int proxy_mode;
+static const char auto_proxy_path[] = ":auto: (not held)";
+static char proxy_path[64] = "/tmp/cpkt-owned-lock-proxy";
 int cpkt_test_borrowed_file_view(cpkt_sqlite *database, int *close_calls);
 int cpkt_test_vfs_provider_identity(cpkt_sqlite *database,
                                     cpkt_sqlite_vfs *original);
+
+static void *proxy_malloc(int size) {
+  return fail_proxy_allocation ? NULL : original_memory.xMalloc(size);
+}
+
+/* Model both forms returned by Darwin's native proxy file-control method. */
+const char *cpkt_test_proxy_path(int mode) {
+  proxy_mode = mode;
+  fail_proxy_allocation = 0;
+  strcpy(proxy_path, "/tmp/cpkt-owned-lock-proxy");
+  return mode == 1 ? proxy_path : auto_proxy_path;
+}
+
+void cpkt_test_proxy_path_changed(void) { strcpy(proxy_path, "/tmp/changed"); }
 
 static sqlite3_file *native_file(cpkt_sqlite_file *file) {
   return (sqlite3_file *)file->state;
@@ -84,6 +103,14 @@ static int file_reserved_lock(cpkt_sqlite_file *file, int *result_out) {
 
 static int file_control(cpkt_sqlite_file *file, int operation, void *argument) {
   sqlite3_file *native = native_file(file);
+  if (operation == SQLITE_FCNTL_GET_LOCKPROXYFILE) {
+    *(const char **)argument = proxy_mode == 2   ? NULL
+                               : proxy_mode == 1 ? proxy_path
+                                                 : auto_proxy_path;
+    if (proxy_mode == 4)
+      fail_proxy_allocation = 1;
+    return proxy_mode == 3 ? SQLITE_IOERR : SQLITE_OK;
+  }
   if (argument != NULL && (operation == SQLITE_FCNTL_SIZE_HINT ||
                            operation == SQLITE_FCNTL_MMAP_SIZE ||
                            operation == SQLITE_FCNTL_SIZE_LIMIT)) {
@@ -193,8 +220,16 @@ int main(int argc, char **argv) {
   cpkt_sqlite_i64 control_value;
   int status;
   int marker = 11;
+  sqlite3_mem_methods memory;
 
-  if ((argc != 2 && argc != 3) || cpkt_sqlite_initialize() != CPKT_SQLITE_OK)
+  if (argc != 2 && argc != 3)
+    return 1;
+  if (sqlite3_config(SQLITE_CONFIG_GETMALLOC, &original_memory) != SQLITE_OK)
+    return 1;
+  memory = original_memory;
+  memory.xMalloc = proxy_malloc;
+  if (sqlite3_config(SQLITE_CONFIG_MALLOC, &memory) != SQLITE_OK ||
+      cpkt_sqlite_initialize() != CPKT_SQLITE_OK)
     return 1;
   base_vfs = sqlite3_vfs_find(NULL);
   if (base_vfs == NULL)

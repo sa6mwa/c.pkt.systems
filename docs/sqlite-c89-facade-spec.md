@@ -117,7 +117,12 @@ For file controls `SQLITE_FCNTL_SIZE_HINT`, `SQLITE_FCNTL_MMAP_SIZE`, and
 `SQLITE_FCNTL_SIZE_LIMIT`, pass a `cpkt_sqlite_i64 *` to
 `cpkt_sqlite_file_control()`. The same payload type is passed to facade VFS
 file-control callbacks. Use the typed int, unsigned, text, file, VFS, and
-FILESTAT calls for their documented operation IDs. File and VFS control
+FILESTAT calls for their documented operation IDs. Text returned by
+`cpkt_sqlite_file_control_text()` is owned and released with
+`cpkt_sqlite_free()`. For `GET_LOCKPROXYFILE`, the facade copies SQLite's
+borrowed provider path or static status string; allocation failure returns
+`CPKT_SQLITE_NOMEM` and a null output, while provider errors leave the output
+null. A successful null provider path remains null. File and VFS control
 handles own only facade metadata. They borrow SQLite's open file or registered
 VFS, so close each handle before its database or VFS is closed. A file view
 borrowed through a handle cannot close the database's file; close the handle
