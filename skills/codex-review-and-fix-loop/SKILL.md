@@ -72,7 +72,7 @@ Capture both output streams in a unique temporary file, retain that file until t
 
 ```sh
 review_log="$(mktemp "${TMPDIR:-/tmp}/codex-review.XXXXXX.log")"
-if codex review -c model=gpt-6-sol -c model_reasoning_effort=high --base <default-branch> >"$review_log" 2>&1; then
+if codex review -c model=gpt-6.1-sol -c model_reasoning_effort=high --base <default-branch> >"$review_log" 2>&1; then
   review_exit=0
 else
   review_exit=$?
@@ -102,7 +102,7 @@ Require exactly one result. If the repository is shallow, the default branch is 
 Use the same model and reasoning configuration, omit `--base`, and pass only this positional custom review prompt within the same temporary-output capture wrapper:
 
 ```sh
-codex review -c model=gpt-6-sol -c model_reasoning_effort=high \
+codex review -c model=gpt-6.1-sol -c model_reasoning_effort=high \
   "changes against $first_commit" \
   >"$review_log" 2>&1
 ```
