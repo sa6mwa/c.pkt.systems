@@ -45,7 +45,10 @@ typedef enum cpkt_postgres_event_id {
   CPKT_POSTGRES_EVENT_RESULT_DESTROY = 5
 } cpkt_postgres_event_id;
 
-/** Callback-local event information; use the member selected by id. */
+/** Callback-local event information; use the member selected by id.
+ * RESULT_DESTROY borrows result until callback return, including cleanup
+ * after a failed result-copy allocation. A copy with NOTICE_HOOKS retains
+ * the source notice snapshot beyond connection and source destruction. */
 typedef struct cpkt_postgres_event_info {
   /** Borrowed identity of the registration currently receiving this event. */
   cpkt_postgres_event *event;

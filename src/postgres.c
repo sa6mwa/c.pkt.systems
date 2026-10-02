@@ -138,6 +138,44 @@ static int cpkt_postgres_pending_clear_is_current(
 #endif
 }
 
+/* Transfer an already-held owner reference to a stack-local clear scope.
+ * No allocation may be needed here: result tracking can fail before clear. */
+static void
+cpkt_postgres_pending_clear_begin_locked(const PGresult *result,
+                                         cpkt_postgres_notice_binding *owner,
+                                         cpkt_postgres_pending_clear *scope) {
+  scope->result = result;
+  scope->owner = owner;
+  if (owner == NULL)
+    return;
+#if defined(_WIN32)
+  scope->thread = GetCurrentThreadId();
+#else
+  scope->thread = pthread_self();
+#endif
+  scope->next = cpkt_postgres_pending_clears;
+  cpkt_postgres_pending_clears = scope;
+}
+
+static void
+cpkt_postgres_pending_clear_end(cpkt_postgres_pending_clear *scope) {
+  cpkt_postgres_pending_clear **slot;
+  cpkt_postgres_notice_binding *dispose;
+  if (scope->owner == NULL)
+    return;
+  cpkt_postgres_hook_lock_acquire();
+  slot = &cpkt_postgres_pending_clears;
+  while (*slot != scope)
+    slot = &(*slot)->next;
+  *slot = scope->next;
+  --scope->owner->result_count;
+  dispose = scope->owner->closed && scope->owner->result_count == 0U
+                ? scope->owner
+                : NULL;
+  cpkt_postgres_hook_lock_release();
+  cpkt_postgres_dispose_notice_binding(dispose);
+}
+
 /** Find the notice owner of a lasting or callback-local result under lock. */
 static cpkt_postgres_notice_binding *
 cpkt_postgres_find_result_notice_owner_locked(const PGresult *source) {
@@ -287,6 +325,7 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
                            const PGresult *source) {
   cpkt_postgres_notice_binding *binding;
   cpkt_postgres_result_binding *entry;
+  cpkt_postgres_pending_clear pending;
 
   if (result == NULL) {
     return NULL;
@@ -304,13 +343,16 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
       entry->owner = binding;
       entry->next = cpkt_postgres_result_bindings;
       cpkt_postgres_result_bindings = entry;
-      ++binding->result_count;
+    } else {
+      cpkt_postgres_pending_clear_begin_locked(result, binding, &pending);
     }
+    ++binding->result_count;
   }
   cpkt_postgres_hook_lock_release();
   if (binding != NULL && entry == NULL) {
     cpkt_postgres_event_release_uninitialized(result);
     PQclear(result);
+    cpkt_postgres_pending_clear_end(&pending);
     return NULL;
   }
   if (!cpkt_postgres_event_prepare_result((PGconn *)connection, result)) {
@@ -2125,8 +2167,6 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
   cpkt_postgres_result_binding **slot;
   cpkt_postgres_result_binding *entry;
   cpkt_postgres_pending_clear pending;
-  cpkt_postgres_pending_clear **pending_slot;
-  cpkt_postgres_notice_binding *dispose;
 
   native_result = cpkt_postgres_native_result(result);
   cpkt_postgres_hook_lock_acquire();
@@ -2135,19 +2175,10 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
     slot = &(*slot)->next;
   }
   entry = *slot;
-  dispose = NULL;
-  if (entry != NULL) {
+  if (entry != NULL)
     *slot = entry->next;
-    pending.result = native_result;
-    pending.owner = entry->owner;
-#if defined(_WIN32)
-    pending.thread = GetCurrentThreadId();
-#else
-    pending.thread = pthread_self();
-#endif
-    pending.next = cpkt_postgres_pending_clears;
-    cpkt_postgres_pending_clears = &pending;
-  }
+  cpkt_postgres_pending_clear_begin_locked(
+      native_result, entry == NULL ? NULL : entry->owner, &pending);
   cpkt_postgres_hook_lock_release();
   /* Detach before PQclear can release this address for another result.
    * Keep the owner's reference until native cleanup is finished. Native
@@ -2155,19 +2186,8 @@ void cpkt_postgres_result_free(cpkt_postgres_result *result) {
    * callback and must be released before the address becomes reusable. */
   cpkt_postgres_event_release_uninitialized(native_result);
   PQclear(native_result);
-  if (entry != NULL) {
-    cpkt_postgres_hook_lock_acquire();
-    pending_slot = &cpkt_postgres_pending_clears;
-    while (*pending_slot != &pending)
-      pending_slot = &(*pending_slot)->next;
-    *pending_slot = pending.next;
-    --entry->owner->result_count;
-    if (entry->owner->closed && entry->owner->result_count == 0U)
-      dispose = entry->owner;
-    cpkt_postgres_hook_lock_release();
-  }
+  cpkt_postgres_pending_clear_end(&pending);
   free(entry);
-  cpkt_postgres_dispose_notice_binding(dispose);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_text_free. */

@@ -80,6 +80,10 @@ During RESULT_DESTROY, `info->result` remains borrowed through the callback.
 A notice-hooks copy made there also retains its source callback and context
 after the original result and connection are freed. The borrow ends when the
 destroy callback returns; later uses of `info->result` are invalid.
+This also holds when result tracking allocation fails after native copying:
+the facade returns NULL, runs native destruction callbacks with a retained
+notice owner, and preserves any copies made by those callbacks. Cleanup uses
+a stack-local scope so retaining the owner does not require another allocation.
 When a result is freed, native-initialized event state is released by libpq's
 RESULT_DESTROY dispatch while the result remains valid. Frozen state for a
 native-uninitialized result is released before native clear, which does not

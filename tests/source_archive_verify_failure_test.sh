@@ -47,6 +47,7 @@ tests/darwin_test_runtime_paths_test.py
 tests/sqlite_vfs_handle_views_test.c
 tests/auth_package_discovery_test.py
 tests/postgres_pending_registration_test.c
+tests/postgres_tracking_lifetime_test.c
 devenv.yaml.in
 docs/dependencies.md
 docs/logging-hooks.md

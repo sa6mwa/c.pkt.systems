@@ -6,6 +6,8 @@ static int fail_after = -1;
 static int register_count;
 static int destroy_count;
 
+int cpkt_postgres_tracking_lifetime_test(int fail_tracking);
+
 void *__real_cpkt_postgres_event_allocate(size_t size);
 
 void *__wrap_cpkt_postgres_event_allocate(size_t size) {
@@ -66,5 +68,5 @@ int main(void) {
   cpkt_postgres_result_free(result);
   if (register_count != 1 || destroy_count != 1)
     return 8;
-  return 0;
+  return cpkt_postgres_tracking_lifetime_test(1);
 }
