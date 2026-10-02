@@ -363,7 +363,8 @@ cpkt_gss_status cpkt_gss_delete_context(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_context **context_in_out,
                                         cpkt_gss_buffer *output_token);
 
-/** Returns an owned set of mechanisms supported by the provider. */
+/** Returns an owned set of mechanisms supported by the provider.
+ * set_out is required; NULL returns CALL_BAD_STRUCTURE and minor EINVAL. */
 cpkt_gss_status cpkt_gss_indicate_mechanisms(cpkt_gss_status *minor_status_out,
                                              cpkt_gss_oid_set **set_out);
 /** Returns the number of entries in a borrowed or owned OID set. */
@@ -371,10 +372,12 @@ size_t cpkt_gss_oid_set_count(const cpkt_gss_oid_set *set);
 /** Returns a borrowed OID member; keep the set alive while using it. */
 const cpkt_gss_oid *cpkt_gss_oid_set_at(const cpkt_gss_oid_set *set,
                                         size_t index);
-/** Creates an empty, owned OID set. */
+/** Creates an empty, owned OID set. set_out is required; NULL returns
+ * CALL_BAD_STRUCTURE and minor EINVAL before provider allocation. */
 cpkt_gss_status cpkt_gss_create_oid_set(cpkt_gss_status *minor_status_out,
                                         cpkt_gss_oid_set **set_out);
-/** Adds an OID to a mutable set, copying its identifier bytes. */
+/** Adds an OID to a mutable set, copying its identifier bytes.
+ * set_in_out is required; NULL returns CALL_BAD_STRUCTURE and minor EINVAL. */
 cpkt_gss_status cpkt_gss_add_oid_to_set(cpkt_gss_status *minor_status_out,
                                         const cpkt_gss_oid *oid,
                                         cpkt_gss_oid_set **set_in_out);
@@ -383,7 +386,8 @@ cpkt_gss_status cpkt_gss_oid_set_contains(cpkt_gss_status *minor_status_out,
                                           const cpkt_gss_oid *oid,
                                           const cpkt_gss_oid_set *set,
                                           int *present_out);
-/** Parses dotted-decimal OID text into an owned identifier. */
+/** Parses dotted-decimal OID text into an owned identifier. oid_out is
+ * required; NULL returns CALL_BAD_STRUCTURE and minor EINVAL. */
 cpkt_gss_status cpkt_gss_oid_from_text(cpkt_gss_status *minor_status_out,
                                        const cpkt_gss_buffer *text,
                                        cpkt_gss_oid **oid_out);
@@ -397,7 +401,8 @@ cpkt_gss_status cpkt_gss_oid_to_text(cpkt_gss_status *minor_status_out,
                                      const cpkt_gss_oid *oid,
                                      cpkt_gss_buffer *text_out);
 
-/** Imports external name bytes as an owned GSS name. */
+/** Imports external name bytes as an owned GSS name. name_out is required;
+ * NULL returns CALL_BAD_STRUCTURE and minor EINVAL. */
 cpkt_gss_status cpkt_gss_import_name(cpkt_gss_status *minor_status_out,
                                      const cpkt_gss_buffer *input,
                                      const cpkt_gss_oid *name_type,
@@ -412,11 +417,13 @@ cpkt_gss_status cpkt_gss_compare_names(cpkt_gss_status *minor_status_out,
                                        const cpkt_gss_name *left,
                                        const cpkt_gss_name *right,
                                        int *equal_out);
-/** Creates an independent owned copy of a GSS name. */
+/** Creates an independent owned copy of a GSS name. copy_out is required;
+ * NULL returns CALL_BAD_STRUCTURE and minor EINVAL. */
 cpkt_gss_status cpkt_gss_duplicate_name(cpkt_gss_status *minor_status_out,
                                         const cpkt_gss_name *source,
                                         cpkt_gss_name **copy_out);
-/** Converts a name to a mechanism-specific owned name. */
+/** Converts a name to a mechanism-specific owned name. canonical_out is
+ * required; NULL returns CALL_BAD_STRUCTURE and minor EINVAL. */
 cpkt_gss_status cpkt_gss_canonicalize_name(cpkt_gss_status *minor_status_out,
                                            const cpkt_gss_name *source,
                                            const cpkt_gss_oid *mechanism,
@@ -440,7 +447,8 @@ cpkt_gss_status cpkt_gss_inquire_credential(
     cpkt_gss_oid_set **mechanisms_out);
 
 /** Advances initiator-side context negotiation; exchange output tokens with the
- * peer. */
+ * peer. context_in_out is required; NULL returns CALL_BAD_STRUCTURE and
+ * minor EINVAL before provider allocation. */
 cpkt_gss_status cpkt_gss_init_context(
     cpkt_gss_status *minor_status_out, const cpkt_gss_credential *credential,
     cpkt_gss_context **context_in_out, const cpkt_gss_name *target,
@@ -451,7 +459,8 @@ cpkt_gss_status cpkt_gss_init_context(
     const cpkt_gss_oid **actual_mechanism_out, cpkt_gss_buffer *output_token,
     cpkt_gss_flags *returned_flags_out, cpkt_gss_lifetime *lifetime_out);
 /** Advances acceptor-side context negotiation; exchange output tokens with the
- * peer. */
+ * peer. context_in_out is required; NULL returns CALL_BAD_STRUCTURE and
+ * minor EINVAL before provider allocation. */
 cpkt_gss_status cpkt_gss_accept_context(
     cpkt_gss_status *minor_status_out, cpkt_gss_context **context_in_out,
     const cpkt_gss_credential *credential, const cpkt_gss_buffer *input_token,

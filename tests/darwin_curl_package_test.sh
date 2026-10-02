@@ -51,6 +51,7 @@ find_package(Threads REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(OpenLDAP CONFIG REQUIRED)
 find_package(CpktLua CONFIG REQUIRED)
+find_package(CpktGssapi CONFIG REQUIRED)
 foreach(linkage IN ITEMS static shared)
   add_executable(curl_async_dns_${linkage} "${CPKT_SOURCE_DIR}/tests/curl_async_dns_test.c")
   target_compile_options(curl_async_dns_${linkage} PRIVATE
@@ -86,6 +87,17 @@ foreach(linkage IN ITEMS static shared)
       BUILD_RPATH "${CPKT_SDK_PREFIX}/lib")
   endif()
   add_test(NAME lua_facade_${linkage} COMMAND lua_facade_${linkage})
+  add_executable(gssapi_${linkage} "${CPKT_SOURCE_DIR}/tests/gssapi_facade_test.c")
+  target_compile_options(gssapi_${linkage} PRIVATE
+    -std=c89 -Wall -Wextra -Wpedantic -Werror)
+  if(linkage STREQUAL "static")
+    target_link_libraries(gssapi_${linkage} PRIVATE cpkt::gssapi)
+  else()
+    target_link_libraries(gssapi_${linkage} PRIVATE cpkt::gssapi_shared)
+    set_target_properties(gssapi_shared PROPERTIES
+      BUILD_RPATH "${CPKT_SDK_PREFIX}/lib")
+  endif()
+  add_test(NAME gssapi_${linkage} COMMAND gssapi_${linkage})
 endforeach()
 EOF
 cmake -S "$work_root/consumer" -B "$work_root/consumer-build" -G Ninja \

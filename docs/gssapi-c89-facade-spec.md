@@ -38,6 +38,13 @@ All handles are opaque. Results returned through a `cpkt_gss_buffer` are
 provider-owned and must be passed to `cpkt_gss_release_buffer`. OIDs and OID
 sets returned by creation or conversion operations must use their corresponding
 release operation. Standard name-type OIDs and OID-set members are borrowed.
+Mechanism-set discovery and creation, OID text parsing, name import/duplication/
+canonicalization, mutable OID-set updates, and context negotiation require
+their handle output or in/out pointer. A null pointer returns
+`CPKT_GSS_S_CALL_BAD_STRUCTURE` with minor `EINVAL` before provider allocation;
+the minor-status pointer itself remains optional. Inquiry outputs documented
+as optional retain their existing behavior, including release of omitted
+provider-owned results.
 Buffer-set members and the byte views returned by `cpkt_gss_oid_view()` are
 borrowed. Release a buffer set once, after all member views are finished.
 `cpkt_gss_local_login_attribute()` returns borrowed provider-static bytes;

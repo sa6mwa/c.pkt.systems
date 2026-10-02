@@ -26,6 +26,13 @@ static cpkt_gss_status cpkt_gss_invalid_u32(cpkt_gss_status *minor_out) {
   return GSS_S_CALL_BAD_STRUCTURE;
 }
 
+static cpkt_gss_status
+cpkt_gss_missing_handle_output(cpkt_gss_status *minor_out) {
+  if (minor_out != NULL)
+    *minor_out = EINVAL;
+  return GSS_S_CALL_BAD_STRUCTURE;
+}
+
 static int cpkt_gss_bindings_fit(const cpkt_gss_channel_bindings *bindings) {
   return bindings == NULL ||
          (cpkt_gss_u32_fits(bindings->initiator_address_type) &&
@@ -205,9 +212,11 @@ cpkt_gss_status cpkt_gss_indicate_mechanisms(cpkt_gss_status *minor_out,
                                              cpkt_gss_oid_set **set_out) {
   OM_uint32 minor;
   gss_OID_set set = GSS_C_NO_OID_SET;
-  OM_uint32 status = gss_indicate_mechs(&minor, &set);
-  if (set_out != NULL)
-    *set_out = (cpkt_gss_oid_set *)set;
+  OM_uint32 status;
+  if (set_out == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
+  status = gss_indicate_mechs(&minor, &set);
+  *set_out = (cpkt_gss_oid_set *)set;
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -233,9 +242,11 @@ cpkt_gss_status cpkt_gss_create_oid_set(cpkt_gss_status *minor_out,
                                         cpkt_gss_oid_set **set_out) {
   OM_uint32 minor;
   gss_OID_set set = GSS_C_NO_OID_SET;
-  OM_uint32 status = gss_create_empty_oid_set(&minor, &set);
-  if (set_out != NULL)
-    *set_out = (cpkt_gss_oid_set *)set;
+  OM_uint32 status;
+  if (set_out == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
+  status = gss_create_empty_oid_set(&minor, &set);
+  *set_out = (cpkt_gss_oid_set *)set;
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -246,9 +257,11 @@ cpkt_gss_status cpkt_gss_add_oid_to_set(cpkt_gss_status *minor_out,
                                         cpkt_gss_oid_set **set) {
   OM_uint32 minor;
   gss_OID_set native = set == NULL ? GSS_C_NO_OID_SET : (gss_OID_set)*set;
-  OM_uint32 status = gss_add_oid_set_member(&minor, (gss_OID)oid, &native);
-  if (set != NULL)
-    *set = (cpkt_gss_oid_set *)native;
+  OM_uint32 status;
+  if (set == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
+  status = gss_add_oid_set_member(&minor, (gss_OID)oid, &native);
+  *set = (cpkt_gss_oid_set *)native;
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -275,9 +288,11 @@ cpkt_gss_status cpkt_gss_oid_from_text(cpkt_gss_status *minor_out,
   OM_uint32 minor;
   gss_buffer_desc native_text = cpkt_gss_native_buffer(text);
   gss_OID oid = GSS_C_NO_OID;
-  OM_uint32 status = gss_str_to_oid(&minor, &native_text, &oid);
-  if (oid_out != NULL)
-    *oid_out = (cpkt_gss_oid *)oid;
+  OM_uint32 status;
+  if (oid_out == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
+  status = gss_str_to_oid(&minor, &native_text, &oid);
+  *oid_out = (cpkt_gss_oid *)oid;
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -332,10 +347,11 @@ cpkt_gss_status cpkt_gss_import_name(cpkt_gss_status *minor_out,
   OM_uint32 minor;
   gss_buffer_desc native_input = cpkt_gss_native_buffer(input);
   gss_name_t name = GSS_C_NO_NAME;
-  OM_uint32 status =
-      gss_import_name(&minor, &native_input, (gss_OID)type, &name);
-  if (name_out != NULL)
-    *name_out = (cpkt_gss_name *)name;
+  OM_uint32 status;
+  if (name_out == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
+  status = gss_import_name(&minor, &native_input, (gss_OID)type, &name);
+  *name_out = (cpkt_gss_name *)name;
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -379,9 +395,11 @@ cpkt_gss_status cpkt_gss_duplicate_name(cpkt_gss_status *minor_out,
                                         cpkt_gss_name **copy_out) {
   OM_uint32 minor;
   gss_name_t copy = GSS_C_NO_NAME;
-  OM_uint32 status = gss_duplicate_name(&minor, (gss_name_t)source, &copy);
-  if (copy_out != NULL)
-    *copy_out = (cpkt_gss_name *)copy;
+  OM_uint32 status;
+  if (copy_out == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
+  status = gss_duplicate_name(&minor, (gss_name_t)source, &copy);
+  *copy_out = (cpkt_gss_name *)copy;
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -393,10 +411,12 @@ cpkt_gss_status cpkt_gss_canonicalize_name(cpkt_gss_status *minor_out,
                                            cpkt_gss_name **canonical_out) {
   OM_uint32 minor;
   gss_name_t canonical = GSS_C_NO_NAME;
-  OM_uint32 status = gss_canonicalize_name(&minor, (gss_name_t)source,
-                                           (gss_OID)mechanism, &canonical);
-  if (canonical_out != NULL)
-    *canonical_out = (cpkt_gss_name *)canonical;
+  OM_uint32 status;
+  if (canonical_out == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
+  status = gss_canonicalize_name(&minor, (gss_name_t)source, (gss_OID)mechanism,
+                                 &canonical);
+  *canonical_out = (cpkt_gss_name *)canonical;
   return cpkt_gss_finish(status, minor, minor_out);
 }
 
@@ -485,6 +505,8 @@ cpkt_gss_status cpkt_gss_init_context(
   gss_buffer_desc native_input = cpkt_gss_native_buffer(input), native_output;
   gss_OID actual = GSS_C_NO_OID;
   OM_uint32 status;
+  if (context == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
   if (!cpkt_gss_u32_fits(flags) || !cpkt_gss_u32_fits(lifetime) ||
       !cpkt_gss_bindings_fit(bindings))
     return cpkt_gss_invalid_u32(minor_out);
@@ -526,6 +548,8 @@ cpkt_gss_status cpkt_gss_accept_context(
   gss_OID mechanism = GSS_C_NO_OID;
   gss_cred_id_t delegated = GSS_C_NO_CREDENTIAL;
   OM_uint32 status;
+  if (context == NULL)
+    return cpkt_gss_missing_handle_output(minor_out);
   if (!cpkt_gss_bindings_fit(bindings))
     return cpkt_gss_invalid_u32(minor_out);
   memset(&native_output, 0, sizeof(native_output));
