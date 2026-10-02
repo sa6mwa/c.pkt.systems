@@ -1771,7 +1771,8 @@ if(CPKT_BUILD_TESTS)
   foreach(_cpkt_pending_linkage IN ITEMS static shared)
     add_executable(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test
       tests/postgres_pending_registration_test.c
-      tests/postgres_tracking_lifetime_test.c)
+      tests/postgres_tracking_lifetime_test.c
+      tests/postgres_notice_registration_test.c)
     cpkt_use_local_runtime(cpkt_postgres_pending_registration_${_cpkt_pending_linkage}_test
       cpkt::postgresql_shared cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared
       cpkt::gssapi_krb5_shared cpkt::openldap_shared cpkt::cyrus_sasl_shared
@@ -1964,14 +1965,17 @@ if(CPKT_BUILD_TESTS)
         cpkt_postgres_static)
       add_executable(cpkt_postgres_event_allocation_test
         tests/postgres_event_allocation_test.c
-        tests/postgres_tracking_lifetime_test.c)
+        tests/postgres_tracking_lifetime_test.c
+        tests/postgres_notice_registration_test.c)
       cpkt_use_local_runtime(cpkt_postgres_event_allocation_test)
       cpkt_configure_c89_target(cpkt_postgres_event_allocation_test)
       cpkt_add_repo_warning_errors(cpkt_postgres_event_allocation_test)
       target_link_options(cpkt_postgres_event_allocation_test PRIVATE
-        "-Wl,--wrap=cpkt_postgres_event_allocate" "-Wl,--wrap=malloc")
+        "-Wl,--wrap=cpkt_postgres_event_allocate" "-Wl,--wrap=malloc"
+        "-Wl,--wrap=calloc")
       target_compile_definitions(cpkt_postgres_event_allocation_test PRIVATE
-        CPKT_POSTGRES_TRACKING_FAULT_INJECTION=1)
+        CPKT_POSTGRES_TRACKING_FAULT_INJECTION=1
+        CPKT_POSTGRES_NOTICE_FAULT_INJECTION=1)
       target_link_libraries(cpkt_postgres_event_allocation_test PRIVATE
         cpkt_postgres_static)
       add_executable(cpkt_postgres_event_address_reuse_test

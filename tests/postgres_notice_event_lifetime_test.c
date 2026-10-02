@@ -159,7 +159,9 @@ int main(void) {
       cpkt_postgres_event_register(connection, on_event, "notice-lifetime",
                                    NULL) == NULL)
     return stage;
-  cpkt_postgres_set_notice_receiver(connection, on_notice, NULL, NULL, NULL);
+  if (!cpkt_postgres_set_notice_receiver(connection, on_notice, NULL, NULL,
+                                         NULL))
+    return 90;
   expected_connection = connection;
   if (native_receiver == NULL)
     return stage;

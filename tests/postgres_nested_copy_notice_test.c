@@ -110,8 +110,9 @@ static int run_case(int flags, int decline_outer) {
       "host=/tmp/cpkt-postgres-nested-copy-no-socket connect_timeout=1");
   if (state.connection == NULL)
     return 1;
-  cpkt_postgres_set_notice_receiver(state.connection, old_notice, &state, NULL,
-                                    NULL);
+  if (!cpkt_postgres_set_notice_receiver(state.connection, old_notice, &state,
+                                         NULL, NULL))
+    return 90;
   if (cpkt_postgres_event_register(state.connection, on_event, "nested-copy",
                                    &state) == NULL)
     return 2;
@@ -120,8 +121,9 @@ static int run_case(int flags, int decline_outer) {
   if (state.source == NULL ||
       !cpkt_postgres_event_fire_result_create(state.connection, state.source))
     return 3;
-  cpkt_postgres_set_notice_receiver(state.connection, new_notice, &state, NULL,
-                                    NULL);
+  if (!cpkt_postgres_set_notice_receiver(state.connection, new_notice, &state,
+                                         NULL, NULL))
+    return 90;
   outer = cpkt_postgres_result_copy(state.source,
                                     CPKT_POSTGRES_COPY_RESULT_EVENTS |
                                         CPKT_POSTGRES_COPY_RESULT_NOTICE_HOOKS);
@@ -172,8 +174,9 @@ static int run_destroy_case(void) {
       "host=/tmp/cpkt-postgres-nested-destroy-no-socket connect_timeout=1");
   if (state.connection == NULL)
     return 1;
-  cpkt_postgres_set_notice_receiver(state.connection, old_notice, &state, NULL,
-                                    NULL);
+  if (!cpkt_postgres_set_notice_receiver(state.connection, old_notice, &state,
+                                         NULL, NULL))
+    return 90;
   if (cpkt_postgres_event_register(state.connection, on_event, "destroy-copy",
                                    &state) == NULL)
     return 2;
@@ -182,8 +185,9 @@ static int run_destroy_case(void) {
   if (state.source == NULL ||
       !cpkt_postgres_event_fire_result_create(state.connection, state.source))
     return 3;
-  cpkt_postgres_set_notice_receiver(state.connection, new_notice, &state, NULL,
-                                    NULL);
+  if (!cpkt_postgres_set_notice_receiver(state.connection, new_notice, &state,
+                                         NULL, NULL))
+    return 90;
   cpkt_postgres_connection_free(state.connection);
   cpkt_postgres_result_free(state.source);
   if (state.nested == NULL || state.destroys != 1 || state.errors != 0)

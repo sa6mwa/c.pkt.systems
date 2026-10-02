@@ -618,21 +618,36 @@ cpkt_postgres_context_visibility cpkt_postgres_set_error_context_visibility(
 
 /*
  * Callback registration is connection-affine.  The old callback and context
- * are returned when their output pointers are non-NULL.  Passing a NULL
+ * are returned when their output pointers are non-NULL, including on failure
+ * after finding the previous binding. Otherwise those outputs are NULL.
+ * Check the return value: these outputs do not imply successful replacement.
+ * Passing a NULL
  * callback selects the native client's no-op callback behavior. A result
  * retains the callback and context present when the client creates it. Keep
  * that context valid until the result is freed. If a result outlives its
  * connection, the callback receives a NULL connection pointer.
  */
-/** Replaces the connection notice-result callback and returns the previous
- * binding. */
-void cpkt_postgres_set_notice_receiver(
+/** Replaces the connection notice-result callback. Returns 1 on success, 0
+ * for a NULL connection or allocation failure, leaving the previous binding
+ * installed. Optional outputs report the previous callback/context, or NULL
+ * if none was found. NULL callback disables delivery for future results;
+ * existing results and notice-hook copies retain their frozen binding. Keep
+ * each context alive until all results using it are freed, even after a
+ * successful replacement. A callback for a result outliving its connection
+ * receives a NULL connection pointer. */
+int cpkt_postgres_set_notice_receiver(
     cpkt_postgres_connection *connection,
     cpkt_postgres_notice_receiver callback, void *context,
     cpkt_postgres_notice_receiver *old_callback_out, void **old_context_out);
-/** Replaces the connection notice-text callback and returns the previous
- * binding. */
-void cpkt_postgres_set_notice_processor(
+/** Replaces the connection notice-text callback. Returns 1 on success, 0
+ * for a NULL connection or allocation failure, leaving the previous binding
+ * installed. Optional outputs report the previous callback/context, or NULL
+ * if none was found. NULL callback disables delivery for future results;
+ * existing results and notice-hook copies retain their frozen binding. Keep
+ * each context alive until all results using it are freed, even after a
+ * successful replacement. A callback for a result outliving its connection
+ * receives a NULL connection pointer. */
+int cpkt_postgres_set_notice_processor(
     cpkt_postgres_connection *connection,
     cpkt_postgres_notice_processor callback, void *context,
     cpkt_postgres_notice_processor *old_callback_out, void **old_context_out);

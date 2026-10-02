@@ -42,6 +42,18 @@ context storage alive while registered. Server notices use the separate notice
 receiver/processor callbacks, and result errors remain available through the
 result and connection error accessors.
 
+`cpkt_postgres_set_notice_receiver()` and
+`cpkt_postgres_set_notice_processor()` return 1 when the new binding is
+installed, or 0 for a null connection or allocation failure. Failure leaves
+the previous callback/context installed. Optional old-binding outputs report
+the previous binding when found, including on allocation failure, and are
+otherwise null; they do not indicate success. Always check the return value
+before treating a callback as replaced or disabled. Passing a null callback
+disables delivery for future results after a successful call. Existing results
+and copies made with `CPKT_POSTGRES_COPY_RESULT_NOTICE_HOOKS` retain their
+frozen bindings: keep each callback context alive until all results using it
+have been freed, even after successful replacement or connection destruction.
+
 `cpkt_postgres_set_trace_sink()` receives each already formatted libpq protocol
 record once, with borrowed bytes and an explicit length. It replaces
 `cpkt_postgres_trace()`'s file destination; `cpkt_postgres_untrace()` stops

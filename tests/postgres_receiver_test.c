@@ -85,14 +85,16 @@ int main(void) {
     return 2;
   }
   old_context = (void *)1;
-  cpkt_postgres_set_notice_receiver(pg->connection, notice_receiver, pg,
-                                    &old_receiver, &old_context);
+  if (!cpkt_postgres_set_notice_receiver(pg->connection, notice_receiver, pg,
+                                         &old_receiver, &old_context))
+    return 90;
   if (old_receiver != 0 || old_context != 0) {
     pg->close(pg);
     return 3;
   }
-  cpkt_postgres_set_notice_processor(pg->connection, notice_processor, pg,
-                                     &old_processor, &old_context);
+  if (!cpkt_postgres_set_notice_processor(pg->connection, notice_processor, pg,
+                                          &old_processor, &old_context))
+    return 90;
   if (old_processor != 0 || old_context != 0) {
     pg->close(pg);
     return 4;
@@ -125,15 +127,17 @@ int main(void) {
   cpkt_postgres_set_auth_data_hook(0, 0);
   first_count = 0;
   second_count = 0;
-  cpkt_postgres_set_notice_receiver(pg->connection, counted_receiver,
-                                    &first_count, 0, 0);
+  if (!cpkt_postgres_set_notice_receiver(pg->connection, counted_receiver,
+                                         &first_count, 0, 0))
+    return 90;
   result = cpkt_postgres_result_new_empty(pg->connection,
                                           CPKT_POSTGRES_RESULT_TUPLES_OK);
   copy = result == 0 ? 0 : cpkt_postgres_result_copy(result, 0);
   if (result == 0 || copy == 0)
     return 10;
-  cpkt_postgres_set_notice_receiver(pg->connection, counted_receiver,
-                                    &second_count, 0, 0);
+  if (!cpkt_postgres_set_notice_receiver(pg->connection, counted_receiver,
+                                         &second_count, 0, 0))
+    return 90;
   (void)cpkt_postgres_result_field_name(result, -1);
   if (first_count != 1 || second_count != 0 ||
       observed_connection != pg->connection)
@@ -155,14 +159,16 @@ int main(void) {
     return 13;
   first_count = 0;
   second_count = 0;
-  cpkt_postgres_set_notice_processor(pg->connection, counted_processor,
-                                     &first_count, 0, 0);
+  if (!cpkt_postgres_set_notice_processor(pg->connection, counted_processor,
+                                          &first_count, 0, 0))
+    return 90;
   result = cpkt_postgres_result_new_empty(pg->connection,
                                           CPKT_POSTGRES_RESULT_TUPLES_OK);
   if (result == 0)
     return 14;
-  cpkt_postgres_set_notice_processor(pg->connection, counted_processor,
-                                     &second_count, 0, 0);
+  if (!cpkt_postgres_set_notice_processor(pg->connection, counted_processor,
+                                          &second_count, 0, 0))
+    return 90;
   (void)cpkt_postgres_result_field_name(result, -1);
   if (first_count != 1 || second_count != 0 ||
       observed_connection != pg->connection)
@@ -178,8 +184,9 @@ int main(void) {
     return 18;
   first_count = 0;
   callback_notice_copy = 0;
-  cpkt_postgres_set_notice_receiver(pg->connection, copying_receiver,
-                                    &first_count, 0, 0);
+  if (!cpkt_postgres_set_notice_receiver(pg->connection, copying_receiver,
+                                         &first_count, 0, 0))
+    return 90;
   result = cpkt_postgres_result_new_empty(pg->connection,
                                           CPKT_POSTGRES_RESULT_TUPLES_OK);
   if (result == 0)

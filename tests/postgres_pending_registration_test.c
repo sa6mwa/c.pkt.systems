@@ -3,6 +3,7 @@
 #include <string.h>
 
 int cpkt_postgres_tracking_lifetime_test(int fail_tracking);
+int cpkt_postgres_notice_registration_test(int fail_allocations);
 
 typedef struct callback_state {
   cpkt_postgres_event *event;
@@ -158,5 +159,7 @@ int main(void) {
     status = run_case(1);
   if (status == 0)
     status = cpkt_postgres_tracking_lifetime_test(0);
+  if (status == 0)
+    status = cpkt_postgres_notice_registration_test(0);
   return status;
 }

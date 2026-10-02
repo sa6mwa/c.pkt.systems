@@ -79,8 +79,9 @@ static int run_case(int fail_tracking, int close_first, int nested_flags) {
       "host=/tmp/cpkt-postgres-tracking-no-socket connect_timeout=1");
   if (state.connection == NULL)
     return 1;
-  cpkt_postgres_set_notice_receiver(state.connection, old_notice, &state, NULL,
-                                    NULL);
+  if (!cpkt_postgres_set_notice_receiver(state.connection, old_notice, &state,
+                                         NULL, NULL))
+    return 90;
   if (cpkt_postgres_event_register(state.connection, on_event, "tracking",
                                    &state) == NULL)
     return 2;
@@ -89,8 +90,9 @@ static int run_case(int fail_tracking, int close_first, int nested_flags) {
   if (state.source == NULL ||
       !cpkt_postgres_event_fire_result_create(state.connection, state.source))
     return 3;
-  cpkt_postgres_set_notice_receiver(state.connection, new_notice, &state, NULL,
-                                    NULL);
+  if (!cpkt_postgres_set_notice_receiver(state.connection, new_notice, &state,
+                                         NULL, NULL))
+    return 90;
   if (close_first)
     cpkt_postgres_connection_free(state.connection);
   outer = cpkt_postgres_result_copy(state.source,

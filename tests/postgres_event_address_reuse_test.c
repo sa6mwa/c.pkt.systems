@@ -201,8 +201,9 @@ static int run_case(int mode) {
       "host=/tmp/cpkt-postgres-reuse-no-socket connect_timeout=1");
   if (active.connection == NULL)
     return 1;
-  cpkt_postgres_set_notice_receiver(active.connection, on_notice, &active, NULL,
-                                    NULL);
+  if (!cpkt_postgres_set_notice_receiver(active.connection, on_notice, &active,
+                                         NULL, NULL))
+    return 90;
   active.event = cpkt_postgres_event_register(active.connection, on_event,
                                               "address-reuse", &active);
   if (active.event == NULL)

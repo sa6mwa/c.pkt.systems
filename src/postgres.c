@@ -1316,7 +1316,7 @@ cpkt_postgres_context_visibility cpkt_postgres_set_error_context_visibility(
 
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_set_notice_receiver. */
-void cpkt_postgres_set_notice_receiver(
+int cpkt_postgres_set_notice_receiver(
     cpkt_postgres_connection *connection,
     cpkt_postgres_notice_receiver callback, void *context,
     cpkt_postgres_notice_receiver *old_callback_out, void **old_context_out) {
@@ -1332,12 +1332,12 @@ void cpkt_postgres_set_notice_receiver(
     *old_context_out = NULL;
   }
   if (connection == NULL) {
-    return;
+    return 0;
   }
   native_connection = cpkt_postgres_native_connection(connection);
   binding = cpkt_postgres_ensure_notice_binding(native_connection);
   if (binding == NULL) {
-    return;
+    return 0;
   }
   cpkt_postgres_hook_lock_acquire();
   old = binding->latest;
@@ -1366,11 +1366,12 @@ void cpkt_postgres_set_notice_receiver(
     PQsetNoticeReceiver(native_connection, cpkt_postgres_native_notice_receiver,
                         snapshot);
   }
+  return snapshot != NULL;
 }
 
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_set_notice_processor. */
-void cpkt_postgres_set_notice_processor(
+int cpkt_postgres_set_notice_processor(
     cpkt_postgres_connection *connection,
     cpkt_postgres_notice_processor callback, void *context,
     cpkt_postgres_notice_processor *old_callback_out, void **old_context_out) {
@@ -1386,12 +1387,12 @@ void cpkt_postgres_set_notice_processor(
     *old_context_out = NULL;
   }
   if (connection == NULL) {
-    return;
+    return 0;
   }
   native_connection = cpkt_postgres_native_connection(connection);
   binding = cpkt_postgres_ensure_notice_binding(native_connection);
   if (binding == NULL) {
-    return;
+    return 0;
   }
   cpkt_postgres_hook_lock_acquire();
   old = binding->latest;
@@ -1420,6 +1421,7 @@ void cpkt_postgres_set_notice_processor(
     PQsetNoticeProcessor(native_connection,
                          cpkt_postgres_native_notice_processor, snapshot);
   }
+  return snapshot != NULL;
 }
 
 /** Installs the process default before connection option parsing. */

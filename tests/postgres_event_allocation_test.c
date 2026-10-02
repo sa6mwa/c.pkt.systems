@@ -7,6 +7,7 @@ static int register_count;
 static int destroy_count;
 
 int cpkt_postgres_tracking_lifetime_test(int fail_tracking);
+int cpkt_postgres_notice_registration_test(int fail_allocations);
 
 void *__real_cpkt_postgres_event_allocate(size_t size);
 
@@ -35,6 +36,7 @@ static int on_event(cpkt_postgres_event_id id,
 int main(void) {
   cpkt_postgres_connection *connection;
   cpkt_postgres_result *result;
+  int status;
   connection = cpkt_postgres_connect(
       "host=/tmp/cpkt-postgres-event-alloc-no-socket connect_timeout=1");
   if (connection == NULL)
@@ -68,5 +70,8 @@ int main(void) {
   cpkt_postgres_result_free(result);
   if (register_count != 1 || destroy_count != 1)
     return 8;
-  return cpkt_postgres_tracking_lifetime_test(1);
+  status = cpkt_postgres_tracking_lifetime_test(1);
+  if (status == 0)
+    status = cpkt_postgres_notice_registration_test(1);
+  return status;
 }
