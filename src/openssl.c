@@ -395,6 +395,17 @@ static int cpkt_openssl_bio_callback_mmsg_args(
   return 1;
 }
 
+/* The argument descriptor is borrowed and read-only, but its message records
+ * are mutable in native BIO callbacks, before and after the batch operation. */
+static void cpkt_openssl_bio_callback_mmsg_copy_back(
+    const char *argument, const cpkt_openssl_bio_message *messages) {
+  const BIO_MMSG_CB_ARGS *native_args;
+  native_args = (const BIO_MMSG_CB_ARGS *)(const void *)argument;
+  cpkt_openssl_copy_bio_messages_to_native(
+      native_args->msg, native_args->stride, messages, sizeof(*messages),
+      native_args->num_msg);
+}
+
 static int
 cpkt_openssl_bio_callback_enter(cpkt_openssl_bio *facade_bio,
                                 cpkt_openssl_bio_method **method_out) {
@@ -463,6 +474,8 @@ static long cpkt_openssl_bio_callback_trampoline(BIO *bio, int operation,
   callback_result =
       callback(facade_bio->callback_context, bio, operation, public_argument,
                argument_integer, argument_long, result);
+  if (converted > 0)
+    cpkt_openssl_bio_callback_mmsg_copy_back(argument, public_messages);
   free(public_messages);
   cpkt_openssl_bio_callback_leave(method);
   return callback_result;
@@ -511,6 +524,8 @@ static long cpkt_openssl_bio_callback_ex_trampoline(
   callback_result = callback(facade_bio->callback_context, bio, operation,
                              public_argument, argument_length, argument_integer,
                              argument_long, result, processed_out);
+  if (converted > 0)
+    cpkt_openssl_bio_callback_mmsg_copy_back(argument, public_messages);
   free(public_messages);
   cpkt_openssl_bio_callback_leave(method);
   return callback_result;

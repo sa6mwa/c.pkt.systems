@@ -11,6 +11,18 @@ legacy declaration diagnostic locally; it does not relax diagnostics in
 consumer source. The typed adapters for native 64-bit values are a separate,
 required layer of the facade.
 
+Generic BIO callbacks installed through `cpkt_openssl_BIO_set_callback()` or
+`cpkt_openssl_BIO_set_callback_ex()` receive a borrowed, read-only
+`cpkt_openssl_bio_mmsg_callback_args` descriptor for SENDMMSG/RECVMMSG and their
+RETURN notifications. Its message records are mutable: changes to data pointers,
+lengths, addresses, and 64-bit flags propagate to the batch method before it
+runs, and back to the caller after a RETURN callback. Changes also propagate
+when a callback rejects the operation or the method fails, matching native BIO
+behavior. The descriptor and message-record view expire when the callback
+returns. Pointer fields remain borrowed; replacement buffers and addresses
+must survive the operation and any subsequent caller use. The facade converts
+only message metadata; it does not copy or stage payload buffers.
+
 The authoritative function inventory is target-specific and is derived from
 OpenSSL's pinned `util/libcrypto.num` and `util/libssl.num` files. An entry
 marked `EXIST::FUNCTION` belongs to the nominal public ABI. The target's

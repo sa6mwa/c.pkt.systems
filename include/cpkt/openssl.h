@@ -221,7 +221,11 @@ typedef struct cpkt_openssl_bio_message {
   BIO_ADDR *local;
   cpkt_openssl_u64 flags;
 } cpkt_openssl_bio_message;
-/** C89 form of BIO_MMSG_CB_ARGS, valid only for the current callback. */
+/** C89 form of BIO_MMSG_CB_ARGS, borrowed for the current callback. The
+ * descriptor is read-only; message records may be changed. Record changes
+ * propagate to the batch method and caller, including when a callback rejects
+ * the operation. Pointer fields remain borrowed; keep replacement storage
+ * valid for the operation and any subsequent caller use. */
 typedef struct cpkt_openssl_bio_mmsg_callback_args {
   cpkt_openssl_bio_message *messages;
   size_t message_stride;
@@ -665,16 +669,20 @@ CPKT_OPENSSL_API int cpkt_openssl_BIO_close(cpkt_openssl_bio *bio);
 /** Returns the borrowed native BIO owned by a facade BIO. BIO_dup_chain on
  * this BIO fails because a copy cannot share its facade ownership. */
 CPKT_OPENSSL_API BIO *cpkt_openssl_BIO_native(cpkt_openssl_bio *bio);
-/** Sets the legacy callback for a facade BIO; argument is C89 mmsg args when
- * applicable. */
+/** Sets the legacy callback for a facade BIO. For SENDMMSG/RECVMMSG and their
+ * RETURN notifications, argument points to borrowed, read-only C89 mmsg args.
+ * Changes to its mutable message records propagate before the method or
+ * caller resumes, even when the callback returns failure. */
 CPKT_OPENSSL_API void
 cpkt_openssl_BIO_set_callback(cpkt_openssl_bio *bio,
                               cpkt_openssl_bio_callback callback);
 /** Returns the legacy callback registered for a facade BIO. */
 CPKT_OPENSSL_API cpkt_openssl_bio_callback
 cpkt_openssl_BIO_get_callback(const cpkt_openssl_bio *bio);
-/** Sets the extended callback for a facade BIO; argument is C89 mmsg args when
- * applicable. */
+/** Sets the extended callback for a facade BIO. For SENDMMSG/RECVMMSG and their
+ * RETURN notifications, argument points to borrowed, read-only C89 mmsg args.
+ * Changes to its mutable message records propagate before the method or
+ * caller resumes, even when the callback returns failure. */
 CPKT_OPENSSL_API void
 cpkt_openssl_BIO_set_callback_ex(cpkt_openssl_bio *bio,
                                  cpkt_openssl_bio_callback_ex callback);
