@@ -1,0 +1,295 @@
+--- a/src/util/ua_util.c
++++ b/src/util/ua_util.c
+@@ -1421,6 +1421,8 @@
+     /* remove trusted certificates */
+     if(dst->trustedCertificatesSize > 0 && src->trustedCertificatesSize > 0) {
+         UA_ByteString *newList = (UA_ByteString*)UA_calloc(dst->trustedCertificatesSize, sizeof(UA_ByteString));
++        if(!newList)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
+         size_t newListSize = 0;
+         size_t oldListSize = dst->trustedCertificatesSize;
+         UA_Boolean isContained = false;
+@@ -1430,7 +1432,11 @@
+                     isContained = true;
+             }
+             if(!isContained) {
+-                UA_ByteString_copy(&dst->trustedCertificates[i], &newList[newListSize]);
++                retval = UA_ByteString_copy(&dst->trustedCertificates[i], &newList[newListSize]);
++                if(retval != UA_STATUSCODE_GOOD) {
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
++                    return retval;
++                }
+                 newListSize += 1;
+             }
+             isContained = false;
+@@ -1442,7 +1448,7 @@
+             } else {
+                 retval = UA_Array_resize((void**)&newList, &oldListSize, newListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                 if(retval != UA_STATUSCODE_GOOD) {
+-                    UA_free(newList);
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                     return retval;
+                 }
+             }
+@@ -1456,6 +1462,8 @@
+     /* remove issuer certificates */
+     if(dst->issuerCertificatesSize > 0 && src->issuerCertificatesSize > 0) {
+         UA_ByteString *newList = (UA_ByteString*)UA_calloc(dst->issuerCertificatesSize, sizeof(UA_ByteString));
++        if(!newList)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
+         size_t newListSize = 0;
+         size_t oldListSize = dst->issuerCertificatesSize;
+         UA_Boolean isContained = false;
+@@ -1465,7 +1473,11 @@
+                     isContained = true;
+             }
+             if(!isContained) {
+-                UA_ByteString_copy(&dst->issuerCertificates[i], &newList[newListSize]);
++                retval = UA_ByteString_copy(&dst->issuerCertificates[i], &newList[newListSize]);
++                if(retval != UA_STATUSCODE_GOOD) {
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
++                    return retval;
++                }
+                 newListSize += 1;
+             }
+             isContained = false;
+@@ -1477,7 +1489,7 @@
+             } else {
+                 retval = UA_Array_resize((void**)&newList, &oldListSize, newListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                 if(retval != UA_STATUSCODE_GOOD) {
+-                    UA_free(newList);
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                     return retval;
+                 }
+             }
+@@ -1491,6 +1503,8 @@
+     /* remove trusted crls */
+     if(dst->trustedCrlsSize > 0 && src->trustedCrlsSize > 0) {
+         UA_ByteString *newList = (UA_ByteString*)UA_calloc(dst->trustedCrlsSize, sizeof(UA_ByteString));
++        if(!newList)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
+         size_t newListSize = 0;
+         size_t oldListSize = dst->trustedCrlsSize;
+         UA_Boolean isContained = false;
+@@ -1500,7 +1514,11 @@
+                     isContained = true;
+             }
+             if(!isContained) {
+-                UA_ByteString_copy(&dst->trustedCrls[i], &newList[newListSize]);
++                retval = UA_ByteString_copy(&dst->trustedCrls[i], &newList[newListSize]);
++                if(retval != UA_STATUSCODE_GOOD) {
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
++                    return retval;
++                }
+                 newListSize += 1;
+             }
+             isContained = false;
+@@ -1512,7 +1530,7 @@
+             } else {
+                 retval = UA_Array_resize((void**)&newList, &oldListSize, newListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                 if(retval != UA_STATUSCODE_GOOD) {
+-                    UA_free(newList);
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                     return retval;
+                 }
+             }
+@@ -1526,6 +1544,8 @@
+     /* remove issuer crls */
+     if(dst->issuerCrlsSize > 0 && src->issuerCrlsSize > 0) {
+         UA_ByteString *newList = (UA_ByteString*)UA_calloc(dst->issuerCrlsSize, sizeof(UA_ByteString));
++        if(!newList)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
+         size_t newListSize = 0;
+         size_t oldListSize = dst->issuerCrlsSize;
+         UA_Boolean isContained = false;
+@@ -1535,7 +1555,11 @@
+                     isContained = true;
+             }
+             if(!isContained) {
+-                UA_ByteString_copy(&dst->issuerCrls[i], &newList[newListSize]);
++                retval = UA_ByteString_copy(&dst->issuerCrls[i], &newList[newListSize]);
++                if(retval != UA_STATUSCODE_GOOD) {
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
++                    return retval;
++                }
+                 newListSize += 1;
+             }
+             isContained = false;
+@@ -1547,7 +1571,7 @@
+             } else {
+                 retval = UA_Array_resize((void**)&newList, &oldListSize, newListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                 if(retval != UA_STATUSCODE_GOOD) {
+-                    UA_free(newList);
++                    UA_Array_delete(newList, oldListSize, &UA_TYPES[UA_TYPES_BYTESTRING]);
+                     return retval;
+                 }
+             }
+--- a/plugins/crypto/openssl/certificategroup.c
++++ b/plugins/crypto/openssl/certificategroup.c
+@@ -849,13 +849,17 @@
+     }
+ 
+     char buf[1024];
+-    *subjectName = UA_STRING_ALLOC(X509_NAME_oneline(sn, buf, 1024));
++    char *name = X509_NAME_oneline(sn, buf, sizeof(buf));
++    if(name)
++        *subjectName = UA_STRING_ALLOC(name);
+ 
+     if(x509)
+         X509_free(x509);
+     if(x509_crl)
+         X509_CRL_free(x509_crl);
+-    return UA_STATUSCODE_GOOD;
++    if(!name)
++        return UA_STATUSCODE_BADINTERNALERROR;
++    return subjectName->data ? UA_STATUSCODE_GOOD : UA_STATUSCODE_BADOUTOFMEMORY;
+ }
+ 
+ UA_StatusCode
+@@ -888,6 +892,8 @@
+     UA_String thumb = UA_STRING_NULL;
+     thumb.length = (SHA1_DIGEST_LENGTH * 2) + 1;
+     thumb.data = (UA_Byte*)malloc(sizeof(UA_Byte) * thumb.length);
++    if(!thumb.data)
++        return UA_STATUSCODE_BADOUTOFMEMORY;
+ 
+     /* Create a string containing a hex representation */
+     char *p = (char*)thumb.data;
+--- a/plugins/crypto/ua_certificategroup_none.c
++++ b/plugins/crypto/ua_certificategroup_none.c
+@@ -17,15 +17,18 @@
+ 
+ static void
+ clearVerifyAllowAll(UA_CertificateGroup *certGroup) {
+-
++    UA_NodeId_clear(&certGroup->certificateGroupId);
++    memset(certGroup, 0, sizeof(*certGroup));
+ }
+ 
+ void UA_CertificateGroup_AcceptAll(UA_CertificateGroup *certGroup) {
+     /* Clear the structure, as it may have already been initialized. */
+     UA_NodeId groupId = certGroup->certificateGroupId;
++    certGroup->certificateGroupId = UA_NODEID_NULL;
+     if(certGroup->clear)
+         certGroup->clear(certGroup);
+-    UA_NodeId_copy(&groupId, &certGroup->certificateGroupId);
++    memset(certGroup, 0, sizeof(*certGroup));
++    certGroup->certificateGroupId = groupId;
+     certGroup->verifyCertificate = verifyCertificateAllowAll;
+     certGroup->clear = clearVerifyAllowAll;
+     certGroup->getTrustList = NULL;
+--- a/plugins/crypto/openssl/certificategroup.c
++++ b/plugins/crypto/openssl/certificategroup.c
+@@ -288,7 +288,10 @@
+         X509 *cert = UA_OpenSSL_LoadCertificate(&context->trustList.trustedCertificates[i], EVP_PKEY_NONE);
+         if(cert == NULL)
+             return UA_STATUSCODE_BADINTERNALERROR;
+-        sk_X509_push(context->trustedCertificates, cert);
++        if(!sk_X509_push(context->trustedCertificates, cert)) {
++            X509_free(cert);
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        }
+     }
+ 
+     sk_X509_pop_free(context->issuerCertificates, X509_free);
+@@ -300,7 +303,10 @@
+         X509 *cert = UA_OpenSSL_LoadCertificate(&context->trustList.issuerCertificates[i], EVP_PKEY_NONE);
+         if(cert == NULL)
+             return UA_STATUSCODE_BADINTERNALERROR;
+-        sk_X509_push(context->issuerCertificates, cert);
++        if(!sk_X509_push(context->issuerCertificates, cert)) {
++            X509_free(cert);
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        }
+     }
+ 
+     sk_X509_CRL_pop_free(context->crls, X509_CRL_free);
+@@ -314,6 +320,8 @@
+ 
+         bio = BIO_new_mem_buf((void *)context->trustList.trustedCrls[i].data,
+                               (int)context->trustList.trustedCrls[i].length);
++        if(!bio)
++            return UA_STATUSCODE_BADOUTOFMEMORY;
+         /* Try to load DER encoded CRL */
+         crl = d2i_X509_CRL_bio(bio, NULL);
+         if(crl == NULL) {
+@@ -325,7 +333,10 @@
+ 
+         if(crl == NULL)
+             return UA_STATUSCODE_BADINTERNALERROR;
+-        sk_X509_CRL_push(context->crls, crl);
++        if(!sk_X509_CRL_push(context->crls, crl)) {
++            X509_CRL_free(crl);
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        }
+     }
+     for(size_t i = 0; i < context->trustList.issuerCrlsSize; i++) {
+         X509_CRL * crl = NULL;
+@@ -344,7 +355,10 @@
+ 
+         if(crl == NULL)
+             return UA_STATUSCODE_BADINTERNALERROR;
+-        sk_X509_CRL_push(context->crls, crl);
++        if(!sk_X509_CRL_push(context->crls, crl)) {
++            X509_CRL_free(crl);
++            return UA_STATUSCODE_BADOUTOFMEMORY;
++        }
+     }
+ 
+     return UA_STATUSCODE_GOOD;
+@@ -706,8 +720,11 @@
+     /* Clear if the plugin is already initialized */
+     if(certGroup->clear)
+         certGroup->clear(certGroup);
+-
+-    UA_NodeId_copy(certificateGroupId, &certGroup->certificateGroupId);
++    memset(certGroup, 0, sizeof(*certGroup));
++
++    retval = UA_NodeId_copy(certificateGroupId, &certGroup->certificateGroupId);
++    if(retval != UA_STATUSCODE_GOOD)
++        return retval;
+     certGroup->logging = logger;
+ 
+     certGroup->getTrustList = MemoryCertStore_getTrustList;
+@@ -748,8 +765,12 @@
+         }
+     }
+ 
+-    UA_TrustListDataType_add(trustList, &context->trustList);
+-    reloadCertificates(certGroup);
++    retval = UA_TrustListDataType_add(trustList, &context->trustList);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++    retval = reloadCertificates(certGroup);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
+ 
+     return UA_STATUSCODE_GOOD;
+ 
+--- a/plugins/crypto/ua_certificategroup_filestore.c
++++ b/plugins/crypto/ua_certificategroup_filestore.c
+@@ -739,8 +739,11 @@
+     /* Clear if the plugin is already initialized */
+     if(certGroup->clear)
+         certGroup->clear(certGroup);
+-
+-    UA_NodeId_copy(certificateGroupId, &certGroup->certificateGroupId);
++    memset(certGroup, 0, sizeof(*certGroup));
++
++    retval = UA_NodeId_copy(certificateGroupId, &certGroup->certificateGroupId);
++    if(retval != UA_STATUSCODE_GOOD)
++        return retval;
+     certGroup->logging = logger;
+ 
+     certGroup->getTrustList = FileCertStore_getTrustList;
+@@ -768,6 +771,10 @@
+     }
+ 
+     context->store = (UA_CertificateGroup*)UA_calloc(1, sizeof(UA_CertificateGroup));
++    if(!context->store) {
++        retval = UA_STATUSCODE_BADOUTOFMEMORY;
++        goto cleanup;
++    }
+     retval = UA_CertificateGroup_Memorystore(context->store, certificateGroupId, NULL, logger, params);
+     if(retval != UA_STATUSCODE_GOOD) {
+         UA_LOG_ERROR(logger, UA_LOGCATEGORY_APPLICATION,

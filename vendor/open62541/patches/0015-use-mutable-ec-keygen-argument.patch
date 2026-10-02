@@ -1,0 +1,46 @@
+--- a/plugins/crypto/openssl/create_certificate.c
++++ b/plugins/crypto/openssl/create_certificate.c
+@@ -148,7 +148,18 @@
+         return NULL;
+     }
+ 
+-    return EVP_EC_gen(osslCurve);
++    /* EVP_EC_gen's variadic helper expects char*, even though the curve
++     * name is only read. Keep a bounded mutable local argument instead of
++     * casting away const from a string literal. */
++    char curveArgument[sizeof("brainpoolP384r1")];
++    size_t curveLength = strlen(osslCurve);
++    if(curveLength >= sizeof(curveArgument)) {
++        UA_LOG_ERROR(logger, UA_LOGCATEGORY_SECURECHANNEL,
++                     "Create Certificate: ECC curve name exceeds keygen capacity.");
++        return NULL;
++    }
++    memcpy(curveArgument, osslCurve, curveLength + 1);
++    return EVP_EC_gen(curveArgument);
+ }
+ 
+ #endif
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -649,16 +649,11 @@
+         check_add_cc_flag("-Wno-cast-function-type")
+     endif()
+ 
+-    # Clang 22 flags __COUNTER__ as -Wc2y-extensions under -Wpedantic -std=c99.
+-    # GCC 14 also added the flag. Older compilers (e.g. gcc 9 on Ubuntu 20.04)
+-    # reject the flag as an unrecognized option, which becomes an error under
+-    # -Werror. check_add_cc_flag uses try_compile without -Werror, so the
+-    # unknown-option warning is silently accepted during the check and the flag
+-    # leaks into the build. Gate it explicitly on the compilers that support it.
+-    if((CMAKE_C_COMPILER_ID STREQUAL "Clang" AND
+-        CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "22.0") OR
+-       (CMAKE_C_COMPILER_ID STREQUAL "GNU" AND
+-        CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL "14.0"))
++    # Probe the positive warning name: GCC accepts unknown -Wno-* options
++    # silently until another warning occurs. Version gating is insufficient
++    # because GCC's C2y warning uses a different name from Clang's.
++    check_c_compiler_flag("-Wc2y-extensions" UA_HAS_C2Y_EXTENSION_WARNING)
++    if(UA_HAS_C2Y_EXTENSION_WARNING)
+         add_cc_flag("-Wno-c2y-extensions")
+     endif()
+ 

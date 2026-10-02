@@ -4,7 +4,8 @@ set -eu
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
 
-work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-dist-manifest-test.XXXXXXXXXX")
+mkdir -p "$repo_root/build"
+work_root=$(mktemp -d "$repo_root/build/cpkt-dist-manifest-test.XXXXXXXXXX")
 cleanup() {
   rm -rf "$work_root"
 }
@@ -15,11 +16,24 @@ mkdir -p "$dist_dir"
 touch "$dist_dir/c.pkt.systems-1.2.3-x86_64-linux-gnu.tar.gz"
 touch "$dist_dir/c.pkt.systems-1.2.3.tar.gz"
 touch "$dist_dir/c.pkt.systems-1.2.3-arm64-apple-darwin-smoke-test.zip"
-cat > "$dist_dir/c.pkt.systems-1.2.3-CHECKSUMS" <<'EOF'
-0000000000000000000000000000000000000000000000000000000000000000  c.pkt.systems-1.2.3-x86_64-linux-gnu.tar.gz
-1111111111111111111111111111111111111111111111111111111111111111  c.pkt.systems-1.2.3.tar.gz
-2222222222222222222222222222222222222222222222222222222222222222  c.pkt.systems-1.2.3-arm64-apple-darwin-smoke-test.zip
-EOF
+manifest="$dist_dir/c.pkt.systems-1.2.3-CHECKSUMS"
+for artifact in "$dist_dir"/*.tar.gz "$dist_dir"/*.zip; do
+  hash=$(cmake -E sha256sum "$artifact")
+  printf '%s  %s\n' "${hash%% *}" "${artifact##*/}" >> "$manifest"
+done
+cp "$manifest" "$work_root/valid-CHECKSUMS"
+
+expect_failure() {
+  local diagnostic=$1
+  if bash "$repo_root/scripts/verify-dist-manifest.sh" "$dist_dir" c.pkt.systems 1.2.3 > "$work_root/failure.log" 2>&1; then
+    printf 'dist manifest accepted invalid fixture: %s\n' "$diagnostic" >&2
+    exit 1
+  fi
+  grep -F -- "$diagnostic" "$work_root/failure.log" >/dev/null || {
+    cat "$work_root/failure.log" >&2
+    exit 1
+  }
+}
 
 bash "$repo_root/scripts/verify-dist-manifest.sh" "$dist_dir" c.pkt.systems 1.2.3
 
@@ -49,5 +63,30 @@ if bash "$repo_root/scripts/verify-dist-manifest.sh" "$dist_dir" c.pkt.systems 1
   printf 'dist manifest accepted a stale checksum manifest\n' >&2
   exit 1
 fi
+
+rm "$dist_dir/c.pkt.systems-1.2.2-CHECKSUMS"
+
+for artifact in "$dist_dir"/*.tar.gz "$dist_dir"/*.zip; do
+  printf 'corrupt\n' > "$artifact"
+  expect_failure 'SHA-256 mismatch'
+  : > "$artifact"
+done
+cat "$work_root/valid-CHECKSUMS" >> "$manifest"
+expect_failure 'more than once'
+printf 'malformed  c.pkt.systems-1.2.3.tar.gz\n' > "$manifest"
+expect_failure 'malformed SHA-256'
+: > "$manifest"
+expect_failure 'contains no release artifacts'
+cp "$work_root/valid-CHECKSUMS" "$manifest"
+touch "$dist_dir/SHA256SUMS"
+expect_failure 'obsolete checksum'
+rm "$dist_dir/SHA256SUMS"
+hash=$(cmake -E sha256sum "$dist_dir/c.pkt.systems-1.2.3.tar.gz")
+for unexpected in c.pkt.systems-1.2.2.tar.gz arbitrary.txt ../outside.tar.gz; do
+  printf '%s  %s\n' "${hash%% *}" "$unexpected" >> "$manifest"
+  expect_failure 'checksum manifest contains'
+  cp "$work_root/valid-CHECKSUMS" "$manifest"
+done
+bash "$repo_root/scripts/verify-dist-manifest.sh" "$dist_dir" c.pkt.systems 1.2.3
 
 printf '[test] dist manifest passed\n'

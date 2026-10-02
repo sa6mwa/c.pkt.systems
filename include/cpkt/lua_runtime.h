@@ -13,9 +13,17 @@ extern "C" {
  * This facade owns a Lua state and exposes only embedding policy operations.
  * It deliberately does not expose upstream Lua stack, value, userdata, or
  * metatable APIs. Consumers that need the full Lua C API should link the
- * bundled `Lua::Lua` target instead.
+ * strict-C89 `cpkt::lua` target and include <cpkt/lua.h> instead.
  */
 typedef struct cpkt_lua_runtime cpkt_lua_runtime;
+
+/**
+ * Receives one Lua warning fragment. `message` is borrowed until return.
+ * A nonzero `to_continue` means the next fragment belongs to this warning.
+ * The callback and context remain caller-owned. Do not longjmp across Lua.
+ */
+typedef void (*cpkt_lua_runtime_warning_fn)(void *context, const char *message,
+                                            int to_continue);
 
 /**
  * Result codes returned by strict Lua runtime facade operations.
@@ -192,6 +200,16 @@ void cpkt_lua_runtime_free(cpkt_lua_runtime *runtime);
 void cpkt_lua_runtime_set_context(cpkt_lua_runtime *runtime, void *context);
 
 /**
+ * Replaces the warning sink for this runtime. NULL suppresses warnings.
+ * Lua emits fragments; this facade passes each fragment through unchanged.
+ * Replacement during a warning takes effect on the next fragment. The
+ * callback can run during script execution and runtime destruction.
+ */
+void cpkt_lua_runtime_set_warning_callback(cpkt_lua_runtime *runtime,
+                                           cpkt_lua_runtime_warning_fn callback,
+                                           void *context);
+
+/**
  * Returns the embedder-owned context pointer currently stored on the runtime.
  */
 void *cpkt_lua_runtime_context(const cpkt_lua_runtime *runtime);
@@ -301,7 +319,9 @@ cpkt_lua_runtime_set_global_number(cpkt_lua_runtime *runtime, const char *name,
                                    double value);
 
 /**
- * Sets a Lua global integer value.
+ * Sets a Lua global integer from a C89 long. The accepted range is the host
+ * long range; use cpkt_lua_pushinteger() in the full Lua facade for exact
+ * two-word 64-bit values on hosts where long is narrower.
  */
 cpkt_lua_runtime_status
 cpkt_lua_runtime_set_global_integer(cpkt_lua_runtime *runtime, const char *name,

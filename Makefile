@@ -9,13 +9,17 @@ RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-li
 E2E_SUS_PRESET ?= release
 
 STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
+PRESET ?= debug
+DEPENDENCY ?=
 
-.PHONY: help deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree debug examples clangd-surface e2e-sus e2e-cpktxscribe example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix finalize-slice lifecycle-version-contract release print-release-version format source-archive verify-source-archive clean clean-dist
+.PHONY: help deps deps-all deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree test-e2e debug examples clangd-surface e2e-sus e2e-postgres e2e-cpktxscribe dev-up dev-down dev-ps dev-logs dev-reset example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix release-final-matrix finalize-slice lifecycle-version-contract release print-release-version format format-check source-archive verify-source-archive clean clean-dist
 
 help:
 	@printf 'Usage: make <target>\n\n'
 	@printf 'Core:\n'
 	@printf '  %-30s %s\n' 'help' 'Show this command index.'
+	@printf '  %-30s %s\n' 'deps DEPENDENCY=<name>' 'Build one dependency closure (set PRESET, default debug).'
+	@printf '  %-30s %s\n' 'deps-all' 'Build every dependency closure for PRESET (default debug).'
 	@printf '  %-30s %s\n' 'deps-debug' 'Configure the host debug dependency/build graph.'
 	@printf '  %-30s %s\n' 'deps-release' 'Configure all shipped Linux release dependency/build graphs.'
 	@printf '  %-30s %s\n' 'deps-cross' 'Configure cross release dependency/build graphs.'
@@ -36,6 +40,13 @@ help:
 	@printf '  %-30s %s\n' 'examples' 'Build and smoke-test source-tree examples.'
 	@printf '  %-30s %s\n' 'clangd-surface' 'Verify compile_commands and public hover comments for examples.'
 	@printf '  %-30s %s\n' 'e2e-sus' 'Run opt-in sus audio e2e with cached remote MP3 and tiny model.'
+	@printf '  %-30s %s\n' 'e2e-postgres' 'Run facade e2e against local Podman PostgreSQL and CockroachDB.'
+	@printf '  %-30s %s\n' 'test-e2e' 'Alias for e2e-postgres.'
+	@printf '  %-30s %s\n' 'dev-up' 'Start local database pods (ports CPKT_DEV_POSTGRES_PORT/CPKT_DEV_COCKROACH_PORT).'
+	@printf '  %-30s %s\n' 'dev-down' 'Stop the local database pods.'
+	@printf '  %-30s %s\n' 'dev-ps' 'Show local database pods.'
+	@printf '  %-30s %s\n' 'dev-logs' 'Show local database logs.'
+	@printf '  %-30s %s\n' 'dev-reset' 'Stop pods and remove build/devenv state as this user.'
 	@printf '  %-30s %s\n' 'e2e-cpktxscribe' 'Run opt-in cpktxscribe URL e2e with remote MP3 and tiny model.'
 	@printf '  %-30s %s\n' 'example-audio-vox-intro' 'Run cached intro.mp3 VOX calibration and dump WAV segments.'
 	@printf '  %-30s %s\n' 'example-audio-live-vox' 'Run live microphone VOX capture and dump WAV segments.'
@@ -43,7 +54,7 @@ help:
 	@printf '  %-30s %s\n' 'example-sus-vox-intro' 'Run cached intro.mp3 VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'example-sus-live-vox' 'Run live microphone VOX transcription and print streamed text.'
 	@printf '  %-30s %s\n' 'example-sus-live-vox-static' 'Build the musl static live sus VOX example and print its path.'
-	@printf '  %-30s %s\n' 'valgrind' 'Run the facade-only Valgrind Memcheck gate.'
+	@printf '  %-30s %s\n' 'valgrind' 'Run native C facade tests under Valgrind Memcheck.'
 	@printf '  %-30s %s\n' 'fuzz-smoke' 'Build and run bounded AFL++ GCC-plugin facade fuzz smoke tests.'
 	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded AFL++ GCC-plugin facade fuzz tests.'
 	@printf '  %-30s %s\n' 'fuzz-long' 'Run extended AFL++ fuzzing; requires CPKT_FUZZ_LONG_ENABLE=1.'
@@ -61,18 +72,29 @@ help:
 	@printf '  %-30s %s\n' 'prerelease' 'Run the release proof graph without cleaning generated state first.'
 	@printf '  %-30s %s\n' 'prerelease-live' 'Run external-provider checks; requires CPKT_LIVE_CHECKS=1.'
 	@printf '  %-30s %s\n' 'prerelease-hardening' 'Run the release proof graph plus standard-duration native fuzzing.'
-	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, source-smoke, checksum, and verify all release artifacts.'
+	@printf '  %-30s %s\n' 'release-matrix' 'Build, package, checksum, and verify binary release artifacts.'
+	@printf '  %-30s %s\n' 'release-final-matrix' 'Run the final binary and clean source-archive release gate.'
 	@printf '  %-30s %s\n' 'finalize-slice' 'Format and run the narrow local pre-commit gate.'
 	@printf '  %-30s %s\n' 'lifecycle-version-contract' 'Run pre-clean release version checks using the reserved temp tag.'
-	@printf '  %-30s %s\n' 'release' 'Run version contract first, clean, then run the prerelease proof graph.'
+	@printf '  %-30s %s\n' 'release' 'Run the clean final binary and source-archive release gate.'
 	@printf '  %-30s %s\n' 'print-release-version' 'Print the version used by package and release artifacts.'
-	@printf '  %-30s %s\n' 'format' 'Format project-owned C and header files with clang-format.'
+	@printf '  %-30s %s\n' 'format' 'Format project-owned C, C++ and header files with clang-format.'
+	@printf '  %-30s %s\n' 'format-check' 'Fail if project-owned C, C++ or headers need clang-format.'
 	@printf '\nCleanup:\n'
 	@printf '  %-30s %s\n' 'clean' 'Remove generated build, cache, and dist output.'
 	@printf '  %-30s %s\n' 'clean-dist' 'Remove only release artifacts under dist/.'
 
 deps-debug:
 	$(CMAKE) --preset debug
+
+deps:
+	@test -n "$(DEPENDENCY)" || { printf 'deps requires DEPENDENCY=<name>; use a cpkt_deps_<name> CMake target\n' >&2; exit 2; }
+	$(CMAKE) --preset $(PRESET)
+	$(CMAKE) --build --preset $(PRESET) --target cpkt_deps_$(DEPENDENCY)
+
+deps-all:
+	$(CMAKE) --preset $(PRESET)
+	$(CMAKE) --build --preset $(PRESET) --target cpkt_deps_all
 
 deps-release:
 	@for preset in $(RELEASE_PRESETS); do \
@@ -113,7 +135,12 @@ cross-test: test-cross
 
 test-install-tree: package-verify
 
-test-all: debug clangd-surface valgrind fuzz-smoke
+test-all:
+	$(MAKE) debug
+	$(MAKE) e2e-postgres
+	$(MAKE) clangd-surface
+	$(MAKE) valgrind
+	$(MAKE) fuzz-smoke
 
 debug:
 	$(CMAKE) --preset debug
@@ -134,6 +161,28 @@ e2e-sus:
 	$(CMAKE) --preset $(E2E_SUS_PRESET)
 	$(CMAKE) --build --preset $(E2E_SUS_PRESET) --target cpkt_sus_audio_integration_test
 	bash ./scripts/e2e-sus.sh "$$(pwd)/build/$(E2E_SUS_PRESET)/cpkt_sus_audio_integration_test" "$$(pwd)/build/$(E2E_SUS_PRESET)"
+
+e2e-postgres:
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug --target cpkt_postgres_integration_test
+	bash ./scripts/test-e2e.sh "$$(pwd)/build/debug/cpkt_postgres_integration_test"
+
+test-e2e: e2e-postgres
+
+dev-up:
+	bash ./scripts/devenv.sh up
+
+dev-down:
+	bash ./scripts/devenv.sh down
+
+dev-ps:
+	bash ./scripts/devenv.sh ps
+
+dev-logs:
+	bash ./scripts/devenv.sh logs
+
+dev-reset:
+	bash ./scripts/devenv.sh reset
 
 e2e-cpktxscribe:
 	$(CMAKE) --preset debug
@@ -178,9 +227,10 @@ cpktxscribe:
 valgrind:
 	bash ./scripts/require-native-hardening-host.sh valgrind
 	@command -v valgrind >/dev/null || { printf 'valgrind is required for make valgrind; install it with the host OS package manager\n' >&2; exit 1; }
-	$(CMAKE) --preset valgrind
-	$(CMAKE) --build --preset valgrind
-	valgrind --error-exitcode=1 --leak-check=full --track-origins=yes --show-leak-kinds=definite,indirect build/valgrind/cpkt_lua_runtime_mock_test
+	$(CMAKE) --preset debug
+	$(CMAKE) --build --preset debug
+	$(CTEST) --test-dir build/debug -T memcheck -L memcheck --stop-on-failure --no-tests=error --output-on-failure --overwrite 'MemoryCheckCommandOptions=--error-exitcode=1 --leak-check=full --track-origins=yes --show-leak-kinds=definite,indirect' --overwrite 'MemoryCheckSuppressionFile=$(CURDIR)/tests/valgrind.supp'
+	CPKT_POSTGRES_E2E_MEMCHECK=1 bash ./scripts/test-e2e.sh "$$(pwd)/build/debug/cpkt_postgres_integration_test"
 
 fuzz-smoke:
 	bash ./scripts/fuzz.sh smoke
@@ -213,7 +263,9 @@ verify-release-privacy: package-verify
 
 release-pipeline:
 	$(MAKE) format
+	$(MAKE) format-check
 	$(MAKE) debug
+	$(MAKE) e2e-postgres
 	$(MAKE) clangd-surface
 	$(MAKE) valgrind
 	$(MAKE) fuzz-smoke
@@ -232,12 +284,21 @@ prerelease-hardening:
 
 release-matrix:
 	$(MAKE) package
+	$(MAKE) package-checksums
+	$(MAKE) package-verify
+
+release-final-matrix:
+	$(MAKE) package
 	$(MAKE) package-source
 	$(MAKE) package-source-smoke
 	$(MAKE) package-checksums
 	$(MAKE) package-verify
 
-finalize-slice: format debug clangd-surface
+finalize-slice:
+	$(MAKE) format
+	$(MAKE) debug
+	$(MAKE) clangd-surface
+	$(MAKE) format-check
 
 lifecycle-version-contract:
 	bash ./tests/release_version_contract_test.sh
@@ -247,12 +308,23 @@ print-release-version:
 
 format:
 	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format\n' >&2; exit 1; }
-	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' \) -print0 | xargs -0 clang-format -i
+	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format -i
+
+format-check:
+	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format-check\n' >&2; exit 1; }
+	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format --dry-run --Werror
 
 release:
 	$(MAKE) lifecycle-version-contract
 	$(MAKE) clean
-	$(MAKE) release-pipeline
+	$(MAKE) format
+	$(MAKE) format-check
+	$(MAKE) debug
+	$(MAKE) e2e-postgres
+	$(MAKE) clangd-surface
+	$(MAKE) valgrind
+	$(MAKE) fuzz-smoke
+	$(MAKE) release-final-matrix
 
 source-archive: package-source-smoke
 

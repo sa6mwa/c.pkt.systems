@@ -34,6 +34,69 @@ typedef enum cpkt_opcua_result {
   CPKT_OPCUA_ERR_CALLBACK = 6
 } cpkt_opcua_result;
 
+/** open62541 log severities, preserved without upstream headers. */
+typedef enum cpkt_opcua_log_level {
+  CPKT_OPCUA_LOG_TRACE = 100,
+  CPKT_OPCUA_LOG_DEBUG = 200,
+  CPKT_OPCUA_LOG_INFO = 300,
+  CPKT_OPCUA_LOG_WARNING = 400,
+  CPKT_OPCUA_LOG_ERROR = 500,
+  CPKT_OPCUA_LOG_FATAL = 600
+} cpkt_opcua_log_level;
+
+/** open62541 log categories. USERLAND aliases APPLICATION; SECURITYPOLICY
+ * aliases SECURITY, as in upstream. */
+typedef enum cpkt_opcua_log_category {
+  CPKT_OPCUA_LOG_NETWORK = 0,
+  CPKT_OPCUA_LOG_SECURECHANNEL = 1,
+  CPKT_OPCUA_LOG_SESSION = 2,
+  CPKT_OPCUA_LOG_SERVER = 3,
+  CPKT_OPCUA_LOG_CLIENT = 4,
+  CPKT_OPCUA_LOG_APPLICATION = 5,
+  CPKT_OPCUA_LOG_USERLAND = 5,
+  CPKT_OPCUA_LOG_SECURITY = 6,
+  CPKT_OPCUA_LOG_SECURITYPOLICY = 6,
+  CPKT_OPCUA_LOG_EVENTLOOP = 7,
+  CPKT_OPCUA_LOG_PUBSUB = 8,
+  CPKT_OPCUA_LOG_DISCOVERY = 9
+} cpkt_opcua_log_category;
+
+/** One borrowed log record, valid only during the callback. */
+typedef struct cpkt_opcua_log_record {
+  /** Upstream severity; FATAL does not itself terminate the process. */
+  cpkt_opcua_log_level level;
+  /** Upstream subsystem category. */
+  cpkt_opcua_log_category category;
+  /** NUL-terminated message formatted with upstream's %S/%N/%Q support.
+   * No timestamp, level prefix, or newline is added by the facade. */
+  const char *message;
+  /** Message byte length, excluding the terminator; embedded NULs are retained.
+   */
+  size_t message_length;
+  /** Zero on success. On formatting/allocation failure, message is a diagnostic
+   * and this field carries the upstream status instead of silently truncating.
+   */
+  cpkt_opcua_status format_status;
+} cpkt_opcua_log_record;
+
+/** Receive one record synchronously on the thread emitting it. Callbacks may
+ * overlap when upstream operations run concurrently; synchronize user data.
+ * Do not reenter, reconfigure, or free the emitting server/client here. */
+typedef void (*cpkt_opcua_log_fn)(const cpkt_opcua_log_record *record,
+                                  void *user);
+
+/** Copied logger configuration. User data remains caller-owned and must live
+ * through server/client destruction, including failed construction. */
+typedef struct cpkt_opcua_log_config {
+  /** Destination callback. NULL deliberately silences logging. */
+  cpkt_opcua_log_fn fn;
+  /** Opaque callback data. */
+  void *user;
+  /** Minimum severity. Zero means TRACE; otherwise use a log-level constant.
+   * Only messages compiled into upstream can be delivered. */
+  cpkt_opcua_log_level min_level;
+} cpkt_opcua_log_config;
+
 /** Node id kind supported by the C89 facade. */
 typedef enum cpkt_opcua_node_id_type {
   CPKT_OPCUA_NODE_ID_NULL = 0,
@@ -494,9 +557,11 @@ typedef cpkt_opcua_result (*cpkt_opcua_method_many_fn)(
 
 /** Return bundled upstream and facade ABI versions as static strings. */
 const char *cpkt_opcua_open62541_version(void);
+/** Return the facade ABI version as a borrowed static string. */
 const char *cpkt_opcua_facade_version(void);
 /** Return static diagnostic text for statuses and facade results. */
 const char *cpkt_opcua_status_name(cpkt_opcua_status status);
+/** Return borrowed static diagnostic text for a facade result. */
 const char *cpkt_opcua_result_string(cpkt_opcua_result result);
 
 /** Construct C89-safe node id values. */
@@ -690,6 +755,18 @@ void cpkt_opcua_pubsub_data_set_reader_options_default(
  */
 cpkt_opcua_result cpkt_opcua_server_new(cpkt_opcua_server **out,
                                         unsigned short port);
+/** Create with logging installed before upstream configuration/initialization.
+ * NULL logger uses upstream's default stdout logger. Failure sets *out=NULL. */
+cpkt_opcua_result
+cpkt_opcua_server_new_with_logger(cpkt_opcua_server **out, unsigned short port,
+                                  const cpkt_opcua_log_config *logger);
+/** Replace the destination/filter while preserving upstream plugin references.
+ * logger must be non-NULL; fn=NULL silences logging. Call only while no other
+ * thread operates on this server. Native extensions must not replace its
+ * logger. */
+cpkt_opcua_result
+cpkt_opcua_server_set_logger(cpkt_opcua_server *server,
+                             const cpkt_opcua_log_config *logger);
 /**
  * Create a server from explicit JSON5 configuration bytes. The bytes are
  * borrowed for the duration of the call. Endpoint URL helpers know the port
@@ -699,6 +776,11 @@ cpkt_opcua_result
 cpkt_opcua_server_new_from_json(cpkt_opcua_server **out,
                                 const unsigned char *json, size_t json_length,
                                 cpkt_opcua_status *status_out);
+/** JSON5 constructor with the same logger contract as new_with_logger;
+ * configuration parsing and failed initialization also use the callback. */
+cpkt_opcua_result cpkt_opcua_server_new_from_json_with_logger(
+    cpkt_opcua_server **out, const unsigned char *json, size_t json_length,
+    const cpkt_opcua_log_config *logger, cpkt_opcua_status *status_out);
 /**
  * Create a server from an explicit JSON5 configuration file path. The facade
  * reads only the named path; there is no implicit config-file discovery.
@@ -706,7 +788,16 @@ cpkt_opcua_server_new_from_json(cpkt_opcua_server **out,
 cpkt_opcua_result
 cpkt_opcua_server_new_from_json_file(cpkt_opcua_server **out, const char *path,
                                      cpkt_opcua_status *status_out);
-/** Free a server and shut it down first when needed. Accepts NULL. */
+/** Explicit JSON5 file constructor with logging before upstream initialization.
+ * File-read errors are returned normally; they are not upstream log events. */
+cpkt_opcua_result cpkt_opcua_server_new_from_json_file_with_logger(
+    cpkt_opcua_server **out, const char *path,
+    const cpkt_opcua_log_config *logger, cpkt_opcua_status *status_out);
+/** Free a server and shut it down first when needed. Accepts NULL.
+ * Do not destroy a server from its callbacks. With an external event loop,
+ * finish native shutdown by iterating that loop until lifecycle STOPPED before
+ * freeing. Incomplete shutdown or native deletion failure is logged and retains
+ * the live handle; complete shutdown and retry. */
 void cpkt_opcua_server_free(cpkt_opcua_server *server);
 /** Start, iterate, and stop the server event loop. */
 cpkt_opcua_result cpkt_opcua_server_startup(cpkt_opcua_server *server,
@@ -1327,6 +1418,17 @@ cpkt_opcua_server_history_native(cpkt_opcua_server *server,
 
 /** Create and free a client. Free accepts NULL. */
 cpkt_opcua_result cpkt_opcua_client_new(cpkt_opcua_client **out);
+/** Create a client with logging before upstream configuration/initialization.
+ * NULL logger uses upstream's default stdout logger. Failure sets *out=NULL. */
+cpkt_opcua_result
+cpkt_opcua_client_new_with_logger(cpkt_opcua_client **out,
+                                  const cpkt_opcua_log_config *logger);
+/** Replace the destination/filter, retaining references held by event-loop and
+ * security plugins. Same ownership/concurrency contract as server_set_logger.
+ */
+cpkt_opcua_result
+cpkt_opcua_client_set_logger(cpkt_opcua_client *client,
+                             const cpkt_opcua_log_config *logger);
 /** Disconnect when needed and free a client handle. Accepts NULL. */
 void cpkt_opcua_client_free(cpkt_opcua_client *client);
 /** Connect anonymously or with username/password credentials. */

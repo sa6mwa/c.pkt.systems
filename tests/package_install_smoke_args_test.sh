@@ -10,12 +10,23 @@ trap 'rm -rf "$work_root"' EXIT
 osxcross_root="$work_root/osxcross"
 osxcross_host="arm64-apple-darwin-test"
 mkdir -p "$osxcross_root/bin"
-touch "$osxcross_root/bin/$osxcross_host-clang"
-chmod +x "$osxcross_root/bin/$osxcross_host-clang"
+for tool in clang clang++ ld ar ranlib strip nm otool; do
+  touch "$osxcross_root/bin/$osxcross_host-$tool"
+  chmod +x "$osxcross_root/bin/$osxcross_host-$tool"
+done
+toolchain_cache="$work_root/toolchains"
+host_mig_root="$toolchain_cache/roots/host-mig-puredarwin-88753c478c97b9a08bcdb66cecc68ba5881ff3af-x86_64-linux-gnu"
+mkdir -p "$host_mig_root/bin" "$host_mig_root/libexec"
+for tool in "$host_mig_root/bin/mig" "$host_mig_root/bin/mig-upstream" "$host_mig_root/libexec/migcom"; do
+  touch "$tool"
+  chmod +x "$tool"
+done
+touch "$host_mig_root/TOOLCHAIN"
 
 actual=$(
   OSXCROSS_ROOT="$osxcross_root" \
   CPKT_OSXCROSS_HOST="$osxcross_host" \
+  CPKT_TOOLCHAIN_CACHE="$toolchain_cache" \
   CPKT_MACOS_DEPLOYMENT_TARGET=14.2 \
   CPKT_PACKAGE_INSTALL_SMOKE_PRINT_CMAKE_TOOLCHAIN_ARGS=1 \
     bash "$repo_root/scripts/package-install-smoke.sh" \
@@ -252,6 +263,19 @@ if [ "$prefix_actual" != "c.pkt.systems-1.2.3-x86_64-linux-gnu" ]; then
   printf 'package smoke selected the wrong extracted prefix: %s\n' "$prefix_actual" >&2
   exit 1
 fi
+
+for extra in loose.txt .hidden-file; do
+  touch "$prefix_fixture/$extra"
+  (cd "$prefix_fixture" && tar -czf "$prefix_archive" -- c.pkt.systems-1.2.3-x86_64-linux-gnu "$extra")
+  if CPKT_PACKAGE_INSTALL_SMOKE_PRINT_EXTRACTED_PREFIX=1 \
+      bash "$repo_root/scripts/package-install-smoke.sh" "$prefix_archive" \
+        x86_64-linux-gnu "$work_root/source.c" > "$work_root/top-level.log" 2>&1; then
+    printf 'package smoke accepted a top-level file: %s\n' "$extra" >&2
+    exit 1
+  fi
+  grep -F 'unexpected top-level file' "$work_root/top-level.log" >/dev/null
+  rm "$prefix_fixture/$extra"
+done
 
 multi_root_fixture="$work_root/multi-root-fixture"
 mkdir -p "$multi_root_fixture/sdk-one" "$multi_root_fixture/sdk-two"

@@ -1,4 +1,5 @@
 #include <cpkt/opcua.h>
+#include <cpkt/opcua_types.h>
 
 #include <stddef.h>
 #include <stdio.h>
@@ -37,6 +38,44 @@ static int browse_for_name(const cpkt_opcua_browse_entry *entry, void *user) {
     state->matched = 1;
   }
   return 0;
+}
+
+/* A generated ReadValueId and DataValue cross the same server boundary as
+ * convenience calls. The facade owns conversion and cleanup of nested values.
+ */
+static int check_typed_value(cpkt_opcua_server *server) {
+  cpkt_opcua_ReadValueId read;
+  cpkt_opcua_WriteValue write;
+  cpkt_opcua_DataValue response;
+  cpkt_opcua_StatusCode status;
+  cpkt_opcua_ReadValueId_init(&read);
+  read.nodeId.namespaceIndex = 1;
+  read.nodeId.identifier.numeric = 7101;
+  read.attributeId = 13;
+  status = cpkt_opcua_server_read_typed(
+      server, &read, cpkt_opcua_TIMESTAMPSTORETURN_BOTH, &response);
+  if (status)
+    return 1;
+  if (!response.hasValue || !response.value.type || !response.value.data) {
+    cpkt_opcua_DataValue_clear(&response);
+    return 1;
+  }
+  cpkt_opcua_WriteValue_init(&write);
+  write.nodeId = read.nodeId;
+  write.attributeId = read.attributeId;
+  write.value.value = response.value;
+  write.value.hasValue = 1;
+  status = cpkt_opcua_server_write_typed(server, &write);
+  cpkt_opcua_DataValue_clear(&response);
+  if (status)
+    return 1;
+  read.nodeId.identifier.numeric = 0xffffffffU;
+  status = cpkt_opcua_server_read_typed(
+      server, &read, cpkt_opcua_TIMESTAMPSTORETURN_NEITHER, &response);
+  if (!status && (!response.hasStatus || response.status == 0))
+    status = 1;
+  cpkt_opcua_DataValue_clear(&response);
+  return status ? 1 : 0;
 }
 
 static int expect_ok(cpkt_opcua_result result, const char *operation) {
@@ -170,6 +209,8 @@ int main(void) {
     }
   }
 
+  if (!failed)
+    failed = check_typed_value(server);
   cpkt_opcua_client_free(client);
   cpkt_opcua_server_free(server);
   return failed ? 1 : 0;

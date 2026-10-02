@@ -1,0 +1,11 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -530,7 +530,7 @@
+     # use the OpenSSL encryption library
+     # https://cmake.org/cmake/help/v3.13/module/FindOpenSSL.html
+     find_package(OpenSSL REQUIRED)
+-    list(APPEND open62541_LIBRARIES "${OPENSSL_LIBRARIES}")
++    list(APPEND open62541_LIBRARIES OpenSSL::SSL OpenSSL::Crypto)
+     list(APPEND pkgcfg_requiresprivate "openssl")
+     if(WIN32)
+         # Add bestcrypt for windows systems

@@ -12,19 +12,30 @@ trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 source_dir="$work_dir/source"
 build_dir="$work_dir/build"
-mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" "$build_dir" "$work_dir/bin"
+mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" "$source_dir/tests" \
+  "$build_dir/generated/opcua/cpkt" "$build_dir/generated/lua/include/cpkt" "$work_dir/bin"
 
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/bin/clangd"
 chmod +x "$work_dir/bin/clangd"
 
 write_header() {
   local comment=$1
-  printf '%s\nvoid cpkt_documented(void);\n' "$comment" > "$source_dir/include/cpkt/facade.h"
+  printf '#ifdef __cplusplus\nextern "C" {\n#endif\n%s\nvoid cpkt_documented(void);\n#ifdef __cplusplus\n}\n#endif\n' "$comment" > "$source_dir/include/cpkt/facade.h"
 }
 
 write_source() {
   local comment=$1
   printf '%s\nvoid cpkt_documented(void) {}\n' "$comment" > "$source_dir/src/facade.c"
+}
+
+write_lua_header() {
+  local comment=$1
+  {
+    local index
+    for ((index = 0; index < 156; index++)); do
+      printf '%s\nCPKT_LUA_API void cpkt_lua_fixture_%d(void);\n' "$comment" "$index"
+    done
+  } > "$build_dir/generated/lua/include/cpkt/lua.h"
 }
 
 for source_file in \
@@ -34,7 +45,10 @@ for source_file in \
   examples/sus-vox-intro-c89/main.c \
   examples/lua-runtime-c89/main.c \
   examples/lua-runtime-c89/host_module.c \
-  examples/opcua-c89/main.c; do
+  examples/opcua-c89/main.c \
+  tests/opcua_logging_test.c \
+  tests/opcua_types_test.c \
+  tests/pdf_facade_test.c; do
   mkdir -p "$(dirname "$source_dir/$source_file")"
   : > "$source_dir/$source_file"
   printf '"%s/%s"\n' "$source_dir" "$source_file" >> "$build_dir/compile_commands.json"
@@ -44,9 +58,28 @@ run_gate() {
   PATH="$work_dir/bin:$PATH" bash "$checker" "$source_dir" "$build_dir"
 }
 
+printf '/** Generated schema declaration. */\nvoid cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
+printf '/** Generated constants. */\n' > "$build_dir/generated/opcua/cpkt/opcua_constants.h"
+printf '/** Generated plugin declarations. */\n' > "$build_dir/generated/opcua/cpkt/opcua_plugins.h"
+
 write_header '/** Public facade declaration. */'
 write_source '/** Public facade definition. */'
+write_lua_header '/** Generated Lua facade declaration. */'
 run_gate
+
+# Cross-file helpers have private visibility, so they are not public API.
+printf 'CPKT_OPCUA_PRIVATE void cpkt_private_helper(void);\n' > "$source_dir/src/opcua_facade_internal.h"
+printf 'void cpkt_private_helper(void) {}\n' > "$source_dir/src/private.c"
+run_gate
+
+# A helper named in a public header still requires a documented definition.
+printf '/** Public helper. */\nvoid cpkt_private_helper(void);\n' >> "$source_dir/include/cpkt/facade.h"
+if run_gate >"$work_dir/private.out" 2>"$work_dir/private.err"; then
+  printf 'clangd comment gate exempted a public function as a private helper\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/private.err" >/dev/null
+write_header '/** Public facade declaration. */'
 
 write_header '/* Ordinary block comment is not Doxygen. */'
 if run_gate >"$work_dir/header.out" 2>"$work_dir/header.err"; then
@@ -62,3 +95,29 @@ if run_gate >"$work_dir/source.out" 2>"$work_dir/source.err"; then
   exit 1
 fi
 grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/source.err" >/dev/null
+
+write_source '/** Public facade definition. */'
+write_lua_header '/* Ordinary block comment is not Doxygen. */'
+if run_gate >"$work_dir/lua.out" 2>"$work_dir/lua.err"; then
+  printf 'clangd comment gate accepted undocumented generated Lua declarations\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/lua.err" >/dev/null
+
+write_header '/** Public facade declaration. */'
+write_source '/** Public facade definition. */'
+write_lua_header '/** Generated Lua facade declaration. */'
+printf 'void cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
+if run_gate >"$work_dir/opcua.out" 2>"$work_dir/opcua.err"; then
+  printf 'clangd comment gate accepted undocumented generated OPC UA declaration\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/opcua.err" >/dev/null
+
+printf '/** Generated schema declaration. */\nvoid cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
+printf 'void cpkt_opcua_plugin_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_plugins.h"
+if run_gate >"$work_dir/plugins.out" 2>"$work_dir/plugins.err"; then
+  printf 'clangd comment gate accepted undocumented generated OPC UA plugin declaration\n' >&2
+  exit 1
+fi
+grep -F 'public facade symbol is missing an adjacent Doxygen comment' "$work_dir/plugins.err" >/dev/null

@@ -28,6 +28,9 @@ with tempfile.TemporaryDirectory(prefix="package diagnostics-", dir=build) as tm
 set -euo pipefail
 if [[ ${0##*/} == ctest ]]; then
   phase=test
+  for arg in "$@"; do
+    if [[ $arg == -R ]]; then phase=fixture; fi
+  done
 elif [[ $1 == --build && ${3:-} == package-* ]]; then
   phase=package
 elif [[ $1 == --build ]]; then
@@ -36,7 +39,7 @@ else
   phase=configure
 fi
 printf '%s\n' "$phase" >> "$DIAG_CALLS"
-if [[ $phase == "$DIAG_PHASE" ]]; then
+if [[ $phase == "$DIAG_PHASE" && ( -z ${DIAG_TARGET:-} || ${2:-} == "$DIAG_TARGET" ) ]]; then
   case "$DIAG_MODE" in
     fail) printf 'injected command failure\n' >&2; exit "$DIAG_STATUS" ;;
     child) kill -TERM "$$"; exit 99 ;;
@@ -57,11 +60,18 @@ fi
         path = cross / "bin" / ("arm64-apple-darwin25-" + name)
         path.write_text("#!/bin/sh\nexit 0\n")
         path.chmod(0o755)
+    resolver = root / "scripts/cpkt-toolchains.sh"
+    resolver.write_text(
+        "#!/bin/sh\n"
+        "printf 'status=ready\\nroot=%s\\nprefix=arm64-apple-darwin25\\n' "
+        '"$OSXCROSS_ROOT"\n'
+    )
+    resolver.chmod(0o755)
     (root / "Makefile").write_text("all:\n\tbash scripts/package.sh\n")
     cases = []
 
     def run(name, phase="", mode="fail", status=23,
-            signum=signal.SIGTERM, via_make=False):
+            signum=signal.SIGTERM, via_make=False, target=""):
         env = os.environ.copy()
         for key in ("MAKEFLAGS", "MFLAGS", "MAKELEVEL"):
             env.pop(key, None)
@@ -71,6 +81,7 @@ fi
                    OSXCROSS_ROOT=str(cross),
                    CPKT_OSXCROSS_HOST="arm64-apple-darwin25",
                    DIAG_PHASE=phase, DIAG_MODE=mode, DIAG_STATUS=str(status),
+                   DIAG_TARGET=target,
                    DIAG_READY=str(ready), DIAG_CALLS=str(calls))
         command = ["make", "--no-print-directory"] if via_make else [
             "bash", "scripts/package.sh"]
@@ -99,18 +110,25 @@ fi
         context = name + ":\n" + output
         if not phase:
             assert process.returncode == 0, context
-            assert actual_calls == ["configure", "build", "test", "package"] * 6 + [
-                "configure", "build", "package"], context
+            assert actual_calls == ["configure"] * 7 + ["fixture"] * 61 + [
+                "build", "test", "package"] * 6 + ["build", "package"], context
         else:
-            assert actual_calls == ["configure", "build", "test", "package"][
-                :["configure", "build", "test", "package"].index(phase) + 1], context
+            if phase == "configure":
+                expected_calls = ["configure"]
+            elif phase == "fixture":
+                expected_calls = ["configure"] * 7 + ["fixture"] * (7 if target else 1)
+            else:
+                expected_calls = ["configure"] * 7 + ["fixture"] * 61 + [
+                    "build", "test", "package"][:["build", "test", "package"].index(phase) + 1]
+            assert actual_calls == expected_calls, context
             prefix = "[package] " + (
                 "INTERRUPTED" if mode in ("group", "parent") else "FAILED")
             diagnostics = [line for line in output.splitlines()
                            if line.startswith(prefix)]
             assert len(diagnostics) == 1, context
             diagnostic = diagnostics[0]
-            assert "target=x86_64-linux-gnu-release" in diagnostic, context
+            expected_target = Path(target).name if target else "x86_64-linux-gnu-release"
+            assert "target=" + expected_target in diagnostic, context
             assert "phase=" + phase in diagnostic, context
             if mode in ("group", "parent"):
                 expected = signal.Signals(signum).name
@@ -129,8 +147,10 @@ fi
                     assert "SIGTERM" in output and "explicit exit" in output, context
         cases.append(name)
 
-    for phase in ("configure", "build", "test", "package"):
+    for phase in ("configure", "fixture", "build", "test", "package"):
         run("failure-" + phase, phase)
+    run("darwin-prototype-fixture", "fixture",
+        target=str(root / "build/arm64-apple-darwin-release"))
     run("explicit-143", "test", status=143)
     run("child-term", "test", mode="child")
     run("parent-term", "test", mode="parent")
@@ -138,4 +158,18 @@ fi
         run(signal.Signals(signum).name, "test", mode="group", signum=signum)
     run("make-group-term", "test", mode="group", via_make=True)
     run("success")
+    route_tools = root / "route-tools"
+    route_tools.mkdir()
+    route_make = route_tools / "make"
+    route_make.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CPKT_MATRIX_ROUTE_CALLS"\nexit 19\n')
+    route_make.chmod(0o755)
+    route_calls = root / "route.calls"
+    route_env = os.environ.copy()
+    route_env.update(PATH=str(route_tools) + os.pathsep + route_env["PATH"],
+                     CPKT_MATRIX_ROUTE_CALLS=str(route_calls))
+    route_result = subprocess.run(["bash", str(source / "scripts/run_linux_release_matrix.sh")],
+                                  env=route_env, capture_output=True, text=True)
+    assert route_result.returncode == 19, route_result
+    assert route_calls.read_text().splitlines() == ["-C", str(source), "release-final-matrix"]
+    cases.append("canonical-matrix-route")
     print("[test] package failure diagnostics: %d cases passed" % len(cases))

@@ -1,0 +1,34 @@
+--- a/src/ua_types_encoding_json.c
++++ b/src/ua_types_encoding_json.c
+@@ -2695,8 +2695,13 @@
+     if(r.error != CJ5_ERROR_NONE)
+         return UA_STATUSCODE_BADDECODINGERROR;
+ 
+-    if(decodedLength)
++    if(decodedLength) {
+         *decodedLength = ctx->tokens[0].end + 1;
++        /* String token bounds exclude both quotes. Include the closing
++         * quote so incremental callers advance past the complete value. */
++        if(ctx->tokens[0].type == CJ5_TOKEN_STRING)
++            ++*decodedLength;
++    }
+ 
+     /* Set up the context */
+     ctx->json5 = (char*)src->data;
+--- a/src/ua_types_encoding_json_105.c
++++ b/src/ua_types_encoding_json_105.c
+@@ -2475,8 +2475,13 @@
+     if(r.error != CJ5_ERROR_NONE)
+         return UA_STATUSCODE_BADDECODINGERROR;
+ 
+-    if(decodedLength)
++    if(decodedLength) {
+         *decodedLength = ctx->tokens[0].end + 1;
++        /* String token bounds exclude both quotes. Include the closing
++         * quote so incremental callers advance past the complete value. */
++        if(ctx->tokens[0].type == CJ5_TOKEN_STRING)
++            ++*decodedLength;
++    }
+ 
+     /* Set up the context */
+     ctx->json5 = (char*)src->data;

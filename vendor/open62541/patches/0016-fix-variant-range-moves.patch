@@ -1,0 +1,23 @@
+--- a/src/ua_types.c
++++ b/src/ua_types.c
+@@ -1787,7 +1787,7 @@
+ 
+     /* Compute the strides */
+     size_t count, block, stride, first;
+-    computeStrides(v, range, &count, &block, &stride, &first);
++    computeStrides(v, thisrange, &count, &block, &stride, &first);
+     if(count != arraySize)
+         return UA_STATUSCODE_BADINDEXRANGEINVALID;
+ 
+@@ -1798,6 +1798,11 @@
+     uintptr_t nextsrc = (uintptr_t)array;
+     if(v->type->pointerFree || !copy) {
+         for(size_t i = 0; i < block_count; ++i) {
++            /* Moves replace the old owned members just like copies do. */
++            if(!v->type->pointerFree) {
++                for(size_t j = 0; j < block; ++j)
++                    clearJumpTable[v->type->typeKind]((void*)(nextdst + j * elem_size), v->type);
++            }
+             memcpy((void*)nextdst, (void*)nextsrc, elem_size * block);
+             nextsrc += block * elem_size;
+             nextdst += stride * elem_size;

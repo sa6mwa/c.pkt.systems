@@ -1,0 +1,170 @@
+--- a/src/client/ua_client.c
++++ b/src/client/ua_client.c
+@@ -33,79 +33,90 @@
+ /********************/
+ 
+ UA_StatusCode
+-UA_ClientConfig_copy(UA_ClientConfig const *src, UA_ClientConfig *dst){
++UA_ClientConfig_copy(UA_ClientConfig const *src, UA_ClientConfig *dst) {
++    if(!src || !dst || src == dst)
++        return UA_STATUSCODE_BADINVALIDARGUMENT;
++
++    /* All public scalar/callback fields and backend pointers retain their
++     * native shallow-copy semantics. Owned values are staged independently;
++     * allocation failure must never clear a source-owned plugin. */
++    UA_ClientConfig staged = *src;
+     UA_StatusCode retval = UA_STATUSCODE_GOOD;
+-
+-    retval = UA_ApplicationDescription_copy(&src->clientDescription, &dst->clientDescription);
++    UA_ApplicationDescription_init(&staged.clientDescription);
++    UA_ExtensionObject_init(&staged.userIdentityToken);
++    UA_String_init(&staged.endpointUrl);
++    UA_String_init(&staged.sessionName);
++    UA_String_init(&staged.applicationUri);
++    UA_String_init(&staged.securityPolicyUri);
++    UA_String_init(&staged.authSecurityPolicyUri);
++    UA_EndpointDescription_init(&staged.endpoint);
++    UA_UserTokenPolicy_init(&staged.userTokenPolicy);
++    staged.sessionLocaleIds = NULL;
++    staged.sessionLocaleIdsSize = 0;
++    staged.namespaces = NULL;
++    staged.namespacesSize = 0;
++
++    retval = UA_ApplicationDescription_copy(&src->clientDescription, &staged.clientDescription);
+     if(retval != UA_STATUSCODE_GOOD)
+         goto cleanup;
+-
+-    retval = UA_ExtensionObject_copy(&src->userIdentityToken, &dst->userIdentityToken);
++    retval = UA_ExtensionObject_copy(&src->userIdentityToken, &staged.userIdentityToken);
+     if(retval != UA_STATUSCODE_GOOD)
+         goto cleanup;
+-
+-    retval = UA_String_copy(&src->securityPolicyUri, &dst->securityPolicyUri);
++    retval = UA_String_copy(&src->endpointUrl, &staged.endpointUrl);
+     if(retval != UA_STATUSCODE_GOOD)
+         goto cleanup;
+-
+-    retval = UA_EndpointDescription_copy(&src->endpoint, &dst->endpoint);
++    retval = UA_String_copy(&src->sessionName, &staged.sessionName);
+     if(retval != UA_STATUSCODE_GOOD)
+         goto cleanup;
+-
+-    retval = UA_UserTokenPolicy_copy(&src->userTokenPolicy, &dst->userTokenPolicy);
++    retval = UA_String_copy(&src->applicationUri, &staged.applicationUri);
+     if(retval != UA_STATUSCODE_GOOD)
+         goto cleanup;
+-
+-    retval = UA_Array_copy(src->sessionLocaleIds, src->sessionLocaleIdsSize,
+-                           (void **)&dst->sessionLocaleIds, &UA_TYPES[UA_TYPES_LOCALEID]);
++    retval = UA_String_copy(&src->securityPolicyUri, &staged.securityPolicyUri);
+     if(retval != UA_STATUSCODE_GOOD)
+         goto cleanup;
+-
+-    dst->sessionLocaleIdsSize = src->sessionLocaleIdsSize;
+-    dst->connectivityCheckInterval = src->connectivityCheckInterval;
+-    dst->certificateVerification = src->certificateVerification;
+-    dst->clientContext = src->clientContext;
+-    dst->customDataTypes = src->customDataTypes;
+-    dst->eventLoop = src->eventLoop;
+-    dst->externalEventLoop = src->externalEventLoop;
+-    dst->inactivityCallback = src->inactivityCallback;
+-    dst->localConnectionConfig = src->localConnectionConfig;
+-    dst->logging = src->logging;
+-    if(src->certificateVerification.logging == NULL)
+-        dst->certificateVerification.logging = dst->logging;
+-#ifdef UA_ENABLE_SUBSCRIPTIONS
+-    dst->outStandingPublishRequests = src->outStandingPublishRequests;
+-#endif
+-    dst->requestedSessionTimeout = src->requestedSessionTimeout;
+-    dst->secureChannelLifeTime = src->secureChannelLifeTime;
+-    dst->securityMode = src->securityMode;
+-    dst->stateCallback = src->stateCallback;
+-#ifdef UA_ENABLE_SUBSCRIPTIONS
+-    dst->subscriptionInactivityCallback = src->subscriptionInactivityCallback;
+-#endif
+-    dst->timeout = src->timeout;
+-    dst->userTokenPolicy = src->userTokenPolicy;
+-    dst->securityPolicies = src->securityPolicies;
+-    dst->securityPoliciesSize = src->securityPoliciesSize;
+-    dst->authSecurityPolicies = src->authSecurityPolicies;
+-    dst->authSecurityPoliciesSize = src->authSecurityPoliciesSize;
++    retval = UA_String_copy(&src->authSecurityPolicyUri, &staged.authSecurityPolicyUri);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++    retval = UA_EndpointDescription_copy(&src->endpoint, &staged.endpoint);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++    retval = UA_UserTokenPolicy_copy(&src->userTokenPolicy, &staged.userTokenPolicy);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++    retval = UA_Array_copy(src->sessionLocaleIds, src->sessionLocaleIdsSize,
++                           (void**)&staged.sessionLocaleIds, &UA_TYPES[UA_TYPES_LOCALEID]);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++    staged.sessionLocaleIdsSize = src->sessionLocaleIdsSize;
++    retval = UA_Array_copy(src->namespaces, src->namespacesSize,
++                           (void**)&staged.namespaces, &UA_TYPES[UA_TYPES_STRING]);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++    staged.namespacesSize = src->namespacesSize;
++    if(!staged.certificateVerification.logging)
++        staged.certificateVerification.logging = staged.logging;
++    *dst = staged;
++    return UA_STATUSCODE_GOOD;
+ 
+ cleanup:
+-    if(retval != UA_STATUSCODE_GOOD) {
+-        /* _clear will free the plugins in dst that are a shallow copy from src. */
+-        dst->authSecurityPolicies = NULL;
+-        dst->certificateVerification.context = NULL;
+-        dst->eventLoop = NULL;
+-        dst->logging = NULL;
+-        dst->securityPolicies = NULL;
+-        UA_ClientConfig_clear(dst);
+-    }
++    UA_ApplicationDescription_clear(&staged.clientDescription);
++    UA_ExtensionObject_clear(&staged.userIdentityToken);
++    UA_String_clear(&staged.endpointUrl);
++    UA_String_clear(&staged.sessionName);
++    UA_String_clear(&staged.applicationUri);
++    UA_String_clear(&staged.securityPolicyUri);
++    UA_String_clear(&staged.authSecurityPolicyUri);
++    UA_EndpointDescription_clear(&staged.endpoint);
++    UA_UserTokenPolicy_clear(&staged.userTokenPolicy);
++    UA_Array_delete(staged.sessionLocaleIds, staged.sessionLocaleIdsSize, &UA_TYPES[UA_TYPES_LOCALEID]);
++    UA_Array_delete(staged.namespaces, staged.namespacesSize, &UA_TYPES[UA_TYPES_STRING]);
+     return retval;
+ }
+ 
+ UA_Client *
+ UA_Client_newWithConfig(const UA_ClientConfig *config) {
+-    if(!config)
++    if(!config || config->namespacesSize > SIZE_MAX - 2 ||
++       (config->namespacesSize && !config->namespaces))
+         return NULL;
+     UA_Client *client = (UA_Client*)UA_malloc(sizeof(UA_Client));
+     if(!client)
+@@ -130,9 +141,11 @@
+ 
+     client->namespacesSize = initialNs;
+     client->namespaces[0] = UA_STRING_ALLOC("http://opcfoundation.org/UA/");
++    if(!client->namespaces[0].data)
++        goto error;
+     client->namespaces[1] = UA_STRING_NULL; /* Gets set when we connect to the server */
+     for(size_t i = 0; i < config->namespacesSize; i++) {
+-        res |= UA_String_copy(&client->namespaces[i+2], &config->namespaces[i]);
++        res |= UA_String_copy(&config->namespaces[i], &client->namespaces[i+2]);
+     }
+     if(res != UA_STATUSCODE_GOOD)
+         goto error;
+@@ -203,6 +216,10 @@
+     }
+     config->sessionLocaleIds = NULL;
+     config->sessionLocaleIdsSize = 0;
++    UA_Array_delete(config->namespaces, config->namespacesSize,
++                    &UA_TYPES[UA_TYPES_STRING]);
++    config->namespaces = NULL;
++    config->namespacesSize = 0;
+ 
+     /* Custom Data Types */
+     UA_cleanupDataTypeWithCustom(config->customDataTypes);

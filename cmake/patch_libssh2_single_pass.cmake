@@ -134,3 +134,26 @@ endif()
 
 string(REPLACE "${old_block}" "${new_block}" libssh2_cmake_text "${libssh2_cmake_text}")
 file(WRITE "${libssh2_cmake}" "${libssh2_cmake_text}")
+
+set(libssh2_public_header "${CPKT_LIBSSH2_SOURCE_DIR}/include/libssh2.h")
+if(NOT EXISTS "${libssh2_public_header}")
+  message(FATAL_ERROR "missing libssh2 public header: ${libssh2_public_header}")
+endif()
+file(READ "${libssh2_public_header}" libssh2_public_header_text)
+set(libssh2_sign_sk_original [=[int
+libssh2_sign_sk(]=])
+set(libssh2_sign_sk_patched [=[LIBSSH2_API int
+libssh2_sign_sk(]=])
+string(FIND "${libssh2_public_header_text}" "${libssh2_sign_sk_patched}" libssh2_sign_sk_already_patched)
+if(libssh2_sign_sk_already_patched EQUAL -1)
+  string(FIND "${libssh2_public_header_text}" "${libssh2_sign_sk_original}" libssh2_sign_sk_patch_at)
+  if(libssh2_sign_sk_patch_at EQUAL -1)
+    message(FATAL_ERROR "failed to find libssh2_sign_sk visibility patch anchor in ${libssh2_public_header}")
+  endif()
+  string(REPLACE
+    "${libssh2_sign_sk_original}"
+    "${libssh2_sign_sk_patched}"
+    libssh2_public_header_text
+    "${libssh2_public_header_text}")
+  file(WRITE "${libssh2_public_header}" "${libssh2_public_header_text}")
+endif()

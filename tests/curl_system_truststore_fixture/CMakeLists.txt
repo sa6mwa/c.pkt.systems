@@ -51,6 +51,11 @@ if(sectrust_index LESS 0)
   message(FATAL_ERROR
     "arm64-apple-darwin (${target_triple}) curl configuration does not enable Apple SecTrust")
 endif()
+list(FIND curl_cmake_args "-DENABLE_THREADED_RESOLVER=OFF" resolver_off_index)
+if(resolver_off_index GREATER_EQUAL 0)
+  message(FATAL_ERROR
+    "arm64-apple-darwin (${target_triple}) curl platform overrides asynchronous DNS")
+endif()
 foreach(disallowed_arg IN ITEMS
     "-DCURL_CA_BUNDLE=none"
     "-DCURL_CA_PATH=none")

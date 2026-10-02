@@ -5,7 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=${1:-$(CDPATH= cd -- "$script_dir/.." && pwd)}
 open62541_include_dir=${2:-}
 cc=${CC:-cc}
-opcua_source=$(tr '\n\t' '  ' < "$repo_root/src/opcua.c" | tr -s ' ')
+opcua_source=$(cat "$repo_root/src/opcua_identifiers.c" "$repo_root/src/opcua_value.c" | tr '\n\t' '  ' | tr -s ' ')
 work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-opcua-word-portability.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
 
@@ -62,7 +62,7 @@ for required_source_assertion in \
   'cpkt_opcua_assert_upstream_datetime_is_64_bits' \
   'cpkt_opcua_assert_upstream_status_is_32_bits'
 do
-  if ! grep -F -- "$required_source_assertion" "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+  if ! grep -F -- "$required_source_assertion" "$repo_root/src/opcua_facade_internal.h" >/dev/null 2>&1; then
     printf 'OPC UA facade implementation must compile-assert upstream integer widths: %s\n' \
       "$required_source_assertion" >&2
     exit 1
@@ -76,10 +76,10 @@ if ! grep -F -- 'return ((UA_UInt64)value.high32 << 32) | (UA_UInt64)value.low32
 fi
 
 if grep -E 'return +\(?\(?value[.]high32 << 32|\(UA_UInt64\)\(value[.]high32 << 32|\(unsigned long\)value[.]high32 << 32' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    "$repo_root/src/opcua_identifiers.c" >/dev/null 2>&1; then
   printf 'OPC UA facade contains a 32-bit word shift before UInt64 widening\n' >&2
   grep -En 'return +\(?\(?value[.]high32 << 32|\(UA_UInt64\)\(value[.]high32 << 32|\(unsigned long\)value[.]high32 << 32' \
-      "$repo_root/src/opcua.c" >&2
+      "$repo_root/src/opcua_identifiers.c" >&2
   exit 1
 fi
 
@@ -90,7 +90,7 @@ if ! grep -F -- 'out.high32 = -1L - (long)(CPKT_OPCUA_UINT32_MAX_VALUE - high32)
 fi
 
 if grep -F -- '-((long)(CPKT_OPCUA_UINT32_MAX_VALUE - high32) + 1L)' \
-    "$repo_root/src/opcua.c" >/dev/null 2>&1; then
+    "$repo_root/src/opcua_identifiers.c" >/dev/null 2>&1; then
   printf 'OPC UA facade contains the old DateTime decode expression that overflows for 0x80000000 on 32-bit long\n' >&2
   exit 1
 fi

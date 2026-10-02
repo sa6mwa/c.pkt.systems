@@ -14,18 +14,19 @@ while delegating OPC UA semantics to open62541.
 - Provide a C89-compatible `include/cpkt/opcua.h` facade that lets C89 consumers
   build practical OPC UA clients and servers without including open62541 public
   headers or using C99-only upstream types in public signatures.
-- Keep advanced open62541 surfaces reachable through explicit native escape
-  hatches instead of reimplementing large generated OPC UA structures.
+- Generate the complete standard public schema model in C89 using upstream's
+  parser and C generator, with transparent conversions at typed API boundaries.
+  Derive handwritten public plugin/configuration bindings from the upstream
+  headers; native extension hooks remain explicit optional interoperability.
 - Prove facade behavior with integration tests that cross the facade/native
   boundary in both directions.
 
 ## Non-Goals
 
 - Do not fork open62541 into a new implementation.
-- Do not translate every generated OPC UA service request/response structure into
-  a bespoke `cpkt` struct. Where a structure is very large, generated, or
-  unstable, provide native pass-through and a small C89 convenience wrapper for
-  common workflows.
+- Do not maintain a second schema parser or hand-written copies of hundreds of
+  schema types. Adapt the upstream generator; centralize representation rules
+  and conversion, including nested structures, arrays and 64-bit values.
 - Do not expose open62541 headers from `include/cpkt/opcua.h`. Native callbacks
   receive borrowed `void *` upstream handles; users who opt in can cast them in
   implementation files that include open62541 headers.
@@ -45,8 +46,8 @@ while delegating OPC UA semantics to open62541.
   64-bit protocol values on 32-bit hardware. The implementation must compile
   assert that upstream `UA_UInt64` and `UA_DateTime` are 64 bits and must widen
   each public word to the upstream 64-bit type before shifting.
-- Public handles remain opaque: `cpkt_opcua_client`, `cpkt_opcua_server`, and
-  future opaque value/config handles.
+- Public handles remain opaque, including `cpkt_opcua_client`,
+  `cpkt_opcua_server`, and native configuration/plugin roots.
 - Borrowed input memory is valid only for the duration of the call. Public APIs
   that return variable-length data use caller-provided buffers, explicit
   required-size outputs, or `cpkt`-owned handles with matching free functions.
@@ -98,8 +99,8 @@ The existing facade already covers a useful core workflow:
   File-based certificate loading and custom security plugins remain available
   through native config callbacks.
 - C89 username/password access-control callbacks for common login decisions,
-  with full access-control plugins still available through native config
-  callbacks.
+  plus generated full C89 access-control, history-database and history-backend
+  plugin records with persistent borrowed-value storage.
 - Native callbacks for client and server escape hatches.
 - Explicit advanced native pass-through entry points for PubSub/MQTT, history,
   file/json server configuration, and security plugin configuration, plus
@@ -114,9 +115,10 @@ The existing facade already covers a useful core workflow:
   through the C89 value layer with native history services still available
   through explicit pass-through.
 
-This is the Tier 1 practical C89 facade surface. Tier 2 advanced upstream
-features remain native-first unless a concrete downstream workflow needs a
-typed convenience wrapper.
+The generated model and handwritten-header emitters cover the enabled usable
+public C89 surface. Native callbacks remain optional interoperability. The
+strict declaration contract gates functions, callback slots, enum values and
+public fields, including explicit accessors for opaque native storage.
 
 ## Upstream Surface Inventory
 
@@ -125,22 +127,892 @@ typed convenience wrapper.
 | Core handles and event loops | `client.h`, `server.h` | First-class wrappers | Small, stable, handle-oriented, already partly covered. |
 | Client connection and discovery | `client.h`, `client_config_default.h` | First-class common wrappers plus native config callback | Endpoint discovery is common; full config is large and security-sensitive. |
 | Read/write attributes | `client_highlevel.h`, `server.h` | First-class generic attribute wrappers | The upstream high-level API maps cleanly to C89 ids, values, and status codes. |
-| Node management | `client_highlevel.h`, `server.h` | First-class wrappers for common node classes; native pass-through for full attributes | Object/variable/method/view/reference helpers are useful; generated attribute structs are large. |
+| Node management | `client_highlevel.h`, `server.h` | Complete typed client node helpers and generated server creation/attribute bindings | Full generated attributes and owned assigned IDs preserve native creation semantics. |
 | Browse and translate | `client.h`, `client_highlevel.h`, `server.h` | First-class wrappers | Browse options and continuation points are central client workflows. |
-| Methods | `client_highlevel.h`, `server.h` | First-class multi-input and multi-output wrappers | Current one-output scalar wrapper is too narrow. |
+| Methods | `client_highlevel.h`, `server.h` | Typed multi-input and multi-output bindings plus full producer callbacks | Generated Variant arrays preserve nested values and exact 64-bit arguments. |
 | Subscriptions | `client_subscriptions.h` | First-class wrappers | Data-change, event, modify, delete, and monitoring-mode APIs are core client workflows. |
 | Value and data model | `types.h`, `types_generated.h` | First-class C89 value layer with native variant escape hatch | Scalars, arrays, strings, byte strings, GUIDs, time, localized text, qualified names, status, data values, and node ids must be usable from C89. |
-| Generated request/response services | `client.h`, `types_generated.h` | Native pass-through plus selected convenience wrappers | Full generated structure mirroring would be a reimplementation burden. |
+| Generated request/response services | `client.h`, `types_generated.h` | Generated C89 types, 14 synchronous/asynchronous public services and specialized subscription service bindings | Reuse upstream parsing and declarations; convert recursively without changing the upstream ABI. |
 | Security and certificates | `server_config_default.h`, `client_config_default.h`, plugin security headers | First-class buffer configuration wrappers plus native config callback | Common secure setup needs DX; file loading and custom policies/stores are application-specific and can be handled explicitly in native callbacks. |
-| Access control | `plugin/accesscontrol*.h` | First-class username/password callback adapter for common login decisions; native pass-through for full plugin | Callback ABI can be C89; full plugin model stays upstream-owned. |
-| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Native-first server/backend setup plus common raw-history client reads | History backends are application-specific; raw value reads map cleanly to the C89 `DataValue` layer. |
+| Access control | `plugin/accesscontrol*.h` | Complete generated C89 access-control callback record plus common login wrappers | Native authorization semantics are retained; schema arguments are converted at the callback boundary. |
+| History | `client.h`, `plugin/historydatabase.h`, `plugin/historydata/*` | Full generated C89 HistoryDatabase callback record plus typed client history services | Full HistoryDataBackend, persistent borrowed values and default gathering/database bindings; full custom gathering callbacks and native stock factories. |
 | Events and alarms/conditions | `server.h`, `client_subscriptions.h` | First-class event creation/trigger and event monitored items; alarms/conditions native-first | Events are common; alarms/conditions are broad generated models. |
-| PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Native-first plus common MQTT connection, publisher, subscriber, and config byte-string wrappers | PubSub is extensive and config-heavy. open62541 owns the MQTT integration; the facade should avoid duplicating generated config structures. |
-| Async services | `client_highlevel_async.h`, `server.h` async operations | Native-first, with selected callbacks only when a concrete workflow needs them | Async callbacks can be C89, but full async service mirroring is large. |
+| PubSub and MQTT | `pubsub.h`, `server_pubsub.h` | Full generated public configs, CRUD/state/offset bindings, custom policy callbacks and common MQTT helpers | open62541 owns transport, scheduling and codecs; facade conversion preserves records and 64-bit identities. |
+| Async services | `client_highlevel_async.h`, `server.h` async operations | Generated typed async client services and full subscription/event callback records | Typed local read/write/call submissions and cancellation preserve native completion; full value-source completion and configuration/plugin boundaries preserve native ownership. |
 | File/json server config | `server_config_file_based.h` | Explicit JSON bytes/file constructors plus native config callback | Useful, but file I/O must stay explicit at the application boundary. |
-| Logging and event loop plugins | `plugin/log*.h`, `plugin/eventloop.h` | Native config callback initially | These are integration hooks, not OPC UA domain APIs. |
+| Logging | `plugin/log.h` | First-class C89 callback with every upstream level/category, constructor configuration, and destination replacement | Capture initialization, runtime, security, event-loop, and destruction messages without depending on a logging library. |
+| Event loop plugins | `plugin/eventloop.h` | Full native-backed C89 method tables and stock factories | Native timer, transport and interrupt mechanisms remain unchanged; receive buffers borrow directly. |
+
+## Generated C89 public model
+
+Include `<cpkt/opcua_types.h>` for all 388 types in the bundled standard public
+schema graph. This includes request/response records, nested arrays, attributes,
+PubSub configuration records, enums and opaque aliases. Types and field names
+follow upstream, replacing `UA_` with `cpkt_opcua_`; existing lowercase
+convenience records remain supported. No upstream private transport types are
+exposed. Generated type completeness is checked against the native count and
+every native type index at compile time.
+
+`tools/opcua/generate.py` copies the installed upstream tools into the build tree
+and adds a small emitter hook after `CGenerator.write_definitions`.
+`c89_emitter.py` uses that generator's already parsed and filtered type graph,
+its struct/enum declaration routines and the public client service declarations.
+There is no second schema parser. Native dependency builds, their public type
+layouts and their ABI are unchanged. A changed upstream hook, unsupported
+builtin/class, missing member type, or mismatched native table fails generation
+or compilation before tests/package production. The extra-schema/table options
+are for regression fixtures, not an installed custom-type registration API.
+
+The 25 builtin representations form the small maintained foundation. Boolean
+is a C89 byte with zero/nonzero truth; short/int carry exact 16/32-bit values
+on the supported target matrix. UInt64, Int64 and DateTime use two unsigned
+32-bit words, most significant first. Signed values use two's-complement bits;
+for example INT64_MIN is `{0x80000000U, 0U}`. The bridge widens before shifting
+and uses bit-preserving copies for signed native values. Native byte order,
+word alignment and C89/native nested struct layouts need not match. All ordinary
+schema member offsets in both representations are generated with `offsetof`.
+
+The public descriptor describes a type, not an opaque payload. Payloads are
+ordinary structs. Each type has generated `init/new/copy/clear/delete/equal`
+helpers and an index for `cpkt_opcua_type_at`. The shared recursive bridge
+handles optional pointers, union selections, arrays and nested records;
+Variant dimensions, null versus empty arrays, recursive diagnostics, all
+DataValue flags/picoseconds, and encoded/decoded ExtensionObjects are preserved.
+Unknown custom native descriptors fail explicitly instead of being reinterpreted
+as a standard type. Recursive conversion is bounded to 128 levels.
+
+Initialize destination values empty, clear before reuse, and use the facade's
+clear/delete helpers to release owned results. Copies own all their allocations,
+even when the input Variant or ExtensionObject is borrowed. Clearing caller-built
+NODELETE values preserves borrowed payloads/dimensions. Caller-built borrowed
+strings, arrays and struct members must not be cleared as owned values. Failed
+copy/decode/service conversions leave the output empty, including allocation
+failure. `type_equal` returns false if conversion/allocation fails.
+
+The 14 `cpkt_opcua_client_service_*` bindings mirror the public synchronous
+service calls enabled in this bundle: read/write, historyRead/historyUpdate,
+call, addNodes/addReferences/deleteNodes/deleteReferences, browse/browseNext,
+translateBrowsePathsToNodeIds, registerNodes/unregisterNodes. They return a
+conversion status. A successful conversion can still contain an upstream service
+error: inspect `responseHeader.serviceResult` and per-operation statuses.
+`cpkt_opcua_server_read_typed` and `server_write_typed` expose complete native
+DataValue operations; server write returns the upstream operation status. The
+binary encode/decode helpers delegate to the upstream codec and materialize a
+message just as that codec does. They make no streaming claim.
+
+Verification covers every empty and populated standard type against independently
+constructed native values and identical wire bytes, nested 64-bit array read/write
+against a native server, browse/error responses, borrowed ownership, partial
+allocation failures, strict C89/C++98 compilation, exact public exports and
+Valgrind. Separate generated schema fixtures exercise optional fields, union
+branches/arrays, invalid selections and 64-bit option-set constants. The installed
+C89 example exercises typed server read/write too.
+
+The standard graph and its indices are part of the new public facade surface.
+Dependency upgrade review must compare generated layouts, indices and semantics
+against the last released bundle alongside the existing ABI checks. Generated
+model coverage is separate from handwritten public-interface coverage. PubSub
+component configuration, custom security/event-loop/nodestore plugins, full
+configuration records and custom datatype registration have C89 bindings under
+the strict public API contract. The ownership rules below describe those
+bindings. Runtime, target-matrix and package verification remain separate
+shipment gates.
+
+### Native configuration ownership
+
+`ClientConfig_new` and `ServerConfig_new` allocate standalone native-backed
+configurations. Configure ordinary values with `getSettings`/`setSettings`, and
+install callbacks, logging, event loops and security plugins through their
+separate configuration APIs. Settings getters return owned C89 values into an
+empty output; clear those values once. Settings setters stage conversions before
+replacing native values. Application context pointers remain borrowed.
+
+`client_get_config_typed` and `server_get_config_typed` return a borrowed view of
+the actual handle configuration. Serialize configuration access with its handle
+and configure it before connection/startup. Do not independently clear or delete
+a borrowed configuration. Successful `newWithConfig_typed` transfers the same
+configuration wrapper to the new handle. Native client construction failure
+preserves the standalone configuration; native server construction failure
+consumes it and leaves the standalone wrapper empty. Failures before invoking
+the native constructor preserve the input.
+
+Standalone server configurations can install full access-control and history
+database callbacks and global node lifecycle callbacks. The facade reserves its
+eventual server identity before construction, so callbacks issued during native
+construction receive that same handle. It does not construct a temporary native
+server. Callback arguments borrow until return; callbacks must not destroy the
+configuration or handle. Plugin context cleanup ownership transfers only on
+successful installation. Global node lifecycle contexts remain application-owned.
+
+Configuration certificate-group and regular/PubSub security-policy getters
+return configuration-owned views of the actual native plugins, including plugins
+created by native defaults. Their callbacks invoke the current native record and
+private backend context. Public fields are metadata snapshots; changing a view's
+fields does not change configuration. Install owned records through the setters
+instead. Never free, copy or reinstall a borrowed view as an owned plugin. Policy
+array growth preserves view identity. Replacement, explicit plugin clear, and
+configuration destruction invalidate borrowers. Explicit view `clear` forwards
+backend cleanup while quiescent; its view storage still belongs to configuration.
+
+`ClientConfig_copy` preserves native shallow plugin ownership. Ordinary values,
+including user-token policy, namespaces and session settings, are independent
+copies; callbacks retain the original application context pointers. Plugins,
+event loops and custom descriptors are shared as upstream specifies. Clearing
+either configuration can invalidate those shared objects in the other. Keep the
+source facade metadata alive while a copied backend can use it. Copying requires
+an empty standalone destination and preserves both configurations on failure;
+it does not create independently owned backend instances.
+
+### Typed services and subscriptions
+
+The generated client service bindings mirror native `UA_Client_Service_*`
+operations in both synchronous and asynchronous forms. Generic
+`cpkt_opcua_client_service_async` checks the request/response descriptor pair
+before submission. Specialized subscription/monitored-item operations invoke
+upstream's specialized functions, retaining native client bookkeeping. Request
+storage may be released or changed after submission returns; the facade adds no
+pending request buffer or queue. Native timeout, disconnect and destruction
+complete each accepted request once. Destruction may process an already-arrived
+successful response. Do not destroy the client from its callback.
+
+The callback's conversion status is separate from `responseHeader.serviceResult`
+and per-operation statuses. A response is borrowed until callback return; make
+an owned typed copy to retain it. On conversion failure the response is NULL.
+Native cancellation operates on request IDs/handles and does not replace the
+original completion that controls user-data lifetime.
+
+`cpkt/opcua_callbacks.h` exposes every DataValue field, subscription status and
+deletion, monitored-item deletion, and the full named event KeyValueMap with
+arbitrary generated Variants. Registration records are copied during creation;
+caller contexts remain caller-owned until deletion. Subscription creation exposes
+the native scalar subscription ID even if response conversion fails, so the
+caller can delete it. If a successful monitored-item batch cannot be converted,
+delete the known subscription before releasing contexts. Calls on one facade
+handle are serialized as required by its lifecycle contract.
+
+### Public API coverage contract
+
+`tools/opcua/public_api.py` inventories every installed public header using the
+configured target compiler's preprocessor. It includes enabled functions,
+typedefs, enums, complete configuration/plugin records and global defaults.
+System-header declarations and generated native compile assertions are not
+consumer interfaces. Schema declarations and lifecycle helpers are matched
+against the actual upstream-generated C89 model without duplicating its schema.
+
+`tools/opcua/public_api_contract.json` records public bindings, explicit opaque
+field mappings and narrowly explained implementation helpers. The check rejects new or
+changed native declarations, missing C89 declarations, incomplete public
+records, changed enum values and native escape hatches used as bindings.
+Binding existence is a structural gate; behavioral, ownership and lifetime
+tests remain required. The standard check rejects any pending declaration;
+the declaration total includes generated lifecycle helpers.
+Linux-only syslog, Ethernet and filestore declarations follow the target's
+actual header guards; their absence on Darwin does not waive Linux coverage.
+
+Run the standard contract and negative tests with:
+
+```sh
+ctest --preset debug -R '^opcua_public_api_' --output-on-failure
+```
+
+The strict completion gate is:
+
+```sh
+cmake --build --preset debug --target cpkt_opcua_public_api_complete
+```
+
+It fails while any enabled declaration remains pending and writes its coverage
+report only under the build directory. Run the equivalent target for every
+shipped preset before declaring the full interface complete. The standard contract test also runs in strict mode: no pending declaration
+is accepted. Opaque records have explicit field-to-public-access mappings; a
+new native field, missing accessor or native escape binding fails the gate.
+The contract retains the source-header license/copyright notices in `_origin`.
+
+### Typed server operations
+
+The generator derives schema-only server functions directly from `server.h`:
+all specialized attribute reads/writes, all seven non-method node classes,
+context and namespace access, owned session attributes, browse/browseNext,
+path translation, method-call results, object properties and references.
+Names retain the upstream operation spelling as
+`cpkt_opcua_server_<operation>_typed`. Native errors and per-result statuses are
+preserved. In particular, an exported setter can still return
+`BadWriteNotSupported` for an immutable attribute such as BrowseName.
+
+`cpkt_opcua_<Attributes>_default` makes an owned C89 copy of the actual native
+defaults. Outputs must start empty. On conversion failure after node creation,
+the new node is deleted using its native identifier. Tests exercise every node
+class, 64-bit arrays, attribute changes, browse paths and error outputs.
+
+### Typed server timers and reference iteration
+
+`cpkt_opcua_server_addTimedCallback_typed` and
+`cpkt_opcua_server_addRepeatedCallback_typed` install callbacks directly into
+the native server EventLoop. DateTime and callback IDs use the generated
+two-word C89 representation; all 64 bits are preserved. There is no facade
+scheduler or timer queue. Native interval changes, ordering, cancellation and
+missed-execution behavior apply.
+Changing a one-shot timer's interval makes it repeated, including a change
+from inside its callback. Its context then remains borrowed until removal or
+server destruction.
+
+Callback context remains caller-owned. A one-shot timer borrows it until its
+callback returns; a repeated timer borrows it until removal or server
+destruction. A callback may remove itself or another timer. Calls on one handle
+must be serialized, and the server must not be destroyed from its callback.
+Facade bookkeeping survives cancellation of a running callback. Destruction
+removes outstanding native timers before releasing their callback contexts,
+including when an externally owned EventLoop outlives the server. The facade
+does not release the caller's context.
+
+`cpkt_opcua_server_forEachChildNodeCall_typed` invokes the native synchronous
+reference iterator. Each callback borrows converted NodeIds until return.
+Nonzero callback statuses and conversion failures stop native traversal with
+that status. Native browse allocation remains upstream behavior; the facade
+does not gather a second collection of references. Static/shared and
+allocation-failure tests cover past/future deadlines, optional IDs, interval
+changes, reentrant cancellation, shutdown cleanup, inverse references and
+early termination.
+
+### Subscription binding coverage
+
+The public coverage contract recognizes the complete specialized client
+subscription and batch monitored-item interfaces already implemented by the
+C89 facade. This includes synchronous/asynchronous creation, subscription and
+item context access/replacement, native single deletion, and the generated
+modify/delete/publishing/monitoring/triggering service boundaries. Creation
+uses the native specialized functions, retaining their local subscription and
+monitored-item state rather than sending an equivalent raw service request.
+
+All native status, data, event, deletion and specialized completion callbacks
+retain their public data and original application contexts through C89 types.
+The facade adds explicit conversion status to distinguish representation
+failure from native service and per-operation status. Native data-change/event
+batch creation share a typed entry point with an explicit event selector;
+no event fields or nested values are discarded. Single-item monitored-item
+creation helpers and native default factories are also exposed; their ownership
+rules are described below. Complete async attribute/header bindings are
+described below. Full client configuration, public datatype metadata and
+connection-attribute helpers are also covered below.
+Existing native-peer, integration, allocation-failure and destruction tests
+exercise these bindings; coverage classification does not add new behavior.
+
+### Public value constructors and parsing helpers
+
+The generated `cpkt_opcua_STRING`, `GUID`, `NODEID_*`, `EXPANDEDNODEID_*`,
+`QUALIFIEDNAME*`, `LOCALIZEDTEXT*` and `NUMERICRANGE` constructors invoke the
+corresponding native public factories. Names retain native spelling, including
+`EXPANDEDNODEID_STRING_GUID`. Borrowed factories retain the caller's actual
+byte addresses; numeric IDs and GUIDs contain no owned allocation. `_ALLOC`
+and identifier/range parsing factories transfer the native allocation, without
+adding a facade allocation. Native failures can produce partial owned records
+(for example a LocalizedText with only one string allocated); always clear owned
+results. Do not clear borrowed results or independently clear both sides of a
+shallow NodeId-to-ExpandedNodeId promotion.
+
+The native null String, ByteString, GUID, NodeId and ExpandedNodeId values are
+exposed as const public globals. Their values are checked against the actual
+native globals. C89 shorthand macros expose byte strings, allocated strings,
+static literal initializers, namespace-zero identifiers and shallow NodeId
+promotion. `STRING_STATIC` is an initializer, not a C99 compound literal.
+
+`NumericRange_parse` retains every UInt32 dimension endpoint, native overflow
+and validation rules, and native allocation failures. Success transfers the
+dimension allocation into an empty C89 output; failure preserves the previous
+output. `NumericRange_clear` releases owned dimensions and resets the record.
+NULL range text is normalized to an empty string before native parsing, avoiding
+the native number reader's non-NULL-buffer assertion. Range shorthand returns
+an empty range for invalid input, including allocation failure, as upstream does.
+The bridge checks the dimension layout and uses field copies and `memcpy` to
+transfer the allocation without accessing native records through incompatible
+C89 struct types.
+
+Endpoint parsers preserve native URL schemes, IPv6 handling, VLAN/PCP validation,
+optional paths, and partial outputs on failure. Host/target/path strings borrow
+slices of the original counted input; they must not be cleared. Initialize all
+outputs before use; omitted ports and paths retain their native unchanged-output
+behavior. Ethernet URL parsing remains available even where native Ethernet
+transport is unavailable. No URL, port or path normalization is added.
+
+Number readers forward native digit/base and UInt32 wraparound behavior and
+return the native consumed-byte count. Constant-time comparison calls the
+native implementation, retaining its full-byte traversal. These helpers and
+borrowed constructors do not allocate. Static/shared tests compare native binary
+representations, borrowed pointer identity, maximum scalar values, malformed
+and counted inputs, all byte-sized number bases, partial parser outputs and
+per-allocation failure results. Generator regression tests reject missing or
+unsupported constructor declarations and missing null constants.
+
+### Core client connections, discovery, sessions and timers
+
+The generated `cpkt_opcua_client_<native suffix>_typed` bindings expose 24
+public core client operations: synchronous/asynchronous connection and
+disconnection, SecureChannel-only operations, current-session activation,
+session transfer, authentication-token retrieval, full client state, iteration,
+interrupt-driven execution, reverse connection listening, endpoint/server
+discovery, and namespace lookup/registration. They call the corresponding
+native operations without adding discovery or changing authentication policy.
+`connectUsername_typed` preserves `allowNonePolicyPassword`; unlike the older
+convenience connection helper, it does not enable cleartext password policies.
+Only `connect_typed` and `connectAsync_typed` inherit native NULL-URL reuse.
+
+`SecureChannelState` and `SessionState` expose every native enum value; all
+`getState_typed` outputs are optional. A valid state query returns Good while
+reporting native connection status separately. `run_iterate_typed` preserves
+native errors, including BadConnectionClosed during asynchronous disconnect.
+
+Discovery returns complete owned arrays and nested records. Required outputs
+must be empty before use; release them with `cpkt_opcua_array_delete` and the
+matching generated descriptor. A native or conversion failure leaves the
+array NULL and count zero. Namespace URI and session-token outputs are owned
+and use their corresponding type clear operations. Namespace index outputs
+remain unchanged on failure; counted URI inputs preserve embedded NUL bytes.
+
+Session transfer copies the authentication token and nonce before returning,
+including asynchronous submission. The recipient must have no session and use
+the original user identity and matching endpoint/token policies. Native
+SecureChannel-only asynchronous connection does not discover those policies;
+the caller must configure them explicitly. The integration test prepares that
+public native endpoint configuration, then transfers and reads through both
+synchronous and asynchronous paths. Full C89 configuration records and
+plugin slots are exposed separately; this native test setup verifies the
+underlying session mechanism.
+
+The four timer bindings retain native names, all 64 bits of DateTime/IDs, the
+original facade client, and application context. The native EventLoop is the
+only scheduler. One-shot context lives until dispatch, removal or destruction;
+repeated context lives until removal or destruction. Changing a one-shot to a
+repeated timer retains that context. Callbacks may change/remove timers and
+submit async work, but must not destroy their client or recursively iterate its
+EventLoop. Equal deadlines have no insertion-order guarantee. Client destruction
+preserves native due-callback dispatch while disconnecting, then frees bridge
+state. With a caller-owned external EventLoop it removes only its remaining
+timers, retaining the loop and unrelated application timers.
+
+Strict C89 static/shared and deterministic allocation-failure tests cover full
+endpoint/application discovery records, server-network discovery status parity,
+namespace ownership, session transfer and reactivation, reverse connections,
+timer reentrancy, complete IDs, interrupt registration/cleanup, and native
+destruction timing. The peer does not enable multicast discovery, so
+FindServersOnNetwork exercises native rejection/status behavior there. Schema
+tests separately cover complete ServerOnNetwork record conversion.
+
+### Single monitored items and native defaults
+
+`cpkt_opcua_client_MonitoredItems_createDataChange_typed` and
+`cpkt_opcua_client_MonitoredItems_createEvent_typed` invoke the exact native
+single-item helpers. Inputs borrow during the call; nested result fields are
+owned and must be cleared. Function return reports C89 conversion errors;
+`result.statusCode` reports the native operation status. All callbacks are
+optional. The original context remains borrowed until native deletion. Callback
+data borrows until return and includes complete DataValues or event field maps.
+Reentrant deletion from a notification uses the native asynchronous delete
+operation; synchronous service calls cannot recursively run the native loop.
+If result conversion fails after native creation, delete the known subscription
+to release its items before freeing contexts. The facade does not manufacture a
+deletion callback when native code rejects an unknown subscription before
+registering an item.
+
+`cpkt_opcua_CreateSubscriptionRequest_default` obtains actual upstream defaults.
+`cpkt_opcua_MonitoredItemCreateRequest_default` also preserves the native factory's
+shallow assignment of the supplied node ID. Its string/byte-string storage stays
+borrowed: copy the request to obtain ownership, or detach the node ID before
+clearing the original. These factories require empty outputs and allocate
+nothing. Tests compare their binary encodings with independent native factories,
+including string node ownership, and compare single-helper failure statuses and
+deletion timing with direct native calls.
+Rejected event filters retain their complete owned diagnostic arrays, including
+partial conversion cleanup when allocation fails after native results exist.
+
+### Synchronous high-level client bindings
+
+Every enabled declaration in upstream `client_highlevel.h` is generated as
+`cpkt_opcua_client_<upstream-name>_typed`: 75 functions covering attributes,
+all eight node classes, references, browse/continuations, path translation,
+methods, namespace lookup and raw/modified/event history reads and updates.
+Generation rejects unknown argument shapes and callback signature changes.
+Each binding invokes its corresponding native entry point; service behavior,
+client serialization and remote state remain open62541's responsibility.
+
+Inputs borrow until return. Owned record outputs must start empty and use
+their generated clear function. Array outputs use `cpkt_opcua_array_delete`
+with the matching descriptor. Record-returning native functions instead take
+an owned C89 result pointer and return conversion status; the result retains
+the native service/operation status. Mutable-spelled history update values,
+access-level values and namespace URI arguments are borrowed inputs.
+`NamespaceGetIndex` leaves its index output unchanged on failure.
+
+Method output count and array are optional as a pair: if either pointer is
+NULL, upstream discards outputs and the other caller output is unchanged.
+Non-Bad results such as `GoodClamped` still return owned method outputs.
+Attribute reads retain values for plain Good with lower status-information bits.
+The native read helper rejects other top-16 status codes, including `GoodClamped`
+and Uncertain/Bad: those statuses are returned with no value, as upstream does.
+Node creation accepts an optional assigned-ID output. If conversion of that
+output fails after remote creation, the remote node remains created. Recover
+through the requested ID or browsing; the facade does not invent a rollback
+service or hide this failure behind another network operation.
+
+`cpkt_opcua_HistoricalIteratorCallback` receives the original client/context
+and one converted native page at a time, including full modified-history
+metadata or event fields. Callback arguments borrow until return. Copy them
+to retain data, and do not destroy the client within a callback. The facade
+does not accumulate history pages. Returning false or a conversion failure
+stops through the native iterator and releases continuation points; conversion
+failure skips the application callback and is returned after native cleanup.
+Child iteration similarly preserves native ordering and status-bit aggregation:
+a callback error does not cause native iteration to stop.
+
+Strict C89 static/shared tests exercise every entry point against an independent
+native server. Tests cover exact 64-bit limits, optional outputs, native
+read-only errors, history pages and continuation release, and conversion
+allocation failures after native results have been produced.
+
+### Complete asynchronous high-level client bindings
+
+All 59 public operations and 31 callback types in `client_highlevel_async.h`
+are generated from that header, including its write-declaration macro.
+`cpkt_opcua_client_<upstream-name>_typed` preserves the async suffix and invokes
+that exact native helper. The generalized `AsyncService_typed` accepts genuine
+service request/response descriptors beyond the 14 convenience service pairs;
+request/response header roles are checked before entering native code.
+
+Callbacks retain their original client, application context and native request
+ID. An extra conversion status distinguishes C89 representation failure from
+native status: failure gives NULL converted data and still invokes completion.
+Native NULL results stay NULL. Converted data borrows until callback return;
+copy it to retain it. Reentrant submissions use the native client mechanism.
+Do not destroy a client from its callback. Service-style helpers accept NULL
+callbacks without allocating facade callback state; typed attribute reads
+require callbacks, as their native helpers do. Request ID output is optional
+and starts zero before an attempt. Submission errors release bridge state and
+produce no callback; accepted state lasts until one native completion.
+
+Requests borrow during submission only. The native function encodes each
+request before returning; the facade adds no queue or scheduler. Mutable
+`sendAsync*Request` inputs retain native updates to the header's timestamp,
+request handle and timeout hint. Nested input ownership and the restored
+authentication token remain with the caller. Const generalized inputs remain
+borrowed inputs. Method completion carries the full CallResponse, including
+multiple outputs and per-method statuses such as `GoodClamped`.
+
+Native behavior is preserved even where helpers differ. A value-attribute read
+receives a complete DataValue and its per-operation status; the native typed
+NodeClass helper returns `BadInternalError` with NULL when a missing node gives
+no value. Async array-dimension reads return a Variant. Async node helpers do
+not use their `outNewNodeId` argument: it remains unchanged, and complete
+assigned IDs are received in the AddNodesResponse callback. Direct native
+probes lock these behaviors into the tests; the facade does not synthesize
+another output or translate native errors into different ones.
+
+Native cancellation and secure-channel renewal retain their IDs, counts and
+statuses. Timed-out operations complete through the native event loop. Native
+client deletion closes the session before clearing it, so pending requests may
+complete with `BadSessionClosed` (or time out first); the facade forwards that
+status and frees each bridge exactly once. Tests pause the independent peer to
+prove timeout/session-close completion, exercise cancellation and reentrant
+submission, and inject conversion failure after native callback data exists.
+Overflowing method input counts are rejected without attempting native cleanup
+on a nonexistent conversion buffer, for both sync and async helpers.
+
+### Value-source and method producers
+
+The generated `cpkt_opcua_CallbackValueSource` and `cpkt_opcua_MethodCallback`
+retain the full upstream signatures with C89 records. Install copied source
+slots with `cpkt_opcua_server_setVariableNode_callbackValueSource_typed` and
+method callbacks with `cpkt_opcua_server_setMethodNodeCallback_typed`. Original
+node, method, object and session contexts pass through unchanged. Get returns
+the original typed method pointer; callbacks installed outside this full C89
+interface return BadNotSupported rather than an ABI-incompatible cast.
+Callback replacement is safe inside a running callback. Callback NodeIds,
+ranges and input arrays are borrowed until return. Do not retain or clear them.
+Read/method outputs own C89 allocations; write input values remain borrowed.
+
+Returning GoodCompletesAsynchronously keeps the original C89 read/write value
+address or method output-array address alive. Use the corresponding
+`setAsyncReadResult_typed`, `setAsyncWriteResult_typed` or
+`setAsyncCallMethodResult_typed` after returning. Native open62541 owns the
+actual operation queue, completion scheduling, timeouts and cancellation.
+The facade owns representation/identity metadata only. A Good completion
+invalidates the C89 address immediately. Conversion failure during completion
+preserves it for retry. Method output count is fixed, including zero-output
+methods whose addresses remain distinct. Do not complete an active callback,
+resize the output array, or access it after cancellation/completion.
+
+Set `cpkt_opcua_server_set_async_operation_cancel_callback_typed` before
+startup. It receives the producer's original C89 address until callback return;
+required cleanup still runs with a NULL hook. An existing native cancellation
+hook also receives its original native address. Initial async output conversion
+failure invokes cancellation before releasing the C89 address and reports that
+conversion status instead of queuing the operation. Do not clear/complete the
+cancelled output or recursively cancel the same operation/context. Destruction
+already cancels all native work; facade cancel requests during destruction are
+no-ops. All calls on a server must be serialized, and callbacks must not destroy
+that server.
+
+Open62541 adds/filters timestamps after read producers return. Typed local
+submissions and `server_iterate` synchronize this metadata once into newly
+pending C89 results before returning to their caller. Later application edits
+are retained. Native escape-hatch event-loop callers can explicitly invoke
+`cpkt_opcua_server_refresh_async_producer_metadata` after native processing.
+Partial async outputs are converted before upstream continues, retaining the
+native cancellation/result behavior for values prepared before deferral.
+
+For direct native borrowing, use `valueSourceBorrow_typed` for a read or
+`methodResultBorrow_typed` for a selected method slot. Both borrow the stable
+native storage already provided by `cpkt_opcua_history_value`; its name reflects
+its first history-backend use, but the same holder supports these producers.
+The bridge passes native payload/dimension addresses with NODELETE and makes
+no payload copy. Normal C89 outputs require representation conversion. The
+holder must remain unchanged and alive through every native use, including
+encoding and local completion callbacks; quiesce all borrowers before set/free.
+Upstream controls any subsequent copying: this open62541 version copies a
+synchronous borrowed read value inside its native read implementation. The
+facade preserves that mechanism. NULL holder resumes normal C89 conversion.
+
+Native-peer and C89 tests cover full inputs/contexts/ranges, exact signed 64-bit
+outputs, synchronous/deferred/error results, timestamp synchronization,
+reentrant callback replacement, cancellation/shutdown, partial preparation
+failure, every allocation during registration/conversion/completion, zero-output
+identities, and native borrowing without a facade payload clone. External
+double-pointer value sources are covered by the external-value binding below.
+
+### Native node creation
+
+The complete typed callback-source variable and method creation interfaces are
+available: `addCallbackValueSourceVariableNode_typed`, `addMethodNode_typed`,
+`addMethodNodeEx_typed`, `addMethodNode_finish_typed`, `addNode_begin_typed` and
+`addNode_finish_typed`. They call the corresponding native public function;
+the facade does not substitute its own creation or begin/finish algorithm.
+All attributes and Argument arrays use generated C89 types, including exact
+64-bit/nested values. The generic begin function takes a C89 Type descriptor
+for its attribute record. Requested/assigned method argument IDs and optional
+output IDs retain the public native behavior.
+
+Scoped dispatch metadata follows the actual native out-ID address, populated
+before constructors/value-source callbacks run. Automatically assigned IDs,
+recursive creation, original contexts, and reentrant callback replacement work
+during the native call. Replacement wins over the original staged registration.
+After return, live nodes retain their dispatch record without another metadata
+allocation. Native failure may leave an assigned callback-source node alive;
+the facade preserves its ID and callbacks rather than silently changing that
+native rollback behavior. Output IDs own storage and must be cleared even on
+failure. Output conversion failure after successful native creation clears all
+C89 outputs and rolls back the new node; method argument properties are removed
+before their method. Existing native failures use upstream's own cleanup rules.
+
+C89/native tests cover all six functions, constructors that immediately read
+or call newly created nodes, automatic and string IDs, explicit argument IDs,
+optional outputs, nested creation, reentrant replacement, rejected constructors,
+independent native failure parity, dynamic attribute validation, every
+allocation-failure position, and failed output conversion/property rollback.
+
+### Configuration key/value maps
+
+The full native `KeyValueMap` operation surface is available through
+`cpkt_opcua_KeyValueMap_*` in `<cpkt/opcua_util.h>`. Maps retain the public
+`mapSize`/generated `KeyValuePair` fields and linear, namespace-aware,
+byte-exact key lookup. NULL const maps are empty. `get` and `getScalar` return
+borrowed pointers into actual C89 storage without conversion or a temporary
+native cache. An insertion can reallocate the array; removal moves its last
+entry into the deleted slot. Existing borrowed views must respect these
+native invalidation rules.
+
+`set` and `setScalar` deep-copy inputs. `setShallow` and
+`setScalarShallow` copy the key and borrow the original value payload, forcing
+`DATA_NODELETE` exactly as the upstream implementation does. Caller-owned
+payloads and array dimensions must remain alive until the map stops using them;
+clearing the map does not release them. Do not pass a map-owned value as the
+source of shallow replacement. Deep replacement may use the existing value
+as its source. Notification maps remain borrowed and must not be cleared.
+`copy` needs an empty destination. `merge` stages a complete replacement and
+preserves both maps on allocation failure, including self-merge. Removal still
+succeeds when shrinking its allocation fails, preserving native behavior.
+
+The representation-specific implementation in `src/opcua_map_impl.h` adapts
+open62541's handwritten map operations to C89 record layouts, preserving its
+MPL-2.0 copyright/license notice. It does not duplicate schema definitions.
+Native peer tests compare statuses, shallow pointer identity, lookup type
+checks, key replacement/removal order and empty-array distinctions. C89 tests
+also cover exact signed 64-bit values, namespace and binary keys, alias-safe
+deep overwrite, self-merge, cleanup, and failure at every allocation in deep
+insertion, replacement, shallow insertion, copying and merging.
+
+### Generated public plugins
+
+Handwritten plugin records have no upstream schema generator. The maintained
+plugin emitter derives their complete declarations and typed trampolines from
+the actual installed public headers. Unknown fields, callback signatures and
+conditionals fail generation rather than silently dropping public slots.
+
+`cpkt_opcua_server_set_access_control_plugin` installs the complete enabled
+AccessControl record before startup. Callback slots and token policies are
+copied; original caller context transfers only on successful installation.
+Callbacks borrow a facade-owned policy copy and converted schema inputs.
+`clear` releases caller context only, never policy arrays. Failed authorization
+conversion denies the operation. A failed closeSession conversion still calls
+closeSession with NULL sessionId and the original sessionContext, and logs the
+failure, allowing the application to release its session resources.
+
+`cpkt_opcua_server_set_history_database_plugin` exposes all ten history operations
+and clear. Mutable response/result records own their C89 allocations and are
+converted back after the callback. Allocate output records with typed new/array
+helpers. History-data pointers alias the payloads inside the converted response,
+matching native callback semantics; the temporary pointer array is borrowed.
+Native result updates are staged so a failed output conversion leaves the
+original native storage intact and reports the failure through its status.
+Void notification failures go to the configured logger. No file staging or
+additional history queue is introduced.
+
+Replacing a plugin stages all allocations before clearing the installed plugin.
+Failure preserves the previous plugin and leaves the new context with its
+caller. Static/shared C89 tests invoke every enabled callback slot across the
+native boundary. Allocation-failure tests cover staging, partial nested arrays,
+closeSession cleanup and history-result conversion. Generated plugin records,
+constants and all generator inputs are included in package/source checks.
+
+## History storage and borrowed values
+
+The generated `cpkt_opcua_HistoryDataBackend` exposes every public upstream
+storage callback. The authoritative inputs are upstream's handwritten public
+history headers; upstream has no generator for those records. Their callback
+signatures, timestamp match enum, collection strategy, per-node settings and
+numeric-range declarations are derived and checked during generation. Unknown
+fields or unsupported signatures fail generation.
+
+A backend is the application's historical-value storage provider. It is separate
+from the higher-level `HistoryDatabase` plugin that handles history services.
+Use `cpkt_opcua_server_set_default_history_database(server, initial_capacity)`
+to install upstream's default gathering/database, then
+`cpkt_opcua_server_register_history_backend(server, &node, &settings)` for each
+historized node. Set the node's Historizing and HistoryRead/HistoryWrite access
+attributes as needed; registration does not change them. Capacity and maximum
+response size must be nonzero. The default gathering can grow during registration.
+
+The settings/backend records are copied. On successful registration, backend
+context ownership transfers to its `deleteMembers` callback. Failed or duplicate
+registration leaves context ownership with the caller and preserves existing
+registrations. Each successful registration has its own cleanup callback; shared
+contexts need application-managed reference counting. `userContext` is borrowed.
+Replacement of the database or server destruction stops polling, destroys native
+gathering state, then invokes each backend's `deleteMembers` once. That callback
+can free its persistent values. No callback inputs may be retained without an
+explicit copy.
+
+Choose the native `getHistoryData` high-level callback or the complete low-level
+read interface. Both preserve the upstream mechanism. History callbacks use C89
+schema records, including two-word Int64/DateTime on 32-bit targets. Mutable
+outputs own C89 allocations and are converted into staged native outputs, then
+cleared by the facade. `copyDataValues` receives an empty array of `valueSize`
+records and must report no more than that many values. Excess counts are rejected
+before native output is changed. Numeric-range dimensions borrow until return.
+These are upstream's materialized history service outputs, with no facade queue,
+file spool, or change to the storage mechanism.
+
+### Persistent values for `getDataValue`
+
+Native `getDataValue` returns a **borrowed native DataValue pointer**. A converted
+stack record, temporary allocation freed at callback return, or one shared slot
+replaced by the next callback cannot meet that contract. The C89 callback instead
+returns a backend-owned `const cpkt_opcua_history_value *`. The facade forwards
+that actual native public DataValue address directly to open62541. It does
+not convert/cache the returned value per call or release it after the callback.
+The input NodeIds borrow their byte payloads, so this pointer-return trampoline
+performs no allocation.
+
+Create stored objects with `cpkt_opcua_history_value_new(&value, &stored)`.
+Creation deep-copies the ordinary C89 DataValue; the original can be cleared or
+changed immediately. Distinct retained values need distinct objects. Returning
+another object must leave earlier borrowed values valid. For a valid index,
+return a valid stored value as required by the native default history engine;
+the facade preserves NULL, but upstream may dereference it.
+
+`cpkt_opcua_history_value_set(stored, &value)` stages a deep copy and preserves
+the old value on failure. The object address remains stable, but **all borrowers
+must finish before set or free**: replacing it invalidates the old nested data.
+There is no automatic reference counting, locking or detection of outstanding
+native borrowers. Follow the upstream server synchronization rules and keep
+storage unchanged throughout a history operation. `history_value_get` produces
+an independent owned C89 copy into an empty output; clear it with
+`cpkt_opcua_DataValue_clear`. Neither get nor set exposes a native pointer.
+`history_value_free(NULL)` is safe. Ownership comments accompany these APIs and
+`getDataValue` in the generated public header for clangd.
+
+The storage object and borrowed-pointer bridge require no upstream ABI change.
+The bundle includes a small upstream allocation-safety patch: default history
+constructors report empty records on allocation failure, gathering growth keeps
+existing storage on realloc failure, and NodeId-copy failures are propagated. Parsed numeric ranges are released
+after either backend read path, including failure.
+Convenience installation turns empty constructors into BADOUTOFMEMORY and
+retains the prior installed database. Stock facade factories retain the native
+empty-record result. These guards do not change successful native history behavior.
+
+### Stock memory backend factories
+
+`cpkt_opcua_HistoryDataBackend_Memory` and `_Memory_Circular` wrap the native
+factories and expose every available callback slot with C89 arguments. Zero
+capacities retain native defaults; constructor allocation failure returns an
+empty record. The growable backend retains its NULL `getHistoryData` slot. The
+circular backend retains native capacities, overwrite order, and history reads.
+Replacing callback slots on a returned record is supported: the native circular
+high-level reader calls those replacements through the same C89 bridges.
+
+Callback inputs borrow until return. Calling a factory-returned callback produces
+caller-owned output records, arrays and continuation points; initialize them
+empty and clear them even on failure. This differs from implementing a custom
+callback, whose outputs the bridge consumes and clears after conversion.
+`providedValues` is optional when calling a stock `copyDataValues` slot.
+
+Stock `getDataValue` returns a const opaque handle to the actual native stored
+DataValue, with no copy, cache, or per-value allocation. Other lookup calls do not
+invalidate it. Replacement, removal, circular overwrite and backend destruction
+retain their native lifetime effects. Only objects created by `history_value_new`
+may be set or freed; never cast away const on a stock borrow. `history_value_get`
+can copy either kind into owned C89 storage. Finish all borrowers before mutation.
+
+A factory record owns one context. Copies alias that context and cannot be
+destroyed independently. `_Memory_clear` invokes native cleanup, releases the
+facade context and resets the record; NULL and empty records are safe. The native
+`deleteMembers` callback also releases the context, leaving an invalid record as
+upstream does. Call exactly one destructor per context. Successful installation
+through `server_register_history_backend` transfers that ownership to the server.
+
+### Gathering callbacks and stock database factories
+
+`cpkt_opcua_HistoryDataGathering` exposes all seven native slots, including
+registration, settings lookup/update, polling, value notifications and cleanup.
+`cpkt_opcua_HistoryDataGathering_Default` and `_Circular` return records with
+callable C89 slots. Default grows when registering nodes, including from zero
+capacity. Circular retains its fixed native node capacity; it does not overwrite
+registered nodes. Constructor allocation failure returns an empty record.
+
+These stock gatherings **borrow backend contexts**. Registration copies scalar
+settings and callback slots, and owns the conversion metadata only. Deleting the
+gathering never deletes a backend context. Stop every active poll before deleting
+it; register nodes before starting polls if registration can grow native storage.
+Growth can invalidate native settings pointers and polling contexts. An update
+changes the native settings in place and retains native polling stop behavior.
+`cpkt_opcua_gathering_default_pauseRecording` affects native VALUESET recording;
+it neither stops polling nor removes stored values. Record copies alias one
+context: call one `deleteMembers`, which leaves the record invalid as upstream does.
+The server convenience registration described above has a separate, explicit
+backend ownership transfer and automatic polling cleanup.
+Stock registration accepts a NULL server when the native operation permits it.
+Starting polling binds that node's callbacks to the supplied facade server; a
+failed start preserves its previous association. NULL settings lookup and ignored
+notifications for unregistered nodes do not retarget active polling callbacks.
+Native backend callbacks with a NULL server retain NULL at the C89 boundary.
+
+A gathering settings getter returns `const cpkt_opcua_history_settings *`, an
+opaque borrow of the **actual native public settings record**, without allocating
+or caching a snapshot. Never set/free a stock borrow or cast away its constness.
+`cpkt_opcua_history_settings_get` reads its five public fields into a C89 record
+without allocating; backend callbacks, backend context and userContext remain
+aliases. Custom gathering implementations create persistent owned settings with
+`history_settings_new`, replace quiescent settings with `history_settings_set`,
+and release them with `history_settings_free`. Distinct retained settings require
+distinct objects. Replacement preserves the root address and preserves the old
+record on allocation failure. Finish all borrowers before replacement/free:
+conversion metadata can be borrowed through native settings copies. These helpers
+never acquire or release backend context ownership.
+
+`cpkt_opcua_HistoryDatabase_default(gathering)` returns the native database with
+callable C89 slots; unavailable native slots remain NULL. Success transfers the
+gathering context to database `clear`; constructor failure leaves it with the
+caller. Backend ownership remains the gathering implementation's policy. Copies
+alias one context, and exactly one `clear` is required after stopping polling.
+Installing it with `server_set_history_database_plugin` transfers database
+cleanup to the server only on successful installation.
+
+Initialize mutable outputs and clear them even on failure. Direct reads require
+the native alias arrangement: `response.results` contains decoded empty
+HistoryData payloads, and each `historyData[i]` points to its corresponding
+payload. Owned DECODED payloads and borrowed DECODED_NODELETE payloads are both
+supported. Conversion preserves retained payload root addresses and their
+ownership encoding; the result array itself may be replaced, so obtain its
+address again after return. Custom database callbacks preserve the same native
+payload aliases when returning their output. No facade history queue or storage
+mechanism is introduced. A conversion failure after a native update does not
+undo that update. Native attribute-read allocation failures can surface as
+BadUserAccessDenied or BadHistoryOperationInvalid; the facade preserves them.
+
+### Collection policy and polling
+
+USER leaves value insertion to the application. VALUESET forwards native write
+notifications to `serverSetHistoryData`. POLL uses native local monitored items;
+start/stop with `cpkt_opcua_server_history_start_poll` and `_stop_poll`.
+Register all nodes **before starting any polling**. Later registration is rejected
+because growing upstream's gathering array would move monitored-item contexts.
+Database replacement/destruction stops polling automatically. Application code
+must still obey upstream restrictions on destruction/reconfiguration from inside
+callbacks. Complete C89 custom `HistoryDataGathering` callback records and
+native-backed stock memory/circular backend factories are available, preserving
+the native collection and storage mechanisms.
+
+Static/shared C89 tests exercise low-level reads, bounds, numeric ranges, Int64
+values, high-level continuation points, all write/update/delete hooks, duplicate
+registration and cleanup through the native default history engine. Allocation
+failure tests cover constructors, registration/growth, persistent new/get/set,
+old-value preservation and old-database preservation. Polling tests cover
+start/stop, registration closure, replacement and server destruction with active
+polling. Native attribute-read allocation failures retain upstream
+fail-closed access/history checks. Valgrind verifies range cleanup.
 
 ## Facade API Tiers
+
+### Logging plugin
+
+`cpkt_opcua_log_config` carries a callback, borrowed user data, and a minimum
+level. Zero means TRACE; a NULL callback explicitly silences output. Passing a
+NULL configuration to a logger-aware constructor retains upstream's default
+stdout logger. Existing constructors preserve that default as well.
+
+Use `cpkt_opcua_server_new_with_logger`,
+`cpkt_opcua_server_new_from_json_with_logger`,
+`cpkt_opcua_server_new_from_json_file_with_logger`, or
+`cpkt_opcua_client_new_with_logger` to capture configuration and initialization
+logs. `cpkt_opcua_server_set_logger` and `cpkt_opcua_client_set_logger` replace
+the callback/filter in place, preserving the plugin address borrowed by
+upstream event-loop and security plugins. Configuration is copied. User data
+and cleanup belonging to an existing native logger are preserved until upstream
+clears that plugin; the original context is restored for its cleanup callback.
+The chosen facade destination is retained if a failed security setup clears the
+upstream server configuration, so another configuration attempt uses the hook.
+Callback user data must remain valid through destruction and failed construction;
+it is never freed by the facade. Configure while no other thread operates on that handle.
+Native extensions must not replace or free the configured logging plugin.
+
+Callbacks run synchronously on the emitting thread and receive one borrowed
+record with the original level/category and an explicitly sized, NUL-terminated
+message. Formatting uses `UA_String_vformat`, including upstream `%S`, `%N`,
+and `%Q` conversions, without a fixed-size truncation buffer. Empty messages
+and embedded NUL bytes are preserved. Each formatted message is freed after
+the callback returns; no message sequence is buffered or spooled. A formatting
+or allocation failure produces a diagnostic record with nonzero
+`format_status`. The facade does not add timestamps, prefixes, or newlines.
+
+Callbacks must not reenter, reconfigure, or destroy the emitting handle. They
+may overlap under concurrent upstream use, so applications must synchronize
+their own destination state. FATAL identifies severity; an application decides
+whether to terminate. The SDK is built with upstream `UA_LOGLEVEL=100`, allowing
+every level; a callback cannot recover events compiled out by another upstream
+build. Explicit application output and upstream interactive key-password
+prompts are not log-plugin events.
+
+The bundle patches one upstream bypass: ECC/XDHE OpenSSL key-derivation errors
+are dispatched through the owning security policy's logger instead of dumping
+the error queue directly to stdout. Queue entries are delivered individually;
+existing upstream function signatures and ABI identities are preserved. Disabled
+packet/parser debug dump facilities are not enabled by this bundle.
+
+Static/shared C89 consumers test every level/category and event-loop/security
+plugin reference, constructor/JSON failure logs, filters, destination changes,
+shutdown, special formatting, and messages larger than upstream stdout's fixed
+buffer, plus injected message-allocation failure in Linux static consumers.
+Test-only libpslog integration forwards records directly to `log_view`
+and consumes its output chunks with bounded state. It does not call libpslog's
+terminating `fatal_view` method. No libpslog dependency is added to SDK headers,
+libraries, CMake/pkg-config metadata, or installed files.
 
 ### Tier 0: Baseline Already Present
 
@@ -149,7 +1021,7 @@ above and is the minimum smoke-test surface for package consumers.
 
 ### Tier 1: Current Practical C89 Facade
 
-Tier 1 is the released first-class C89 OPC UA surface.
+Tier 1 provides common first-class C89 OPC UA operations.
 
 - General C89 value layer:
   - scalar numeric widths needed by OPC UA without using C99 names in public
@@ -161,8 +1033,9 @@ Tier 1 is the released first-class C89 OPC UA surface.
     values, and variant handles;
   - parse/print helpers for node ids, GUIDs, qualified names, and localized
     text;
-  - native variant/data-value callbacks for unsupported generated or extension
-    object payloads.
+  - generated typed Variant/DataValue and ExtensionObject payloads for every
+    standard public schema type, plus custom descriptor and native datatype
+    registration bindings.
 - Expanded node ids:
   - keep null, numeric, string, GUID, and byte-string constructors and
     compare/parse/print helpers as the first stable node-id slice;
@@ -236,8 +1109,9 @@ Tier 1 is the released first-class C89 OPC UA surface.
 
 ### Tier 2: Advanced Pass-Through With Convenience Entry Points
 
-Tier 2 keeps advanced upstream features reachable and documented without
-attempting to mirror every generated structure.
+Tier 2 exposes the enabled handwritten public interfaces in C89. Schema types
+come from the upstream generator; header emitters derive the public records
+and boundary callbacks. Native hooks remain optional interoperability.
 
 - PubSub/MQTT:
   - convenience wrappers for common MQTT broker, topic, publisher, subscriber,
@@ -246,23 +1120,28 @@ attempting to mirror every generated structure.
   - native server callback for full `UA_Server_*PubSub*` configuration;
   - tests use loopback or a deterministic local broker only when available.
 - Security plugins:
-  - native hooks for custom security policies, certificate groups, and access
-    control plugins;
-  - convenience helpers for bundled default policies only.
+  - complete C89 custom security policy and certificate group callback slots;
+  - full generated C89 access-control callbacks;
+  - native-backed factories for bundled default policies and trust stores.
 - History:
   - client history-read wrappers for common raw value reads;
-  - server history backend registration through native callbacks and selected
-    C89 callback adapters.
+  - full generated C89 HistoryDatabase callbacks;
+  - full generated C89 HistoryDataBackend callbacks and native default gathering;
+  - full custom gathering callbacks and native-backed stock backend factories.
 - Async services:
   - selected async read, write, browse, call, and add-node wrappers with C89
     callbacks;
-  - raw async service pass-through through native callbacks.
+  - generic and generated typed async client service bindings;
+  - typed server-local read/write/call submissions and cancellation;
+  - C89 producer bindings preserve native asynchronous value-source completion
+    tokens and cancellation.
 - File/json server config:
   - create server from explicit JSON bytes or explicit file path;
   - no implicit config-file discovery.
-- Alarms/conditions, custom data types, NodeSet loading, event loop plugins,
-  reverse connect, and low-level network message encoding stay native-first
-  unless a concrete downstream workflow needs a typed wrapper.
+- Custom datatypes, event-loop plugins, reverse connect and low-level network
+  message codecs have full enabled public C89 bindings. Features disabled in
+  the bundle (including alarms/conditions and NodeSet loading) are outside the
+  enabled surface contract.
 
 ## Pass-Through Rules
 
@@ -281,7 +1160,9 @@ Pass-through is a supported part of the facade, not a loophole.
 
 ## Memory And Error Contract
 
-- All fallible functions return `cpkt_opcua_result`.
+- Convenience functions return `cpkt_opcua_result`. Generated typed boundaries
+  return exact `cpkt_opcua_StatusCode`; service/result statuses remain in their
+  generated response records, separate from conversion status.
 - Upstream service failures return `CPKT_OPCUA_ERR_UPSTREAM` and write the
   upstream status when `status_out` is non-null.
 - Type mismatches return `CPKT_OPCUA_ERR_TYPE`; numeric narrowing failures return
@@ -329,7 +1210,7 @@ Facade correctness must be proven with observable integration tests.
 
 ## Packaging And Documentation Contract
 
-- Binary SDK artifacts ship the facade header, `libcpkt` static/shared
+- Binary SDK artifacts ship the facade header, `libcpkt_opcua` static/shared
   libraries, bundled open62541/mqtt-c libraries according to the package
   contract, CMake config, pkg-config metadata, examples, README material, and
   license files under `share/doc`.
@@ -349,8 +1230,316 @@ Facade correctness must be proven with observable integration tests.
 
 ## Maintenance Contract
 
-The documented Tier 1 surface and the selected Tier 2 convenience wrappers are
-implemented. Future additions must preserve the C89 boundary, name native
+The enabled usable public interface is bound by the strict inventory contract,
+alongside the compatibility convenience wrappers. Future additions must
+preserve the C89 boundary, name native
 escape hatches explicitly, document ownership and asynchronous callback
 lifetimes in `include/cpkt/opcua.h`, and land with focused observable tests plus
 installed-package coverage where the new surface is shipped.
+
+### Server-local asynchronous operation ownership
+
+`cpkt_opcua_server_read_async_typed`, `write_async_typed`, and
+`call_async_typed` submit complete C89 records to the native server. Requests
+are borrowed only during submission. The caller retains its callback context
+until completion, which can occur before submission returns, during an EventLoop
+iteration, cancellation, or server deletion. Accepted operations complete once;
+failed submissions invoke no completion. Native timeouts use milliseconds,
+with zero meaning infinite. Serialize operations on one server handle.
+
+Read and method callbacks receive a separately reported conversion status;
+conversion failure produces a NULL result. Successful conversion preserves
+native operation errors in the DataValue or CallMethodResult. Callback records
+are borrowed until return; use the generated copy helpers to retain them.
+The facade owns only callback dispatch metadata, and adds no response queue.
+
+`cpkt_opcua_server_cancelAsync_typed` matches the original caller context,
+including NULL, and forwards cancellation to native operations using that
+context outside the typed facade. It pins the existing dispatch records before
+calling upstream, allowing reentrant callbacks without invalidating traversal.
+Operations submitted by a callback require their own cancellation. Immediate
+cancellation completes matching callbacks before return; otherwise drive the
+EventLoop before freeing their context. Already-ready results retain their
+native status. Server deletion completes pending operations with BadShutdown
+and rejects new typed submissions with BadShutdown. Do not destroy the server
+from one of its callbacks.
+
+Producer-side value-source and method completion tokens use the distinct
+lifetime binding described in the producer callback section above. Upstream's
+stable callback output addresses retain their original pending-operation role.
+
+### Public value utilities
+
+`<cpkt/opcua_util.h>` is also included by the generated types header. It exposes
+native Variant predicates, ownership setters and copy setters, decoded
+ExtensionObject ownership/type helpers, status predicates/names, sized-string
+allocation/append, native base64/hash/secure-zero helpers, and array
+resize/move-append/copy-append. Predicates pass borrowed native views without
+allocating or interpreting the payload. Ownership setters transfer C89 storage
+without duplicating it. Clear old destination contents before setters: native
+setters initialize their destinations rather than freeing previous contents.
+Scalar-copy failure leaves the destination unchanged; array-copy and
+ExtensionObject-copy failure leave initialized empty destinations.
+
+Array resizing uses the upstream allocation procedure with C89 element sizes
+and clear helpers. Growth initializes the new elements. Shrinking stages the
+removed elements' shallow representations before realloc, freeing their nested
+storage only after success. Failure leaves the original array, length, and
+owned elements intact. Move-append empties the source only on success; its
+source must not alias the array. Copy-append can copy an existing array element
+and retains upstream's 512-byte native-type-size limit. Zero-length no-op resize
+preserves NULL versus empty sentinel; shrinking to zero produces the sentinel.
+
+`cpkt_opcua_type_order` converts complete records and invokes native `UA_order`.
+It reports conversion/allocation errors separately from the order value; ignore
+the order output unless status is Good. The existing Boolean equality helper
+still returns false for conversion/allocation errors, as its header documents.
+String buffers use the configured native allocator. Append destinations must
+own their buffer and sources must not alias it. Base64 codecs preserve native
+empty-message and error behavior, including the upstream decoder's
+BadInternalError for allocation failure. These codecs materialize one value,
+like their native APIs, and make no streaming claim.
+
+Independent C99 peers verify Variant and ExtensionObject predicate combinations,
+status severities, and raw-byte hashing. C89 tests verify exact signed 64-bit
+ordering, ownership transfer, nested deep copies, array-element aliasing in
+copy-append, shrink/growth, base64 byte fidelity, secure zeroing, invalid inputs,
+and injected allocation failures preserving the documented state.
+
+### Identifiers, namespace mappings and time
+
+The utility header exposes full NodeId, ExpandedNodeId, QualifiedName and Guid
+parse/print operations, including extended namespace/server URI forms. Native
+parsers own their result payloads; supply an empty destination and clear it after
+use, even after a failed parse. The facade transfers native output ownership
+without cloning strings. Unknown URI handling, escaping, hashing, predicates and
+ordering use native implementations. NULL query values represent initialized
+empty values. Namespace/server URI views marshal record arrays while borrowing
+all byte buffers, and may report allocation failure.
+
+An empty print output requests native allocation and owns the result. A nonempty
+output supplies a writable buffer with length as capacity. Native length changes
+and error statuses are retained, including insufficient-capacity failures. Do
+not clear stack or borrowed output buffers. NamespaceMapping URI lookup returns
+borrowed bytes, which remain valid only while the mapping storage does; do not
+clear the lookup result. A mapping may borrow arrays for lookups, but clear/delete
+require ownership of all populated arrays and their URI payloads.
+
+DateTime parsing and calendar/Unix conversions delegate to upstream. Signed
+64-bit timestamps and Unix seconds retain their complete high/low bit patterns
+on 32-bit targets. Keep arithmetic within upstream's representable range; no
+saturation or replacement calendar implementation is introduced. Monotonic
+values are for durations. Native random functions retain per-thread state and
+all 64 seed bits; UInt32_random is not cryptographic entropy.
+
+Independent native peers compare parse statuses, allocated and preallocated
+printing, binary encodings, hashes, predicates, ordering, calendar fields, Unix
+seconds, local offsets and seeded GUID/random values. C89 tests cover namespace
+translation, borrowed URI identity, owned mapping cleanup and injected allocation
+failures. A tracked native date-parser patch fixes overflow-guard reversal at
+the Unix epoch and the next second, verified by exact timestamp regressions.
+
+### Native node value notifications and lifecycle callbacks
+
+The generated plugin header derives the complete ValueSourceNotifications,
+NodeTypeLifecycle and GlobalNodeLifecycle records from the installed native
+server header. Unsupported or changed callback declarations fail generation.
+Node/session/type contexts remain exactly the native caller's contexts; mutable
+context pointers pass through directly. NodeIds are allocation-free borrowed
+views, so destructor dispatch does not fail because of conversion allocation.
+Never clear or retain callback NodeIds. Numeric ranges and notification values
+are borrowed C89 copies valid only until return; copy explicitly to retain them.
+Failed value/range conversion is logged through the configured server logger and
+skips a void notification, which has no native error return channel.
+
+The internal value-source setter forwards NULL values directly to the native
+source-switching implementation; NULL notifications disable both hooks. It stages complete callback records and value conversions before native
+installation. Failed installation retains the previous dispatch record. Node-type
+callback replacement follows the same staged ownership and can occur reentrantly
+inside a callback. The global lifecycle setter copies all four slots before
+startup; NULL disables its native pointer. generateChildNodeId produces an owned
+C89 NodeId that is converted to native ownership and then cleared by the bridge.
+Application contexts remain caller-owned throughout.
+
+These native records have no callback userdata slot. Private dispatch metadata is
+indexed by server and node, preserving all native context fields. A mutex protects
+cross-server registry lookup and never covers application callbacks. Operations
+on each server must remain serialized, and the server must not be freed from a
+callback. An active callback pins its old dispatch record across replacement.
+Metadata is retained until replacement or server destruction; native node/type
+and global destructors run before the registry is released. No value source or
+node lifecycle operation is reimplemented, and no native callback queue is added.
+
+Independent C99 peers invoke all eight notification/lifecycle slots and perform
+real native read, write, instance creation and deletion. Strict C89 tests cover
+complete 64-bit values/timestamps, numeric ranges, original and mutable contexts,
+two independent servers sharing NodeIds (including concurrent native read/write
+dispatch), reentrant replacement, NULL slots,
+unknown/wrong node types, owned child IDs, allocation failures preserving prior
+bindings and logger reporting. Producer-side async value/method callbacks use
+the producer interfaces described above.
+
+### External value sources
+
+`cpkt_opcua_server_setVariableNode_externalValueSource_typed` invokes the native
+external source setter. Its `cpkt_opcua_external_value` holder represents the
+borrowed native `UA_DataValue **` slot. Create it with `external_value_new`,
+select storage with `external_value_set`, inspect the borrowed selection with
+`external_value_get`, and release a detached holder with `external_value_free`.
+The selected object is the same persistent `cpkt_opcua_history_value` used for
+history and callback-result borrowing; it is not restricted to history usage.
+
+The holder borrows storage and nodes borrow the holder. Installation and
+selection do not copy values. Multiple nodes and servers can use the same slot;
+changing its selection affects all of them. Native reads retain their own
+upstream copy/range behavior. Native writes mutate the selected persistent
+value, observable through `history_value_get`. An `onRead` hook can select
+another persistent object and the native read reloads that pointer after the
+hook. Notifications receive callback-lifetime C89 copies with the original
+node/session contexts. Registration replacement during a notification keeps
+that callback's arguments valid.
+
+The caller must serialize holder and storage changes with **all** native users,
+including other servers sharing the holder. There is no automatic reference
+counting or concurrent-update guarantee. Keep the holder and its current storage
+alive until every borrowing node is detached, deleted, or its server destroyed.
+Only then free the holder/storage. Replacing selection does not free the previous
+object. NULL selection is rejected as upstream requires; failures preserve the
+previous registration and selection.
+
+Permanent C89 tests cover full and ranged Int64 reads, selection inside `onRead`,
+original contexts, notification replacement, shared slots across two servers,
+native full/ranged writes, quiescent storage replacement, invalid nodes/classes,
+NULL/error paths, allocation failure,
+and detachment/destruction. An independent native peer inspects the public
+nodestore plugin to prove that slots and selected native storage addresses are
+shared, switch without a snapshot, and return to the original address. Native
+node copies must preserve the same borrowed slot and release without affecting
+storage. A bundled upstream patch corrects external notification field access
+and node-copy borrowing; these regressions fail without that patch.
+
+### Native operations, logging plugins and formatting
+
+Connection/session non-copy getters fill an owned opaque `VariantView` root
+with the actual native borrowed Variant. Payload ownership and identity stay
+native; `VariantView_snapshot` is the explicit conversion to an owned C89
+value. Serialize access and finish snapshots before any native change that
+invalidates the payload. The scalar getters perform the native type check and
+borrowed scalar retrieval, then convert that scalar into an owned C89 result.
+They never clear the borrowed native scalar. The copying getter remains a
+separate native copying operation.
+
+`server_run_typed` calls the native run loop with a `RunFlag` holding actual
+native volatile Boolean storage. Call `RunFlag_set(flag, 0)` from a callback
+to stop; keep the flag alive until run returns. Shutdown delay and loop behavior
+remain upstream. `server_runUntilInterrupt_typed` uses the native platform
+interrupt implementation. `server_delete_typed` reports native deletion status
+without implicit shutdown; failed deletion leaves the handle live. The legacy
+`server_free` convenience operation continues to request shutdown first.
+
+`Logger` exposes the complete log/context/clear callback record. A configuration
+setter consumes the record on success and retains the native logger address
+already borrowed by event loops/security policies. Native messages are rendered
+one at a time and delivered to the C89 plugin as `%S` with a C89 String, borrowed
+during that callback. Stock stdout/syslog loggers retain their native backend,
+filtering, timestamps and output limits. Heap factories own their native logger
+and C89 root; clear exactly once. A configuration getter supplies callable
+borrowed slots with NULL clear because configuration owns destruction.
+
+The String formatter is generated from the pinned native `mp_printf` and `dtoa`
+implementation, changing argument extraction at the ABI boundary. `%S`, `%N`
+and `%Q` consume C89 records. Variadic `%ll` retains upstream's native C99
+`long long` argument contract: strict C89 consumers use `String_format_args`
+with explicit paired Int64/UInt64 arguments. They must never pass those pairs
+to variadic `%ll`. Native allocation, capacity, trailing NUL and truncation
+behavior are retained. The implementation boundary uses C99 internally; public
+headers and consumer records remain strict C89. MIT/Boost notices ship with
+the SDK.
+
+Discovery register/deregister takes a pointer to the owned ClientConfig pointer.
+Native asynchronous handoff sets that pointer to NULL, including errors after
+native client creation. A non-NULL pointer on return remains caller-owned:
+early native failures can clear its contents, while a failed owned event-loop
+free preserves its configuration for retry. The consumed callback metadata
+survives native internal-client deletion and deferred teardown. Discovery
+registration, connection state, application contexts and native scheduling
+remain upstream operations.
+
+These operations have native/C89 regressions for ownership, failure paths and
+callback behavior. Compile checks do not establish runtime or shipment readiness.
+
+Typed formatting rejects mismatched or invalid arguments immediately, before
+native padding or output allocation. Valid format behavior remains native.
+Message cleanup releases selected union arms and arrays before resetting their
+flags, counts and headers; malformed or partially converted messages retain the
+controls needed to clean up completed allocations.
+
+Generic codec options borrow their custom descriptor arrays during the call.
+Decoded values retain the exact descriptor selected from that array, even when
+equivalent descriptors from another owner coexist. The descriptor owner must
+outlive decoded values. This address mapping is scoped to the current thread
+and restores the outer mapping after nested codec calls.
+
+### Strict completion inventory
+
+The enabled Linux contract currently binds 3,637 public declarations with zero
+pending declarations. Eleven declarations describe native implementation state
+or internal helpers; each has a recorded reason. This total includes generated
+lifecycle helpers and is not a count of independently maintained functions.
+Darwin uses its actual feature guards. Reports are generated under build/.
+
+Opaque node/configuration/plugin roots retain actual native storage. Public
+metadata, class attributes, method tables and explicitly mapped accessors cover
+the public contract; private list/tree links are not duplicated as C89 layouts.
+The inventory gate verifies every mapped accessor and record field and rejects
+missing or unexplained mappings. Declaration coverage is separate from runtime,
+allocation-failure, memory-check and target/package verification.
+
+The stock POSIX interrupt manager uses one process-wide self-pipe manager on
+platforms without epoll, including macOS. A second stock factory call returns
+NULL until the first manager is freed. Default client/server loops created
+after that first loop may therefore have no interrupt source;
+`cpkt_opcua_client_runUntilInterrupt_typed` preserves the native
+`BadInternalError` in that case. Ordinary iteration still works. Applications
+needing signal dispatch across multiple loops can provide their own interrupt
+plugin or explicitly share a configured event loop. The native macOS tests
+exercise both the missing-source error and repeated SIGINT shutdown with a
+client that owns the stock manager; they do not replace upstream signal logic.
+
+Native reverse-connect iteration selects stable handles again after callbacks,
+so logging or state callbacks may remove current or other registrations without
+leaving an iteration pointer into freed storage. Local monitoring callbacks may
+delete their own item; the in-flight converted value remains valid until return.
+Facade callbacks pin the parent server through conversion and dispatch, so
+parent deletion from a callback reports BadInvalidState. Failed native source
+free retains EventLoop ownership and can be retried.
+
+The OpenSSL build has no upstream stock AES-CTR PubSub implementation. The
+public AES128/AES256 factory declarations return `BadNotSupported` and leave
+output empty. Full custom PubSub policy callback slots remain usable; the facade
+does not add a cryptographic backend. A vendor fix supplies the otherwise
+missing symbols, and restores the declared discovery-registration callback
+setter using the existing native discovery manager and service dispatch.
+
+## Source organization
+
+The compatibility helpers declared in `include/cpkt/opcua.h` are handwritten.
+They compile as separate source files for identifiers, values and arrays,
+client/server lifecycle, node management, value access, attribute access,
+browsing, methods, history, events, PubSub, asynchronous requests and
+subscriptions. `src/opcua.c` contains version and status reporting only.
+`src/opcua_facade_internal.h` declares the shared private helpers and callback
+contexts. Those helpers have hidden visibility; they are not SDK exports.
+The static archive needs their inter-object definitions, and the export gate
+also checks that each definition has hidden visibility.
+
+`src/opcua_logging.c` owns the single shared logger bridge. The typed and
+compatibility surfaces use the same bridge function identity when replacing
+or inspecting a logger, so ownership is consistent across both surfaces.
+
+The schema types, layout metadata and public binding declarations are generated
+from the upstream schema and public declarations by `tools/opcua/`. The
+handwritten recursive conversion core and its domain implementation headers
+remain in `src/opcua_types.c`; generated metadata is included from the build
+tree. Splitting the compatibility implementation does not change the public
+API, ownership rules, or native operation semantics.

@@ -7,7 +7,8 @@ if [[ $# -ne 1 ]]; then
 fi
 
 source_dir=$1
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-dependency-archive-cache.XXXXXXXXXX")
+mkdir -p "$source_dir/build"
+work_dir=$(mktemp -d "$source_dir/build/cpkt-dependency-archive-cache.XXXXXXXXXX")
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 cmake -DCPKT_SOURCE_DIR="$source_dir" -DCPKT_TEST_ROOT="$work_dir" \

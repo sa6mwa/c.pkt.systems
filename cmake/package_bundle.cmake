@@ -1,15 +1,23 @@
 foreach(_required
     CPKT_SOURCE_DIR
+    CPKT_STRIP_BIN
     CPKT_EXTERNAL_ROOT
     CPKT_DEPENDENCY_BUILD_ROOT
     CPKT_DIST_DIR
     CPKT_TARGET_ID
     CPKT_BUNDLE_VERSION
     CPKT_OPENSSL_VERSION
+    CPKT_OPENSSL_ABI_VERSION
+    CPKT_NGHTTP2_ABI_VERSION
     CPKT_ZLIB_VERSION
+    CPKT_LIBPNG_VERSION
+    CPKT_LIBHARU_VERSION
+    CPKT_IODBC_VERSION
     CPKT_CURL_VERSION
     CPKT_NGHTTP2_VERSION
     CPKT_LIBSSH2_VERSION
+    CPKT_LIBSSH2_ABI_VERSION
+    CPKT_MQTTC_ABI_VERSION
     CPKT_CMOCKA_VERSION
     CPKT_LIBXML2_VERSION
     CPKT_LUA_VERSION
@@ -17,7 +25,27 @@ foreach(_required
     CPKT_MQTTC_COMMIT
     CPKT_OPEN62541_VERSION
     CPKT_OPEN62541_PATCHSET
+    CPKT_KRB5_VERSION
+    CPKT_CYRUS_SASL_VERSION
+    CPKT_OPENLDAP_VERSION
+    CPKT_POSTGRESQL_VERSION
+    CPKT_SQLITE_VERSION
+    CPKT_LUA_ABI_VERSION
     CPKT_LUA_RUNTIME_ABI_VERSION
+    CPKT_OPENSSL_STATIC_LIBRARY
+    CPKT_OPENSSL_SHARED_LIBRARY
+    CPKT_NGHTTP2_FACADE_INCLUDE_DIR
+    CPKT_NGHTTP2_STATIC_LIBRARY
+    CPKT_NGHTTP2_SHARED_LIBRARY
+    CPKT_LIBSSH2_FACADE_INCLUDE_DIR
+    CPKT_LIBSSH2_STATIC_LIBRARY
+    CPKT_LIBSSH2_SHARED_LIBRARY
+    CPKT_MQTTC_FACADE_INCLUDE_DIR
+    CPKT_MQTTC_STATIC_LIBRARY
+    CPKT_MQTTC_SHARED_LIBRARY
+    CPKT_LUA_FACADE_INCLUDE_DIR
+    CPKT_LUA_STATIC_LIBRARY
+    CPKT_LUA_SHARED_LIBRARY
     CPKT_LUA_RUNTIME_INCLUDE_DIR
     CPKT_LUA_RUNTIME_STATIC_LIBRARY
     CPKT_LUA_RUNTIME_SHARED_LIBRARY
@@ -31,8 +59,24 @@ foreach(_required
     CPKT_SUS_STATIC_LIBRARY
     CPKT_SUS_SHARED_LIBRARY
     CPKT_OPCUA_ABI_VERSION
+    CPKT_OPCUA_GENERATED_DIR
     CPKT_OPCUA_STATIC_LIBRARY
-    CPKT_OPCUA_SHARED_LIBRARY)
+    CPKT_OPCUA_SHARED_LIBRARY
+    CPKT_GSSAPI_ABI_VERSION
+    CPKT_GSSAPI_STATIC_LIBRARY
+    CPKT_GSSAPI_SHARED_LIBRARY
+    CPKT_SASL_ABI_VERSION
+    CPKT_SASL_STATIC_LIBRARY
+    CPKT_SASL_SHARED_LIBRARY
+    CPKT_POSTGRES_ABI_VERSION
+    CPKT_POSTGRES_STATIC_LIBRARY
+    CPKT_POSTGRES_SHARED_LIBRARY
+    CPKT_SQLITE_ABI_VERSION
+    CPKT_SQLITE_STATIC_LIBRARY
+    CPKT_SQLITE_SHARED_LIBRARY
+    CPKT_PDF_ABI_VERSION
+    CPKT_PDF_STATIC_LIBRARY
+    CPKT_PDF_SHARED_LIBRARY)
   if(NOT DEFINED ${_required} OR "${${_required}}" STREQUAL "")
     message(FATAL_ERROR "${_required} is required")
   endif()
@@ -40,6 +84,18 @@ endforeach()
 
 if(NOT EXISTS "${CPKT_EXTERNAL_ROOT}")
   message(FATAL_ERROR "dependency install root does not exist: ${CPKT_EXTERNAL_ROOT}")
+endif()
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_pdf_shared_library_link_name "libcpkt_pdf.dylib")
+  set(_cpkt_pdf_shared_library_abi_name "libcpkt_pdf.${CPKT_PDF_ABI_VERSION}.dylib")
+  set(_cpkt_pdf_shared_library_real_name "libcpkt_pdf.${CPKT_BUNDLE_VERSION}.dylib")
+else()
+  set(_cpkt_pdf_shared_library_link_name "libcpkt_pdf.so")
+  set(_cpkt_pdf_shared_library_abi_name "libcpkt_pdf.so.${CPKT_PDF_ABI_VERSION}")
+  set(_cpkt_pdf_shared_library_real_name "libcpkt_pdf.so.${CPKT_BUNDLE_VERSION}")
+endif()
+if(NOT EXISTS "${CPKT_STRIP_BIN}")
+  message(FATAL_ERROR "target strip tool does not exist: ${CPKT_STRIP_BIN}")
 endif()
 
 include("${CPKT_SOURCE_DIR}/cmake/gnu_tar.cmake")
@@ -53,11 +109,27 @@ set(_checksums_path "${CPKT_DIST_DIR}/c.pkt.systems-${CPKT_BUNDLE_VERSION}-CHECK
 set(_cpkt_static_library_suffix ".a")
 set(_cpkt_whisper_package_version "${CPKT_WHISPER_VERSION}")
 string(REGEX REPLACE "^v" "" _cpkt_whisper_package_version "${_cpkt_whisper_package_version}")
+string(REGEX MATCH "^[0-9]+" _cpkt_postgresql_major_version "${CPKT_POSTGRESQL_VERSION}")
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_shared_library_suffix ".dylib")
+  set(_cpkt_lua_facade_shared_library_link_name "libcpkt_lua.dylib")
+  set(_cpkt_lua_facade_shared_library_abi_name "libcpkt_lua.${CPKT_LUA_ABI_VERSION}.dylib")
+  set(_cpkt_lua_facade_shared_library_real_name "libcpkt_lua.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.dylib")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_openssl_shared_library_link_name "libcpkt_openssl.dylib")
+  set(_cpkt_openssl_shared_library_abi_name "libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib")
+  set(_cpkt_openssl_shared_library_real_name "libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_nghttp2_shared_library_link_name "libcpkt_nghttp2.dylib")
+  set(_cpkt_nghttp2_shared_library_abi_name "libcpkt_nghttp2.${CPKT_NGHTTP2_ABI_VERSION}.dylib")
+  set(_cpkt_nghttp2_shared_library_real_name "libcpkt_nghttp2.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_libssh2_facade_shared_library_link_name "libcpkt_libssh2.dylib")
+  set(_cpkt_libssh2_facade_shared_library_abi_name "libcpkt_libssh2.${CPKT_LIBSSH2_ABI_VERSION}.dylib")
+  set(_cpkt_libssh2_facade_shared_library_real_name "libcpkt_libssh2.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_mqttc_facade_shared_library_link_name "libcpkt_mqttc.dylib")
+  set(_cpkt_mqttc_facade_shared_library_abi_name "libcpkt_mqttc.${CPKT_MQTTC_ABI_VERSION}.dylib")
+  set(_cpkt_mqttc_facade_shared_library_real_name "libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.dylib")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.${CPKT_AUDIO_ABI_VERSION}.dylib")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib")
@@ -67,6 +139,19 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.dylib")
   set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.${CPKT_OPCUA_ABI_VERSION}.dylib")
   set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_gssapi_shared_library_link_name "libcpkt_gssapi.dylib")
+  set(_cpkt_gssapi_shared_library_abi_name "libcpkt_gssapi.${CPKT_GSSAPI_ABI_VERSION}.dylib")
+  set(_cpkt_gssapi_shared_library_real_name "libcpkt_gssapi.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_sasl_shared_library_link_name "libcpkt_sasl.dylib")
+  set(_cpkt_sasl_shared_library_abi_name "libcpkt_sasl.${CPKT_SASL_ABI_VERSION}.dylib")
+  set(_cpkt_sasl_shared_library_real_name "libcpkt_sasl.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_postgres_shared_library_link_name "libcpkt_postgres.dylib")
+  set(_cpkt_postgres_shared_library_abi_name "libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib")
+  set(_cpkt_postgres_shared_library_real_name "libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_sqlite_shared_library_link_name "libcpkt_sqlite.dylib")
+  set(_cpkt_sqlite_shared_library_abi_name "libcpkt_sqlite.${CPKT_SQLITE_ABI_VERSION}.dylib")
+  set(_cpkt_sqlite_shared_library_real_name "libcpkt_sqlite.${CPKT_BUNDLE_VERSION}.dylib")
+  set(_cpkt_postgresql_shared_library_name "libpq.5.dylib")
   set(_cpkt_libssh2_shared_library_name "libssh2.1.dylib")
   set(_cpkt_libxml2_shared_library_name "libxml2.dylib")
   set(_cpkt_lua_shared_library_name "liblua.dylib")
@@ -74,9 +159,24 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
   set(_cpkt_open62541_shared_library_name "libopen62541.dylib")
 else()
   set(_cpkt_shared_library_suffix ".so")
+  set(_cpkt_lua_facade_shared_library_link_name "libcpkt_lua.so")
+  set(_cpkt_lua_facade_shared_library_abi_name "libcpkt_lua.so.${CPKT_LUA_ABI_VERSION}")
+  set(_cpkt_lua_facade_shared_library_real_name "libcpkt_lua.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_lua_runtime_shared_library_link_name "libcpkt_lua_runtime.so")
   set(_cpkt_lua_runtime_shared_library_abi_name "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}")
   set(_cpkt_lua_runtime_shared_library_real_name "libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_openssl_shared_library_link_name "libcpkt_openssl.so")
+  set(_cpkt_openssl_shared_library_abi_name "libcpkt_openssl.so.${CPKT_OPENSSL_ABI_VERSION}")
+  set(_cpkt_openssl_shared_library_real_name "libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_nghttp2_shared_library_link_name "libcpkt_nghttp2.so")
+  set(_cpkt_nghttp2_shared_library_abi_name "libcpkt_nghttp2.so.${CPKT_NGHTTP2_ABI_VERSION}")
+  set(_cpkt_nghttp2_shared_library_real_name "libcpkt_nghttp2.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_libssh2_facade_shared_library_link_name "libcpkt_libssh2.so")
+  set(_cpkt_libssh2_facade_shared_library_abi_name "libcpkt_libssh2.so.${CPKT_LIBSSH2_ABI_VERSION}")
+  set(_cpkt_libssh2_facade_shared_library_real_name "libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_mqttc_facade_shared_library_link_name "libcpkt_mqttc.so")
+  set(_cpkt_mqttc_facade_shared_library_abi_name "libcpkt_mqttc.so.${CPKT_MQTTC_ABI_VERSION}")
+  set(_cpkt_mqttc_facade_shared_library_real_name "libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}")
   set(_cpkt_audio_shared_library_link_name "libcpktaudio.so")
   set(_cpkt_audio_shared_library_abi_name "libcpktaudio.so.${CPKT_AUDIO_ABI_VERSION}")
   set(_cpkt_audio_shared_library_real_name "libcpktaudio.so.${CPKT_BUNDLE_VERSION}")
@@ -86,6 +186,19 @@ else()
   set(_cpkt_opcua_shared_library_link_name "libcpkt_opcua.so")
   set(_cpkt_opcua_shared_library_abi_name "libcpkt_opcua.so.${CPKT_OPCUA_ABI_VERSION}")
   set(_cpkt_opcua_shared_library_real_name "libcpkt_opcua.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_gssapi_shared_library_link_name "libcpkt_gssapi.so")
+  set(_cpkt_gssapi_shared_library_abi_name "libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}")
+  set(_cpkt_gssapi_shared_library_real_name "libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_sasl_shared_library_link_name "libcpkt_sasl.so")
+  set(_cpkt_sasl_shared_library_abi_name "libcpkt_sasl.so.${CPKT_SASL_ABI_VERSION}")
+  set(_cpkt_sasl_shared_library_real_name "libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_postgres_shared_library_link_name "libcpkt_postgres.so")
+  set(_cpkt_postgres_shared_library_abi_name "libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}")
+  set(_cpkt_postgres_shared_library_real_name "libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_sqlite_shared_library_link_name "libcpkt_sqlite.so")
+  set(_cpkt_sqlite_shared_library_abi_name "libcpkt_sqlite.so.${CPKT_SQLITE_ABI_VERSION}")
+  set(_cpkt_sqlite_shared_library_real_name "libcpkt_sqlite.so.${CPKT_BUNDLE_VERSION}")
+  set(_cpkt_postgresql_shared_library_name "libpq.so.5.${_cpkt_postgresql_major_version}")
   set(_cpkt_libssh2_shared_library_name "libssh2.so")
   set(_cpkt_libxml2_shared_library_name "libxml2.so")
   set(_cpkt_lua_shared_library_name "liblua.so")
@@ -108,7 +221,7 @@ function(cpkt_stage_dependency_install dependency_name)
   endforeach()
 endfunction()
 
-foreach(_dependency openssl zlib nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541)
+foreach(_dependency openssl zlib libpng libharu iodbc nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqtt-c open62541 krb5 cyrus-sasl openldap postgresql sqlite)
   cpkt_stage_dependency_install("${_dependency}")
 endforeach()
 
@@ -130,10 +243,30 @@ if(_legacy_open62541_shared_libraries)
   file(REMOVE ${_legacy_open62541_shared_libraries})
 endif()
 file(COPY "${CPKT_LUA_RUNTIME_INCLUDE_DIR}/cpkt" DESTINATION "${_stage_root}/include")
+file(COPY_FILE
+  "${CPKT_LUA_FACADE_INCLUDE_DIR}/cpkt/lua.h"
+  "${_stage_root}/include/cpkt/lua.h")
+file(COPY_FILE
+  "${CPKT_NGHTTP2_FACADE_INCLUDE_DIR}/cpkt/nghttp2.h"
+  "${_stage_root}/include/cpkt/nghttp2.h")
+file(COPY_FILE
+  "${CPKT_LIBSSH2_FACADE_INCLUDE_DIR}/cpkt/libssh2.h"
+  "${_stage_root}/include/cpkt/libssh2.h")
+file(COPY_FILE
+  "${CPKT_MQTTC_FACADE_INCLUDE_DIR}/cpkt/mqttc.h"
+  "${_stage_root}/include/cpkt/mqttc.h")
+file(COPY_FILE "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_types.h"
+  "${_stage_root}/include/cpkt/opcua_types.h")
+file(COPY_FILE "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_constants.h"
+  "${_stage_root}/include/cpkt/opcua_constants.h")
+file(COPY_FILE "${CPKT_OPCUA_GENERATED_DIR}/cpkt/opcua_plugins.h"
+  "${_stage_root}/include/cpkt/opcua_plugins.h")
 function(cpkt_stage_facade_library facade_label static_source static_name shared_source shared_real_name shared_abi_name shared_link_name)
+  set(_facade_static_destination
+    "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}")
   file(COPY_FILE
     "${static_source}"
-    "${_stage_root}/lib/${static_name}${_cpkt_static_library_suffix}"
+    "${_facade_static_destination}"
   )
   get_filename_component(_facade_shared_library_dir "${shared_source}" DIRECTORY)
   set(_facade_shared_library_real_path "${_facade_shared_library_dir}/${shared_real_name}")
@@ -145,6 +278,19 @@ function(cpkt_stage_facade_library facade_label static_source static_name shared
     "${_facade_shared_library_real_path}"
     "${_stage_root}/lib/${shared_real_name}"
   )
+  foreach(_facade_staged_binary
+      "${_facade_static_destination}"
+      "${_stage_root}/lib/${shared_real_name}")
+    execute_process(
+      COMMAND "${CPKT_STRIP_BIN}" -S "${_facade_staged_binary}"
+      RESULT_VARIABLE _facade_strip_result
+      ERROR_VARIABLE _facade_strip_error
+    )
+    if(NOT _facade_strip_result EQUAL 0)
+      message(FATAL_ERROR
+        "failed to strip ${facade_label} package artifact ${_facade_staged_binary}: ${_facade_strip_error}")
+    endif()
+  endforeach()
   execute_process(
     COMMAND "${CMAKE_COMMAND}" -E create_symlink
       "${shared_real_name}"
@@ -165,6 +311,46 @@ function(cpkt_stage_facade_library facade_label static_source static_name shared
   endif()
 endfunction()
 
+cpkt_stage_facade_library(
+  "OpenSSL C89 facade"
+  "${CPKT_OPENSSL_STATIC_LIBRARY}"
+  "libcpkt_openssl"
+  "${CPKT_OPENSSL_SHARED_LIBRARY}"
+  "${_cpkt_openssl_shared_library_real_name}"
+  "${_cpkt_openssl_shared_library_abi_name}"
+  "${_cpkt_openssl_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "nghttp2 C89 facade"
+  "${CPKT_NGHTTP2_STATIC_LIBRARY}"
+  "libcpkt_nghttp2"
+  "${CPKT_NGHTTP2_SHARED_LIBRARY}"
+  "${_cpkt_nghttp2_shared_library_real_name}"
+  "${_cpkt_nghttp2_shared_library_abi_name}"
+  "${_cpkt_nghttp2_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "libssh2 C89 facade"
+  "${CPKT_LIBSSH2_STATIC_LIBRARY}"
+  "libcpkt_libssh2"
+  "${CPKT_LIBSSH2_SHARED_LIBRARY}"
+  "${_cpkt_libssh2_facade_shared_library_real_name}"
+  "${_cpkt_libssh2_facade_shared_library_abi_name}"
+  "${_cpkt_libssh2_facade_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "MQTT-C C89 facade"
+  "${CPKT_MQTTC_STATIC_LIBRARY}"
+  "libcpkt_mqttc"
+  "${CPKT_MQTTC_SHARED_LIBRARY}"
+  "${_cpkt_mqttc_facade_shared_library_real_name}"
+  "${_cpkt_mqttc_facade_shared_library_abi_name}"
+  "${_cpkt_mqttc_facade_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "Lua C89 facade"
+  "${CPKT_LUA_STATIC_LIBRARY}"
+  "libcpkt_lua"
+  "${CPKT_LUA_SHARED_LIBRARY}"
+  "${_cpkt_lua_facade_shared_library_real_name}"
+  "${_cpkt_lua_facade_shared_library_abi_name}"
+  "${_cpkt_lua_facade_shared_library_link_name}")
 cpkt_stage_facade_library(
   "Lua runtime facade"
   "${CPKT_LUA_RUNTIME_STATIC_LIBRARY}"
@@ -197,6 +383,46 @@ cpkt_stage_facade_library(
   "${_cpkt_opcua_shared_library_real_name}"
   "${_cpkt_opcua_shared_library_abi_name}"
   "${_cpkt_opcua_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "GSSAPI facade"
+  "${CPKT_GSSAPI_STATIC_LIBRARY}"
+  "libcpkt_gssapi"
+  "${CPKT_GSSAPI_SHARED_LIBRARY}"
+  "${_cpkt_gssapi_shared_library_real_name}"
+  "${_cpkt_gssapi_shared_library_abi_name}"
+  "${_cpkt_gssapi_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "Cyrus SASL facade"
+  "${CPKT_SASL_STATIC_LIBRARY}"
+  "libcpkt_sasl"
+  "${CPKT_SASL_SHARED_LIBRARY}"
+  "${_cpkt_sasl_shared_library_real_name}"
+  "${_cpkt_sasl_shared_library_abi_name}"
+  "${_cpkt_sasl_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "PostgreSQL facade"
+  "${CPKT_POSTGRES_STATIC_LIBRARY}"
+  "libcpkt_postgres"
+  "${CPKT_POSTGRES_SHARED_LIBRARY}"
+  "${_cpkt_postgres_shared_library_real_name}"
+  "${_cpkt_postgres_shared_library_abi_name}"
+  "${_cpkt_postgres_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "SQLite facade"
+  "${CPKT_SQLITE_STATIC_LIBRARY}"
+  "libcpkt_sqlite"
+  "${CPKT_SQLITE_SHARED_LIBRARY}"
+  "${_cpkt_sqlite_shared_library_real_name}"
+  "${_cpkt_sqlite_shared_library_abi_name}"
+  "${_cpkt_sqlite_shared_library_link_name}")
+cpkt_stage_facade_library(
+  "libHaru PDF facade"
+  "${CPKT_PDF_STATIC_LIBRARY}"
+  "libcpkt_pdf"
+  "${CPKT_PDF_SHARED_LIBRARY}"
+  "${_cpkt_pdf_shared_library_real_name}"
+  "${_cpkt_pdf_shared_library_abi_name}"
+  "${_cpkt_pdf_shared_library_link_name}")
 
 if(CPKT_TARGET_ID MATCHES "-linux-")
   if(NOT DEFINED CPKT_CXX_STDLIB_STATIC_LIBRARY OR "${CPKT_CXX_STDLIB_STATIC_LIBRARY}" STREQUAL "")
@@ -330,6 +556,87 @@ file(WRITE "${_stage_root}/lib/cmake/OpenSSL/OpenSSLConfig.cmake"
   "endif()\n"
 )
 cpkt_write_config_version("OpenSSL" "OpenSSL" "${CPKT_OPENSSL_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktOpenSSL")
+file(WRITE "${_stage_root}/lib/cmake/CpktOpenSSL/CpktOpenSSLConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_openssl_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_openssl_facade_prefix}/lib/cmake/OpenSSL\")\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "set(CpktOpenSSL_FOUND TRUE)\n"
+  "set(CpktOpenSSL_VERSION \"${CPKT_OPENSSL_VERSION}\")\n"
+  "if(NOT TARGET cpkt::openssl)\n"
+  "  add_library(cpkt::openssl STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::openssl PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_openssl_facade_prefix}/lib/libcpkt_openssl${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_openssl_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"OpenSSL::SSL;OpenSSL::Crypto\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::openssl_shared)\n"
+  "  add_library(cpkt::openssl_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::openssl_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_openssl_facade_prefix}/lib/libcpkt_openssl${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_openssl_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktOpenSSL" "CpktOpenSSL" "${CPKT_OPENSSL_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktNghttp2")
+file(WRITE "${_stage_root}/lib/cmake/CpktNghttp2/CpktNghttp2Config.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_nghttp2_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(nghttp2_DIR \"\${_cpkt_nghttp2_facade_prefix}/lib/cmake/nghttp2\")\n"
+  "find_dependency(nghttp2 CONFIG REQUIRED)\n"
+  "set(CpktNghttp2_FOUND TRUE)\n"
+  "set(CpktNghttp2_VERSION \"${CPKT_NGHTTP2_VERSION}\")\n"
+  "if(NOT TARGET cpkt::nghttp2)\n"
+  "  add_library(cpkt::nghttp2 STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::nghttp2 PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_nghttp2_facade_prefix}/lib/libcpkt_nghttp2${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_nghttp2_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES nghttp2::nghttp2\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::nghttp2_facade_shared)\n"
+  "  add_library(cpkt::nghttp2_facade_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::nghttp2_facade_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_nghttp2_facade_prefix}/lib/libcpkt_nghttp2${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_nghttp2_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::nghttp2_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktNghttp2" "CpktNghttp2" "${CPKT_NGHTTP2_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktLibssh2")
+file(WRITE "${_stage_root}/lib/cmake/CpktLibssh2/CpktLibssh2Config.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_libssh2_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(Libssh2_DIR \"\${_cpkt_libssh2_facade_prefix}/lib/cmake/libssh2\")\n"
+  "find_dependency(Libssh2 CONFIG REQUIRED)\n"
+  "set(CpktLibssh2_FOUND TRUE)\n"
+  "set(CpktLibssh2_VERSION \"${CPKT_LIBSSH2_VERSION}\")\n"
+  "if(NOT TARGET cpkt::libssh2)\n"
+  "  add_library(cpkt::libssh2 STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::libssh2 PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_libssh2_facade_prefix}/lib/libcpkt_libssh2${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_libssh2_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES Libssh2::libssh2\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::libssh2_facade_shared)\n"
+  "  add_library(cpkt::libssh2_facade_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::libssh2_facade_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_libssh2_facade_prefix}/lib/libcpkt_libssh2${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_libssh2_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::libssh2_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktLibssh2" "CpktLibssh2" "${CPKT_LIBSSH2_VERSION}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/zlib")
 file(WRITE "${_stage_root}/lib/cmake/zlib/ZLIBConfig.cmake"
@@ -532,6 +839,33 @@ file(WRITE "${_stage_root}/lib/cmake/Lua/LuaConfig.cmake"
   "endif()\n"
 )
 cpkt_write_config_version("Lua" "Lua" "${CPKT_LUA_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktLua")
+file(WRITE "${_stage_root}/lib/cmake/CpktLua/CpktLuaConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_lua_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(Lua_DIR \"\${_cpkt_lua_facade_prefix}/lib/cmake/Lua\")\n"
+  "find_dependency(Lua CONFIG REQUIRED)\n"
+  "set(CpktLua_FOUND TRUE)\n"
+  "set(CpktLua_VERSION \"${CPKT_LUA_VERSION}\")\n"
+  "if(NOT TARGET cpkt::lua)\n"
+  "  add_library(cpkt::lua STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::lua PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_facade_prefix}/lib/libcpkt_lua${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_lua_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES Lua::Lua\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::lua_facade_shared)\n"
+  "  add_library(cpkt::lua_facade_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::lua_facade_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_lua_facade_prefix}/lib/libcpkt_lua${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_lua_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::lua_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktLua" "CpktLua" "${CPKT_LUA_VERSION}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktLuaRuntime")
 file(WRITE "${_stage_root}/lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
@@ -740,6 +1074,7 @@ cpkt_write_config_version("open62541" "open62541" "${CPKT_OPEN62541_VERSION}")
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktOpcUa")
 file(WRITE "${_stage_root}/lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
   "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
   "get_filename_component(_cpkt_opcua_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
   "set(open62541_DIR \"\${_cpkt_opcua_prefix}/lib/cmake/open62541\")\n"
   "find_dependency(open62541 CONFIG REQUIRED)\n"
@@ -750,7 +1085,7 @@ file(WRITE "${_stage_root}/lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
   "  set_target_properties(cpkt::opcua PROPERTIES\n"
   "    IMPORTED_LOCATION \"\${_cpkt_opcua_prefix}/lib/libcpkt_opcua${_cpkt_static_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_opcua_prefix}/include\"\n"
-  "    INTERFACE_LINK_LIBRARIES open62541::open62541\n"
+  "    INTERFACE_LINK_LIBRARIES \"open62541::open62541;Threads::Threads\"\n"
   "  )\n"
   "endif()\n"
   "if(NOT TARGET cpkt::opcua_shared)\n"
@@ -758,11 +1093,388 @@ file(WRITE "${_stage_root}/lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
   "  set_target_properties(cpkt::opcua_shared PROPERTIES\n"
   "    IMPORTED_LOCATION \"\${_cpkt_opcua_prefix}/lib/libcpkt_opcua${_cpkt_shared_library_suffix}\"\n"
   "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_opcua_prefix}/include\"\n"
-  "    INTERFACE_LINK_LIBRARIES cpkt::open62541_shared\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::open62541_shared;Threads::Threads\"\n"
   "  )\n"
   "endif()\n"
 )
 cpkt_write_config_version("CpktOpcUa" "CpktOpcUa" "${CPKT_OPEN62541_VERSION}")
+
+set(_cpkt_pdf_math_library "")
+set(_cpkt_pdf_private_math "")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  set(_cpkt_pdf_math_library "m")
+  set(_cpkt_pdf_private_math " -lm")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktPng")
+file(WRITE "${_stage_root}/lib/cmake/CpktPng/CpktPngConfig.cmake"
+  "get_filename_component(_cpkt_png_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktPng_FOUND TRUE)\n"
+  "set(CpktPng_VERSION \"${CPKT_LIBPNG_VERSION}\")\n"
+  "if(NOT TARGET cpkt::png_static)\n"
+  "  add_library(cpkt::png_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::png_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_png_prefix}/lib/libpng16${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_png_prefix}/include\" INTERFACE_LINK_LIBRARIES \"\${_cpkt_png_prefix}/lib/libz${_cpkt_static_library_suffix};${_cpkt_pdf_math_library}\")\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::png_shared)\n"
+  "  add_library(cpkt::png_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::png_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_png_prefix}/lib/libpng16${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_png_prefix}/include\")\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::png)\n  add_library(cpkt::png ALIAS cpkt::png_static)\nendif()\n")
+cpkt_write_config_version("CpktPng" "CpktPng" "${CPKT_LIBPNG_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktHaru")
+file(WRITE "${_stage_root}/lib/cmake/CpktHaru/CpktHaruConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_haru_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktPng_DIR \"\${_cpkt_haru_prefix}/lib/cmake/CpktPng\")\n"
+  "find_dependency(CpktPng CONFIG REQUIRED)\n"
+  "set(CpktHaru_FOUND TRUE)\n"
+  "set(CpktHaru_VERSION \"${CPKT_LIBHARU_VERSION}\")\n"
+  "if(NOT TARGET cpkt::haru_static)\n"
+  "  add_library(cpkt::haru_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::haru_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_haru_prefix}/lib/libhpdf${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_haru_prefix}/include\" INTERFACE_LINK_LIBRARIES \"cpkt::png_static;\${_cpkt_haru_prefix}/lib/libz${_cpkt_static_library_suffix};${_cpkt_pdf_math_library}\")\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::haru_shared)\n"
+  "  add_library(cpkt::haru_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::haru_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_haru_prefix}/lib/libhpdf${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_haru_prefix}/include\" INTERFACE_LINK_LIBRARIES cpkt::png_shared)\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::haru)\n  add_library(cpkt::haru ALIAS cpkt::haru_static)\nendif()\n")
+cpkt_write_config_version("CpktHaru" "CpktHaru" "${CPKT_LIBHARU_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktIodbc")
+file(WRITE "${_stage_root}/lib/cmake/CpktIodbc/CpktIodbcConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_iodbc_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktIodbc_FOUND TRUE)\n"
+  "set(CpktIodbc_VERSION \"${CPKT_IODBC_VERSION}\")\n"
+  "set(_cpkt_iodbc_static_system_libraries Threads::Threads)\n"
+  "if(CMAKE_SYSTEM_NAME STREQUAL \"Linux\")\n"
+  "  list(APPEND _cpkt_iodbc_static_system_libraries dl)\n"
+  "endif()\n"
+  "foreach(_cpkt_iodbc_component iodbc iodbcinst)\n"
+  "  set(_cpkt_iodbc_component_system_libraries \"\${_cpkt_iodbc_static_system_libraries}\")\n"
+  "  if(_cpkt_iodbc_component STREQUAL \"iodbc\" AND CMAKE_SYSTEM_NAME STREQUAL \"Darwin\")\n"
+  "    list(APPEND _cpkt_iodbc_component_system_libraries \"-Wl,-framework,Carbon\")\n"
+  "  endif()\n"
+  "  if(NOT TARGET cpkt::\${_cpkt_iodbc_component}_static)\n"
+  "    add_library(cpkt::\${_cpkt_iodbc_component}_static STATIC IMPORTED)\n"
+  "    set_target_properties(cpkt::\${_cpkt_iodbc_component}_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_iodbc_prefix}/lib/lib\${_cpkt_iodbc_component}${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_iodbc_prefix}/include\" INTERFACE_LINK_LIBRARIES \"\${_cpkt_iodbc_component_system_libraries}\")\n"
+  "  endif()\n"
+  "  if(NOT TARGET cpkt::\${_cpkt_iodbc_component}_shared)\n"
+  "    add_library(cpkt::\${_cpkt_iodbc_component}_shared SHARED IMPORTED)\n"
+  "    set_target_properties(cpkt::\${_cpkt_iodbc_component}_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_iodbc_prefix}/lib/lib\${_cpkt_iodbc_component}${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_iodbc_prefix}/include\")\n"
+  "  endif()\n"
+  "endforeach()\n"
+  "if(NOT TARGET cpkt::iodbc)\n"
+  "  add_library(cpkt::iodbc INTERFACE IMPORTED)\n"
+  "  set_target_properties(cpkt::iodbc PROPERTIES INTERFACE_LINK_LIBRARIES \"cpkt::iodbc_static;cpkt::iodbcinst_static\")\n"
+  "endif()\n")
+cpkt_write_config_version("CpktIodbc" "CpktIodbc" "${CPKT_IODBC_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktPdf")
+file(WRITE "${_stage_root}/lib/cmake/CpktPdf/CpktPdfConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_pdf_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CpktHaru_DIR \"\${_cpkt_pdf_prefix}/lib/cmake/CpktHaru\")\n"
+  "find_dependency(CpktHaru CONFIG REQUIRED)\n"
+  "set(CpktPdf_FOUND TRUE)\n"
+  "set(CpktPdf_VERSION \"${CPKT_LIBHARU_VERSION}\")\n"
+  "if(NOT TARGET cpkt::pdf_static)\n"
+  "  add_library(cpkt::pdf_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::pdf_static PROPERTIES IMPORTED_LOCATION \"\${_cpkt_pdf_prefix}/lib/libcpkt_pdf${_cpkt_static_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_pdf_prefix}/include\" INTERFACE_LINK_LIBRARIES cpkt::haru_static)\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::pdf_shared)\n"
+  "  add_library(cpkt::pdf_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::pdf_shared PROPERTIES IMPORTED_LOCATION \"\${_cpkt_pdf_prefix}/lib/libcpkt_pdf${_cpkt_shared_library_suffix}\" INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_pdf_prefix}/include\" INTERFACE_LINK_LIBRARIES cpkt::haru_shared)\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::pdf)\n  add_library(cpkt::pdf ALIAS cpkt::pdf_static)\nendif()\n")
+cpkt_write_config_version("CpktPdf" "CpktPdf" "${CPKT_LIBHARU_VERSION}")
+
+set(_cpkt_sqlite_static_system_libraries "m;Threads::Threads")
+set(_cpkt_sqlite_static_private_pc_libraries "-lm -pthread")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  list(APPEND _cpkt_sqlite_static_system_libraries "${CMAKE_DL_LIBS}")
+  string(APPEND _cpkt_sqlite_static_private_pc_libraries " -ldl")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/SQLite3")
+file(WRITE "${_stage_root}/lib/cmake/SQLite3/SQLite3Config.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_sqlite_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(SQLite3_FOUND TRUE)\n"
+  "set(SQLite3_VERSION \"${CPKT_SQLITE_VERSION}\")\n"
+  "set(SQLite3_INCLUDE_DIRS \"\${_cpkt_sqlite_prefix}/include\")\n"
+  "set(SQLite3_LIBRARY \"\${_cpkt_sqlite_prefix}/lib/libsqlite3${_cpkt_static_library_suffix}\")\n"
+  "if(NOT TARGET SQLite::SQLite3)\n"
+  "  add_library(SQLite::SQLite3 STATIC IMPORTED)\n"
+  "  set_target_properties(SQLite::SQLite3 PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${SQLite3_LIBRARY}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${SQLite3_INCLUDE_DIRS}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"${_cpkt_sqlite_static_system_libraries}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::sqlite3_shared)\n"
+  "  add_library(cpkt::sqlite3_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::sqlite3_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sqlite_prefix}/lib/libsqlite3${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${SQLite3_INCLUDE_DIRS}\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("SQLite3" "SQLite3" "${CPKT_SQLITE_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktSqlite")
+file(WRITE "${_stage_root}/lib/cmake/CpktSqlite/CpktSqliteConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_sqlite_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(SQLite3_DIR \"\${_cpkt_sqlite_facade_prefix}/lib/cmake/SQLite3\")\n"
+  "find_dependency(SQLite3 CONFIG REQUIRED)\n"
+  "set(CpktSqlite_FOUND TRUE)\n"
+  "set(CpktSqlite_VERSION \"${CPKT_SQLITE_VERSION}\")\n"
+  "if(NOT TARGET cpkt::sqlite)\n"
+  "  add_library(cpkt::sqlite STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::sqlite PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sqlite_facade_prefix}/lib/libcpkt_sqlite${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sqlite_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES SQLite::SQLite3\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::sqlite_shared)\n"
+  "  add_library(cpkt::sqlite_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::sqlite_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sqlite_facade_prefix}/lib/libcpkt_sqlite${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sqlite_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::sqlite3_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktSqlite" "CpktSqlite" "${CPKT_SQLITE_VERSION}")
+
+set(_cpkt_krb5_static_system_libraries "${CMAKE_DL_LIBS};Threads::Threads")
+set(_cpkt_krb5_static_private_pc_libraries "-ldl -pthread")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  list(APPEND _cpkt_krb5_static_system_libraries resolv)
+  string(APPEND _cpkt_krb5_static_private_pc_libraries " -lresolv")
+elseif(CPKT_TARGET_ID MATCHES "-apple-darwin$")
+  list(APPEND _cpkt_krb5_static_system_libraries resolv "-Wl,-framework,Kerberos")
+  string(APPEND _cpkt_krb5_static_private_pc_libraries " -lresolv -Wl,-framework,Kerberos")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/Kerberos5")
+file(WRITE "${_stage_root}/lib/cmake/Kerberos5/Kerberos5Config.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_krb5_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_krb5_prefix}/lib/cmake/OpenSSL\")\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "set(Kerberos5_FOUND TRUE)\n"
+  "set(Kerberos5_VERSION \"${CPKT_KRB5_VERSION}\")\n"
+  "set(Kerberos5_INCLUDE_DIRS \"\${_cpkt_krb5_prefix}/include\")\n"
+  "set(_cpkt_krb5_static_system_libraries \"${_cpkt_krb5_static_system_libraries}\")\n"
+  "if(NOT TARGET cpkt::krb5_static)\n"
+  "  add_library(cpkt::krb5_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::krb5_static PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_krb5_prefix}/lib/libkrb5${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${Kerberos5_INCLUDE_DIRS}\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_krb5_prefix}/lib/libkrb5_k5tls${_cpkt_static_library_suffix};\${_cpkt_krb5_prefix}/lib/libk5crypto${_cpkt_static_library_suffix};\${_cpkt_krb5_prefix}/lib/libcom_err${_cpkt_static_library_suffix};\${_cpkt_krb5_prefix}/lib/libkrb5support${_cpkt_static_library_suffix};\${_cpkt_krb5_prefix}/lib/libprofile${_cpkt_static_library_suffix};\${_cpkt_krb5_prefix}/lib/libverto${_cpkt_static_library_suffix};OpenSSL::SSL;OpenSSL::Crypto;\${_cpkt_krb5_static_system_libraries}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::gssapi_krb5_static)\n"
+  "  add_library(cpkt::gssapi_krb5_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::gssapi_krb5_static PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_krb5_prefix}/lib/libgssapi_krb5${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${Kerberos5_INCLUDE_DIRS}\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::krb5_static\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::krb5_shared)\n"
+  "  add_library(cpkt::krb5_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::krb5_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_krb5_prefix}/lib/libkrb5${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${Kerberos5_INCLUDE_DIRS}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::gssapi_krb5_shared)\n"
+  "  add_library(cpkt::gssapi_krb5_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::gssapi_krb5_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_krb5_prefix}/lib/libgssapi_krb5${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${Kerberos5_INCLUDE_DIRS}\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::krb5_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("Kerberos5" "Kerberos5" "${CPKT_KRB5_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CyrusSASL")
+file(WRITE "${_stage_root}/lib/cmake/CyrusSASL/CyrusSASLConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_sasl_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(Kerberos5_DIR \"\${_cpkt_sasl_prefix}/lib/cmake/Kerberos5\")\n"
+  "set(OpenSSL_DIR \"\${_cpkt_sasl_prefix}/lib/cmake/OpenSSL\")\n"
+  "find_dependency(Kerberos5 CONFIG REQUIRED)\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "set(CyrusSASL_FOUND TRUE)\n"
+  "set(CyrusSASL_VERSION \"${CPKT_CYRUS_SASL_VERSION}\")\n"
+  "if(NOT TARGET cpkt::cyrus_sasl_static)\n"
+  "  add_library(cpkt::cyrus_sasl_static STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::cyrus_sasl_static PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sasl_prefix}/lib/libsasl2${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sasl_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"cpkt::gssapi_krb5_static;OpenSSL::SSL;OpenSSL::Crypto;\${CMAKE_DL_LIBS};Threads::Threads\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::cyrus_sasl_shared)\n"
+  "  add_library(cpkt::cyrus_sasl_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::cyrus_sasl_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sasl_prefix}/lib/libsasl2${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sasl_prefix}/include\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CyrusSASL" "CyrusSASL" "${CPKT_CYRUS_SASL_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktSasl")
+file(WRITE "${_stage_root}/lib/cmake/CpktSasl/CpktSaslConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_sasl_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CyrusSASL_DIR \"\${_cpkt_sasl_facade_prefix}/lib/cmake/CyrusSASL\")\n"
+  "find_dependency(CyrusSASL CONFIG REQUIRED)\n"
+  "set(CpktSasl_FOUND TRUE)\n"
+  "set(CpktSasl_VERSION \"${CPKT_CYRUS_SASL_VERSION}\")\n"
+  "if(NOT TARGET cpkt::sasl)\n"
+  "  add_library(cpkt::sasl STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::sasl PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sasl_facade_prefix}/lib/libcpkt_sasl${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sasl_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::cyrus_sasl_static\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::sasl_shared)\n"
+  "  add_library(cpkt::sasl_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::sasl_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_sasl_facade_prefix}/lib/libcpkt_sasl${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_sasl_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::cyrus_sasl_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktSasl" "CpktSasl" "${CPKT_CYRUS_SASL_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/OpenLDAP")
+file(WRITE "${_stage_root}/lib/cmake/OpenLDAP/OpenLDAPConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_ldap_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(CyrusSASL_DIR \"\${_cpkt_ldap_prefix}/lib/cmake/CyrusSASL\")\n"
+  "set(Kerberos5_DIR \"\${_cpkt_ldap_prefix}/lib/cmake/Kerberos5\")\n"
+  "set(OpenSSL_DIR \"\${_cpkt_ldap_prefix}/lib/cmake/OpenSSL\")\n"
+  "find_dependency(CyrusSASL CONFIG REQUIRED)\n"
+  "find_dependency(Kerberos5 CONFIG REQUIRED)\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "set(OpenLDAP_FOUND TRUE)\n"
+  "set(OpenLDAP_VERSION \"${CPKT_OPENLDAP_VERSION}\")\n"
+  "if(NOT TARGET OpenLDAP::LDAP)\n"
+  "  add_library(OpenLDAP::LDAP STATIC IMPORTED)\n"
+  "  set_target_properties(OpenLDAP::LDAP PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_ldap_prefix}/lib/libldap${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_ldap_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_ldap_prefix}/lib/liblber${_cpkt_static_library_suffix};\${_cpkt_ldap_prefix}/lib/liblutil${_cpkt_static_library_suffix};cpkt::cyrus_sasl_static;OpenSSL::SSL;OpenSSL::Crypto;cpkt::gssapi_krb5_static;\${CMAKE_DL_LIBS};Threads::Threads\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::openldap_static)\n"
+  "  add_library(cpkt::openldap_static INTERFACE IMPORTED)\n"
+  "  set_target_properties(cpkt::openldap_static PROPERTIES\n"
+  "    INTERFACE_LINK_LIBRARIES OpenLDAP::LDAP\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::openldap_shared)\n"
+  "  add_library(cpkt::openldap_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::openldap_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_ldap_prefix}/lib/libldap${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_ldap_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_ldap_prefix}/lib/liblber${_cpkt_shared_library_suffix};cpkt::cyrus_sasl_shared;cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared;cpkt::gssapi_krb5_shared\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("OpenLDAP" "OpenLDAP" "${CPKT_OPENLDAP_VERSION}")
+
+set(_cpkt_gssapi_static_system_libraries "")
+set(_cpkt_gssapi_static_private_pc_libraries "-pthread")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  list(APPEND _cpkt_gssapi_static_system_libraries resolv)
+  string(APPEND _cpkt_gssapi_static_private_pc_libraries " -ldl -lresolv")
+elseif(CPKT_TARGET_ID MATCHES "-apple-darwin$")
+  list(APPEND _cpkt_gssapi_static_system_libraries resolv "-Wl,-framework,Kerberos")
+  string(APPEND _cpkt_gssapi_static_private_pc_libraries " -lresolv -Wl,-framework,Kerberos")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktGssapi")
+file(WRITE "${_stage_root}/lib/cmake/CpktGssapi/CpktGssapiConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_gssapi_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_gssapi_prefix}/lib/cmake/OpenSSL\")\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "set(CpktGssapi_FOUND TRUE)\n"
+  "set(CpktGssapi_VERSION \"${CPKT_KRB5_VERSION}\")\n"
+  "if(NOT TARGET cpkt::gssapi)\n"
+  "  add_library(cpkt::gssapi STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::gssapi PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_gssapi_prefix}/lib/libcpkt_gssapi${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_gssapi_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_gssapi_prefix}/lib/libgssapi_krb5${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libkrb5${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libkrb5_k5tls${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libk5crypto${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libcom_err${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libkrb5support${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libprofile${_cpkt_static_library_suffix};\${_cpkt_gssapi_prefix}/lib/libverto${_cpkt_static_library_suffix};OpenSSL::SSL;OpenSSL::Crypto;\${CMAKE_DL_LIBS};Threads::Threads;${_cpkt_gssapi_static_system_libraries}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::gssapi_shared)\n"
+  "  add_library(cpkt::gssapi_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::gssapi_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_gssapi_prefix}/lib/libcpkt_gssapi${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_gssapi_prefix}/include\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktGssapi" "CpktGssapi" "${CPKT_KRB5_VERSION}")
+
+set(_cpkt_postgres_static_system_libraries "m")
+set(_cpkt_postgres_static_private_pc_libraries "-lm")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  list(APPEND _cpkt_postgres_static_system_libraries resolv)
+  string(APPEND _cpkt_postgres_static_private_pc_libraries " -lresolv -ldl -pthread")
+elseif(CPKT_TARGET_ID MATCHES "-apple-darwin$")
+  list(APPEND _cpkt_postgres_static_system_libraries resolv "-Wl,-framework,Kerberos")
+  string(APPEND _cpkt_postgres_static_private_pc_libraries " -lresolv -Wl,-framework,Kerberos")
+endif()
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktPostgres")
+file(WRITE "${_stage_root}/lib/cmake/CpktPostgres/CpktPostgresConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "find_dependency(Threads REQUIRED)\n"
+  "get_filename_component(_cpkt_postgres_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(OpenSSL_DIR \"\${_cpkt_postgres_prefix}/lib/cmake/OpenSSL\")\n"
+  "set(ZLIB_DIR \"\${_cpkt_postgres_prefix}/lib/cmake/zlib\")\n"
+  "set(CURL_DIR \"\${_cpkt_postgres_prefix}/lib/cmake/CURL\")\n"
+  "find_dependency(OpenSSL CONFIG REQUIRED)\n"
+  "find_dependency(ZLIB CONFIG REQUIRED)\n"
+  "find_dependency(CURL CONFIG REQUIRED)\n"
+  "set(CpktPostgres_FOUND TRUE)\n"
+  "set(CpktPostgres_VERSION \"${CPKT_POSTGRESQL_VERSION}\")\n"
+  "set(_cpkt_postgres_static_system_libraries \"${_cpkt_postgres_static_system_libraries}\")\n"
+  "if(NOT TARGET cpkt::postgres)\n"
+  "  add_library(cpkt::postgres STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::postgres PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_postgres_prefix}/lib/libcpkt_postgres${_cpkt_static_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_postgres_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_postgres_prefix}/lib/libpq${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libpq-oauth${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libpgcommon_shlib${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libpgport${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libldap${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/liblber${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/liblutil${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libsasl2${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libgssapi_krb5${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libkrb5${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libkrb5_k5tls${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libk5crypto${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libcom_err${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libkrb5support${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libprofile${_cpkt_static_library_suffix};\${_cpkt_postgres_prefix}/lib/libverto${_cpkt_static_library_suffix};CURL::libcurl;OpenSSL::SSL;OpenSSL::Crypto;ZLIB::ZLIB;\${CMAKE_DL_LIBS};Threads::Threads;\${_cpkt_postgres_static_system_libraries}\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::postgres_shared)\n"
+  "  add_library(cpkt::postgres_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::postgres_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_postgres_prefix}/lib/libcpkt_postgres${_cpkt_shared_library_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_postgres_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"\${_cpkt_postgres_prefix}/lib/${_cpkt_postgresql_shared_library_name}\"\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktPostgres" "CpktPostgres" "${CPKT_POSTGRESQL_VERSION}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/mqtt-c")
 file(WRITE "${_stage_root}/lib/cmake/mqtt-c/mqtt-cConfig.cmake"
@@ -794,6 +1506,39 @@ file(WRITE "${_stage_root}/lib/cmake/mqtt-c/mqtt-cConfig.cmake"
   "endif()\n"
 )
 cpkt_write_config_version("mqtt-c" "mqtt-c" "${CPKT_MQTTC_VERSION}")
+
+file(MAKE_DIRECTORY "${_stage_root}/lib/cmake/CpktMqttc")
+file(WRITE "${_stage_root}/lib/cmake/CpktMqttc/CpktMqttcConfig.cmake"
+  "include(CMakeFindDependencyMacro)\n"
+  "get_filename_component(_cpkt_mqttc_facade_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n"
+  "set(_cpkt_mqttc_static_suffix \".a\")\n"
+  "if(APPLE)\n"
+  "  set(_cpkt_mqttc_shared_suffix \".dylib\")\n"
+  "else()\n"
+  "  set(_cpkt_mqttc_shared_suffix \".so\")\n"
+  "endif()\n"
+  "set(mqtt-c_DIR \"\${_cpkt_mqttc_facade_prefix}/lib/cmake/mqtt-c\")\n"
+  "find_dependency(mqtt-c CONFIG REQUIRED)\n"
+  "set(CpktMqttc_FOUND TRUE)\n"
+  "set(CpktMqttc_VERSION \"${CPKT_MQTTC_VERSION}\")\n"
+  "if(NOT TARGET cpkt::mqttc)\n"
+  "  add_library(cpkt::mqttc STATIC IMPORTED)\n"
+  "  set_target_properties(cpkt::mqttc PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_mqttc_facade_prefix}/lib/libcpkt_mqttc\${_cpkt_mqttc_static_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_mqttc_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES \"MQTT-C::mqttc\"\n"
+  "  )\n"
+  "endif()\n"
+  "if(NOT TARGET cpkt::mqttc_facade_shared)\n"
+  "  add_library(cpkt::mqttc_facade_shared SHARED IMPORTED)\n"
+  "  set_target_properties(cpkt::mqttc_facade_shared PROPERTIES\n"
+  "    IMPORTED_LOCATION \"\${_cpkt_mqttc_facade_prefix}/lib/libcpkt_mqttc\${_cpkt_mqttc_shared_suffix}\"\n"
+  "    INTERFACE_INCLUDE_DIRECTORIES \"\${_cpkt_mqttc_facade_prefix}/include\"\n"
+  "    INTERFACE_LINK_LIBRARIES cpkt::mqttc_shared\n"
+  "  )\n"
+  "endif()\n"
+)
+cpkt_write_config_version("CpktMqttc" "CpktMqttc" "${CPKT_MQTTC_VERSION}")
 
 file(MAKE_DIRECTORY "${_stage_root}/lib/pkgconfig")
 file(WRITE "${_stage_root}/lib/pkgconfig/libcrypto.pc"
@@ -833,6 +1578,45 @@ file(WRITE "${_stage_root}/lib/pkgconfig/openssl.pc"
   "Version: ${CPKT_OPENSSL_VERSION}\n"
   "Requires.private: libssl libcrypto\n"
   "Libs: -L\${libdir} -lssl -lcrypto\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-openssl.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-openssl\n"
+  "Description: C89 OpenSSL facade from c.pkt.systems\n"
+  "Version: ${CPKT_OPENSSL_VERSION}\n"
+  "Requires: openssl\n"
+  "Libs: -L\${libdir} -lcpkt_openssl\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-nghttp2.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-nghttp2\n"
+  "Description: C89 nghttp2 facade from c.pkt.systems\n"
+  "Version: ${CPKT_NGHTTP2_VERSION}\n"
+  "Requires.private: libnghttp2\n"
+  "Libs: -L\${libdir} -lcpkt_nghttp2\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-libssh2.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-libssh2\n"
+  "Description: C89 libssh2 facade from c.pkt.systems\n"
+  "Version: ${CPKT_LIBSSH2_VERSION}\n"
+  "Requires.private: libssh2\n"
+  "Libs: -L\${libdir} -lcpkt_libssh2\n"
   "Cflags: -I\${includedir}\n"
 )
 file(WRITE "${_stage_root}/lib/pkgconfig/zlib.pc"
@@ -915,6 +1699,19 @@ foreach(_lua_pc_name lua lua5.5)
     "Cflags: -I\${includedir}\n"
   )
 endforeach()
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-lua.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-lua\n"
+  "Description: C89 Lua 5.5 facade from c.pkt.systems\n"
+  "Version: ${CPKT_LUA_VERSION}\n"
+  "Requires.private: lua\n"
+  "Libs: -L\${libdir} -lcpkt_lua\n"
+  "Cflags: -I\${includedir}\n"
+)
 file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-lua-runtime.pc"
   "prefix=\${pcfiledir}/../..\n"
   "exec_prefix=\${prefix}\n"
@@ -1007,6 +1804,155 @@ file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-opcua.pc"
   "Version: ${CPKT_OPEN62541_VERSION}\n"
   "Requires.private: open62541\n"
   "Libs: -L\${libdir} -lcpkt_opcua\n"
+  "Libs.private: -pthread\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-postgres.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-postgres\n"
+  "Description: C89 PostgreSQL/libpq facade from c.pkt.systems\n"
+  "Version: ${CPKT_POSTGRESQL_VERSION}\n"
+  "Requires.private: libcurl libssl libcrypto zlib\n"
+  "Libs: -L\${libdir} -lcpkt_postgres\n"
+  "Libs.private: -lpq -lpq-oauth -lpgcommon_shlib -lpgport -lldap -llber -llutil -lsasl2 -lgssapi_krb5 -lkrb5 -lkrb5_k5tls -lk5crypto -lcom_err -lkrb5support -lprofile -lverto ${_cpkt_postgres_static_private_pc_libraries}\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-gssapi.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-gssapi\n"
+  "Description: C89 GSSAPI facade from c.pkt.systems\n"
+  "Version: ${CPKT_KRB5_VERSION}\n"
+  "Requires.private: libssl libcrypto\n"
+  "Libs: -L\${libdir} -lcpkt_gssapi\n"
+  "Libs.private: -lgssapi_krb5 -lkrb5 -lkrb5_k5tls -lk5crypto -lcom_err -lkrb5support -lprofile -lverto ${_cpkt_gssapi_static_private_pc_libraries}\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-sasl.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-sasl\n"
+  "Description: C89 Cyrus SASL facade from c.pkt.systems\n"
+  "Version: ${CPKT_CYRUS_SASL_VERSION}\n"
+  "Requires.private: libsasl2\n"
+  "Libs: -L\${libdir} -lcpkt_sasl\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-png.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-png\nDescription: Full libpng API from c.pkt.systems\nVersion: ${CPKT_LIBPNG_VERSION}\n"
+  "Requires.private: zlib\nLibs: -L\${libdir} -lpng16\nLibs.private: ${_cpkt_pdf_private_math}\nCflags: -I\${includedir}\n")
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-haru.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-haru\nDescription: libHaru PDF library from c.pkt.systems\nVersion: ${CPKT_LIBHARU_VERSION}\n"
+  "Requires.private: cpkt-png zlib\nLibs: -L\${libdir} -lhpdf\nLibs.private: ${_cpkt_pdf_private_math}\nCflags: -I\${includedir}\n")
+set(_cpkt_iodbc_static_pc_libraries "-pthread")
+if(CPKT_TARGET_ID MATCHES "-linux-")
+  string(APPEND _cpkt_iodbc_static_pc_libraries " -ldl")
+elseif(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  string(APPEND _cpkt_iodbc_static_pc_libraries " -Wl,-framework,Carbon")
+endif()
+file(WRITE "${_stage_root}/lib/pkgconfig/libiodbc.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: iODBC\nDescription: iODBC driver manager and installer from c.pkt.systems\nVersion: ${CPKT_IODBC_VERSION}\n"
+  "Libs: -L\${libdir} -liodbc -liodbcinst\nLibs.private: ${_cpkt_iodbc_static_pc_libraries}\nCflags: -I\${includedir}\n")
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-iodbc.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-iodbc\nDescription: Full C89 iODBC API from c.pkt.systems\nVersion: ${CPKT_IODBC_VERSION}\n"
+  "Libs: -L\${libdir} -liodbc -liodbcinst\nLibs.private: ${_cpkt_iodbc_static_pc_libraries}\nCflags: -I\${includedir}\n")
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-pdf.pc"
+  "prefix=\${pcfiledir}/../..\nlibdir=\${prefix}/lib\nincludedir=\${prefix}/include\n\n"
+  "Name: cpkt-pdf\nDescription: Complete C89 libHaru PDF facade from c.pkt.systems\nVersion: ${CPKT_LIBHARU_VERSION}\n"
+  "Requires.private: cpkt-haru\nLibs: -L\${libdir} -lcpkt_pdf\nCflags: -I\${includedir}\n")
+file(WRITE "${_stage_root}/lib/pkgconfig/sqlite3.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: SQLite\n"
+  "Description: SQLite embedded SQL database from c.pkt.systems\n"
+  "Version: ${CPKT_SQLITE_VERSION}\n"
+  "Libs: -L\${libdir} -lsqlite3\n"
+  "Libs.private: ${_cpkt_sqlite_static_private_pc_libraries}\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-sqlite.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-sqlite\n"
+  "Description: C89 SQLite facade from c.pkt.systems\n"
+  "Version: ${CPKT_SQLITE_VERSION}\n"
+  "Requires.private: sqlite3\n"
+  "Libs: -L\${libdir} -lcpkt_sqlite\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/krb5.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: MIT Kerberos\n"
+  "Description: MIT Kerberos client libraries from c.pkt.systems\n"
+  "Version: ${CPKT_KRB5_VERSION}\n"
+  "Requires.private: libssl libcrypto\n"
+  "Libs: -L\${libdir} -lkrb5 -lkrb5_k5tls -lk5crypto -lcom_err -lkrb5support -lprofile -lverto\n"
+  "Libs.private: ${_cpkt_krb5_static_private_pc_libraries}\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/gssapi_krb5.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: MIT Kerberos GSSAPI\n"
+  "Description: MIT Kerberos GSSAPI library from c.pkt.systems\n"
+  "Version: ${CPKT_KRB5_VERSION}\n"
+  "Requires.private: krb5\n"
+  "Libs: -L\${libdir} -lgssapi_krb5\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/libsasl2.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: Cyrus SASL\n"
+  "Description: Cyrus SASL client library from c.pkt.systems\n"
+  "Version: ${CPKT_CYRUS_SASL_VERSION}\n"
+  "Requires.private: gssapi_krb5 libssl libcrypto\n"
+  "Libs: -L\${libdir} -lsasl2\n"
+  "Libs.private: -ldl -pthread\n"
+  "Cflags: -I\${includedir}\n"
+)
+file(WRITE "${_stage_root}/lib/pkgconfig/ldap.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: OpenLDAP\n"
+  "Description: OpenLDAP client library from c.pkt.systems\n"
+  "Version: ${CPKT_OPENLDAP_VERSION}\n"
+  "Requires.private: libsasl2 gssapi_krb5 libssl libcrypto\n"
+  "Libs: -L\${libdir} -lldap -llber -llutil\n"
+  "Libs.private: -ldl -pthread\n"
   "Cflags: -I\${includedir}\n"
 )
 file(WRITE "${_stage_root}/lib/pkgconfig/mqtt-c.pc"
@@ -1022,16 +1968,43 @@ file(WRITE "${_stage_root}/lib/pkgconfig/mqtt-c.pc"
   "Libs.private: -pthread\n"
   "Cflags: -I\${includedir}\n"
 )
+file(WRITE "${_stage_root}/lib/pkgconfig/cpkt-mqttc.pc"
+  "prefix=\${pcfiledir}/../..\n"
+  "exec_prefix=\${prefix}\n"
+  "libdir=\${prefix}/lib\n"
+  "includedir=\${prefix}/include\n"
+  "\n"
+  "Name: cpkt-mqttc\n"
+  "Description: C89 MQTT-C facade from c.pkt.systems\n"
+  "Version: ${CPKT_MQTTC_VERSION}\n"
+  "Requires.private: mqtt-c\n"
+  "Libs: -L\${libdir} -lcpkt_mqttc\n"
+  "Cflags: -I\${includedir}\n"
+)
 
 file(MAKE_DIRECTORY "${_stage_root}/share/c.pkt.systems")
+set(_cpkt_macos_manifest_field "")
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  if(NOT CPKT_MACOS_DEPLOYMENT_TARGET MATCHES "^[0-9]+[.][0-9]+$")
+    message(FATAL_ERROR "Darwin package requires CPKT_MACOS_DEPLOYMENT_TARGET")
+  endif()
+  set(_cpkt_macos_manifest_field
+    "macos_deployment_target=${CPKT_MACOS_DEPLOYMENT_TARGET}\n")
+endif()
 file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "bundle_version=${CPKT_BUNDLE_VERSION}\n"
   "target_id=${CPKT_TARGET_ID}\n"
+  "${_cpkt_macos_manifest_field}"
   "openssl_version=${CPKT_OPENSSL_VERSION}\n"
   "zlib_version=${CPKT_ZLIB_VERSION}\n"
+  "libpng_version=${CPKT_LIBPNG_VERSION}\n"
+  "libharu_version=${CPKT_LIBHARU_VERSION}\n"
+  "iodbc_version=${CPKT_IODBC_VERSION}\n"
   "curl_version=${CPKT_CURL_VERSION}\n"
   "nghttp2_version=${CPKT_NGHTTP2_VERSION}\n"
+  "nghttp2_abi_version=${CPKT_NGHTTP2_ABI_VERSION}\n"
   "libssh2_version=${CPKT_LIBSSH2_VERSION}\n"
+  "libssh2_abi_version=${CPKT_LIBSSH2_ABI_VERSION}\n"
   "libxml2_version=${CPKT_LIBXML2_VERSION}\n"
   "lua_version=${CPKT_LUA_VERSION}\n"
   "miniaudio_version=${CPKT_MINIAUDIO_VERSION}\n"
@@ -1039,12 +2012,25 @@ file(WRITE "${_stage_root}/share/c.pkt.systems/manifest.txt"
   "sus_backend_capabilities=${CPKT_SUS_BACKEND_CAPABILITIES}\n"
   "mqtt_c_version=${CPKT_MQTTC_VERSION}\n"
   "mqtt_c_commit=${CPKT_MQTTC_COMMIT}\n"
+  "mqttc_abi_version=${CPKT_MQTTC_ABI_VERSION}\n"
   "open62541_version=${CPKT_OPEN62541_VERSION}\n"
   "open62541_patchset=${CPKT_OPEN62541_PATCHSET}\n"
+  "krb5_version=${CPKT_KRB5_VERSION}\n"
+  "cyrus_sasl_version=${CPKT_CYRUS_SASL_VERSION}\n"
+  "openldap_version=${CPKT_OPENLDAP_VERSION}\n"
+  "postgresql_version=${CPKT_POSTGRESQL_VERSION}\n"
+  "sqlite_version=${CPKT_SQLITE_VERSION}\n"
+  "openssl_abi_version=${CPKT_OPENSSL_ABI_VERSION}\n"
+  "lua_abi_version=${CPKT_LUA_ABI_VERSION}\n"
   "lua_runtime_abi_version=${CPKT_LUA_RUNTIME_ABI_VERSION}\n"
   "audio_abi_version=${CPKT_AUDIO_ABI_VERSION}\n"
   "sus_abi_version=${CPKT_SUS_ABI_VERSION}\n"
   "opcua_abi_version=${CPKT_OPCUA_ABI_VERSION}\n"
+  "postgres_abi_version=${CPKT_POSTGRES_ABI_VERSION}\n"
+  "sqlite_abi_version=${CPKT_SQLITE_ABI_VERSION}\n"
+  "pdf_abi_version=${CPKT_PDF_ABI_VERSION}\n"
+  "gssapi_abi_version=${CPKT_GSSAPI_ABI_VERSION}\n"
+  "sasl_abi_version=${CPKT_SASL_ABI_VERSION}\n"
 )
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
@@ -1065,6 +2051,27 @@ file(COPY_FILE
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/audio-sus-facade-spec.md"
   "${_stage_root}/share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/postgres-c89-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/postgres-c89-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/gssapi-c89-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/gssapi-c89-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/openssl-c89-facade-surface.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/openssl-c89-facade-surface.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/sasl-c89-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/sasl-c89-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/sqlite-c89-facade-spec.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/sqlite-c89-facade-spec.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/sqlite-c89-facade-surface.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/sqlite-c89-facade-surface.md")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/pdf-c89-facade.md"
+  "${_stage_root}/share/doc/c.pkt.systems/docs/pdf-c89-facade.md")
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/sus-model-catalog.tsv"
   "${_stage_root}/share/doc/c.pkt.systems/docs/sus-model-catalog.tsv")
@@ -1087,13 +2094,26 @@ cpkt_stage_license("openssl" "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl/src/LICENSE.
 cpkt_stage_license("curl" "${CPKT_DEPENDENCY_BUILD_ROOT}/curl/src/COPYING")
 cpkt_stage_license("libssh2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libssh2/src/COPYING")
 cpkt_stage_license("zlib" "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib/src/LICENSE")
+cpkt_stage_license("libpng" "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng/src/LICENSE")
+cpkt_stage_license("libharu" "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu/src/LICENSE")
+cpkt_stage_license("iodbc" "${CPKT_DEPENDENCY_BUILD_ROOT}/iodbc/src/LICENSE.BSD")
+file(COPY_FILE
+  "${CPKT_SOURCE_DIR}/docs/third_party/THIRD_PARTY_NOTICES.md"
+  "${_stage_root}/share/doc/c.pkt.systems/THIRD_PARTY_NOTICES.md")
 cpkt_stage_license("nghttp2" "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2/src/COPYING")
 cpkt_stage_license("libxml2" "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2/src/Copyright")
 cpkt_stage_license("lua" "${CPKT_DEPENDENCY_BUILD_ROOT}/lua/src/src/lua.h")
 cpkt_stage_license("miniaudio" "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio/src/LICENSE")
-cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src/LICENSE")
+cpkt_stage_license("whisper.cpp" "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper/src-static/LICENSE")
 cpkt_stage_license("mqtt-c" "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c/src/LICENSE")
-cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src/LICENSE")
+cpkt_stage_license("opcua-schema" "${CPKT_SOURCE_DIR}/docs/third_party/opcua-schema/LICENSE")
+cpkt_stage_license("opcua-formatter" "${CPKT_SOURCE_DIR}/docs/third_party/opcua-formatter/LICENSE")
+cpkt_stage_license("open62541" "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541/src-static/LICENSE")
+cpkt_stage_license("mit-kerberos" "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5/src/NOTICE")
+cpkt_stage_license("cyrus-sasl" "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl/src/COPYING")
+cpkt_stage_license("openldap" "${CPKT_DEPENDENCY_BUILD_ROOT}/openldap/src/LICENSE")
+cpkt_stage_license("postgresql" "${CPKT_DEPENDENCY_BUILD_ROOT}/postgresql/src/COPYRIGHT")
+cpkt_stage_license("sqlite" "${CPKT_SOURCE_DIR}/docs/third_party/sqlite/LICENSE")
 file(MAKE_DIRECTORY "${_stage_root}/share/doc/c.pkt.systems/third_party/kblab-whisper-models")
 file(COPY_FILE
   "${CPKT_SOURCE_DIR}/docs/third_party/kblab-whisper-models/LICENSE"

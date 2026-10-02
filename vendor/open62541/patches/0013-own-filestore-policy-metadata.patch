@@ -1,0 +1,138 @@
+--- a/plugins/crypto/ua_securitypolicy_filestore.c
++++ b/plugins/crypto/ua_securitypolicy_filestore.c
+@@ -32,7 +32,7 @@
+     UA_ByteString fileData = UA_BYTESTRING_NULL;
+     UA_DIR *dir = UA_opendir(path);
+     if(!dir)
+-        return UA_STATUSCODE_BADINTERNALERROR;
++        return false;
+ 
+     struct UA_DIRENT *dirent;
+     while((dirent = UA_readdir(dir)) != NULL) {
+@@ -42,7 +42,7 @@
+         /* Get filename to load */
+         char filename[UA_FILENAME_MAX];
+         if(mp_snprintf(filename, UA_FILENAME_MAX, "%s/%s", path, dirent->d_name) < 0)
+-            return false;
++            goto cleanup;
+ 
+         /* Load data from file */
+         if(fileData.length > 0)
+@@ -538,26 +538,22 @@
+ updateCertificate_filestore(UA_SecurityPolicy *sp,
+                             const UA_ByteString newCertificate,
+                             const UA_ByteString newPrivateKey) {
+-    /* Temporarily save the old certificate file so that it can be removed from
+-     * CertStore */
+-    UA_ByteString localCertificateTmp;
+-    UA_ByteString_copy(&sp->localCertificate, &localCertificateTmp);
+-
+-    Filestore_Context *pc =
+-        (Filestore_Context *) sp->policyContext;
+-    UA_SecurityPolicy *isp = pc->innerPolicy;
+-
++    Filestore_Context *pc = (Filestore_Context *)sp->policyContext;
++    UA_SecurityPolicy *isp = pc->innerPolicy;
+     UA_StatusCode retval = isp->updateCertificate(isp, newCertificate, newPrivateKey);
++
++    /* Preserve native inner effects even when updating the key fails. The outer
++     * public certificate owns its copy, so later clear cannot free inner data. */
++    UA_ByteString staged = UA_BYTESTRING_NULL;
++    UA_StatusCode conversion = UA_ByteString_copy(&isp->localCertificate, &staged);
++    if(conversion != UA_STATUSCODE_GOOD)
++        return conversion;
++    UA_ByteString_clear(&sp->localCertificate);
++    sp->localCertificate = staged;
+     if(retval != UA_STATUSCODE_GOOD)
+         return retval;
+-
+-    sp->localCertificate = isp->localCertificate;
+-
+-    retval = writeCertificateAndPrivateKeyToFilestore(pc->storePath,
+-                                                      newCertificate, newPrivateKey);
+-    UA_ByteString_clear(&localCertificateTmp);
+-
+-    return retval;
++    return writeCertificateAndPrivateKeyToFilestore(pc->storePath,
++                                                   newCertificate, newPrivateKey);
+ }
+ 
+ static UA_StatusCode
+@@ -590,6 +586,19 @@
+ }
+ 
+ static void
++clearPublicMetadata(UA_SecurityPolicy *sp) {
++    UA_String_clear(&sp->policyUri);
++    UA_String_clear(&sp->localCertificate);
++    UA_String_clear(&sp->asymSignatureAlgorithm.uri);
++    UA_String_clear(&sp->asymEncryptionAlgorithm.uri);
++    UA_String_clear(&sp->symSignatureAlgorithm.uri);
++    UA_String_clear(&sp->symEncryptionAlgorithm.uri);
++    UA_String_clear(&sp->certSignatureAlgorithm.uri);
++    UA_NodeId_clear(&sp->certificateGroupId);
++    UA_NodeId_clear(&sp->certificateTypeId);
++}
++
++static void
+ clear_filestore(UA_SecurityPolicy *sp) {
+     if(!sp)
+         return;
+@@ -598,6 +607,7 @@
+ 
+     Filestore_Context *pc = (Filestore_Context *) sp->policyContext;
+ 
++    clearPublicMetadata(sp);
+     pc->innerPolicy->clear(pc->innerPolicy);
+     UA_String_clear(&pc->storePath);
+     UA_free(pc->innerPolicy);
+@@ -615,7 +625,11 @@
+     if(!pc)
+         return UA_STATUSCODE_BADOUTOFMEMORY;
+ 
+-    UA_String_copy(&storePath, &pc->storePath);
++    UA_StatusCode status = UA_String_copy(&storePath, &pc->storePath);
++    if(status != UA_STATUSCODE_GOOD) {
++        UA_free(pc);
++        return status;
++    }
+     policy->policyContext = (void *)pc;
+     return UA_STATUSCODE_GOOD;
+ }
+@@ -707,10 +721,33 @@
+     sp->clear = clear_filestore;
+ 
+     /* Set the state / context */
+-    sp->localCertificate = isp->localCertificate;
+-    UA_StatusCode retval = newContext_filestore(sp, storePath);
+-    if(retval != UA_STATUSCODE_GOOD)
++    /* All public metadata is independently owned by the outer policy. The
++     * inner record transfers ownership only after every allocation succeeds. */
++    sp->policyUri = UA_STRING_NULL;
++    sp->localCertificate = UA_STRING_NULL;
++    sp->asymSignatureAlgorithm.uri = UA_STRING_NULL;
++    sp->asymEncryptionAlgorithm.uri = UA_STRING_NULL;
++    sp->symSignatureAlgorithm.uri = UA_STRING_NULL;
++    sp->symEncryptionAlgorithm.uri = UA_STRING_NULL;
++    sp->certSignatureAlgorithm.uri = UA_STRING_NULL;
++    UA_NodeId_init(&sp->certificateGroupId);
++    UA_NodeId_init(&sp->certificateTypeId);
++    UA_StatusCode retval = UA_STATUSCODE_GOOD;
++    if(!retval) retval = UA_String_copy(&isp->policyUri, &sp->policyUri);
++    if(!retval) retval = UA_String_copy(&isp->localCertificate, &sp->localCertificate);
++    if(!retval) retval = UA_String_copy(&isp->asymSignatureAlgorithm.uri, &sp->asymSignatureAlgorithm.uri);
++    if(!retval) retval = UA_String_copy(&isp->asymEncryptionAlgorithm.uri, &sp->asymEncryptionAlgorithm.uri);
++    if(!retval) retval = UA_String_copy(&isp->symSignatureAlgorithm.uri, &sp->symSignatureAlgorithm.uri);
++    if(!retval) retval = UA_String_copy(&isp->symEncryptionAlgorithm.uri, &sp->symEncryptionAlgorithm.uri);
++    if(!retval) retval = UA_String_copy(&isp->certSignatureAlgorithm.uri, &sp->certSignatureAlgorithm.uri);
++    if(!retval) retval = UA_NodeId_copy(&isp->certificateGroupId, &sp->certificateGroupId);
++    if(!retval) retval = UA_NodeId_copy(&isp->certificateTypeId, &sp->certificateTypeId);
++    if(!retval) retval = newContext_filestore(sp, storePath);
++    if(retval != UA_STATUSCODE_GOOD) {
++        clearPublicMetadata(sp);
++        memset(sp, 0, sizeof(*sp));
+         return retval;
++    }
+ 
+     /* Set the inner policy */
+     Filestore_Context *pc = (Filestore_Context *) sp->policyContext;

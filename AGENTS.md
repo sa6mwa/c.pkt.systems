@@ -14,8 +14,8 @@
   pre-1.0 dependencies.
 - Compare with the actual dependency versions, ABI metadata, and artifacts in
   the latest published bundle, not merely the previous commit or development
-  branch. Record that baseline and the compatibility conclusion in the upgrade
-  audit.
+  branch. Record that baseline and the compatibility conclusion in the release
+  record; keep transient, date-stamped upgrade audits out of this source tree.
 - Check upstream ABI declarations and changes to SONAMEs, Darwin install names
   and compatibility versions, exported symbols, public type layouts, and calling
   conventions where applicable. An unchanged SONAME does not by itself prove
@@ -79,3 +79,16 @@
 - These dependency constraints apply even while c.pkt.systems or an upstream
   dependency is pre-1.0. Routine bundle upgrades must not accidentally impose
   breaking changes on downstream consumers.
+
+## Completion gate
+
+- For changes affecting macOS, push the candidate branch and require the native
+  Darwin GitHub Actions workflow to succeed on that exact commit. Inspect failed
+  runs, fix actionable issues, and repeat until it succeeds before declaring the
+  work complete. A local cross-compile or an earlier successful commit is not a
+  substitute for this gate.
+- Run `make finalize-slice` after each implementation iteration. It formats
+  project-owned C and headers, runs the debug and clangd checks, then asserts
+  that formatting is clean.
+- After the last edit and before every commit, run `make format-check`. If it
+  fails, run `make format`, repeat affected verification, and check again.

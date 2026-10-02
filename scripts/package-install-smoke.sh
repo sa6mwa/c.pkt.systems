@@ -83,6 +83,7 @@ cpkt_resolve_linux_toolchain() {
   toolchain_sysroot=$(cpkt_resolver_value "$resolver_description" sysroot)
   cc=$(cpkt_resolver_value "$resolver_description" cc)
   cxx=$(cpkt_resolver_value "$resolver_description" cxx)
+  readelf=$(cpkt_resolver_value "$resolver_description" readelf)
 }
 
 case "$target_id" in
@@ -92,15 +93,20 @@ case "$target_id" in
     static_extra_libs=
     case "$target_id" in
       x86_64-linux-*) run_prefix= ;;
-      aarch64-linux-*) run_prefix="/usr/bin/qemu-aarch64 -L $toolchain_sysroot" ;;
-      armhf-linux-*) run_prefix="/usr/bin/qemu-arm -L $toolchain_sysroot"; static_extra_libs=-latomic ;;
+      aarch64-linux-*) run_prefix="${CPKT_QEMU_AARCH64:-/usr/bin/qemu-aarch64} -L $toolchain_sysroot" ;;
+      armhf-linux-*) run_prefix="${CPKT_QEMU_ARM:-/usr/bin/qemu-arm} -L $toolchain_sysroot"; static_extra_libs=-latomic ;;
     esac
     case "$target_id" in *-linux-gnu) pkg_config_static_flag= ;; esac
     ;;
   arm64-apple-darwin)
-    osxcross_root=${OSXCROSS_ROOT:-"$HOME/.local/cross/osxcross"}
-    osxcross_host=${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}
-    cc=${CC:-"$osxcross_root/bin/$osxcross_host-clang"}
+    darwin_toolchain_report=$("$repo_root/scripts/cpkt-toolchains.sh" discover arm64-apple-darwin)
+    if ! grep -Fxq 'status=ready' <<<"$darwin_toolchain_report"; then
+      printf 'Darwin osxcross SDK and pinned host MIG are not ready:\n%s\n' "$darwin_toolchain_report" >&2
+      exit 1
+    fi
+    osxcross_root=$(cpkt_resolver_value "$darwin_toolchain_report" root)
+    osxcross_host=$(cpkt_resolver_value "$darwin_toolchain_report" prefix)
+    cc=$(cpkt_resolver_value "$darwin_toolchain_report" cc)
     target_command_env=("LD_LIBRARY_PATH=$osxcross_root/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}")
     run_prefix=
     run_consumers=0
@@ -215,8 +221,9 @@ if [ "${CPKT_PACKAGE_INSTALL_SMOKE_PRINT_PKG_CONFIG_WORDS:-0}" = 1 ]; then
   exit 0
 fi
 
-work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-install-smoke.XXXXXX")
-trap 'rm -rf "$work_root"' EXIT
+mkdir -p "$repo_root/build"
+work_root=$(mktemp -d "$repo_root/build/cpkt-install-smoke.XXXXXX")
+trap 'cmake -E remove_directory "$work_root"' EXIT
 diagnostic_dir="$work_root/diagnostics"
 mkdir -p "$diagnostic_dir"
 
@@ -251,6 +258,7 @@ cpkt_run_checked() {
 cpkt_run_shell_checked() {
   description=$1
   command_text=$2
+  allowed_warning_regex=${3:-}
   log_file="$diagnostic_dir/$(cpkt_safe_log_name "$description").log"
 
   if [ "${#target_command_env[@]}" -gt 0 ]; then
@@ -264,7 +272,9 @@ cpkt_run_shell_checked() {
     cat "$log_file" >&2
     exit 1
   fi
-  if grep -E '(^|[[:space:]:])warning:' "$log_file" >/dev/null 2>&1; then
+  warnings=$(grep -E '(^|[[:space:]:])warning:' "$log_file" || true)
+  if [ -n "$warnings" ] &&
+      { [ -z "$allowed_warning_regex" ] || printf '%s\n' "$warnings" | grep -Ev "$allowed_warning_regex" >/dev/null; }; then
     printf '%s emitted warnings\n' "$description" >&2
     cat "$log_file" >&2
     exit 1
@@ -281,9 +291,13 @@ cpkt_cmake_build_checked() {
 (cd "$work_root" && cmake -E tar xf "$archive")
 prefix_count=0
 prefix=
-for candidate in "$work_root"/*; do
-  if [ ! -d "$candidate" ] || [ "$candidate" = "$diagnostic_dir" ]; then
+for candidate in "$work_root"/* "$work_root"/.[!.]* "$work_root"/..?*; do
+  if { [ ! -e "$candidate" ] && [ ! -L "$candidate" ]; } || [ "$candidate" = "$diagnostic_dir" ]; then
     continue
+  fi
+  if [ ! -d "$candidate" ]; then
+    printf 'archive contains unexpected top-level file: %s\n' "$candidate" >&2
+    exit 1
   fi
   prefix_count=$((prefix_count + 1))
   prefix=$candidate
@@ -306,6 +320,10 @@ mkdir -p "$work_root/bin"
 
 common_flags="-std=c99 -Wall -Wextra -Wpedantic -isystem $prefix/include"
 common_c89_flags="-std=c89 -Wall -Wextra -Wpedantic -isystem $prefix/include"
+cpkt_run_checked "strict C89 Kerberos SDK header consumer" \
+  "$cc" -std=c89 -Wall -Wextra -Wpedantic -pedantic-errors -Werror \
+  -isystem "$prefix/include" -c -o "$work_root/bin/krb5_sdk_header_c89.o" \
+  "$repo_root/tests/krb5_sdk_header_c89.c"
 assert_package_file() {
   package_path=$1
   if [ ! -f "$prefix/$package_path" ]; then
@@ -358,20 +376,48 @@ assert_package_file "lib/cmake/libxml2/libxml2-config.cmake"
 assert_package_file "lib/cmake/libxml2/libxml2-config-version.cmake"
 assert_package_file "lib/cmake/Lua/LuaConfig.cmake"
 assert_package_file "lib/cmake/Lua/LuaConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktLua/CpktLuaConfig.cmake"
+assert_package_file "lib/cmake/CpktLua/CpktLuaConfigVersion.cmake"
 assert_package_file "lib/cmake/mqtt-c/mqtt-cConfig.cmake"
 assert_package_file "lib/cmake/mqtt-c/mqtt-cConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake"
 assert_package_file "lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake"
 assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
 assert_package_file "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktSasl/CpktSaslConfig.cmake"
+assert_package_file "lib/cmake/CpktSasl/CpktSaslConfigVersion.cmake"
+assert_package_file "lib/cmake/OpenLDAP/OpenLDAPConfig.cmake"
+assert_package_file "lib/cmake/OpenLDAP/OpenLDAPConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktSqlite/CpktSqliteConfig.cmake"
+assert_package_file "lib/cmake/CpktSqlite/CpktSqliteConfigVersion.cmake"
+assert_package_file "lib/cmake/CpktPng/CpktPngConfig.cmake"
+assert_package_file "lib/cmake/CpktHaru/CpktHaruConfig.cmake"
+assert_package_file "lib/cmake/CpktPdf/CpktPdfConfig.cmake"
+assert_package_file "include/png.h"
+assert_package_file "include/pngconf.h"
+assert_package_file "include/pnglibconf.h"
+assert_package_file "include/cpkt/pdf.h"
 assert_package_file "lib/cmake/open62541/open62541Config.cmake"
 assert_package_file "lib/cmake/open62541/open62541ConfigVersion.cmake"
 assert_package_file "share/c.pkt.systems/manifest.txt"
 assert_package_file "share/c.pkt.systems/sus-model-catalog.tsv"
 assert_package_file "share/doc/c.pkt.systems/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/THIRD_PARTY_NOTICES.md"
+assert_package_file "share/doc/c.pkt.systems/docs/pdf-c89-facade.md"
+assert_package_file "share/doc/c.pkt.systems/third_party/libpng/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/third_party/libharu/LICENSE"
+assert_package_file "share/doc/c.pkt.systems/third_party/iodbc/LICENSE"
+assert_package_file "lib/cmake/CpktIodbc/CpktIodbcConfig.cmake"
+assert_package_file "lib/pkgconfig/cpkt-iodbc.pc"
+assert_package_file "include/sql.h"
+assert_package_file "include/odbcinst.h"
 assert_package_file "share/doc/c.pkt.systems/README.md"
 assert_package_file "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
 assert_package_file "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+assert_package_file "share/doc/c.pkt.systems/docs/sasl-c89-facade-spec.md"
+assert_package_file "include/cpkt/sasl_plugin.h"
+assert_package_file "share/doc/c.pkt.systems/docs/sqlite-c89-facade-spec.md"
+assert_package_file "include/sqlite3ext.h"
 assert_package_file "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
 assert_package_file "share/doc/c.pkt.systems/examples/abi_smoke.c"
 assert_package_file "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
@@ -414,14 +460,29 @@ assert_file_contains "$prefix/share/doc/c.pkt.systems/third_party/kblab-whisper-
 assert_package_dir_absent "lib/cmake/ZLIB"
 assert_package_dir_absent "lib/cmake/Libssh2"
 
-if grep -E 'lua\.h|lauxlib\.h|lualib\.h|lua_State|lua_Integer|lua_Number|lua_Unsigned|long long|inline' \
+if grep -E '#include[[:space:]]*<(lua|lauxlib|lualib)\.h>|lua_State|lua_Integer|lua_Number|lua_Unsigned|long long|inline' \
     "$prefix/include/cpkt/lua_runtime.h" >/dev/null 2>&1; then
   printf 'Lua runtime facade header is not C89-clean\n' >&2
+  exit 1
+fi
+if grep -E '#include[[:space:]]*<(lua|lauxlib|lualib)\.h>|stdint\.h|stdbool\.h|long long|inline' \
+    "$prefix/include/cpkt/lua.h" >/dev/null 2>&1; then
+  printf 'Lua C89 facade header is not C89-clean\n' >&2
   exit 1
 fi
 if grep -E 'open62541/|UA_Client|UA_Server|UA_StatusCode|UA_NodeId|UA_Variant|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
     "$prefix/include/cpkt/opcua.h" >/dev/null 2>&1; then
   printf 'OPC UA facade header is not C89-clean\n' >&2
+  exit 1
+fi
+if grep -E 'sasl/|sasl_conn_t|sasl_callback_t|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
+    "$prefix/include/cpkt/sasl.h" "$prefix/include/cpkt/sasl_plugin.h" >/dev/null 2>&1; then
+  printf 'SASL facade header is not C89-clean\n' >&2
+  exit 1
+fi
+if grep -E 'sqlite3\.h|sqlite3_|stdint\.h|stdbool\.h|uint8_t|uint16_t|uint32_t|uint64_t|int8_t|int16_t|int32_t|int64_t|long long|inline' \
+    "$prefix/include/cpkt/sqlite.h" >/dev/null 2>&1; then
+  printf 'SQLite facade header is not C89-clean\n' >&2
   exit 1
 fi
 installed_examples_dir="$prefix/share/doc/c.pkt.systems/examples"
@@ -430,6 +491,10 @@ cmake_source_dir="$work_root/cmake-consumer-src"
 cmake_build_dir="$work_root/cmake-consumer-build"
 mkdir -p "$cmake_source_dir" "$cmake_build_dir"
 cp "$source_file" "$cmake_source_dir/cpkt_all.c"
+cp "$repo_root/tests/pdf_facade_test.c" "$cmake_source_dir/cpkt_pdf_facade_strict.c"
+cp "$repo_root/tests/iodbc_driver_manager_test.c" "$cmake_source_dir/cpkt_iodbc_strict.c"
+cp "$repo_root/tests/sqlite_loadable_extension.c" "$cmake_source_dir/sqlite_extension_from_package.c"
+cp "$repo_root/tests/sqlite_loadable_extension_test.c" "$cmake_source_dir/sqlite_extension_package_consumer.c"
 cat > "$cmake_source_dir/cpkt_zlib.c" <<'EOF'
 #include <zlib.h>
 
@@ -464,11 +529,150 @@ int main(void) {
   return 0;
 }
 EOF
+cat > "$cmake_source_dir/cpkt_openssl_facade_strict.c" <<'EOF'
+#include <cpkt/openssl.h>
+
+int main(void) {
+  cpkt_openssl_u64 value;
+  SSL_CTX *context;
+
+  value = cpkt_openssl_u64_make(0UL, 1UL);
+  context = SSL_CTX_new(TLS_client_method());
+  if (context == 0)
+    return 1;
+  SSL_CTX_free(context);
+  return cpkt_openssl_u64_low_word(value) == 1UL ? 0 : 1;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_nghttp2_facade_strict.c" <<'EOF'
+#include <cpkt/nghttp2.h>
+
+int main(void) {
+  const cpkt_nghttp2_info *info;
+
+  info = cpkt_nghttp2_version(0);
+  return info == 0 || info->version_num != CPKT_NGHTTP2_VERSION_NUM;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_openssl_private_sentinel.c" <<'EOF'
+extern unsigned long cpkt_openssl_native_u64(void);
+
+int main(void) {
+  return (int)cpkt_openssl_native_u64();
+}
+EOF
+cat > "$cmake_source_dir/cpkt_nghttp2_private_sentinel.c" <<'EOF'
+extern unsigned long cpkt_nghttp2_native_u64(void);
+
+int main(void) {
+  return (int)cpkt_nghttp2_native_u64();
+}
+EOF
+cat > "$cmake_source_dir/cpkt_libssh2_private_sentinel.c" <<'EOF'
+extern unsigned long cpkt_libssh2_u64_to_native(void);
+
+int main(void) {
+  return (int)cpkt_libssh2_u64_to_native();
+}
+EOF
+cat > "$cmake_source_dir/cpkt_mqttc_private_sentinel.c" <<'EOF'
+extern unsigned long cpkt_mqttc_private_layout_probe(void);
+
+int main(void) {
+  return (int)cpkt_mqttc_private_layout_probe();
+}
+EOF
+openssl_private_sentinel_log="$diagnostic_dir/cpkt-openssl-private-sentinel.log"
+# Exact dynamic-table inspection proves the approved ABI. This separate
+# extracted-SDK link failure proves an unadvertised internal helper cannot be
+# reached by manually declaring it downstream.
+# shellcheck disable=SC2086
+if openssl_private_sentinel_output=$("$cc" -std=c89 -Wall -Wextra -Wpedantic \
+    -pedantic-errors -Werror "$cmake_source_dir/cpkt_openssl_private_sentinel.c" \
+    -L "$prefix/lib" -lcpkt_openssl $pkg_config_link_toolchain_flags \
+    -o "$work_root/bin/cpkt_openssl_private_sentinel" 2>&1); then
+  printf 'private OpenSSL facade sentinel linked from extracted SDK\n' >&2
+  exit 1
+fi
+printf '%s\n' "$openssl_private_sentinel_output" > "$openssl_private_sentinel_log"
+if ! grep -F 'cpkt_openssl_native_u64' "$openssl_private_sentinel_log" >/dev/null 2>&1; then
+  printf 'private OpenSSL facade sentinel failed for an unrelated reason:\n' >&2
+  cat "$openssl_private_sentinel_log" >&2
+  exit 1
+fi
+nghttp2_private_sentinel_log="$diagnostic_dir/cpkt-nghttp2-private-sentinel.log"
+# The matching nghttp2 check catches regression after the archive is extracted,
+# rather than relying solely on the build-tree policy test.
+# shellcheck disable=SC2086
+if nghttp2_private_sentinel_output="$("$cc" -std=c89 -Wall -Wextra -Wpedantic \
+    -pedantic-errors -Werror "$cmake_source_dir/cpkt_nghttp2_private_sentinel.c" \
+    -L "$prefix/lib" -lcpkt_nghttp2 $pkg_config_link_toolchain_flags \
+    -o "$work_root/bin/cpkt_nghttp2_private_sentinel" 2>&1)"; then
+  printf 'private nghttp2 facade sentinel linked from extracted SDK\n' >&2
+  exit 1
+fi
+printf '%s\n' "$nghttp2_private_sentinel_output" > "$nghttp2_private_sentinel_log"
+if ! grep -F 'cpkt_nghttp2_native_u64' "$nghttp2_private_sentinel_log" >/dev/null 2>&1; then
+  printf 'private nghttp2 facade sentinel failed for an unrelated reason:\n' >&2
+  cat "$nghttp2_private_sentinel_log" >&2
+  exit 1
+fi
+libssh2_private_sentinel_log="$diagnostic_dir/cpkt-libssh2-private-sentinel.log"
+if libssh2_private_sentinel_output=$("$cc" -std=c89 -Wall -Wextra -Wpedantic \
+    -pedantic-errors -Werror "$cmake_source_dir/cpkt_libssh2_private_sentinel.c" \
+    -L "$prefix/lib" -lcpkt_libssh2 $pkg_config_link_toolchain_flags \
+    -o "$work_root/bin/cpkt_libssh2_private_sentinel" 2>&1); then
+  printf 'private libssh2 facade sentinel linked from extracted SDK\n' >&2
+  exit 1
+fi
+printf '%s\n' "$libssh2_private_sentinel_output" > "$libssh2_private_sentinel_log"
+if ! grep -F 'cpkt_libssh2_u64_to_native' "$libssh2_private_sentinel_log" >/dev/null 2>&1; then
+  printf 'private libssh2 facade sentinel failed for an unrelated reason:\n' >&2
+  cat "$libssh2_private_sentinel_log" >&2
+  exit 1
+fi
+mqttc_private_sentinel_log="$diagnostic_dir/cpkt-mqttc-private-sentinel.log"
+if mqttc_private_sentinel_output=$("$cc" -std=c89 -Wall -Wextra -Wpedantic \
+    -pedantic-errors -Werror "$cmake_source_dir/cpkt_mqttc_private_sentinel.c" \
+    -L "$prefix/lib" -lcpkt_mqttc $pkg_config_link_toolchain_flags \
+    -o "$work_root/bin/cpkt_mqttc_private_sentinel" 2>&1); then
+  printf 'private MQTT-C facade sentinel linked from extracted SDK\n' >&2
+  exit 1
+fi
+printf '%s\n' "$mqttc_private_sentinel_output" > "$mqttc_private_sentinel_log"
+if ! grep -F 'cpkt_mqttc_private_layout_probe' "$mqttc_private_sentinel_log" >/dev/null 2>&1; then
+  printf 'private MQTT-C facade sentinel failed for an unrelated reason:\n' >&2
+  cat "$mqttc_private_sentinel_log" >&2
+  exit 1
+fi
 cat > "$cmake_source_dir/cpkt_libssh2.c" <<'EOF'
 #include <libssh2.h>
 
 int main(void) {
   return libssh2_version(0) == 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_libssh2_facade_strict.c" <<'EOF'
+#include <cpkt/libssh2.h>
+
+int main(void) {
+  cpkt_libssh2_u64 value;
+
+  value.high = 0UL;
+  value.low = 0UL;
+  return cpkt_libssh2_version(0) == 0 || value.high != 0UL;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_mqttc_facade_strict.c" <<'EOF'
+#include <cpkt/mqttc.h>
+
+int main(void) {
+  struct cpkt_mqtt_fixed_header header;
+
+  header.control_type = CPKT_MQTT_CONTROL_PINGREQ;
+  header.control_flags = 0U;
+  header.remaining_length = 0U;
+  return (int)header.remaining_length;
 }
 EOF
 cat > "$cmake_source_dir/cpkt_curl.c" <<'EOF'
@@ -504,6 +708,24 @@ int main(void) {
   luaL_openlibs(state);
   lua_close(state);
   return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_lua_facade_strict.c" <<'EOF'
+#include <cpkt/lua.h>
+
+int main(void) {
+  cpkt_lua_integer value;
+  cpkt_lua_state *state;
+
+  state = cpkt_lua_l_newstate();
+  if (state == 0) {
+    return 1;
+  }
+  cpkt_lua_l_checkversion(state);
+  cpkt_lua_pushinteger(state, cpkt_lua_integer_make(0U, 7U));
+  value = cpkt_lua_tointeger(state, -1);
+  cpkt_lua_close(state);
+  return cpkt_lua_integer_low(value) == 7U ? 0 : 2;
 }
 EOF
 cat > "$cmake_source_dir/cpkt_open62541.c" <<'EOF'
@@ -698,6 +920,7 @@ int main(void) {
 EOF
 cat > "$cmake_source_dir/cpkt_opcua_facade_strict.c" <<'EOF'
 #include <cpkt/opcua.h>
+#include <cpkt/opcua_types.h>
 
 #include <string.h>
 
@@ -755,6 +978,10 @@ int main(void) {
   static const unsigned char json_config[] =
       "{ applicationDescription: { applicationUri: \"urn:cpkt:package:opcua-json\" } }";
   cpkt_opcua_server *server;
+  cpkt_opcua_GlobalNodeLifecycle global_lifecycle;
+  cpkt_opcua_NodeTypeLifecycle type_lifecycle;
+  cpkt_opcua_ValueSourceNotifications notifications;
+  cpkt_opcua_NodeId missing_node;
   cpkt_opcua_node_id node_id;
   cpkt_opcua_node_id object_id;
   cpkt_opcua_node_id child_id;
@@ -780,6 +1007,21 @@ int main(void) {
   if (cpkt_opcua_server_set_endpoint(server, "127.0.0.1", 4840) != CPKT_OPCUA_OK) {
     cpkt_opcua_server_free(server);
     return 16;
+  }
+  memset(&global_lifecycle, 0, sizeof(global_lifecycle));
+  memset(&type_lifecycle, 0, sizeof(type_lifecycle));
+  memset(&notifications, 0, sizeof(notifications));
+  cpkt_opcua_NodeId_init(&missing_node);
+  missing_node.namespaceIndex = 1;
+  missing_node.identifier.numeric = 99999;
+  if (cpkt_opcua_server_set_global_node_lifecycle(server, &global_lifecycle) != 0 ||
+      cpkt_opcua_server_set_global_node_lifecycle(server, 0) != 0 ||
+      cpkt_opcua_server_setVariableNode_internalValueSource_typed(
+          server, missing_node, 0, &notifications) != CPKT_OPCUA_STATUSCODE_BADNODEIDUNKNOWN ||
+      cpkt_opcua_server_setNodeTypeLifecycle_typed(
+          server, missing_node, type_lifecycle) != CPKT_OPCUA_STATUSCODE_BADNODEIDUNKNOWN) {
+    cpkt_opcua_server_free(server);
+    return 51;
   }
   node_id = cpkt_opcua_node_id_numeric(1, 7001);
   object_id = cpkt_opcua_node_id_numeric(1, 7002);
@@ -889,6 +1131,187 @@ int main(void) {
     return 15;
   }
   cpkt_opcua_server_free(server);
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_gssapi_facade_strict.c" <<'EOF'
+#include <cpkt/gssapi.h>
+
+int main(void) {
+  cpkt_gss_oid_set *mechanisms;
+  cpkt_gss_buffer_set *buffers;
+  cpkt_gss_krb_context *kerberos;
+  cpkt_gss_status minor;
+  cpkt_gss_status status;
+
+  mechanisms = 0;
+  buffers = 0;
+  kerberos = 0;
+  if (cpkt_gss_known_oid(CPKT_GSS_OID_HOSTBASED_SERVICE_X) == 0 ||
+      cpkt_gss_create_buffer_set(&minor, &buffers) != CPKT_GSS_COMPLETE ||
+      buffers == 0 ||
+      cpkt_gss_release_buffer_set(&minor, &buffers) != CPKT_GSS_COMPLETE ||
+      cpkt_gss_krb_context_new(&kerberos) != 0 || kerberos == 0) {
+    return 2;
+  }
+  cpkt_gss_krb_context_free(&kerberos);
+  status = cpkt_gss_indicate_mechanisms(&minor, &mechanisms);
+  if (cpkt_gss_status_is_error(status) || mechanisms == 0 ||
+      cpkt_gss_oid_set_count(mechanisms) == 0 ||
+      cpkt_gss_name_type_hostbased_service() == 0) {
+    return 1;
+  }
+  status = cpkt_gss_release_oid_set(&minor, &mechanisms);
+  return cpkt_gss_status_is_error(status) || mechanisms != 0;
+}
+EOF
+cp "$repo_root/tests/openldap_link_test.c" "$cmake_source_dir/cpkt_openldap.c"
+cat > "$cmake_source_dir/cpkt_postgres_facade_strict.c" <<'EOF'
+#include <cpkt/postgres.h>
+
+int main(void) {
+  cpkt_postgres *pg;
+
+  if (cpkt_postgres_library_version() <= 0) {
+    return 1;
+  }
+  pg = cpkt_postgres_new("host=/tmp/cpkt-postgres-no-socket connect_timeout=1");
+  if (pg == 0 || pg->tx == 0 || pg->send == 0 || pg->receive == 0 ||
+      pg->reset == 0 || pg->close == 0) {
+    return 2;
+  }
+  if (pg->status(pg) != CPKT_POSTGRES_CONNECTION_BAD) {
+    pg->close(pg);
+    return 3;
+  }
+  pg->close(pg);
+  return 0;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_sasl_facade_strict.c" <<'EOF'
+#include <cpkt/sasl_plugin.h>
+#include <string.h>
+
+int main(void) {
+  cpkt_sasl *connection;
+  cpkt_sasl_md5_context digest_context;
+  cpkt_sasl_security_properties security;
+  cpkt_sasl_http_request request;
+  const cpkt_sasl_callbacks *selected_callbacks;
+  const void *payload;
+  const char *external_identity;
+  const char *mechanisms;
+  unsigned long mechanisms_length;
+  int mechanisms_count;
+  int status;
+
+  if (cpkt_sasl_error_string(CPKT_SASL_BADPARAM, 0, 0) == 0) {
+    return 1;
+  }
+  cpkt_sasl_md5_initialize(&digest_context);
+  if (cpkt_sasl_client_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM ||
+      cpkt_sasl_server_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM ||
+      cpkt_sasl_canonicalizer_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM ||
+      cpkt_sasl_auxiliary_add_plugin(0, 0, 0) != CPKT_SASL_BADPARAM) {
+    return 6;
+  }
+  if (cpkt_sasl_client_initialize(0) != CPKT_SASL_OK) {
+    return 2;
+  }
+  status = CPKT_SASL_FAIL;
+  connection = cpkt_sasl_client_new("cpkt-package", "localhost", 0, 0,
+      0, 0, &status);
+  if (connection == 0 || status != CPKT_SASL_OK || connection->close == 0 ||
+      connection->set_security_properties == 0 ||
+      connection->get_security_properties == 0 ||
+      connection->get_http_request == 0 ||
+      connection->get_callback_record == 0 ||
+      connection->get_option_context == 0 ||
+      connection->get_delegated_payload == 0 ||
+      connection->set_text_property == 0 ||
+      connection->encode_vector == 0 ||
+      connection->auxiliary_context == 0) {
+    cpkt_sasl_client_finish();
+    return 3;
+  }
+  selected_callbacks = 0;
+  payload = 0;
+  external_identity = 0;
+  memset(&security, 0, sizeof(security));
+  security.maximum_buffer_bytes = 1024;
+  memset(&request, 0, sizeof(request));
+  request.method = "GET";
+  request.uri = "/";
+  if (connection->set_security_properties(connection, &security) != CPKT_SASL_OK ||
+      connection->get_security_properties(connection, &security) != CPKT_SASL_OK ||
+      security.maximum_buffer_bytes != 1024 ||
+      connection->set_http_request(connection, &request) != CPKT_SASL_OK ||
+      connection->get_http_request(connection, &request) != CPKT_SASL_OK ||
+      request.method == 0 || strcmp(request.method, "GET") != 0 ||
+      connection->set_text_property(connection,
+          CPKT_SASL_PROPERTY_EXTERNAL_AUTHENTICATION, "sdk") != CPKT_SASL_OK ||
+      connection->get_text_property(connection,
+          CPKT_SASL_PROPERTY_EXTERNAL_AUTHENTICATION, &external_identity) != CPKT_SASL_OK ||
+      external_identity == 0 || strcmp(external_identity, "sdk") != 0 ||
+      connection->get_callback_record(connection, &selected_callbacks) != CPKT_SASL_OK ||
+      selected_callbacks != 0 ||
+      connection->get_delegated_payload(connection, &payload) != CPKT_SASL_NOTDONE ||
+      payload != 0) {
+    connection->close(connection);
+    cpkt_sasl_client_finish();
+    return 7;
+  }
+  mechanisms = 0;
+  mechanisms_length = 0;
+  mechanisms_count = 0;
+  if (connection->list_mechanisms(connection, 0, 0, " ", 0,
+                                  &mechanisms, &mechanisms_length,
+                                  &mechanisms_count) != CPKT_SASL_OK ||
+      mechanisms == 0 || strstr(mechanisms, "GSSAPI") == 0 ||
+      mechanisms_length == 0 || mechanisms_count < 1) {
+    connection->close(connection);
+    cpkt_sasl_client_finish();
+    return 5;
+  }
+  connection->close(connection);
+  return cpkt_sasl_client_finish() == CPKT_SASL_OK ? 0 : 4;
+}
+EOF
+cat > "$cmake_source_dir/cpkt_sqlite_facade_strict.c" <<'EOF'
+#include <cpkt/sqlite.h>
+
+int main(void) {
+  cpkt_sqlite *database;
+  cpkt_sqlite_statement *statement;
+  int result;
+
+  if (cpkt_sqlite_library_version_number() <= 0 ||
+      cpkt_sqlite_library_version() == 0) {
+    return 1;
+  }
+  database = cpkt_sqlite_new(":memory:");
+  if (database == 0 || database->tx == 0 || database->prepare == 0 ||
+      database->close == 0) {
+    return 2;
+  }
+  result = database->tx(database, "create table pkg_smoke(value integer)", 0, 0);
+  if (result != CPKT_SQLITE_OK) {
+    database->close(database);
+    return 3;
+  }
+  result = database->prepare(database, "select 42", -1, 0, &statement, 0);
+  if (result != CPKT_SQLITE_OK || statement == 0 || statement->step == 0 ||
+      statement->finalize == 0) {
+    database->close(database);
+    return 4;
+  }
+  result = statement->step(statement);
+  if (result != CPKT_SQLITE_ROW || statement->column_int(statement, 0) != 42 ||
+      statement->finalize(statement) != CPKT_SQLITE_OK) {
+    database->close(database);
+    return 5;
+  }
+  database->close(database);
   return 0;
 }
 EOF
@@ -1167,17 +1590,37 @@ find_package(Libssh2 CONFIG REQUIRED)
 find_package(CURL CONFIG REQUIRED)
 find_package(libxml2 CONFIG REQUIRED)
 find_package(Lua CONFIG REQUIRED)
+find_package(CpktLua CONFIG REQUIRED)
 find_package(miniaudio CONFIG REQUIRED)
 find_package(mqtt-c CONFIG REQUIRED)
 find_package(CpktLuaRuntime CONFIG REQUIRED)
+find_package(CpktOpenSSL CONFIG REQUIRED)
+find_package(CpktNghttp2 CONFIG REQUIRED)
+find_package(CpktLibssh2 CONFIG REQUIRED)
+find_package(CpktMqttc CONFIG REQUIRED)
 find_package(CpktAudio CONFIG REQUIRED)
 find_package(CpktOpcUa CONFIG REQUIRED)
+find_package(CpktGssapi CONFIG REQUIRED)
+find_package(OpenLDAP CONFIG REQUIRED)
+find_package(CpktPostgres CONFIG REQUIRED)
+find_package(CpktSasl CONFIG REQUIRED)
+find_package(CpktSqlite CONFIG REQUIRED)
+find_package(CpktPng CONFIG REQUIRED)
+find_package(CpktHaru CONFIG REQUIRED)
+find_package(CpktIodbc CONFIG REQUIRED)
+find_package(CpktPdf CONFIG REQUIRED)
 find_package(open62541 CONFIG REQUIRED)
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   find_package(CpktSus CONFIG REQUIRED)
 endif()
 
 function(cpkt_add_static_smoke target_name source_name link_target)
+  add_executable("\${target_name}" "\${source_name}")
+  target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries("\${target_name}" PRIVATE "\${link_target}")
+endfunction()
+
+function(cpkt_add_shared_smoke target_name source_name link_target)
   add_executable("\${target_name}" "\${source_name}")
   target_compile_options("\${target_name}" PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_link_libraries("\${target_name}" PRIVATE "\${link_target}")
@@ -1193,30 +1636,85 @@ cpkt_add_static_smoke(cpkt_cmake_zlib cpkt_zlib.c ZLIB::ZLIB)
 cpkt_add_static_smoke(cpkt_cmake_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
 cpkt_add_static_smoke(cpkt_cmake_crypto cpkt_crypto.c OpenSSL::Crypto)
 cpkt_add_static_smoke(cpkt_cmake_ssl cpkt_ssl.c OpenSSL::SSL)
+cpkt_add_static_smoke(cpkt_cmake_openssl_facade cpkt_openssl_facade_strict.c cpkt::openssl)
+cpkt_add_shared_smoke(cpkt_cmake_openssl_facade_shared cpkt_openssl_facade_strict.c cpkt::openssl_shared)
+cpkt_add_static_smoke(cpkt_cmake_nghttp2_facade cpkt_nghttp2_facade_strict.c cpkt::nghttp2)
+cpkt_add_shared_smoke(cpkt_cmake_nghttp2_facade_shared cpkt_nghttp2_facade_strict.c cpkt::nghttp2_facade_shared)
+cpkt_add_static_smoke(cpkt_cmake_libssh2_facade cpkt_libssh2_facade_strict.c cpkt::libssh2)
+cpkt_add_shared_smoke(cpkt_cmake_libssh2_facade_shared cpkt_libssh2_facade_strict.c cpkt::libssh2_facade_shared)
+cpkt_add_static_smoke(cpkt_cmake_mqttc_facade cpkt_mqttc_facade_strict.c cpkt::mqttc)
+cpkt_add_shared_smoke(cpkt_cmake_mqttc_facade_shared cpkt_mqttc_facade_strict.c cpkt::mqttc_facade_shared)
 cpkt_add_static_smoke(cpkt_cmake_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_smoke(cpkt_cmake_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_smoke(cpkt_cmake_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
 cpkt_add_static_smoke(cpkt_cmake_lua cpkt_lua.c Lua::Lua)
+cpkt_add_static_smoke(cpkt_cmake_lua_facade cpkt_lua_facade_strict.c cpkt::lua)
+cpkt_add_shared_smoke(cpkt_cmake_lua_facade_shared cpkt_lua_facade_strict.c cpkt::lua_facade_shared)
 cpkt_add_static_smoke(cpkt_cmake_mqttc cpkt_mqttc.c MQTT-C::mqttc)
 cpkt_add_static_smoke(cpkt_cmake_open62541 cpkt_open62541.c open62541::open62541)
 cpkt_add_static_smoke(cpkt_cmake_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_smoke(cpkt_cmake_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+cpkt_add_static_smoke(cpkt_cmake_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
+cpkt_add_shared_smoke(cpkt_cmake_gssapi_facade_shared cpkt_gssapi_facade_strict.c cpkt::gssapi_shared)
+cpkt_add_static_smoke(cpkt_cmake_openldap cpkt_openldap.c cpkt::openldap_static)
+cpkt_add_shared_smoke(cpkt_cmake_openldap_shared cpkt_openldap.c cpkt::openldap_shared)
+cpkt_add_static_smoke(cpkt_cmake_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
+cpkt_add_static_smoke(cpkt_cmake_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
+cpkt_add_shared_smoke(cpkt_cmake_sasl_facade_shared cpkt_sasl_facade_strict.c cpkt::sasl_shared)
+cpkt_add_static_smoke(cpkt_cmake_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
+add_library(sqlite_extension_from_package MODULE sqlite_extension_from_package.c)
+target_include_directories(sqlite_extension_from_package PRIVATE "$prefix/include")
+target_compile_options(sqlite_extension_from_package PRIVATE -std=c99 -Wall -Wextra -Wpedantic -Werror)
+add_executable(sqlite_extension_package_consumer sqlite_extension_package_consumer.c)
+target_link_libraries(sqlite_extension_package_consumer PRIVATE cpkt::sqlite)
+target_compile_options(sqlite_extension_package_consumer PRIVATE -std=c89 -Wall -Wextra -Wpedantic -Werror)
+cpkt_add_static_smoke(cpkt_cmake_iodbc cpkt_iodbc_strict.c cpkt::iodbc)
+cpkt_add_shared_smoke(cpkt_cmake_iodbc_shared cpkt_iodbc_strict.c cpkt::iodbc_shared)
+target_link_libraries(cpkt_cmake_iodbc_shared PRIVATE cpkt::iodbcinst_shared)
+cpkt_add_static_smoke(cpkt_cmake_pdf_facade cpkt_pdf_facade_strict.c cpkt::pdf)
+cpkt_add_shared_smoke(cpkt_cmake_pdf_facade_shared cpkt_pdf_facade_strict.c cpkt::pdf_shared)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_pdf_facade cpkt_pdf_facade_strict.c cpkt::pdf)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_zlib cpkt_zlib.c ZLIB::ZLIB)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2 cpkt_nghttp2.c nghttp2::nghttp2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_crypto cpkt_crypto.c OpenSSL::Crypto)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_ssl cpkt_ssl.c OpenSSL::SSL)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_openssl_facade cpkt_openssl_facade_strict.c cpkt::openssl)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_nghttp2_facade cpkt_nghttp2_facade_strict.c cpkt::nghttp2)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libssh2_facade cpkt_libssh2_facade_strict.c cpkt::libssh2)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_mqttc_facade cpkt_mqttc_facade_strict.c cpkt::mqttc)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libssh2 cpkt_libssh2.c Libssh2::libssh2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_curl cpkt_curl.c CURL::libcurl)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_libxml2 cpkt_libxml2.c LibXml2::LibXml2)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_lua cpkt_lua.c Lua::Lua)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_lua_facade cpkt_lua_facade_strict.c cpkt::lua)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_mqttc cpkt_mqttc.c MQTT-C::mqttc)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_open62541 cpkt_open62541.c open62541::open62541)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_audio_facade cpkt_audio_facade_strict.c cpkt::audio)
 cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_opcua_facade cpkt_opcua_facade_strict.c cpkt::opcua)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_gssapi_facade cpkt_gssapi_facade_strict.c cpkt::gssapi)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_postgres_facade cpkt_postgres_facade_strict.c cpkt::postgres)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sasl_facade cpkt_sasl_facade_strict.c cpkt::sasl)
+cpkt_add_static_archive_pic_smoke(cpkt_cmake_pic_sqlite_facade cpkt_sqlite_facade_strict.c cpkt::sqlite)
 set_source_files_properties(cpkt_audio_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_lua_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_openssl_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
 set_source_files_properties(cpkt_opcua_facade_strict.c PROPERTIES
   COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_gssapi_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_postgres_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_sasl_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_sqlite_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_pdf_facade_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-Wall;-Wextra;-Wpedantic;-Werror")
+set_source_files_properties(cpkt_iodbc_strict.c PROPERTIES
+  COMPILE_OPTIONS "-std=c89;-pedantic-errors;-Wall;-Wextra;-Wpedantic;-Werror")
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   cpkt_add_static_smoke(cpkt_cmake_sus_facade cpkt_sus_facade_strict.c cpkt::sus)
   add_executable(cpkt_cmake_audio_sus_facade cpkt_audio_sus_facade_strict.c)
@@ -1271,11 +1769,25 @@ cmake_args=(
   -DCURL_DIR="$prefix/lib/cmake/CURL" \
   -Dlibxml2_DIR="$prefix/lib/cmake/libxml2" \
   -DLua_DIR="$prefix/lib/cmake/Lua" \
+  -DCpktLua_DIR="$prefix/lib/cmake/CpktLua" \
   -Dminiaudio_DIR="$prefix/lib/cmake/miniaudio" \
   -Dmqtt-c_DIR="$prefix/lib/cmake/mqtt-c" \
   -DCpktLuaRuntime_DIR="$prefix/lib/cmake/CpktLuaRuntime" \
+  -DCpktOpenSSL_DIR="$prefix/lib/cmake/CpktOpenSSL" \
+  -DCpktNghttp2_DIR="$prefix/lib/cmake/CpktNghttp2" \
+  -DCpktLibssh2_DIR="$prefix/lib/cmake/CpktLibssh2" \
+  -DCpktMqttc_DIR="$prefix/lib/cmake/CpktMqttc" \
   -DCpktAudio_DIR="$prefix/lib/cmake/CpktAudio" \
   -DCpktOpcUa_DIR="$prefix/lib/cmake/CpktOpcUa" \
+  -DCpktGssapi_DIR="$prefix/lib/cmake/CpktGssapi" \
+  -DOpenLDAP_DIR="$prefix/lib/cmake/OpenLDAP" \
+  -DCpktPostgres_DIR="$prefix/lib/cmake/CpktPostgres" \
+  -DCpktSasl_DIR="$prefix/lib/cmake/CpktSasl" \
+  -DCpktSqlite_DIR="$prefix/lib/cmake/CpktSqlite" \
+  -DCpktPng_DIR="$prefix/lib/cmake/CpktPng" \
+  -DCpktHaru_DIR="$prefix/lib/cmake/CpktHaru" \
+  -DCpktIodbc_DIR="$prefix/lib/cmake/CpktIodbc" \
+  -DCpktPdf_DIR="$prefix/lib/cmake/CpktPdf" \
   -Dopen62541_DIR="$prefix/lib/cmake/open62541" \
   -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY
 )
@@ -1288,6 +1800,10 @@ if [ -n "$cmake_toolchain_file" ]; then
   cmake_args+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
 fi
 cpkt_configure_consumer_runtime "$cmake_source_dir"
+cpkt_run_checked "cmake isolated authentication package discovery" \
+  python3 "$repo_root/tests/auth_package_discovery_test.py" "$repo_root" \
+    --scratch "$work_root" --compiler "$cc" "--toolchain=$cmake_toolchain_file" \
+    --sdk-prefix "$prefix"
 cpkt_run_checked "cmake aggregate consumer configure" cmake "${cmake_args[@]}"
 cpkt_cmake_build_checked "cmake aggregate consumer build" "$cmake_build_dir"
 # Reuse exactly the helper's linker options for non-CMake consumers as well.
@@ -1356,6 +1872,9 @@ assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib
 assert_file_contains "$cmake_link_dir/cpkt_cmake_curl.dir/link.txt" "$prefix/lib/libz.a" "CURL::libcurl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_libxml2.dir/link.txt" "$prefix/lib/libz.a" "LibXml2::LibXml2 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_mqttc.dir/link.txt" "$prefix/lib/libmqttc.a" "MQTT-C::mqttc link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_openssl_facade.dir/link.txt" "$prefix/lib/libcpkt_openssl.a" "cpkt::openssl link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_openssl_facade.dir/link.txt" "$prefix/lib/libssl.a" "cpkt::openssl link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_openssl_facade.dir/link.txt" "$prefix/lib/libcrypto.a" "cpkt::openssl link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libssl.a" "open62541::open62541 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_open62541.dir/link.txt" "$prefix/lib/libcrypto.a" "open62541::open62541 link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libcpktaudio.a" "cpkt::audio link line"
@@ -1366,6 +1885,13 @@ assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" 
 assert_file_not_contains "$cmake_link_dir/cpkt_cmake_audio_facade.dir/link.txt" "$prefix/lib/libggml.a" "cpkt::audio link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libcpkt_opcua.a" "cpkt::opcua link line"
 assert_file_contains "$cmake_link_dir/cpkt_cmake_opcua_facade.dir/link.txt" "$prefix/lib/libopen62541.a" "cpkt::opcua link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_gssapi_facade.dir/link.txt" "$prefix/lib/libcpkt_gssapi.a" "cpkt::gssapi link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_gssapi_facade.dir/link.txt" "$prefix/lib/libgssapi_krb5.a" "cpkt::gssapi link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libcpkt_postgres.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libpq.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libldap.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/liblutil.a" "cpkt::postgres link line"
+assert_file_contains "$cmake_link_dir/cpkt_cmake_postgres_facade.dir/link.txt" "$prefix/lib/libsasl2.a" "cpkt::postgres link line"
 case "$target_id" in
   *-linux-gnu)
     assert_file_contains "$cmake_link_dir/cpkt_cmake_crypto.dir/link.txt" "-ldl" "OpenSSL::Crypto link line"
@@ -1547,19 +2073,27 @@ pkg_config_default_words() {
 libcrypto_words=$(pkg_config_words libcrypto)
 libssl_words=$(pkg_config_words libssl)
 openssl_words=$(pkg_config_words openssl)
+cpkt_openssl_words=$(pkg_config_words cpkt-openssl)
 zlib_words=$(pkg_config_words zlib)
 nghttp2_words=$(pkg_config_words libnghttp2)
 libssh2_words=$(pkg_config_words libssh2)
 libcurl_words=$(pkg_config_words libcurl)
 libxml2_words=$(pkg_config_words libxml-2.0)
 lua_words=$(pkg_config_words lua)
+lua_facade_words=$(pkg_config_words cpkt-lua)
 mqttc_words=$(pkg_config_words mqtt-c)
 lua_runtime_words=$(pkg_config_words cpkt-lua-runtime)
 audio_words=$(pkg_config_words cpkt-audio)
 open62541_words=$(pkg_config_words open62541)
 opcua_words=$(pkg_config_words cpkt-opcua)
+gssapi_words=$(pkg_config_words cpkt-gssapi)
+postgres_words=$(pkg_config_words cpkt-postgres)
+sasl_words=$(pkg_config_words cpkt-sasl)
+sqlite_words=$(pkg_config_words cpkt-sqlite)
+iodbc_words=$(pkg_config_words cpkt-iodbc)
 sus_words=$(pkg_config_words cpkt-sus)
 openssl_default_words=$(pkg_config_default_words openssl)
+cpkt_openssl_default_words=$(pkg_config_default_words cpkt-openssl)
 
 case "$target_id" in
   *-linux-gnu)
@@ -1569,6 +2103,7 @@ case "$target_id" in
     assert_words_contain "$libcurl_words" "-ldl" "libcurl.pc --static output"
     assert_words_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
     assert_words_contain "$lua_words" "-ldl" "lua.pc --static output"
+    assert_words_contain "$lua_facade_words" "-ldl" "cpkt-lua.pc --static output"
     assert_words_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
     assert_words_contain "$opcua_words" "-lrt" "cpkt-opcua.pc --static output"
     assert_words_contain "$mqttc_words" "-pthread" "mqtt-c.pc --static output"
@@ -1586,6 +2121,7 @@ case "$target_id" in
     assert_words_not_contain "$libcurl_words" "-ldl" "libcurl.pc --static output"
     assert_words_not_contain "$libxml2_words" "-ldl" "libxml-2.0.pc --static output"
     assert_words_not_contain "$lua_words" "-ldl" "lua.pc --static output"
+    assert_words_not_contain "$lua_facade_words" "-ldl" "cpkt-lua.pc --static output"
     assert_words_not_contain "$lua_runtime_words" "-ldl" "cpkt-lua-runtime.pc --static output"
     assert_words_not_contain "$opcua_words" "-ldl" "cpkt-opcua.pc --static output"
     assert_words_not_contain "$open62541_words" "-ldl" "open62541.pc --static output"
@@ -1600,8 +2136,13 @@ esac
 assert_words_contain "$libssl_words" "-lcrypto" "libssl.pc --static output"
 assert_words_contain "$openssl_words" "-lssl" "openssl.pc --static output"
 assert_words_contain "$openssl_words" "-lcrypto" "openssl.pc --static output"
+assert_words_contain "$cpkt_openssl_words" "-lcpkt_openssl" "cpkt-openssl.pc --static output"
+assert_words_contain "$cpkt_openssl_words" "-lssl" "cpkt-openssl.pc --static output"
+assert_words_contain "$cpkt_openssl_words" "-lcrypto" "cpkt-openssl.pc --static output"
 assert_words_contain "$openssl_default_words" "-lssl" "openssl.pc output"
 assert_words_contain "$openssl_default_words" "-lcrypto" "openssl.pc output"
+assert_words_contain "$cpkt_openssl_default_words" "-lssl" "cpkt-openssl.pc output"
+assert_words_contain "$cpkt_openssl_default_words" "-lcrypto" "cpkt-openssl.pc output"
 assert_words_contain "$libssh2_words" "-lcrypto" "libssh2.pc --static output"
 assert_words_contain "$libssh2_words" "-lz" "libssh2.pc --static output"
 assert_words_contain "$libcurl_words" "-lssh2" "libcurl.pc --static output"
@@ -1612,6 +2153,9 @@ assert_words_contain "$libcurl_words" "-lz" "libcurl.pc --static output"
 assert_words_contain "$libxml2_words" "-lz" "libxml-2.0.pc --static output"
 assert_words_contain "$libxml2_words" "-lm" "libxml-2.0.pc --static output"
 assert_words_contain "$lua_words" "-lm" "lua.pc --static output"
+assert_words_contain "$lua_facade_words" "-lcpkt_lua" "cpkt-lua.pc --static output"
+assert_words_contain "$lua_facade_words" "-llua" "cpkt-lua.pc --static output"
+assert_words_contain "$lua_facade_words" "-lm" "cpkt-lua.pc --static output"
 assert_words_contain "$lua_runtime_words" "-llua" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$lua_runtime_words" "-lm" "cpkt-lua-runtime.pc --static output"
 assert_words_contain "$audio_words" "-lcpktaudio" "cpkt-audio.pc --static output"
@@ -1636,6 +2180,22 @@ assert_words_contain "$opcua_words" "-lopen62541" "cpkt-opcua.pc --static output
 assert_words_contain "$opcua_words" "-lssl" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lcrypto" "cpkt-opcua.pc --static output"
 assert_words_contain "$opcua_words" "-lm" "cpkt-opcua.pc --static output"
+assert_words_contain "$gssapi_words" "-lcpkt_gssapi" "cpkt-gssapi.pc --static output"
+assert_words_contain "$gssapi_words" "-lgssapi_krb5" "cpkt-gssapi.pc --static output"
+assert_words_contain "$gssapi_words" "-lkrb5_k5tls" "cpkt-gssapi.pc --static output"
+assert_words_contain "$gssapi_words" "-lssl" "cpkt-gssapi.pc --static output"
+assert_words_contain "$gssapi_words" "-lcrypto" "cpkt-gssapi.pc --static output"
+assert_words_contain "$postgres_words" "-lcpkt_postgres" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-lpq" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-lldap" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-llutil" "cpkt-postgres.pc --static output"
+assert_words_contain "$postgres_words" "-lsasl2" "cpkt-postgres.pc --static output"
+assert_words_contain "$sasl_words" "-lcpkt_sasl" "cpkt-sasl.pc --static output"
+assert_words_contain "$sasl_words" "-lsasl2" "cpkt-sasl.pc --static output"
+assert_words_contain "$sqlite_words" "-lcpkt_sqlite" "cpkt-sqlite.pc --static output"
+assert_words_contain "$sqlite_words" "-lsqlite3" "cpkt-sqlite.pc --static output"
+assert_words_contain "$iodbc_words" "-liodbc" "cpkt-iodbc.pc --static output"
+assert_words_contain "$iodbc_words" "-liodbcinst" "cpkt-iodbc.pc --static output"
 assert_words_contain "$sus_words" "-lcpktsus" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lwhisper" "cpkt-sus.pc --static output"
 assert_words_contain "$sus_words" "-lggml" "cpkt-sus.pc --static output"
@@ -1659,7 +2219,7 @@ cpkt_pkg_config_static_smoke() {
   output_path="$work_root/bin/cpkt_pkg_${pc_name}"
   source_flags=$common_flags
   case "$source_name" in
-    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_openssl_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sasl_facade_strict.c|cpkt_sqlite_facade_strict.c|cpkt_pdf_facade_strict.c|cpkt_iodbc_strict.c|cpkt_sus_facade_strict.c)
       source_flags=$common_c89_flags
       ;;
   esac
@@ -1685,6 +2245,30 @@ cpkt_pkg_config_static_smoke() {
           bundled["-lcpktsus"] = 1
           bundled["-lopen62541"] = 1
           bundled["-lcpkt_opcua"] = 1
+          bundled["-lcpkt_gssapi"] = 1
+          bundled["-lgssapi_krb5"] = 1
+          bundled["-lkrb5"] = 1
+          bundled["-lk5crypto"] = 1
+          bundled["-lcom_err"] = 1
+          bundled["-lkrb5support"] = 1
+          bundled["-lprofile"] = 1
+          bundled["-lverto"] = 1
+          bundled["-lcpkt_postgres"] = 1
+          bundled["-lcpkt_sasl"] = 1
+          bundled["-lcpkt_sqlite"] = 1
+          bundled["-lpq"] = 1
+          bundled["-lpq-oauth"] = 1
+          bundled["-lpgcommon_shlib"] = 1
+          bundled["-lpgport"] = 1
+          bundled["-lldap"] = 1
+          bundled["-llber"] = 1
+          bundled["-lsasl2"] = 1
+          bundled["-lsqlite3"] = 1
+          bundled["-liodbc"] = 1
+          bundled["-liodbcinst"] = 1
+          bundled["-lpng16"] = 1
+          bundled["-lhpdf"] = 1
+          bundled["-lcpkt_pdf"] = 1
         }
         {
           for (i = 1; i <= NF; ++i) {
@@ -1715,7 +2299,7 @@ cpkt_pkg_config_static_multi_smoke() {
   output_path="$work_root/bin/$output_name"
   source_flags=$common_flags
   case "$source_name" in
-    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_sus_facade_strict.c)
+    cpkt_audio_facade_strict.c|cpkt_audio_sus_facade_strict.c|cpkt_opcua_facade_strict.c|cpkt_gssapi_facade_strict.c|cpkt_postgres_facade_strict.c|cpkt_sus_facade_strict.c)
       source_flags=$common_c89_flags
       ;;
   esac
@@ -1841,13 +2425,49 @@ cpkt_pkg_config_static_smoke libnghttp2 cpkt_nghttp2.c
 cpkt_pkg_config_static_smoke libcrypto cpkt_crypto.c
 cpkt_pkg_config_static_smoke libssl cpkt_ssl.c
 cpkt_pkg_config_static_smoke openssl cpkt_ssl.c
+cpkt_pkg_config_static_smoke cpkt-openssl cpkt_openssl_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-nghttp2 cpkt_nghttp2_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-libssh2 cpkt_libssh2_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-mqttc cpkt_mqttc_facade_strict.c
 cpkt_pkg_config_static_smoke libssh2 cpkt_libssh2.c
 cpkt_pkg_config_static_smoke libcurl cpkt_curl.c
 cpkt_pkg_config_static_smoke libxml-2.0 cpkt_libxml2.c
 cpkt_pkg_config_static_smoke lua cpkt_lua.c
+cpkt_pkg_config_static_smoke cpkt-lua cpkt_lua_facade_strict.c
 cpkt_pkg_config_static_smoke mqtt-c cpkt_mqttc.c
 cpkt_pkg_config_static_smoke open62541 cpkt_open62541.c
 cpkt_pkg_config_static_smoke cpkt-opcua cpkt_opcua_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-gssapi cpkt_gssapi_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-postgres cpkt_postgres_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-sasl cpkt_sasl_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-sqlite cpkt_sqlite_facade_strict.c
+cpkt_pkg_config_static_smoke cpkt-iodbc cpkt_iodbc_strict.c
+cpkt_pkg_config_static_smoke cpkt-pdf cpkt_pdf_facade_strict.c
+case "$target_id" in
+  *-linux-*)
+    sasl_single_binary="$work_root/bin/cpkt_sasl_single_binary"
+    sasl_static_words=$(cpkt_pkg_config --static --cflags --libs cpkt-sasl)
+    sasl_static_allowed_warning=
+    case "$target_id" in
+      *-linux-gnu)
+        # glibc diagnoses references to its dynamic NSS/dlopen facilities in
+        # static binaries; reject every other linker warning, and check the
+        # ELF's loader/dependency table independently below.
+        sasl_static_allowed_warning="warning: Using '[^']+' in statically linked applications requires at runtime the shared libraries from the glibc version used for linking$"
+        ;;
+    esac
+    cpkt_run_shell_checked "fully static cpkt-sasl build" \
+      "\"$cc\" -static $common_c89_flags \
+      \"$cmake_source_dir/cpkt_sasl_facade_strict.c\" \
+      -o \"$sasl_single_binary\" $sasl_static_words $static_extra_libs" \
+      "$sasl_static_allowed_warning"
+    if "$readelf" -l "$sasl_single_binary" | grep -q 'INTERP' ||
+        "$readelf" -d "$sasl_single_binary" | grep -q 'NEEDED'; then
+      printf 'cpkt-sasl single-binary consumer has a dynamic loader dependency\n' >&2
+      exit 1
+    fi
+    ;;
+esac
 case "$target_id" in
   *-linux-*)
     cpkt_pkg_config_static_smoke cpkt-audio cpkt_audio_facade_strict.c
@@ -1949,6 +2569,11 @@ cpkt_pkg_config_smoke() {
 }
 
 cpkt_pkg_config_smoke openssl cpkt_ssl.c
+cpkt_pkg_config_smoke cpkt-openssl cpkt_openssl_facade_strict.c
+cpkt_pkg_config_smoke cpkt-nghttp2 cpkt_nghttp2_facade_strict.c
+cpkt_pkg_config_smoke cpkt-libssh2 cpkt_libssh2_facade_strict.c
+cpkt_pkg_config_smoke cpkt-mqttc cpkt_mqttc_facade_strict.c
+cpkt_pkg_config_smoke cpkt-lua cpkt_lua_facade_strict.c
 
 # Verify every temporary native consumer before executing it directly.
 if [ "${#local_runtime_options[@]}" -gt 0 ]; then
@@ -1979,150 +2604,46 @@ case "$target_id" in
     ;;
 esac
 
-# Direct find_package consumers and the default pkg-config OpenSSL link must
-# execute as well as build; they exercise distinct exported metadata surfaces.
-for consumer in "$direct_build_dir"/cpkt_direct_* "$work_root/bin/cpkt_pkg_openssl_default"; do
-  printf 'Running package consumer: %s\n' "${consumer##*/}"
-  if [ -z "$run_prefix" ]; then
-    "$consumer"
-  else
-    # shellcheck disable=SC2086
-    $run_prefix "$consumer"
+# Execute every generated CMake and pkg-config consumer. New facade targets
+# participate automatically instead of relying on a separate hand-maintained list.
+consumer_runner=()
+case "$target_id" in
+  aarch64-linux-*) consumer_runner=(--qemu "${CPKT_QEMU_AARCH64:-/usr/bin/qemu-aarch64}" --sysroot "$toolchain_sysroot") ;;
+  armhf-linux-*) consumer_runner=(--qemu "${CPKT_QEMU_ARM:-/usr/bin/qemu-arm}" --sysroot "$toolchain_sysroot") ;;
+esac
+consumers=()
+for consumer in "$cmake_build_dir"/cpkt_cmake_* "$direct_build_dir"/cpkt_direct_* \
+    "$work_root/bin"/cpkt_pkg_* "$work_root/bin"/cpkt_sasl_single_binary; do
+  if [ -f "$consumer" ] && [ -x "$consumer" ]; then
+    consumers+=("$consumer")
   fi
 done
+bash "$repo_root/scripts/run-package-consumers.sh" \
+  --lua-file "$cmake_build_dir/strict_file.lua" "${consumer_runner[@]}" -- "${consumers[@]}"
 
-if [ -z "$run_prefix" ]; then
-  "$cmake_build_dir/cpkt_cmake_zlib"
-  "$cmake_build_dir/cpkt_cmake_nghttp2"
-  "$cmake_build_dir/cpkt_cmake_crypto"
-  "$cmake_build_dir/cpkt_cmake_ssl"
-  "$cmake_build_dir/cpkt_cmake_libssh2"
-  "$cmake_build_dir/cpkt_cmake_curl"
-  "$cmake_build_dir/cpkt_cmake_libxml2"
-  "$cmake_build_dir/cpkt_cmake_lua"
-  "$cmake_build_dir/cpkt_cmake_mqttc"
-  "$cmake_build_dir/cpkt_cmake_open62541"
-  "$cmake_build_dir/cpkt_cmake_opcua_facade"
-  "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
-  "$cmake_build_dir/cpkt_cmake_all"
-  "$work_root/bin/cpkt_pkg_zlib"
-  "$work_root/bin/cpkt_pkg_libnghttp2"
-  "$work_root/bin/cpkt_pkg_libcrypto"
-  "$work_root/bin/cpkt_pkg_libssl"
-  "$work_root/bin/cpkt_pkg_openssl"
-  "$work_root/bin/cpkt_pkg_libssh2"
-  "$work_root/bin/cpkt_pkg_libcurl"
-  "$work_root/bin/cpkt_pkg_libxml-2.0"
-  "$work_root/bin/cpkt_pkg_lua"
-  "$work_root/bin/cpkt_pkg_mqtt-c"
-  "$work_root/bin/cpkt_pkg_open62541"
-  "$work_root/bin/cpkt_pkg_cpkt-opcua"
+cpkt_run_example() {
+  local runner=()
   case "$target_id" in
-    *-linux-*) "$work_root/bin/cpkt_pkg_sus_mixed_cxx" ;;
+    aarch64-linux-*) runner=("${CPKT_QEMU_AARCH64:-/usr/bin/qemu-aarch64}" -L "$toolchain_sysroot") ;;
+    armhf-linux-*) runner=("${CPKT_QEMU_ARM:-/usr/bin/qemu-arm}" -L "$toolchain_sysroot") ;;
   esac
-  "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
-  "$example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
-  "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
-  "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
-  "$opcua_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
-  "$audio_sus_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
-  "$audio_vox_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
-  "$audio_live_vox_example_pkg_config_output" --smoke
-  "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
-  "$sus_vox_example_pkg_config_output"
-  "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
-  "$sus_live_vox_example_pkg_config_output" --smoke
-else
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_zlib"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_nghttp2"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_crypto"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_ssl"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_libssh2"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_curl"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_libxml2"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_mqttc"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_open62541"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_opcua_facade"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_lua_runtime_strict" "$cmake_build_dir/strict_file.lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$cmake_build_dir/cpkt_cmake_all"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_zlib"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libnghttp2"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libcrypto"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libssl"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_openssl"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libssh2"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libcurl"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_libxml-2.0"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_mqtt-c"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_open62541"
-  # shellcheck disable=SC2086
-  $run_prefix "$work_root/bin/cpkt_pkg_cpkt-opcua"
-  case "$target_id" in
-    *-linux-*)
-      # shellcheck disable=SC2086
-      $run_prefix "$work_root/bin/cpkt_pkg_sus_mixed_cxx"
-      ;;
-  esac
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
-  # shellcheck disable=SC2086
-  $run_prefix "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$opcua_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$audio_sus_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$audio_vox_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
-  # shellcheck disable=SC2086
-  $run_prefix "$audio_live_vox_example_pkg_config_output" --smoke
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
-  # shellcheck disable=SC2086
-  $run_prefix "$sus_vox_example_pkg_config_output"
-  # shellcheck disable=SC2086
-  $run_prefix "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
-  # shellcheck disable=SC2086
-  $run_prefix "$sus_live_vox_example_pkg_config_output" --smoke
-fi
+  "${runner[@]}" "$@"
+}
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_bundle_cmake_consumer"
+cpkt_run_example "$cmake_build_dir/sqlite_extension_package_consumer" \
+  "$cmake_build_dir/libsqlite_extension_from_package.so"
+cpkt_run_example "$example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_lua_runtime_c89_example" "$example_cmake_build_dir/lua-runtime-c89/example_file.lua"
+cpkt_run_example "$lua_runtime_example_pkg_config_output" "$lua_runtime_example_pkg_file"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_opcua_c89_example"
+cpkt_run_example "$opcua_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_audio_sus_c89_example"
+cpkt_run_example "$audio_sus_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_audio_vox_intro_c89_example"
+cpkt_run_example "$audio_vox_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_audio_live_vox_c89_example" --smoke
+cpkt_run_example "$audio_live_vox_example_pkg_config_output" --smoke
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_sus_vox_intro_c89_example"
+cpkt_run_example "$sus_vox_example_pkg_config_output"
+cpkt_run_example "$example_cmake_build_dir/bin/cpkt_sus_live_vox_c89_example" --smoke
+cpkt_run_example "$sus_live_vox_example_pkg_config_output" --smoke

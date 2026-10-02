@@ -48,13 +48,13 @@ require_ordered_make_recipe() {
 }
 
 for target in \
-  help deps-debug deps-release deps-cross build build-debug build-release \
-  build-host cross-build test test-debug test-host test-cross cross-test test-all \
+  help deps deps-all deps-debug deps-release deps-cross build build-debug build-release \
+  build-host cross-build test test-debug test-host test-cross cross-test test-all test-e2e \
   test-install-tree valgrind fuzz-smoke fuzz fuzz-long package package-source \
   package-source-smoke package-checksums package-verify verify-release-archives \
-  verify-release-privacy release-matrix finalize-slice prerelease prerelease-live \
+  verify-release-privacy release-matrix release-final-matrix finalize-slice prerelease prerelease-live \
   prerelease-hardening lifecycle-version-contract release print-release-version \
-  format clean clean-dist; do
+  format format-check dev-up dev-down dev-ps dev-logs dev-reset clean clean-dist; do
   require_help_target "$target"
 done
 
@@ -65,6 +65,8 @@ for script in \
   scripts/configure-preset.sh \
   scripts/fuzz.sh \
   scripts/test.sh \
+  scripts/devenv.sh \
+  scripts/test-e2e.sh \
   scripts/package.sh \
   scripts/run_linux_release_matrix.sh \
   scripts/clean.sh \
@@ -72,6 +74,7 @@ for script in \
   scripts/package-source.sh \
   scripts/source-archive-verify.sh \
   scripts/package-verify.sh \
+  scripts/run-package-consumers.sh \
   tests/release_version_contract_test.sh; do
   require_script "$script"
 done
@@ -110,13 +113,24 @@ grep -Eq '^/VERSION$' "$repo_root/.gitignore"
 require_ordered_make_recipe \
   release-pipeline \
   'format
+format-check
 debug
+e2e-postgres
 clangd-surface
 valgrind
 fuzz-smoke
 release-matrix'
+require_ordered_make_recipe finalize-slice 'format
+debug
+clangd-surface
+format-check'
 require_ordered_make_recipe \
   release-matrix \
+  'package
+package-checksums
+package-verify'
+require_ordered_make_recipe \
+  release-final-matrix \
   'package
 package-source
 package-source-smoke
@@ -129,7 +143,14 @@ grep -Eq 'if\(CPKT_TARGET_ID STREQUAL "x86_64-linux-gnu"\)' "$repo_root/CMakeLis
 require_ordered_make_recipe prerelease 'release-pipeline'
 require_ordered_make_recipe release 'lifecycle-version-contract
 clean
-release-pipeline'
+format
+format-check
+debug
+e2e-postgres
+clangd-surface
+valgrind
+fuzz-smoke
+release-final-matrix'
 require_ordered_make_recipe prerelease-hardening 'prerelease
 fuzz'
 require_file_contains \
@@ -333,5 +354,5 @@ require_file_contains \
   'miniaudio manual compiler and linker commands run with osxcross environment'
 require_file_contains \
   cmake/CpktDependencies.cmake \
-  '-DENABLE_THREADED_RESOLVER=OFF' \
-  'Darwin curl cross builds avoid threaded resolver target-thread probes'
+  '-DENABLE_THREADED_RESOLVER=ON' \
+  'curl builds enable threaded asynchronous DNS'

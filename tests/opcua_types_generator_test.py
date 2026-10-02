@@ -1,0 +1,435 @@
+#!/usr/bin/env python3
+"""Fail-fast and deterministic-generation checks for the upstream emitter hook."""
+from pathlib import Path
+import importlib.util
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from types import SimpleNamespace
+
+repo, upstream, build = map(Path, sys.argv[1:])
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(upstream))
+sys.path.insert(0, str(repo / 'tools/opcua'))
+from nodeset_compiler.type_parser import BuiltinType
+spec = importlib.util.spec_from_file_location('cpkt_c89_emitter', repo / 'tools/opcua/c89_emitter.py')
+emitter = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(emitter)
+import plugin_emitter
+import server_emitter
+import history_emitter
+import node_emitter
+import producer_emitter
+import creation_emitter
+import client_emitter
+import async_client_emitter
+import core_client_emitter
+import value_emitter
+import certificate_emitter
+import eventloop_emitter
+import config_emitter
+
+with tempfile.TemporaryDirectory(prefix='opcua-generator-', dir=build) as temporary:
+    work = Path(temporary)
+    for graph, error in [
+        ({'ns': {'Decimal': BuiltinType('Decimal')}}, KeyError),
+        ({'a': {'Byte': BuiltinType('Byte')}, 'b': {'Byte': BuiltinType('Byte')}}, ValueError),
+        ({'ns': {'Unknown': SimpleNamespace(name='Unknown', description='')}}, ValueError),
+    ]:
+        try:
+            emitter.emit(SimpleNamespace(filtered_types=graph), work / 'invalid', None)
+        except error:
+            pass
+        else:
+            raise AssertionError('Emitter accepted an unsupported or ambiguous graph')
+    assert not (work / 'invalid/cpkt/opcua_types.h').exists()
+    assert plugin_emitter.translate('UA_ServerState state; bool flag; UA_Server *server;') == 'cpkt_opcua_ServerState state; cpkt_opcua_Boolean flag; cpkt_opcua_server *server;'
+    try:
+        plugin_emitter.validate_fields('void *context; UA_UInt32 newField;', ['void *context'])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Plugin backend silently ignored a new data field')
+    for backend, enabled in [('', False), ('#define UA_ENABLE_DISCOVERY_MULTICAST_MDNSD\n', True)]:
+        configured = backend + ('#if defined(UA_ENABLE_DISCOVERY_MULTICAST_MDNSD) || defined(UA_ENABLE_DISCOVERY_MULTICAST_AVAHI)\n'
+            '#define UA_ENABLE_DISCOVERY_MULTICAST\n#endif\n')
+        selected = plugin_emitter.configuration_macros(configured)
+        assert ('UA_ENABLE_DISCOVERY_MULTICAST' in selected) == enabled
+        fragment = work / 'configuration-fields.h'
+        fragment.write_text('struct UA_TestConfig {\n# ifdef UA_ENABLE_DISCOVERY_MULTICAST\nUA_Boolean mdnsEnabled;\n# else\nUA_UInt32 other;\n# endif\n};\n')
+        body = plugin_emitter.public_body(fragment, 'TestConfig', configured)
+        assert ('mdnsEnabled' in body) == enabled
+        assert ('other' in body) != enabled
+    assert plugin_emitter.conditional('UA_MULTITHREADING >= 100 && !defined(UNKNOWN)', {'UA_MULTITHREADING': '100'})
+    tool = repo / 'tools/opcua/generate.py'
+    for name in ('one', 'two'):
+        subprocess.run([sys.executable, tool, '--upstream', upstream, '--output', work / name], check=True)
+    for filename in ('cpkt/opcua_types.h', 'cpkt/opcua_constants.h', 'cpkt/opcua_plugins.h',
+                     'opcua_types_metadata.inc', 'opcua_plugins_metadata.inc',
+                     'opcua_message_metadata.inc', 'opcua_codec_metadata.inc',
+                     'opcua_eventloop_metadata.inc', 'opcua_config_metadata.inc',
+                     'opcua_config_plugins_metadata.inc', 'opcua_nodestore_metadata.inc', 'opcua_native_nodestore.h', 'opcua_native_format.c'):
+        first = (work / 'one' / filename).read_bytes()
+        assert first == (work / 'two' / filename).read_bytes()
+        assert str(repo).encode() not in first and str(work).encode() not in first
+    index = {name: int(value) for name, value in re.findall(
+        r'^#define CPKT_OPCUA_TYPES_(\w+) (\d+)$',
+        (work / 'one/cpkt/opcua_types.h').read_text(), re.M)}
+    # Use descriptor names to retain upstream mixed-case names.
+    names = re.findall(r'^  \{"(\w+)", sizeof\(cpkt_opcua_\w+\)',
+                       (work / 'one/opcua_types_metadata.inc').read_text(), re.M)
+    index = {name: index[name.upper()] for name in names}
+    native_headers = upstream.parent.parent / 'include/open62541'
+    changed_headers = work / 'headers'
+    shutil.copytree(native_headers, changed_headers)
+    ac = changed_headers / 'plugin/accesscontrol.h'
+    original_ac = ac.read_text()
+    ac.chmod(0o644)
+    ac.write_text(original_ac.replace('void *context;', 'void *context; UA_UInt32 unexpected;', 1))
+    try:
+        plugin_emitter.emit_plugins(index, changed_headers, work / 'one')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('New public plugin field was silently ignored')
+    ac.write_text(original_ac.replace('(*activateSession)', '(*activateSessionChanged)', 1).replace('UA_AccessControl *ac,', 'UA_UnknownPlugin *ac,', 1))
+    try:
+        plugin_emitter.emit_plugins(index, changed_headers, work / 'one')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Unsupported public callback context was accepted')
+    eventloop_header = changed_headers / 'plugin/eventloop.h'
+    original_loop = eventloop_header.read_text()
+    eventloop_header.chmod(0o644)
+    for broken in (
+        original_loop.replace('const UA_Logger *logger;', 'const UA_Logger *logger; UA_UInt32 extra;', 1),
+        original_loop.replace('(*addTimer)', '(*addTimerChanged)', 1),
+        original_loop.replace('UA_UInt64 timerId,', 'const UA_UnknownTimerId *timerId,', 1),
+    ):
+        eventloop_header.write_text(broken)
+        try:
+            eventloop_emitter.emit_eventloop(changed_headers, work / 'one')
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Event-loop generator ignored changed public fields/methods')
+    eventloop_header.write_text(original_loop)
+    history_header = changed_headers / 'plugin/historydata/history_data_backend.h'
+    original_history = history_header.read_text()
+    history_header.chmod(0o644)
+    for broken in (
+        original_history.replace('void *context;', 'void *context; UA_UInt32 unexpected;', 1),
+        original_history.replace('const MatchStrategy strategy', 'const UA_UnknownType strategy', 1),
+        original_history.replace('const UA_DataValue*', 'UA_DataValue**', 1),
+    ):
+        history_header.write_text(broken)
+        try:
+            history_emitter.emit_backend(index, changed_headers, (changed_headers / 'config.h').read_text())
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Unsupported history backend signature was accepted')
+    history_header.write_text(original_history)
+    history_public, history_private = history_emitter.emit_backend(index, changed_headers, (changed_headers / 'config.h').read_text())
+    assert 'const cpkt_opcua_history_value*' in '\n'.join(history_public)
+    assert re.match(r'/\*.*?\*/', (native_headers / 'types.h').read_text(), re.S)[0] in '\n'.join(history_public)
+    assert any('return cpkt_history_native_const(stored);' in line for line in history_private)
+    assert {name for _, name, _ in plugin_emitter.callbacks(plugin_emitter.public_body(history_header, 'HistoryDataBackend', (changed_headers / 'config.h').read_text()))} == {
+        'deleteMembers', 'serverSetHistoryData', 'getHistoryData', 'getDateTimeMatch', 'getEnd', 'lastIndex', 'firstIndex',
+        'resultSize', 'copyDataValues', 'getDataValue', 'boundSupported', 'timestampsToReturnSupported',
+        'insertDataValue', 'replaceDataValue', 'updateDataValue', 'removeDataValue',
+    }
+    stock_header = changed_headers / 'plugin/historydata/history_data_backend_memory.h'
+    original_stock = stock_header.read_text()
+    stock_header.chmod(0o644)
+    for broken in (
+        original_stock.replace('size_t initialDataStoreSize', 'UA_UInt64 initialDataStoreSize'),
+        original_stock.replace('UA_HistoryDataBackend_Memory_clear', 'UA_HistoryDataBackend_Memory_destroy'),
+        original_stock.replace('_UA_END_DECLS', 'void UA_EXPORT UA_HistoryDataBackend_Memory_new(void);\n_UA_END_DECLS'),
+    ):
+        stock_header.write_text(broken)
+        try:
+            history_emitter.emit_backend(index, changed_headers, (changed_headers / 'config.h').read_text())
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Unsupported stock history factory was accepted')
+    stock_header.write_text(original_stock)
+    stock_private = '\n'.join(history_private)
+    for name in ('serverSetHistoryData', 'getHistoryData', 'getDateTimeMatch', 'getEnd',
+                 'lastIndex', 'firstIndex', 'resultSize', 'copyDataValues', 'getDataValue',
+                 'boundSupported', 'timestampsToReturnSupported', 'insertDataValue',
+                 'replaceDataValue', 'updateDataValue', 'removeDataValue'):
+        assert 'cpkt_stock_hb_' + name + '(' in stock_private
+        assert 'out.' + name + ' = native.' + name + ' ? cpkt_stock_hb_' + name + ' : NULL;' in stock_private
+    assert 'cpkt_stock_hb_record(backend, server, sessionContext, &dispatch, &n_backend)' in stock_private
+    assert '(const cpkt_opcua_history_value *)(const void *)answer' in stock_private
+    assert '*native = bridge->native;' in stock_private
+    assert 'native->context = forwarded' not in stock_private
+    assert 'dispatch->session_context' in stock_private
+    configuration = (changed_headers / 'config.h').read_text()
+    for name in ('registerNodeId', 'stopPoll', 'startPoll', 'updateNodeIdSetting',
+                 'getHistorizingSetting', 'setValue'):
+        assert 'cpkt_hg_' + name + '(' in stock_private
+        assert 'cpkt_stock_hg_' + name + '(' in stock_private
+    for name in ('readRaw', 'updateData', 'deleteRawModified', 'setValue'):
+        assert 'cpkt_stock_hdb_' + name + '(' in stock_private
+    for relative, replacements in (
+        ('plugin/historydata/history_data_gathering.h', (
+            ('void *context;', 'void *context; UA_UInt32 unexpected;'),
+            ('(*startPoll)', '(*startPollChanged)'),
+            ('void *hdgContext', 'void *unknownContext'),
+            ('const UA_HistorizingNodeIdSettings*', 'UA_HistorizingNodeIdSettings*'),
+            ('UA_HistoryDataGathering *gathering', 'UA_HistoryDataGathering **gathering'),
+            ('const UA_DataValue *value', 'const UA_DataValue **value'),
+        )),
+        ('plugin/historydata/history_data_gathering_default.h', (
+            ('size_t initialNodeIdStoreSize', 'UA_UInt64 initialNodeIdStoreSize'),
+            ('UA_HistoryDataGathering UA_EXPORT', 'UA_StatusCode UA_EXPORT'),
+            ('_UA_END_DECLS', 'void gathering_default_unknown(void);\n_UA_END_DECLS'),
+            ('UA_Boolean pause', 'UA_UInt64 pause'),
+        )),
+        ('plugin/historydata/history_database_default.h', (
+            ('UA_HistoryDataGathering gathering', 'UA_HistoryDataGathering *gathering'),
+            ('UA_HistoryDatabase UA_EXPORT', 'UA_StatusCode UA_EXPORT'),
+        )),
+    ):
+        path = changed_headers / relative
+        path.chmod(0o644)
+        original = path.read_text()
+        for old, new in replacements:
+            assert old in original, (relative, old)
+            path.write_text(original.replace(old, new, 1))
+            try:
+                history_emitter.emit_backend(index, changed_headers, configuration)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('Changed history gathering/database declaration was accepted: ' + old)
+        path.write_text(original)
+    highlevel = changed_headers / 'client_highlevel.h'
+    original_highlevel = highlevel.read_text()
+    highlevel.chmod(0o644)
+    client_public, client_private = client_emitter.emit_client(index, changed_headers)
+    for _, client_name, _ in client_emitter.declarations(original_highlevel):
+        assert 'cpkt_opcua_client_' + client_name + '_typed' in '\n'.join(client_public)
+        assert 'UA_Client_' + client_name + '(' in '\n'.join(client_private)
+    assert len(client_emitter.declarations(original_highlevel)) == 75
+    for old, new in (
+        ('UA_Variant **output', 'UA_Variant *output'),
+        ('const UA_UInt32 *newArrayDimensions', 'const UA_UInt64 *newArrayDimensions'),
+        ('const UA_DataType *valueType', 'const UA_DataType **valueType'),
+        ('UA_HistoricalIteratorCallback)', 'UA_HistoricalIteratorCallbackChanged)'),
+        ('UA_Boolean moreDataAvailable', 'UA_UInt64 moreDataAvailable'),
+        ('UA_NodeIteratorCallback callback', 'UA_ServerCallback callback'),
+    ):
+        assert old in original_highlevel
+        highlevel.write_text(original_highlevel.replace(old, new, 1))
+        try:
+            client_emitter.emit_client(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed high-level client signature was accepted')
+    highlevel.write_text(original_highlevel)
+    asynchronous = changed_headers / 'client_highlevel_async.h'
+    asynchronous.chmod(0o644)
+    original_async = asynchronous.read_text()
+    async_public, async_private = async_client_emitter.emit_async_client(index, changed_headers)
+    assert len(async_client_emitter.declarations(original_async)) == 59
+    assert len(async_client_emitter.callback_declarations(original_async)) == 31
+    for _, native_name, _ in async_client_emitter.declarations(original_async):
+        assert 'cpkt_opcua_client_' + native_name.split('UA_Client_', 1)[1] + '_typed' in '\n'.join(async_public)
+        assert native_name + '(' in '\n'.join(async_private)
+    for old, new in (
+        ('UA_UInt32 requestId, UA_ReadResponse *rr', 'UA_UInt64 requestId, UA_ReadResponse *rr'),
+        ('const ATTR_TYPE *attr', 'const ATTR_TYPE **attr'),
+        ('UA_ClientAsyncCallCallback callback', 'UA_ClientAsyncOperationCallback callback'),
+        ('size_t inputSize', 'UA_UInt32 inputSize'),
+        ('UA_NodeId *outNewNodeId', 'UA_NodeId **outNewNodeId'),
+    ):
+        assert old in original_async
+        asynchronous.write_text(original_async.replace(old, new, 1))
+        try:
+            async_client_emitter.emit_async_client(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed asynchronous client signature was accepted')
+    asynchronous.write_text(original_async)
+    client_core = changed_headers / 'client.h'
+    client_core.chmod(0o644)
+    original_core = client_core.read_text()
+    core_public, core_private = core_client_emitter.emit_core_client(index, changed_headers)
+    assert len(core_client_emitter.declarations(original_core)) == 28
+    for _, name, _ in core_client_emitter.declarations(original_core):
+        assert 'cpkt_opcua_client_' + name + '_typed' in '\n'.join(core_public)
+        if name not in core_client_emitter.TIMERS:
+            assert 'UA_Client_' + name + '(' in '\n'.join(core_private)
+    for old, new in (
+        ('UA_Client_getEndpoints(', 'UA_Client_getEndpointsChanged('),
+        ('UA_EndpointDescription** endpointDescriptions', 'UA_EndpointDescription* endpointDescriptions'),
+        ('const UA_String *listenHostnames', 'const UA_NodeId *listenHostnames'),
+        ('UA_SecureChannelState *channelState', 'UA_StatusCode *channelState'),
+        ('UA_UInt64 *callbackId', 'UA_UInt32 *callbackId'),
+        ('(*UA_ClientCallback)', '(*UA_ClientCallbackChanged)'),
+    ):
+        assert old in original_core
+        client_core.write_text(original_core.replace(old, new, 1))
+        try:
+            core_client_emitter.emit_core_client(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed core client signature was accepted')
+    client_core.write_text(original_core)
+    common_core = changed_headers / 'common.h'
+    common_core.chmod(0o644)
+    original_common = common_core.read_text()
+    common_core.write_text(original_common.replace('} UA_SessionState;', '} UA_SessionStateChanged;', 1))
+    try:
+        core_client_emitter.emit_core_client(index, changed_headers)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Missing native session-state enum was accepted')
+    common_core.write_text(original_common)
+    value_types = changed_headers / 'types.h'
+    value_types.chmod(0o644)
+    original_value_types = value_types.read_text()
+    value_public, value_private = value_emitter.emit_values(changed_headers)
+    assert len(value_emitter.declarations(original_value_types)) == 22
+    for _, name, _ in value_emitter.declarations(original_value_types):
+        assert 'cpkt_opcua_' + name + '(' in '\n'.join(value_public)
+        assert 'UA_' + name + '(' in '\n'.join(value_private)
+    for old, new in (
+        ('UA_NODEID_NUMERIC(UA_UInt16', 'UA_NODEID_NUMERIC_CHANGED(UA_UInt16'),
+        ('UA_NODEID_NUMERIC(UA_UInt16 nsIndex, UA_UInt32 identifier)',
+         'UA_NODEID_NUMERIC(UA_UInt16 nsIndex, UA_UInt64 identifier)'),
+        ('UA_Guid guid);', 'UA_Guid *guid);'),
+        ('UA_GUID_NULL;', 'UA_GUID_NULL_CHANGED;'),
+    ):
+        assert old in original_value_types
+        value_types.write_text(original_value_types.replace(old, new, 1))
+        try:
+            value_emitter.emit_values(changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed public value constructor was accepted: ' + old)
+    value_types.write_text(original_value_types)
+    certificate_public, certificate_private = certificate_emitter.emit_certificates(index, changed_headers)
+    assert len(certificate_emitter.declarations(changed_headers)) == 15
+    for _, name, _ in certificate_emitter.declarations(changed_headers):
+        assert name.replace('UA_', 'cpkt_opcua_', 1) + '(' in '\n'.join(certificate_public)
+        assert name + '(' in '\n'.join(certificate_private)
+    for filename, old, new in (
+        ('plugin/certificategroup.h', 'size_t *keySize', 'UA_UnknownType *keySize'),
+        ('plugin/certificategroup.h', 'UA_CertificateUtils_checkCA', 'UA_CertificateUtils_newFunction'),
+        ('plugin/create_certificate.h', 'UA_CertificateFormat certFormat', 'UA_UInt32 certFormat'),
+        ('plugin/create_certificate.h', 'const UA_Logger *logger', 'UA_Logger *logger'),
+        ('util.h', 'UA_TrustListMasks mask', 'UA_UInt64 mask'),
+    ):
+        changed = changed_headers / filename
+        original = changed.read_text()
+        assert old in original
+        changed.chmod(0o644)
+        changed.write_text(original.replace(old, new, 1))
+        try:
+            certificate_emitter.emit_certificates(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed certificate/trust declaration was accepted: ' + old)
+        changed.write_text(original)
+    server = changed_headers / 'server.h'
+    server.chmod(0o644)
+    original_server = server.read_text()
+    node_public, node_private = node_emitter.emit_nodes(index, changed_headers)
+    for record in ('ValueSourceNotifications', 'NodeTypeLifecycle', 'GlobalNodeLifecycle'):
+        assert ('cpkt_opcua_' + record) in '\n'.join(node_public)
+    for old, new in (
+        ('(*onRead)', '(*onReadChanged)'),
+        ('const UA_NumericRange *range,', 'const UA_UnknownType *range,'),
+        ('} UA_GlobalNodeLifecycle;', 'UA_UInt32 unexpected; } UA_GlobalNodeLifecycle;'),
+        ('UA_NodeId *targetNodeId);', 'UA_NodeId **targetNodeId);'),
+        ('UA_DataValue **value,', 'UA_DataValue *value,'),
+        ('UA_DataValue **value,', 'UA_Variant **value,'),
+    ):
+        assert old in original_server
+        server.write_text(original_server.replace(old, new, 1))
+        try:
+            node_emitter.emit_nodes(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed node callback declaration was accepted')
+    server.write_text(original_server)
+    producer_public, producer_private = producer_emitter.emit_producers(index, changed_headers)
+    assert 'cpkt_opcua_CallbackValueSource' in '\n'.join(producer_public)
+    assert 'cpkt_opcua_MethodCallback' in '\n'.join(producer_public)
+    for old, new in (
+        ('} UA_CallbackValueSource;', 'UA_UInt32 unexpected; } UA_CallbackValueSource;'),
+        ('(*UA_MethodCallback)', '(*UA_MethodCallbackChanged)'),
+        ('UA_Boolean includeSourceTimeStamp,', 'UA_UInt64 includeSourceTimeStamp,'),
+        ('const UA_DataValue *value);', 'UA_DataValue **value);'),
+    ):
+        assert old in original_server
+        if old == 'const UA_DataValue *value);':
+            end = original_server.index('} UA_CallbackValueSource;')
+            start = original_server.rfind('typedef struct {', 0, end)
+            scope = original_server[start:end]
+            assert old in scope
+            changed = original_server[:start] + scope.replace(old, new, 1) + original_server[end:]
+        else:
+            changed = original_server.replace(old, new, 1)
+        server.write_text(changed)
+        try:
+            producer_emitter.emit_producers(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed producer signature was accepted')
+    server.write_text(original_server)
+    creation_public, creation_private = creation_emitter.emit_creation(index, changed_headers)
+    for creation_name in creation_emitter.NAMES:
+        assert 'cpkt_opcua_server_' + creation_name + '_typed' in '\n'.join(creation_public)
+        assert 'UA_Server_' + creation_name + '(' in '\n'.join(creation_private)
+    for creation_name, old, new in (
+        ('addCallbackValueSourceVariableNode', 'const UA_CallbackValueSource evs', 'const UA_CallbackValueSource *evs'),
+        ('addMethodNodeEx', 'const UA_Argument *inputArguments', 'const UA_Argument **inputArguments'),
+        ('addNode_begin', 'const UA_DataType *attributeType', 'const UA_DataType **attributeType'),
+        ('addMethodNode_finish', 'UA_MethodCallback method', 'UA_ServerCallback method'),
+    ):
+        start = original_server.index('UA_Server_' + creation_name + '(')
+        end = original_server.index(');', start) + 2
+        scope = original_server[start:end]
+        assert old in scope
+        server.write_text(original_server[:start] + scope.replace(old, new, 1) + original_server[end:])
+        try:
+            creation_emitter.emit_creation(index, changed_headers)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError('Changed creation signature was accepted')
+    server.write_text(original_server)
+    server.write_text(server.read_text().replace('UA_NodeId *out);', 'UA_NodeId **out);', 1))
+    try:
+        server_emitter.emit_server(index, changed_headers)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError('Changed public server pointer signature was accepted')
+    changed = work / 'changed/share/open62541'
+    shutil.copytree(upstream, changed)
+    generator = changed / 'generate_datatypes.py'
+    generator.chmod(0o644)
+    generator.write_text(generator.read_text().replace('args = parser.parse_args()', 'args = None'))
+    result = subprocess.run([sys.executable, tool, '--upstream', changed, '--output', work / 'changed-output'],
+                            capture_output=True, text=True)
+    assert result.returncode and 'Upstream generator changed' in result.stderr
+    assert not (work / 'changed-output/cpkt/opcua_types.h').exists()
+print('Unsupported graphs and changed hooks fail early; generated interfaces are deterministic')

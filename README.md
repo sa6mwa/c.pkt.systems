@@ -6,21 +6,32 @@ The project builds release artifacts for:
 
 - OpenSSL
 - zlib
+- libpng, with its complete public C API
+- libHaru, with a complete strict C89 `cpkt_pdf` facade
+- iODBC driver manager and configuration API, with the full C89-compatible ODBC API
 - nghttp2
 - libssh2
 - curl
 - libxml2
-- Lua
+- MIT Kerberos, with the strict C89 `cpkt_gssapi` facade
+- Cyrus SASL, with the strict C89 `cpkt_sasl` facade
+- OpenLDAP
+- PostgreSQL/libpq, with the strict C89 `cpkt_postgres` facade
+- SQLite, with the strict C89 `cpkt_sqlite` facade
+- Lua, with the complete strict-C89 `cpkt_lua` facade and the higher-level
+  strict-C89 `cpkt_lua_runtime` embedding facade
 - miniaudio, behind the strict C89 `cpkt_audio` facade
 - whisper.cpp/ggml, behind the strict C89 `cpkt_sus` facade
 - MQTT-C
 - open62541
-- cmocka, for test builds on Linux targets
 
 Release tarballs always contain the complete installable SDK surface: headers,
 static archives, shared libraries, CMake package metadata, and pkg-config
 metadata. Partial static-only or shared-only dependency bundles are not
 supported.
+
+cmocka is built for Linux tests when tests are enabled. It is not shipped in
+release tarballs.
 
 It does not build or package project-level pkt.systems libraries such as
 `lonejson` or `libpslog`; those are released and consumed independently.
@@ -61,6 +72,13 @@ and install trees remain under this repository's `.cache/` and are disposable;
 `make clean` and `make release` never remove the shared archive cache. Set
 `-DCPKT_DEPENDENCY_CACHE=/path/to/deps` to use a different shared cache.
 
+Test-only packages use the same shared archive cache. Verified SHA-256 hits make
+no network requests, including when an asset name changes or the source archive
+is extracted into a fresh directory. Only extraction/build state starts empty;
+source reconstruction and nested test configurations reuse the shared cache.
+Bootlin, host MIG, and AFL++ follow the same digest-hit/no-network rule in their
+separate shared toolchain cache, including reuse under a different archive name.
+
 The Linux compiler collections are pinned to Bootlin stable `2026.08-1`
 (GCC 15.3.0, binutils 2.45.1, Linux headers 5.10.269, glibc 2.44 or musl 1.2.6).
 The repository resolver and bundled lifecycle skill use the same archive hashes.
@@ -68,9 +86,9 @@ AFL++ is built for the selected GCC collection; its plugin cache is not reused
 across collection changes.
 
 The current glibc SDKs require **glibc 2.43 or newer** for the complete shared
-library dependency set on x86_64, aarch64, and armhf. The published 0.9.0 SDKs
-required at most glibc 2.38. This is a deployment compatibility change despite
-unchanged facade ABI majors and `libc.so.6`. The SDK does not bundle glibc.
+library dependency set on x86_64, aarch64, and armhf. This requirement was
+introduced in the published 0.10.0 SDKs; 0.9.0 required at most glibc 2.38.
+The SDK does not bundle glibc.
 Linking SDK static archives into an otherwise dynamically linked executable does
 not remove its libc requirement. Fully static musl builds avoid a dynamic glibc
 requirement; their OS and runtime behavior still needs application verification.
@@ -82,12 +100,13 @@ make prerelease
 make release
 ```
 
-`make prerelease` runs the complete release proof graph without first deleting
-generated state: formatting, deterministic debug and clangd checks, native
-Valgrind and AFL++ smoke checks, then the release matrix. It therefore produces
-and verifies the same package set as the final gate. `make release` first runs
+`make prerelease` runs the binary release proof graph without first deleting
+generated state: formatting, deterministic debug and local Podman database e2e,
+clangd checks, native Valgrind and AFL++ smoke checks, then the release matrix.
+It produces and verifies the binary SDK archives. `make release` first runs
 the release-version contract check, then removes repository-local generated
-state and invokes that same proof graph. It builds and verifies local artifacts;
+state and runs the same checks plus source archive creation and verification.
+It builds and verifies local artifacts;
 it does not publish a release, push commits, or create a release tag.
 
 ### Release diagnostics
@@ -95,6 +114,13 @@ it does not publish a release, push commits, or create a release tag.
 The package matrix reports each target and phase, runs CTest verbosely to retain
 individual test-case progress, and reports a failed command's exit status or a
 signal received by the package script. Failures stop the matrix immediately.
+Before building dependencies, it configures every target and runs the archive,
+patch, and PostgreSQL build-probe fixtures across all six Linux toolchains.
+It also compiles the Kerberos trace patch with strict prototype diagnostics
+using all seven target compilers, including Darwin. Missing or conflicting
+declarations fail this preflight; both actual GSSAPI builds make missing
+prototypes fatal as well.
+Those fixtures use the selected collection runtime or configured QEMU sysroot.
 An exit status such as 143 can mean SIGTERM or an explicit `exit(143)`; it cannot
 identify who sent a signal. Shell traps likewise cannot recover sender identity.
 
@@ -129,13 +155,19 @@ check the selected version before packaging.
 
 `make build` and `make test` cover the six Linux targets. `make package`,
 `make release-matrix`, and the full release gates also require Darwin.
+Cross-target tests and package consumers use `/usr/bin/qemu-aarch64` and
+`/usr/bin/qemu-arm` by default. Set `CPKT_QEMU_AARCH64` and `CPKT_QEMU_ARM`
+to executable paths when QEMU is installed elsewhere; use those values for
+configure, test, and package verification.
 
 The release matrix builds each dependency tree, runs the ABI/link smoke tests
 where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
-writes `dist/c.pkt.systems-<version>.tar.gz` for source builds, writes
-`dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
+writes `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
 It also packages the Darwin
 `dist/c.pkt.systems-<version>-arm64-apple-darwin-smoke-test.zip`.
+The final `make release` additionally writes and verifies
+`dist/c.pkt.systems-<version>.tar.gz` for source builds, then regenerates and
+verifies the checksum manifest for the complete artifact set.
 The c.pkt.systems bundle release requires all listed Linux targets and
 `arm64-apple-darwin`; a missing osxcross SDK is a release failure, never a skip.
 Package verification also extracts each binary tarball and builds downstream
@@ -143,7 +175,22 @@ CMake and pkg-config consumers for every shipped dependency package, asserting
 that static link requirements propagate through the shipped metadata. Linux
 consumers are run when executable locally or through the configured emulator;
 Darwin consumers are configure/link checked with the required local osxcross
-toolchain. Source
+toolchain. The `Native Darwin bundle verification` GitHub Actions workflow
+builds and tests on an arm64 macOS runner, then extracts its SDK archive and
+checks that packaged static and shared libcurl provide asynchronous DNS. The
+workflow also exercises a hostname through libcurl's multi socket API while a
+second transfer remains active, checks LDAP/BER linkage, and verifies the C89
+Lua facade targets from the extracted SDK. Native OPC UA checks cover static and
+shared type conversions, callbacks, plugins, transports, logging, generated
+schema fixtures, C++98 consumers, public API completeness, and export privacy.
+Each CTest group checks that every selected test command exists and is executable
+before running any test. Missing build targets fail at that preflight instead of
+partway through the group. Changes affecting macOS require a successful workflow
+run on the exact candidate commit. The cmocka-based legacy OPC UA facade tests
+remain Linux-only; native Darwin exercises the standalone C89 types, plugin,
+callback, logging, and public API tests above.
+Check this workflow before a Darwin release. The release's Darwin archive is
+still built from this repository with the local osxcross release preset. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,
 verifies that non-git version resolution uses the injected `VERSION` file, and
 builds/runs the facade-only local tests from the extracted tree.
@@ -176,6 +223,17 @@ include/
 lib/
 lib/cmake/OpenSSL/OpenSSLConfig.cmake
 lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake
+lib/cmake/CpktOpenSSL/CpktOpenSSLConfig.cmake
+lib/cmake/CpktPng/CpktPngConfig.cmake
+lib/cmake/CpktHaru/CpktHaruConfig.cmake
+lib/cmake/CpktPdf/CpktPdfConfig.cmake
+lib/cmake/CpktNghttp2/CpktNghttp2Config.cmake
+lib/cmake/CpktLibssh2/CpktLibssh2Config.cmake
+lib/cmake/CpktMqttc/CpktMqttcConfig.cmake
+lib/cmake/CpktSqlite/CpktSqliteConfig.cmake
+lib/cmake/CpktSasl/CpktSaslConfig.cmake
+lib/cmake/CpktGssapi/CpktGssapiConfig.cmake
+lib/cmake/CpktPostgres/CpktPostgresConfig.cmake
 lib/cmake/zlib/ZLIBConfig.cmake
 lib/cmake/zlib/ZLIBConfigVersion.cmake
 lib/cmake/nghttp2/nghttp2Config.cmake
@@ -188,6 +246,8 @@ lib/cmake/libxml2/libxml2-config.cmake
 lib/cmake/libxml2/libxml2-config-version.cmake
 lib/cmake/Lua/LuaConfig.cmake
 lib/cmake/Lua/LuaConfigVersion.cmake
+lib/cmake/CpktLua/CpktLuaConfig.cmake
+lib/cmake/CpktLua/CpktLuaConfigVersion.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfig.cmake
 lib/cmake/CpktLuaRuntime/CpktLuaRuntimeConfigVersion.cmake
 lib/cmake/CpktAudio/CpktAudioConfig.cmake
@@ -203,6 +263,18 @@ lib/cmake/open62541/open62541ConfigVersion.cmake
 lib/pkgconfig/libcrypto.pc
 lib/pkgconfig/libssl.pc
 lib/pkgconfig/openssl.pc
+lib/pkgconfig/cpkt-openssl.pc
+lib/pkgconfig/cpkt-png.pc
+lib/pkgconfig/cpkt-haru.pc
+lib/pkgconfig/cpkt-pdf.pc
+lib/pkgconfig/cpkt-nghttp2.pc
+lib/pkgconfig/cpkt-libssh2.pc
+lib/pkgconfig/cpkt-mqttc.pc
+lib/pkgconfig/cpkt-lua.pc
+lib/pkgconfig/cpkt-sqlite.pc
+lib/pkgconfig/cpkt-sasl.pc
+lib/pkgconfig/cpkt-gssapi.pc
+lib/pkgconfig/cpkt-postgres.pc
 lib/pkgconfig/zlib.pc
 lib/pkgconfig/libnghttp2.pc
 lib/pkgconfig/libssh2.pc
@@ -245,18 +317,51 @@ nghttp2::nghttp2
 Libssh2::libssh2
 CURL::libcurl
 LibXml2::LibXml2
+cpkt::png
+cpkt::haru
+cpkt::pdf
+cpkt::openssl
+cpkt::sqlite
+cpkt::sasl
+cpkt::gssapi
+cpkt::postgres
 Lua::Lua
+cpkt::lua
 cpkt::lua_runtime
 cpkt::audio
 cpkt::sus
 MQTT-C::mqttc
 open62541::open62541
 cpkt::opcua
+cpkt::iodbc
 ```
 
 Static transitive dependencies are part of the imported targets. Consumers
 should not add private workaround libraries such as `-ldl`, `-pthread`,
 `-latomic`, zlib, nghttp2, libssh2, OpenSSL, or Darwin frameworks by hand.
+For PDF generation, use `find_package(CpktPdf CONFIG REQUIRED)` and link
+`cpkt::pdf` (or `cpkt::pdf_shared`). The full upstream libpng surface is
+available through `find_package(CpktPng CONFIG REQUIRED)` and `cpkt::png`.
+The C89 facade API and its transitive dependencies are described in
+[`docs/pdf-c89-facade.md`](docs/pdf-c89-facade.md).
+For ODBC applications, use `find_package(CpktIodbc CONFIG REQUIRED)` and link
+`cpkt::iodbc` for the static driver manager and configuration API, or link
+`cpkt::iodbc_shared` and `cpkt::iodbcinst_shared` for shared libraries. The
+standard `sql.h`, `sqlext.h`, and `odbcinst.h` headers provide the complete
+public API under the supported strict-C89 toolchains. `pkg-config libiodbc`
+and `pkg-config cpkt-iodbc` provide the corresponding link flags. A database
+connection still requires a separate ODBC driver.
+The other facade contracts are documented in the matching files under `docs/`:
+[`PostgreSQL`](docs/postgres-c89-facade-spec.md),
+[`SQLite`](docs/sqlite-c89-facade-spec.md),
+[`SASL`](docs/sasl-c89-facade-spec.md),
+[`GSSAPI`](docs/gssapi-c89-facade-spec.md),
+[`OpenSSL`](docs/openssl-c89-facade-surface.md), and
+[`OPC UA`](docs/opcua-c89-facade-spec.md).
+The auth facades include custom Cyrus SASL plugin records in
+`cpkt/sasl_plugin.h` and Kerberos-specific GSS extensions in
+`cpkt/gssapi.h`; the linked contract describes ownership and target coverage.
+
 The bundled `open62541::open62541` target is built with OpenSSL-backed
 security policy support, the upstream default reduced namespace zero, and static
 OpenSSL plus POSIX system-library requirements carried through the imported
@@ -272,7 +377,8 @@ without duplicate `mqtt_*` symbols from open62541.
 The bundled libcurl uses each target platform's system trust store by default
 when the consumer has not set an explicit CA bundle or CA path. Linux targets
 use OpenSSL with libcurl's CA fallback enabled; Darwin targets use curl's
-OpenSSL-backed Apple SecTrust integration.
+OpenSSL-backed Apple SecTrust integration. All targets enable libcurl's
+threaded resolver and advertise `CURL_VERSION_ASYNCHDNS`.
 
 Direct package-directory lookup is also supported for packages with bundled
 dependencies:
@@ -339,19 +445,22 @@ CPKT_SDK_PREFIX=/path/to/c.pkt.systems-<version>-<target> \
 `Lua::Lua` is the upstream Lua 5.5 C API and keeps upstream number handling.
 Source files that include `lua.h` must compile as C99 or newer.
 
-Strict C89 applications should use the SDK facade instead:
+Strict C89 applications that need the complete Lua stack/value API should use:
 
 ```text
-#include <cpkt/lua_runtime.h>
+#include <cpkt/lua.h>
 ```
 
-The facade header does not include Lua headers or expose `lua_State`,
-`lua_Integer`, `lua_Number`, Lua constants, `long long`, or inline functions.
-Its implementation is compiled as C99 inside the SDK and links the bundled Lua
-runtime.
+`cpkt_lua` covers all declared Lua, lauxlib, and lualib APIs and Lua's public
+convenience macros. Its header never includes upstream Lua headers or exposes
+`long long`; its two-word C89 integer value preserves the configured 64-bit
+Lua integer ABI. Link it with `find_package(CpktLua CONFIG REQUIRED)` and
+`cpkt::lua`, or `pkg-config --static --libs cpkt-lua`.
+The generated API's naming, integer representation, callback lifetimes, and
+stack behavior are described in [`docs/lua-c89-facade.md`](docs/lua-c89-facade.md).
 
-The facade is intentionally an embedding/runtime API, not a second Lua C API.
-Consumers can:
+`cpkt_lua_runtime` is intentionally a narrower embedding/runtime API, not a
+replacement for the full `cpkt_lua` C API. Consumers of the runtime facade can:
 
 - create runtimes, including runtimes with a memory cap,
 - create runtimes with caller-provided allocation callbacks,
@@ -363,11 +472,13 @@ Consumers can:
 - require modules for side effects,
 - register named C module loaders,
 - register named Lua preload chunks,
+- forward Lua warning fragments through a caller-owned callback,
 - pass an opaque embedder context through to C module loaders.
 
-The facade does not expose a general stack/value API. Consumers that need stack
-operations, returned Lua values, metatables, userdata manipulation, or other
-full embedding details should use `Lua::Lua` directly from C99-or-newer source.
+The runtime facade does not expose a general stack/value API. Consumers that
+need stack operations, returned Lua values, metatables, userdata manipulation,
+or other full embedding details should use `cpkt_lua`; upstream `Lua::Lua`
+remains available for C99-or-newer source.
 
 Strict C89 applications that need audio decoding, URL-backed audio streams,
 capture/playback, VOX/PTT segmentation, or local speech-to-text should use the
@@ -411,10 +522,27 @@ facade instead:
 #include <cpkt/opcua.h>
 ```
 
+Include `<cpkt/opcua_types.h>` for the complete generated standard public model:
+388 types, nested structures/arrays, 64-bit words on every target, lifecycle
+helpers, binary codecs, typed synchronous/asynchronous client services, full
+subscription notifications, and typed server node/attribute/browse operations. Types follow upstream names and fields with a
+`cpkt_opcua_` prefix. Generation reuses upstream's schema parser and C generator;
+it preserves native type semantics through explicit boundary conversions. See
+the [generated model contract](docs/opcua-c89-facade-spec.md#generated-c89-public-model)
+for ownership and error handling. Generated access-control and history-database
+plugin records expose every enabled native callback slot to C89. The full
+history storage backend is also available, with default gathering/database
+installation and backend-owned persistent values for borrowed-pointer callbacks.
+See [history storage ownership](docs/opcua-c89-facade-spec.md#history-storage-and-borrowed-values).
+Custom gathering callbacks, PubSub component configuration, and custom plugin
+callbacks are available to strict C89 consumers. The enabled public surface is
+tracked by the complete [API contract](docs/opcua-c89-facade-spec.md).
+
 The facade header does not include open62541 headers or expose `UA_Client`,
 `UA_Server`, `UA_StatusCode`, `UA_NodeId`, `UA_Variant`, fixed-width C99 integer
-types, `long long`, or inline functions. Its implementation is compiled as C99
-inside the SDK and links the bundled open62541 library.
+types, `long long`, or inline functions. Its handwritten facade translation
+units are compiled as C89 inside the SDK and link the bundled open62541
+library; the private native formatter uses the upstream C dialect.
 
 The OPC UA facade provides opaque client and server handles, C89-safe node-id
 and scalar value wrappers, explicit server startup/iterate/shutdown control,
@@ -424,6 +552,15 @@ browse callbacks, scalar method registration and calls, client subscriptions,
 monitored value callbacks, status-name helpers, and native callback escape hatches
 for C99 translation units that need direct access to the underlying open62541
 `UA_Client *` or `UA_Server *`.
+
+Logging is available to strict C89 consumers through `cpkt_opcua_log_config`.
+Use the `*_new_with_logger` constructors (or JSON/file logger variants) to
+capture initialization too, and `*_set_logger` to replace an existing handle's
+destination. The callback receives one formatted, borrowed message with its
+upstream level/category and byte length. Security and event-loop plugins share
+that destination. libpslog is used only to test this integration; applications
+may choose any logger. See the [logging contract](docs/opcua-c89-facade-spec.md#logging-plugin)
+and the [SDK logging audit TODO](TODO.md).
 
 Use `find_package(CpktOpcUa CONFIG REQUIRED)` and link `cpkt::opcua`, or use
 `pkg-config --static --libs cpkt-opcua`.
@@ -462,14 +599,20 @@ installs the limit hook on coroutines created through `coroutine.create` and
 
 ## Verification Coverage
 
-Release verification checks every produced tarball from an extracted install
-tree. It asserts archive layout, checksum coverage, metadata path placement,
+Release verification validates SHA-256 and privacy for every checksum-listed
+artifact, including source archives and the required Darwin smoke ZIP. It
+checks every SDK tarball from an extracted install tree and executes all
+generated Linux CMake and pkg-config consumers, using the selected collection
+runtime or QEMU. Darwin consumers are cross-linked locally; native execution
+is covered separately by the macOS runtime workflow.
+It asserts archive layout, checksum coverage, metadata path placement,
 metadata relocatability, absence of old non-upstream CMake package directories,
 privacy/path hygiene, static transitive propagation through CMake and
 pkg-config, direct `Libssh2_DIR` and `CURL_DIR` package use, and representative
-CMake and pkg-config examples. The installed strict Lua facade consumer is
-compiled as C89, links through both CMake and pkg-config metadata, runs the
-example program, and exercises the custom allocator API from the extracted SDK.
+CMake and pkg-config examples. The installed `cpkt_lua` and `cpkt_lua_runtime`
+consumers compile as C89 and link through both CMake and pkg-config metadata;
+the runtime example also exercises the custom allocator API from the extracted
+SDK.
 
 Native debug and hardening checks are available through these Make targets:
 
@@ -481,17 +624,43 @@ make fuzz-smoke
 make fuzz
 ```
 
-`make test-all` combines `debug`, `clangd-surface`, `valgrind`, and `fuzz-smoke`.
+Local PostgreSQL facade integration uses the rootless Podman Kube manifest
+[`devenv.yaml.in`](devenv.yaml.in). It starts the version-pinned official
+PostgreSQL Alpine image and one CockroachDB node, then runs the same facade
+query, parameter, asynchronous receive, prepared statement, and transaction
+checks against both. No credentials are required for these loopback-only test
+services. Run `make e2e-postgres` or `make test-e2e`; both start and stop the
+pods automatically. `make dev-up`, `make dev-down`, `make dev-ps`,
+`make dev-logs`, and `make dev-reset` manage them manually. The network mode
+is per-pod `pasta`, supplied by the host Podman installation.
+Teardown command errors fail the e2e gate even if the pods were removed.
+The default host ports are 55432 and 56257; override them with
+`CPKT_DEV_POSTGRES_PORT` and
+`CPKT_DEV_COCKROACH_PORT`. The e2e runner stops both pods after success or
+failure, including when they were already running. All database state and the
+rendered manifest are under ignored `build/devenv/`; `make dev-reset` removes
+them as the host user. `make clean` and the initial clean in `make release`
+stop checkout-owned pods before removing that state; cleanup stops if pod
+shutdown fails.
+The local e2e gate runs before native hardening and the release matrix.
+
+`make test-all` combines `debug`, local database e2e, `clangd-surface`,
+`valgrind`, and `fuzz-smoke`.
 The debug suite includes the real Lua runtime tests, mock-backed Lua tests, and
 C89 embedding examples; there is no separate Lua-test command.
 
-`valgrind` is the required native x86_64 Linux Memcheck gate for
-`cpkt_lua_runtime_mock_test`. It does not cover every facade under Memcheck.
+`valgrind` runs the native C facade CTests, including static and shared PDF
+tests, plus PostgreSQL facade e2e against both local database pods, under
+Memcheck with leak checking and origin tracking. It uses the normal debug build
+so it exercises the same facade executables as CTest. The
+suppression in [`tests/valgrind.supp`](tests/valgrind.supp) is limited to one
+allocation by bundled SQLite on the intentionally failed custom-VFS open in
+the facade test; other leaks remain release blockers.
 AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
 plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
 runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
 dependency install tree for linkage. These hardening builds live under
-`build/valgrind`, `build/fuzz`, and `build/opcua-fuzz`; they are part of the
+`build/debug`, `build/fuzz`, and `build/opcua-fuzz`; they are part of the
 shared prerelease and release proof graph and never instrument release package
 artifacts. Valgrind and AFL++ never run via a cross target, emulator, or QEMU.
 
@@ -506,18 +675,20 @@ CPKT_LIVE_CHECKS=1 make E2E_SUS_PRESET=debug prerelease-live
 
 Dependency updates must follow the [bundle ABI policy](AGENTS.md), including
 embedded libraries and downstream consumers. OpenSSL remains on version 3.
-The [September 2026 audit](docs/dependency-audit-2026-09.md) records selected
-versions, security context, verification results, and supported compatibility
-scope. Direct whisper.cpp/ggml API/ABI compatibility for external consumers is
+The [dependency inventory](docs/dependencies.md) points to authoritative
+source pins, SDK manifests, and license notices. Direct whisper.cpp/ggml
+API/ABI compatibility for external consumers is
 out of scope; supported downstream speech use goes through `cpkt_sus`.
 
-`clang-format` and `clangd` are required host development tools and must be
-installed with the host OS package manager. `make clangd-surface` configures
-the native debug compile database, verifies that every public facade header
-declaration and non-static facade implementation has adjacent Doxygen
-documentation for LSP hover text, and checks that the shipped examples are
-present in `compile_commands.json`. The same target also runs
-`clangd --check` against the examples using that compile database. Cross-target
+`clang-format` and `clangd` are host development tools supplied by the
+[latest stable host LLVM installation](skills/pkt-systems-cmake-lifecycle/references/toolchains.md#host-llvm-and-clang),
+which also supplies Clang for osxcross. c.pkt.systems does not download, cache,
+or ship LLVM/Clang. `make clangd-surface` configures
+the native debug compile database and checks declaration-local Doxygen comments
+for most public facades and non-static implementations. SQLite uses group-level
+documentation for its broad header surface. The target checks that the shipped
+examples and the PDF facade test are present in `compile_commands.json`, then
+runs `clangd --check` on those translation units. Cross-target
 CTest and package configurations do not invoke host `clangd`; their compiler,
 target-runner, and package verification gates remain authoritative.
 

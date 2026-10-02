@@ -1,6 +1,18 @@
 include(ExternalProject)
 include("${CMAKE_CURRENT_LIST_DIR}/CpktDependencyArchiveCache.cmake")
 
+function(cpkt_external_install_byproducts out_var)
+  # ExternalProject_Add gained INSTALL_BYPRODUCTS in CMake 3.26. On older
+  # versions, append these paths to the preceding BUILD_BYPRODUCTS list so
+  # Ninja has file rules for generated facade header dependencies. The
+  # external project target still orders the native install before consumers.
+  if(CMAKE_VERSION VERSION_LESS 3.26)
+    set(${out_var} ${ARGN} PARENT_SCOPE)
+  else()
+    set(${out_var} INSTALL_BYPRODUCTS ${ARGN} PARENT_SCOPE)
+  endif()
+endfunction()
+
 macro(cpkt_cached_external_project_add)
   set(_cpkt_ep_args ${ARGV})
   list(FIND _cpkt_ep_args "URL" _cpkt_ep_url_index)
@@ -47,6 +59,16 @@ macro(cpkt_cached_external_project_add)
   list(INSERT _cpkt_ep_args ${_cpkt_ep_url_index} URL "${_cpkt_ep_cached_archive}")
   ExternalProject_Add(${_cpkt_ep_args})
 endmacro()
+
+function(cpkt_order_shared_install shared_project static_project)
+  # Both variants write common package metadata into one install prefix.
+  # CMP0114 NEW makes each step target own its command. Keep the shared build
+  # as a separately schedulable prerequisite of the shared install.
+  ExternalProject_Add_StepTargets(${static_project} install)
+  ExternalProject_Add_StepTargets(${shared_project} build install)
+  ExternalProject_Add_StepDependencies(${shared_project} install
+    ${static_project}-install)
+endfunction()
 
 function(cpkt_record_dependency_target target_name)
   set_property(GLOBAL APPEND PROPERTY CPKT_DEPENDENCY_TARGETS "${target_name}")
@@ -132,6 +154,10 @@ function(cpkt_get_external_c_flags out_var)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     string(APPEND _flags " -include stdint.h -include sys/types.h")
+    if(CPKT_MACOS_DEPLOYMENT_TARGET)
+      string(APPEND _flags
+        " -mmacosx-version-min=${CPKT_MACOS_DEPLOYMENT_TARGET}")
+    endif()
   endif()
   if(NOT "${CMAKE_C_FLAGS}" STREQUAL "")
     set(_flags "${CMAKE_C_FLAGS} ${_flags}")
@@ -150,6 +176,10 @@ function(cpkt_get_external_cxx_flags out_var)
   endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     string(APPEND _flags " -include stdint.h -include sys/types.h")
+    if(CPKT_MACOS_DEPLOYMENT_TARGET)
+      string(APPEND _flags
+        " -mmacosx-version-min=${CPKT_MACOS_DEPLOYMENT_TARGET}")
+    endif()
   endif()
   if(NOT "${CMAKE_CXX_FLAGS}" STREQUAL "")
     set(_flags "${CMAKE_CXX_FLAGS} ${_flags}")
@@ -171,7 +201,11 @@ function(cpkt_append_external_pkg_config_env_args out_var)
       CPKT_LIBXML2_PREFIX
       CPKT_LUA_PREFIX
       CPKT_MQTTC_PREFIX
-      CPKT_OPEN62541_PREFIX)
+      CPKT_OPEN62541_PREFIX
+      CPKT_KRB5_PREFIX
+      CPKT_CYRUS_SASL_PREFIX
+      CPKT_OPENLDAP_PREFIX
+      CPKT_POSTGRESQL_PREFIX)
     if(DEFINED ${_prefix_var} AND NOT "${${_prefix_var}}" STREQUAL "")
       list(APPEND _pkg_config_dirs
         "${${_prefix_var}}/lib/pkgconfig"
@@ -198,11 +232,37 @@ function(cpkt_append_darwin_external_env_args out_var)
   set(_args ${${out_var}})
   cpkt_append_external_pkg_config_env_args(_args)
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    foreach(_cpkt_required_var IN ITEMS
+        CMAKE_C_COMPILER
+        CMAKE_CXX_COMPILER
+        CMAKE_AR
+        CMAKE_RANLIB
+        CMAKE_STRIP
+        CMAKE_NM)
+      if(NOT DEFINED ${_cpkt_required_var}
+          OR "${${_cpkt_required_var}}" STREQUAL "")
+        message(FATAL_ERROR
+          "Darwin external builds require ${_cpkt_required_var}")
+      endif()
+    endforeach()
     list(APPEND _args
-      PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
-      LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}
+      CC=${CMAKE_C_COMPILER}
+      CXX=${CMAKE_CXX_COMPILER}
+      AR=${CMAKE_AR}
+      RANLIB=${CMAKE_RANLIB}
+      STRIP=${CMAKE_STRIP}
+      NM=${CMAKE_NM}
     )
-    if(CMAKE_LINKER)
+    if(CPKT_MACOS_DEPLOYMENT_TARGET)
+      list(APPEND _args
+        MACOSX_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET})
+    endif()
+    if(CPKT_OSXCROSS_ROOT)
+      list(APPEND _args
+        PATH=${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}
+        LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH})
+    endif()
+    if(CPKT_OSXCROSS_ROOT AND CMAKE_LINKER)
       list(APPEND _args LDFLAGS=--ld-path=${CMAKE_LINKER})
     endif()
   endif()
@@ -303,6 +363,28 @@ function(cpkt_get_strip_dependency_install_command out_var install_dir)
   set(${out_var} "${_command}" PARENT_SCOPE)
 endfunction()
 
+function(cpkt_get_autotools_link_flags out_var)
+  set(_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Configure writes this value into generated Makefiles.  Preserve the
+    # dollar sign until the target linker receives $ORIGIN.
+    set(_flags "-Wl,--enable-new-dtags,-rpath,\\\\$$ORIGIN")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(_flags "-Wl,-rpath,@loader_path")
+    if(NOT CMAKE_CROSSCOMPILING)
+      # Apple's linker treats temporary /usr/lib install names as shared-cache
+      # eligible before normalization. Bundled dylibs need a relocatable closure.
+      # The osxcross linker does not enforce this rule or implement this flag.
+      string(APPEND _flags " -Wl,-not_for_dyld_shared_cache")
+    endif()
+  endif()
+  if(NOT "${CMAKE_SHARED_LINKER_FLAGS}" STREQUAL "")
+    string(APPEND _flags " ${CMAKE_SHARED_LINKER_FLAGS}")
+  endif()
+  string(STRIP "${_flags}" _flags)
+  set(${out_var} "${_flags}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_append_common_external_cmake_args out_var)
   set(_args
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
@@ -327,6 +409,9 @@ function(cpkt_append_common_external_cmake_args out_var)
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _args
+      -DCPKT_OSXCROSS_HOST=${CPKT_OSXCROSS_HOST}
+      -DCPKT_MACOS_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET}
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=${CPKT_MACOS_DEPLOYMENT_TARGET}
       -DCMAKE_INSTALL_NAME_DIR=@rpath
       -DCMAKE_BUILD_WITH_INSTALL_NAME_DIR=ON
       -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON)
@@ -382,7 +467,10 @@ function(cpkt_add_openssl)
 
   cpkt_normalize_prefix(env_prefix "${install_dir}")
   file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
-  set(build_command make -j${CPKT_DEPENDENCY_BUILD_JOBS})
+  # OpenSSL 3.6's generated assembly dependency graph races under parallel
+  # make in the pinned cross-toolchain environment.  Keep this producer
+  # serial; downstream ExternalProjects can still build in parallel.
+  set(build_command make -j1)
   set(install_command make -j${CPKT_DEPENDENCY_BUILD_JOBS} install_sw DESTDIR=${env_prefix})
   set(openssl_post_configure_command "")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -533,6 +621,9 @@ function(cpkt_add_nghttp2)
   cpkt_append_pinned_external_toolchain_env_args(nghttp2_env_args)
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(nghttp2_install_byproducts
+      "${install_dir}/include/nghttp2/nghttp2.h"
+      "${install_dir}/include/nghttp2/nghttp2ver.h")
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/nghttp2/nghttp2/releases/download/v${CPKT_NGHTTP2_VERSION}/nghttp2-${CPKT_NGHTTP2_VERSION}.tar.gz"
       URL_HASH "SHA256=aa317e2cf9dca6afa0aed68f8fad6ff303ec6982e25a78c75c0b65e2b9b3ded5"
@@ -562,6 +653,7 @@ function(cpkt_add_nghttp2)
       BUILD_BYPRODUCTS
         "${install_dir}/lib/libnghttp2${CMAKE_STATIC_LIBRARY_SUFFIX}"
         "${install_dir}/lib/libnghttp2${CMAKE_SHARED_LIBRARY_SUFFIX}"
+      ${nghttp2_install_byproducts}
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -747,6 +839,10 @@ function(cpkt_add_libssh2)
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(libssh2_install_byproducts
+      "${install_dir}/include/libssh2.h"
+      "${install_dir}/include/libssh2_sftp.h"
+      "${install_dir}/include/libssh2_publickey.h")
     cpkt_cached_external_project_add(${project_name}
       URL "https://libssh2.org/download/libssh2-${CPKT_LIBSSH2_VERSION}.tar.gz"
       URL_HASH "SHA256=d9ec76cbe34db98eec3539fe2c899d26b0c837cb3eb466a56b0f109cabf658f7"
@@ -762,6 +858,9 @@ function(cpkt_add_libssh2)
       PATCH_COMMAND ${CMAKE_COMMAND}
         -DCPKT_LIBSSH2_SOURCE_DIR=<SOURCE_DIR>
         -P ${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_single_pass.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_LIBSSH2_SOURCE_DIR=<SOURCE_DIR>
+          -P ${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_poll_elapsed.cmake
       CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${install_dir}
         -DCMAKE_INSTALL_LIBDIR=lib
@@ -794,6 +893,7 @@ function(cpkt_add_libssh2)
       BUILD_BYPRODUCTS
         "${libssh2_static_library}"
         "${libssh2_shared_library}"
+      ${libssh2_install_byproducts}
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -834,7 +934,6 @@ function(cpkt_get_curl_platform_cmake_args out_var)
   set(_args "")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _args
-      -DENABLE_THREADED_RESOLVER=OFF
       -DUSE_APPLE_SECTRUST=ON)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Cross-compiling disables curl's CA bundle/path auto-detection.  Ask its
@@ -897,7 +996,6 @@ function(cpkt_add_curl)
   set(curl_cmake_args
     -DCMAKE_INSTALL_PREFIX=${install_dir}
     -DCMAKE_INSTALL_LIBDIR=lib
-    -DCMAKE_DEBUG_POSTFIX=
     -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
     -DCMAKE_INSTALL_RPATH=${curl_install_rpath}
@@ -919,13 +1017,16 @@ function(cpkt_add_curl)
     -DCURL_USE_LIBSSH2=ON
     -DCURL_USE_LIBSSH=OFF
     -DUSE_NGHTTP2=ON
+    # libpq's OAuth support requires libcurl asynchronous DNS.  Keep this
+    # resolver self-contained rather than introducing c-ares as another
+    # bundled dependency.
+    -DENABLE_THREADED_RESOLVER=ON
     -DCURL_DISABLE_LDAP=ON
     -DCURL_DISABLE_LDAPS=ON
     -DCURL_ZLIB=ON
     -DCURL_BROTLI=OFF
     -DCURL_ZSTD=OFF
     -DCURL_USE_LIBPSL=OFF
-    -DUSE_LIBRTMP=OFF
     -DUSE_LIBIDN2=OFF
     -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
     -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
@@ -998,6 +1099,193 @@ function(cpkt_add_curl)
     cpkt_require_dependency_file("${install_dir}/lib/libcurl${CMAKE_SHARED_LIBRARY_SUFFIX}" "curl (shared)")
   endif()
 
+  set(CPKT_CURL_PREFIX "${install_dir}" PARENT_SCOPE)
+
+endfunction()
+
+function(cpkt_add_libpng)
+  set(project_name cpkt_libpng_project)
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/libpng/install")
+  set(static_library "${install_dir}/lib/libpng16${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_library "${install_dir}/lib/libpng16${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(zlib_shared_library "${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_configure_command(cmake_configure_command)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(install_rpath "@loader_path")
+  else()
+    set(install_rpath "$ORIGIN")
+  endif()
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://github.com/pnggroup/libpng/archive/refs/tags/v${CPKT_LIBPNG_VERSION}.tar.gz"
+      URL_HASH "SHA256=a9d4df463d36a6e5f9c29bd6f4967312d17e996c1854f3511f833924eb1993cf"
+      DOWNLOAD_NAME "libpng-v${CPKT_LIBPNG_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${prefix_dir}/stamp"
+      TMP_DIR "${prefix_dir}/tmp"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_zlib_project
+      CONFIGURE_COMMAND ${cmake_configure_command}
+        -DCMAKE_INSTALL_PREFIX=${install_dir}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_INSTALL_RPATH=${install_rpath}
+        -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+        -DPNG_SHARED=ON
+        -DPNG_STATIC=ON
+        -DPNG_TESTS=OFF
+        -DPNG_TOOLS=OFF
+        -DPNG_HARDWARE_OPTIMIZATIONS=OFF
+        -DPNG_LIBCONF_HEADER=${source_dir}/scripts/pnglibconf.h.prebuilt
+        -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
+        -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+        -DZLIB_LIBRARY=${zlib_shared_library}
+        ${common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${static_library}" "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::png_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::png_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::zlib_static;m")
+  add_library(cpkt::png_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::png_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::zlib_shared;m")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::png_static ${project_name})
+    add_dependencies(cpkt::png_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${static_library}" "libpng static library")
+    cpkt_require_dependency_file("${shared_library}" "libpng shared library")
+    cpkt_require_dependency_file("${install_dir}/include/png.h" "libpng public header")
+  endif()
+  set(CPKT_LIBPNG_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_libharu)
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu")
+  set(source_dir "${prefix_dir}/src")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/libharu/install")
+  set(shared_project cpkt_libharu_shared_project)
+  set(static_project cpkt_libharu_static_project)
+  set(shared_library "${install_dir}/lib/libhpdf${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(static_library "${install_dir}/lib/libhpdf${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  cpkt_append_common_external_cmake_args(common_cmake_args)
+  cpkt_get_external_cmake_configure_command(cmake_configure_command)
+  cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(install_rpath "@loader_path")
+  else()
+    set(install_rpath "$ORIGIN")
+  endif()
+  set(shared_png_library "${CPKT_LIBPNG_PREFIX}/lib/libpng16${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(static_png_library "${CPKT_LIBPNG_PREFIX}/lib/libpng16${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_zlib_library "${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(static_zlib_library "${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${shared_project}
+      URL "https://github.com/libharu/libharu/archive/refs/tags/v${CPKT_LIBHARU_VERSION}.tar.gz"
+      URL_HASH "SHA256=ec8f327520d1d354ce58b5d2af75b64f380cddc522437c169463b39760921348"
+      DOWNLOAD_NAME "libharu-v${CPKT_LIBHARU_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}/shared"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${prefix_dir}/build-shared"
+      STAMP_DIR "${prefix_dir}/stamp-shared"
+      TMP_DIR "${prefix_dir}/tmp-shared"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_libpng_project
+      CONFIGURE_COMMAND ${cmake_configure_command}
+        -DCMAKE_INSTALL_PREFIX=${install_dir}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_INSTALL_RPATH=${install_rpath}
+        -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=OFF
+        -DBUILD_SHARED_LIBS=ON
+        -DLIBHPDF_EXAMPLES=OFF
+        -DPNG_PNG_INCLUDE_DIR=${CPKT_LIBPNG_PREFIX}/include
+        -DPNG_LIBRARY=${shared_png_library}
+        -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+        -DZLIB_LIBRARY=${shared_zlib_library}
+        ${common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    cpkt_cached_external_project_add(${static_project}
+      URL "https://github.com/libharu/libharu/archive/refs/tags/v${CPKT_LIBHARU_VERSION}.tar.gz"
+      URL_HASH "SHA256=ec8f327520d1d354ce58b5d2af75b64f380cddc522437c169463b39760921348"
+      DOWNLOAD_NAME "libharu-v${CPKT_LIBHARU_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}/static"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${prefix_dir}/build-static"
+      STAMP_DIR "${prefix_dir}/stamp-static"
+      TMP_DIR "${prefix_dir}/tmp-static"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS ${shared_project}
+      CONFIGURE_COMMAND ${cmake_configure_command}
+        -DCMAKE_INSTALL_PREFIX=${install_dir}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DBUILD_SHARED_LIBS=OFF
+        -DLIBHPDF_EXAMPLES=OFF
+        -DPNG_PNG_INCLUDE_DIR=${CPKT_LIBPNG_PREFIX}/include
+        -DPNG_LIBRARY=${static_png_library}
+        -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
+        -DZLIB_LIBRARY=${static_zlib_library}
+        ${common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+      BUILD_BYPRODUCTS "${static_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::haru_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::haru_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::png_static;cpkt::zlib_static")
+  add_library(cpkt::haru_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::haru_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::png_shared;cpkt::zlib_shared")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::haru_static ${static_project})
+    add_dependencies(cpkt::haru_shared ${shared_project})
+    cpkt_record_dependency_target(${static_project})
+  else()
+    cpkt_require_dependency_file("${static_library}" "libHaru static library")
+    cpkt_require_dependency_file("${shared_library}" "libHaru shared library")
+    cpkt_require_dependency_file("${install_dir}/include/hpdf.h" "libHaru public header")
+  endif()
+  set(CPKT_LIBHARU_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
 function(cpkt_add_libxml2)
@@ -1089,7 +1377,6 @@ function(cpkt_add_libxml2)
     -DLIBXML2_WITH_ZLIB=ON
     -DZLIB_ROOT=${CPKT_ZLIB_PREFIX}
     -DZLIB_DIR=${CPKT_ZLIB_PREFIX}/lib/cmake/zlib
-    -DZLIB_INCLUDE_DIR=${CPKT_ZLIB_PREFIX}/include
     ${common_cmake_args}
   )
 
@@ -1110,7 +1397,6 @@ function(cpkt_add_libxml2)
       CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=ON
         ${libxml2_common_cmake_args}
-        -DZLIB_LIBRARY=${CPKT_ZLIB_SHARED_LIBRARY}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
       BUILD_BYPRODUCTS "${libxml2_shared_library}"
@@ -1134,7 +1420,6 @@ function(cpkt_add_libxml2)
       CONFIGURE_COMMAND ${cmake_configure_command}
         -DBUILD_SHARED_LIBS=OFF
         ${libxml2_common_cmake_args}
-        -DZLIB_LIBRARY=${CPKT_ZLIB_PREFIX}/lib/libz${CMAKE_STATIC_LIBRARY_SUFFIX}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
         COMMAND ${strip_install_command}
@@ -1248,6 +1533,12 @@ function(cpkt_add_lua)
   )
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(lua_install_byproducts
+      "${install_dir}/include/lua.h"
+      "${install_dir}/include/luaconf.h"
+      "${install_dir}/include/lauxlib.h"
+      "${install_dir}/include/lualib.h"
+      "${install_dir}/include/lua.hpp")
     cpkt_cached_external_project_add(${project_name}
       URL "https://lua.org/ftp/lua-${CPKT_LUA_VERSION}.tar.gz"
       URL_HASH "SHA256=1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce"
@@ -1289,6 +1580,7 @@ function(cpkt_add_lua)
       BUILD_BYPRODUCTS
         "${lua_static_library}"
         "${lua_shared_library_path}"
+      ${lua_install_byproducts}
       BUILD_IN_SOURCE 1
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -1383,6 +1675,8 @@ function(cpkt_add_mqttc)
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_external_install_byproducts(mqttc_install_byproducts
+      "${install_dir}/include/mqtt.h")
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/LiamBindle/MQTT-C/archive/${CPKT_MQTTC_COMMIT}.tar.gz"
       URL_HASH "SHA256=985898405912dbddf50d8b446226763696e6390fbd6f38b66cede6f38e703086"
@@ -1418,6 +1712,7 @@ function(cpkt_add_mqttc)
       BUILD_BYPRODUCTS
         "${mqttc_static_library}"
         "${mqttc_shared_library}"
+      ${mqttc_install_byproducts}
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
@@ -1587,7 +1882,10 @@ function(cpkt_add_whisper)
   set(project_name_shared "cpkt_whisper_shared_project")
   set(project_name_static "cpkt_whisper_static_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper")
-  set(source_dir "${prefix_dir}/src")
+  # Static and shared builds must be independently runnable component targets.
+  # They share the verified archive cache, not a mutable extracted tree.
+  set(source_dir_shared "${prefix_dir}/src-shared")
+  set(source_dir_static "${prefix_dir}/src-static")
   set(shared_build_dir "${prefix_dir}/build-shared")
   set(static_build_dir "${prefix_dir}/build-static")
   set(install_dir "${CPKT_EXTERNAL_ROOT}/whisper/install")
@@ -1665,7 +1963,7 @@ function(cpkt_add_whisper)
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_shared}"
       BINARY_DIR "${shared_build_dir}"
       STAMP_DIR "${stamp_dir}/shared"
       TMP_DIR "${tmp_dir}"
@@ -1675,6 +1973,10 @@ function(cpkt_add_whisper)
         ${CMAKE_COMMAND}
           -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
           -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=<SOURCE_DIR>
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/whisper.series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=ON
         ${whisper_common_cmake_args}
@@ -1693,17 +1995,20 @@ function(cpkt_add_whisper)
       DOWNLOAD_NAME "whisper.cpp-${CPKT_WHISPER_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_static}"
       BINARY_DIR "${static_build_dir}"
       STAMP_DIR "${stamp_dir}/static"
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS ${project_name_shared}
       PATCH_COMMAND
         ${CMAKE_COMMAND}
           -DWHISPER_SOURCE_DIR=<SOURCE_DIR>
           -P ${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=<SOURCE_DIR>
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/whisper.series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=OFF
         ${whisper_common_cmake_args}
@@ -1716,6 +2021,7 @@ function(cpkt_add_whisper)
       BUILD_IN_SOURCE 0
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
+    cpkt_order_shared_install(${project_name_shared} ${project_name_static})
   endif()
 
   add_library(cpkt::whisper_static STATIC IMPORTED GLOBAL)
@@ -1738,6 +2044,7 @@ function(cpkt_add_whisper)
     add_dependencies(cpkt::whisper_static ${project_name_static})
     add_dependencies(cpkt::whisper_shared ${project_name_shared})
     cpkt_record_dependency_target(${project_name_static})
+    cpkt_record_dependency_target(${project_name_shared})
   else()
     cpkt_require_dependency_file("${whisper_static_library}" "whisper.cpp static library")
     cpkt_require_dependency_file("${whisper_shared_library}" "whisper.cpp shared library")
@@ -1749,7 +2056,10 @@ function(cpkt_add_open62541)
   set(project_name_shared "cpkt_open62541_shared_project")
   set(project_name_static "cpkt_open62541_static_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541")
-  set(source_dir "${prefix_dir}/src")
+  # Static and shared builds must be independently runnable component targets.
+  # They share the verified archive cache, not a mutable extracted tree.
+  set(source_dir_shared "${prefix_dir}/src-shared")
+  set(source_dir_static "${prefix_dir}/src-static")
   set(shared_build_dir "${prefix_dir}/build-shared")
   set(static_build_dir "${prefix_dir}/build-static")
   set(install_dir "${CPKT_EXTERNAL_ROOT}/open62541/install")
@@ -1799,7 +2109,6 @@ function(cpkt_add_open62541)
     -DUA_ENABLE_AMALGAMATION=OFF
     -DUA_ENABLE_ENCRYPTION=OPENSSL
     -DUA_ENABLE_MQTT=ON
-    -DUA_FILE_MQTT=${source_dir}/deps/mqtt-c/src/mqtt.c
     -DUA_ENABLE_JSON_ENCODING=ON
     -DUA_ENABLE_XML_ENCODING=ON
     -DUA_ENABLE_DIAGNOSTICS=ON
@@ -1817,8 +2126,7 @@ function(cpkt_add_open62541)
     -DUA_BUILD_EXAMPLES=OFF
     -DUA_BUILD_TOOLS=OFF
     -DUA_BUILD_UNIT_TESTS=OFF
-    -DOPENSSL_ROOT_DIR=${CPKT_OPENSSL_static_PREFIX}
-    -DOPENSSL_INCLUDE_DIR=${CPKT_OPENSSL_static_PREFIX}/include
+    -DOpenSSL_DIR=${CPKT_OPENSSL_static_PREFIX}/lib/cmake/OpenSSL
     ${common_cmake_args}
   )
 
@@ -1829,7 +2137,7 @@ function(cpkt_add_open62541)
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_shared}"
       BINARY_DIR "${shared_build_dir}"
       STAMP_DIR "${stamp_dir}/shared"
       TMP_DIR "${tmp_dir}"
@@ -1839,15 +2147,15 @@ function(cpkt_add_open62541)
       PATCH_COMMAND
         ${CMAKE_COMMAND} -E copy_directory
           "${CPKT_MQTTC_SOURCE_DIR}"
-          "${source_dir}/deps/mqtt-c"
+          "${source_dir_shared}/deps/mqtt-c"
         COMMAND ${CMAKE_COMMAND}
-          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir_shared}
           -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series
           -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=ON
-        -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libssl${CMAKE_SHARED_LIBRARY_SUFFIX}
-        -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_shared_PREFIX}/lib/libcrypto${CMAKE_SHARED_LIBRARY_SUFFIX}
+        -DOPENSSL_USE_STATIC_LIBS:BOOL=OFF
+        -DUA_FILE_MQTT=${source_dir_shared}/deps/mqtt-c/src/mqtt.c
         ${open62541_common_cmake_args}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
@@ -1862,26 +2170,26 @@ function(cpkt_add_open62541)
       DOWNLOAD_NAME "open62541-${CPKT_OPEN62541_VERSION}.tar.gz"
       PREFIX "${prefix_dir}"
       DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
-      SOURCE_DIR "${source_dir}"
+      SOURCE_DIR "${source_dir_static}"
       BINARY_DIR "${static_build_dir}"
       STAMP_DIR "${stamp_dir}/static"
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS ${project_name_shared}
+      DEPENDS cpkt_openssl_project cpkt_mqttc_project
       PATCH_COMMAND
         ${CMAKE_COMMAND} -E copy_directory
           "${CPKT_MQTTC_SOURCE_DIR}"
-          "${source_dir}/deps/mqtt-c"
+          "${source_dir_static}/deps/mqtt-c"
         COMMAND ${CMAKE_COMMAND}
-          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir_static}
           -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series
           -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
       CMAKE_ARGS
         -DBUILD_SHARED_LIBS=OFF
         -DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF
-        -DOPENSSL_SSL_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libssl${CMAKE_STATIC_LIBRARY_SUFFIX}
-        -DOPENSSL_CRYPTO_LIBRARY=${CPKT_OPENSSL_static_PREFIX}/lib/libcrypto${CMAKE_STATIC_LIBRARY_SUFFIX}
+        -DOPENSSL_USE_STATIC_LIBS:BOOL=ON
+        -DUA_FILE_MQTT=${source_dir_static}/deps/mqtt-c/src/mqtt.c
         ${open62541_common_cmake_args}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
@@ -1914,12 +2222,1225 @@ function(cpkt_add_open62541)
     add_dependencies(cpkt::open62541_static ${project_name_static})
     add_dependencies(cpkt::open62541_shared ${project_name_shared})
     cpkt_record_dependency_target(${project_name_static})
+    cpkt_record_dependency_target(${project_name_shared})
   else()
     cpkt_require_dependency_file("${open62541_static_library}" "open62541 static library")
     cpkt_require_dependency_file("${open62541_shared_library}" "open62541 shared library")
     cpkt_require_dependency_file("${install_dir}/include/open62541/server.h" "open62541 server header")
     cpkt_require_dependency_file("${install_dir}/include/open62541/client.h" "open62541 client header")
   endif()
+endfunction()
+
+function(cpkt_add_krb5)
+  set(project_name_shared "cpkt_krb5_shared_project")
+  set(project_name_static "cpkt_krb5_static_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5")
+  set(source_dir "${prefix_dir}/src")
+  set(shared_build_dir "${prefix_dir}/build-shared")
+  set(static_build_dir "${prefix_dir}/build-static")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/krb5/install")
+  set(stage_dir "${install_dir}/stage")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  set(gssapi_static_library "${install_dir}/lib/libgssapi_krb5${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(tls_static_library "${install_dir}/lib/libkrb5_k5tls${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(tls_module "${install_dir}/lib/krb5/plugins/tls/k5tls.so")
+  set(krb5_static_library "${install_dir}/lib/libkrb5${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(k5crypto_static_library "${install_dir}/lib/libk5crypto${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(com_err_static_library "${install_dir}/lib/libcom_err${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(krb5support_static_library "${install_dir}/lib/libkrb5support${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(profile_static_library "${install_dir}/lib/libprofile${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(verto_static_library "${install_dir}/lib/libverto${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(gssapi_shared_library "${install_dir}/lib/libgssapi_krb5${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(krb5_shared_library "${install_dir}/lib/libkrb5${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(com_err_header "${install_dir}/include/com_err.h")
+  set(krb5_static_platform_libraries "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND krb5_static_platform_libraries resolv)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND krb5_static_platform_libraries resolv "-Wl,-framework,Kerberos")
+  endif()
+  cpkt_get_target_triple(target_triple)
+  cpkt_get_external_c_flags(external_cflags)
+  # GCC 15 defaults to C23, where an empty parameter list means (void).
+  # Kerberos configure probes use K&R declarations to inspect libc prototypes.
+  # Their C23 interpretation incorrectly disables reentrant libc functions.
+  string(APPEND external_cflags " -std=gnu17")
+  # The GSSAPI build commands below make missing prototypes fatal for our trace
+  # bridge, including when upstream replaces WARN_CFLAGS or only warns on Darwin.
+  set(krb5_openssl_prefix "${CPKT_OPENSSL_shared_PREFIX}")
+  set(env_args "")
+  cpkt_append_pinned_external_toolchain_env_args(env_args)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    if(NOT EXISTS "${CPKT_DARWIN_HOST_MIG}" OR NOT EXISTS "${CPKT_DARWIN_HOST_MIGCOM}")
+      message(FATAL_ERROR "Darwin Kerberos requires the ready pinned host MIG toolchain")
+    endif()
+    get_filename_component(darwin_host_mig_bin_dir "${CPKT_DARWIN_HOST_MIG}" DIRECTORY)
+    if(CPKT_OSXCROSS_ROOT)
+      set(darwin_mig_path "${darwin_host_mig_bin_dir}:${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}")
+    else()
+      set(darwin_mig_path "${darwin_host_mig_bin_dir}:$ENV{PATH}")
+    endif()
+    list(APPEND env_args
+      "PATH=${darwin_mig_path}"
+      "MIGCC=${CMAKE_C_COMPILER}"
+      "MIGCOM=${CPKT_DARWIN_HOST_MIGCOM}"
+      "SDKROOT=${CMAKE_OSX_SYSROOT}")
+  endif()
+  list(APPEND env_args
+    # Kerberos static archives are part of the public GSSAPI closure.
+    "CFLAGS=${external_cflags} -fPIC"
+    "CPPFLAGS=-I${krb5_openssl_prefix}/include"
+    # The static build has no runtime loader path.
+    "LDFLAGS=-L${krb5_openssl_prefix}/lib"
+    # Keep Kerberos defaults independent of the disposable build/install root.
+    # Applications may override all three with the standard environment knobs.
+    "DEFCCNAME=FILE:/tmp/krb5cc_%{uid}"
+    "DEFKTNAME=FILE:/etc/krb5.keytab"
+    "DEFCKTNAME=FILE:/var/lib/krb5/user/%{euid}/client.keytab")
+  if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    # MIT Kerberos otherwise enables a GCC-version-specific warning-as-error
+    # profile which is not valid with the pinned GCC 15 toolchain.
+    list(APPEND env_args
+      "WARN_CFLAGS=-Wno-error=discarded-qualifiers"
+      "WARN_CXXFLAGS=-Wno-error=discarded-qualifiers")
+  endif()
+  if(CMAKE_CROSSCOMPILING)
+    # The pinned GCC targets implement both attributes.  MIT Kerberos cannot
+    # execute its otherwise straightforward probe while cross compiling.
+    list(APPEND env_args
+      "krb5_cv_attr_constructor_destructor=yes,yes"
+      "ac_cv_printf_positional=yes")
+  endif()
+  # Static GSSAPI consumers are permitted to link into shared libraries.
+  set(static_env_args ${env_args})
+  list(REMOVE_ITEM static_env_args "CFLAGS=${external_cflags} -fPIC")
+  list(APPEND static_env_args "CFLAGS=${external_cflags} -fPIC -DCPKT_KRB5_STATIC_TLS")
+  # --disable-rpath suppresses Kerberos' absolute install paths. Its shared
+  # libraries still need a library-relative lookup for their bundled siblings.
+  cpkt_get_autotools_link_flags(krb5_shared_link_flags)
+  list(REMOVE_ITEM env_args "LDFLAGS=-L${krb5_openssl_prefix}/lib")
+  list(APPEND env_args "LDFLAGS=-L${krb5_openssl_prefix}/lib ${krb5_shared_link_flags}")
+  set(krb5_plugin_link_flags "${krb5_shared_link_flags}")
+  string(REPLACE "ORIGIN" "ORIGIN/../../.." krb5_plugin_link_flags "${krb5_plugin_link_flags}")
+  string(REPLACE "@loader_path" "@loader_path/../../.." krb5_plugin_link_flags "${krb5_plugin_link_flags}")
+  set(krb5_plugin_ldflags "LDFLAGS=-L${krb5_openssl_prefix}/lib ${krb5_plugin_link_flags}")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  set(krb5_darwin_install_name_normalize_command ${CMAKE_COMMAND} -E true)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(krb5_darwin_install_name_normalize_command
+      ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
+        -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+        -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
+        -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
+  endif()
+  file(MAKE_DIRECTORY
+    "${install_dir}/include"
+    "${install_dir}/include/gssapi"
+    "${install_dir}/include/krb5"
+    "${install_dir}/lib")
+
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name_static}
+      URL "https://web.mit.edu/kerberos/dist/krb5/1.22/krb5-${CPKT_KRB5_VERSION}.tar.gz"
+      URL_HASH "SHA256=3243ffbc8ea4d4ac22ddc7dd2a1dc54c57874c40648b60ff97009763554eaf13"
+      DOWNLOAD_NAME "krb5-${CPKT_KRB5_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${static_build_dir}"
+      STAMP_DIR "${stamp_dir}/static"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_openssl_project
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/krb5.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args}
+        "${source_dir}/src/configure"
+        --host=${target_triple}
+        --prefix=/usr
+        --libdir=/usr/lib
+        --includedir=/usr/include
+        --localstatedir=/var
+        --disable-shared
+        --enable-static
+        --disable-rpath
+        --disable-nls
+        --disable-pkinit
+        --with-tls-impl=openssl
+        --without-ldap
+        --without-readline
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_KRB5_BUILD_DIR=${static_build_dir}
+          -DCPKT_KRB5_REQUIRE_GLIBC_REENTRANT=${CPKT_TARGET_LIBC}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_krb5_features.cmake
+      BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C util/support -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C util/et -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C include -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C util -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/crypto -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/krb5 -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/gssapi -j${CPKT_DEPENDENCY_BUILD_JOBS}
+          "CFLAGS=${external_cflags} -fPIC -DCPKT_KRB5_STATIC_TLS -Werror=missing-prototypes"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C plugins/tls/k5tls -j${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+          "${stage_dir}/usr/include"
+          "${stage_dir}/usr/include/kadm5"
+          "${stage_dir}/usr/include/krb5"
+          "${stage_dir}/usr/include/gssapi"
+          "${stage_dir}/usr/include/gssrpc"
+          "${stage_dir}/usr/lib"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C include install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C util/support install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C util/et install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C util/profile install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C util/verto install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/crypto install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/krb5 install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${static_build_dir}"
+        ${CMAKE_COMMAND} -E env ${static_env_args} make -C lib/gssapi install DESTDIR=${stage_dir}
+        # MIT Kerberos' include install omits the generated public com_err.h,
+        # although its installed krb5.h includes it directly.
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${static_build_dir}/include/com_err.h"
+          "${stage_dir}/usr/include/com_err.h"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${static_build_dir}/plugins/tls/k5tls/libkrb5_k5tls${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${install_dir}/lib/libkrb5_k5tls${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS
+        "${gssapi_static_library}"
+        "${krb5_static_library}"
+        "${k5crypto_static_library}"
+        "${com_err_static_library}"
+        "${krb5support_static_library}"
+        "${profile_static_library}"
+        "${verto_static_library}"
+        "${tls_static_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+
+    cpkt_cached_external_project_add(${project_name_shared}
+      URL "https://web.mit.edu/kerberos/dist/krb5/1.22/krb5-${CPKT_KRB5_VERSION}.tar.gz"
+      URL_HASH "SHA256=3243ffbc8ea4d4ac22ddc7dd2a1dc54c57874c40648b60ff97009763554eaf13"
+      DOWNLOAD_NAME "krb5-${CPKT_KRB5_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${shared_build_dir}"
+      STAMP_DIR "${stamp_dir}/shared"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS ${project_name_static}
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/krb5.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args}
+        "${source_dir}/src/configure"
+        --host=${target_triple}
+        --prefix=/usr
+        --libdir=/usr/lib
+        --includedir=/usr/include
+        --localstatedir=/var
+        --disable-static
+        --enable-shared
+        --disable-rpath
+        --disable-nls
+        --disable-pkinit
+        --with-tls-impl=openssl
+        --without-ldap
+        --without-readline
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_KRB5_BUILD_DIR=${shared_build_dir}
+          -DCPKT_KRB5_REQUIRE_GLIBC_REENTRANT=${CPKT_TARGET_LIBC}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_krb5_features.cmake
+      BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C util/support -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C util/et -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C include -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C util -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib/crypto -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib/krb5 -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib/gssapi -j${CPKT_DEPENDENCY_BUILD_JOBS}
+          "CFLAGS=${external_cflags} -fPIC -Werror=missing-prototypes"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins/tls/k5tls -j${CPKT_DEPENDENCY_BUILD_JOBS}
+          "${krb5_plugin_ldflags}"
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C include install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C util/support install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C util/et install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C util/profile install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C util/verto install-libs DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib/crypto install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib/krb5 install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib/gssapi install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${shared_build_dir}/include/com_err.h"
+          "${stage_dir}/usr/include/com_err.h"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/lib/krb5/plugins/tls"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${shared_build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins/tls/k5tls install DESTDIR=${stage_dir}
+          "${krb5_plugin_ldflags}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib/krb5/plugins/tls" "${install_dir}/lib/krb5/plugins/tls"
+        COMMAND ${krb5_darwin_install_name_normalize_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${gssapi_shared_library}" "${krb5_shared_library}" "${tls_module}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+
+  add_library(cpkt::gssapi_krb5_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::gssapi_krb5_static PROPERTIES
+    IMPORTED_LOCATION "${gssapi_static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${krb5_static_library};${k5crypto_static_library};${com_err_static_library};${krb5support_static_library};${profile_static_library};${verto_static_library};${tls_static_library};cpkt::openssl_ssl_static;cpkt::openssl_crypto_static;${CMAKE_DL_LIBS};Threads::Threads;${krb5_static_platform_libraries}")
+  add_library(cpkt::gssapi_krb5_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::gssapi_krb5_shared PROPERTIES
+    IMPORTED_LOCATION "${gssapi_shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
+  if(CPKT_BUILD_DEPENDENCIES)
+    # The shared install copies into the static archive tree; link only after
+    # both install steps finish so the linker never reads a partial archive.
+    add_dependencies(cpkt::gssapi_krb5_static ${project_name_shared})
+    add_dependencies(cpkt::gssapi_krb5_shared ${project_name_shared})
+    cpkt_record_dependency_target(${project_name_shared})
+  else()
+    cpkt_require_dependency_file("${gssapi_static_library}" "MIT Kerberos GSSAPI static library")
+    cpkt_require_dependency_file("${gssapi_shared_library}" "MIT Kerberos GSSAPI shared library")
+    cpkt_require_dependency_file("${install_dir}/include/gssapi/gssapi.h" "MIT Kerberos GSSAPI header")
+    cpkt_require_dependency_file("${com_err_header}" "MIT Kerberos com_err header")
+  endif()
+  set(CPKT_KRB5_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_cyrus_sasl)
+  set(project_name "cpkt_cyrus_sasl_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/cyrus-sasl/install")
+  set(stage_dir "${install_dir}/stage")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  set(static_library "${install_dir}/lib/libsasl2${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_library "${install_dir}/lib/libsasl2${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  cpkt_get_target_triple(target_triple)
+  cpkt_get_external_c_flags(external_cflags)
+  cpkt_get_autotools_link_flags(external_ldflags)
+  set(cyrus_sasl_cppflags "-DPROTOTYPES=1 -DHAVE_TIME_H=1")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    string(APPEND cyrus_sasl_cppflags " -D_GNU_SOURCE")
+    # The GSSAPI configure link needs Kerberos' transitive shared siblings.
+    # Plugins live one level below libsasl2 in the installed SDK.
+    string(APPEND external_ldflags
+      " -Wl,-rpath,\\\\$$ORIGIN/.. -Wl,-rpath-link,${CPKT_KRB5_PREFIX}/lib")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    string(APPEND external_ldflags " -Wl,-rpath,@loader_path/..")
+  endif()
+  set(env_args "")
+  cpkt_append_pinned_external_toolchain_env_args(env_args)
+  list(APPEND env_args
+    # Cyrus SASL contributes static objects to cpkt::postgres.
+    "CFLAGS=${external_cflags} -fPIC"
+    # Cyrus SASL 2.1.28 defaults its bundled MD5 code to K&R declarations
+    # unless the build tells it that the compiler has ANSI prototypes.
+    "CPPFLAGS=${cyrus_sasl_cppflags} -I${CPKT_KRB5_PREFIX}/include -I${CPKT_OPENSSL_shared_PREFIX}/include"
+    "LDFLAGS=-L${CPKT_KRB5_PREFIX}/lib -L${CPKT_OPENSSL_shared_PREFIX}/lib ${external_ldflags}"
+    # Cyrus's CMU_HAVE_OPENSSL macro normally adds an absolute rpath for its
+    # OpenSSL prefix.  This cache value keeps the link search path while
+    # leaving the installed library relocatable.
+    "andrew_cv_runpath_switch=none")
+  if(CMAKE_CROSSCOMPILING)
+    # MIT Kerberos provides SPNEGO; Cyrus SASL's configure script otherwise
+    # attempts to execute this capability probe for every cross target.
+    list(APPEND env_args "ac_cv_gssapi_supports_spnego=yes")
+  endif()
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  set(cyrus_sasl_platform_configure_args "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # Cyrus SASL enables a system-wide /Library/Frameworks install hook by
+    # default on Darwin.  It ignores DESTDIR, so disable it and stage only the
+    # headers and libraries that belong in the SDK bundle.
+    list(APPEND cyrus_sasl_platform_configure_args --disable-macos-framework)
+  endif()
+  set(cyrus_sasl_rpath_rewrite_command ${CMAKE_COMMAND} -E true)
+  set(cyrus_sasl_darwin_install_name_normalize_command ${CMAKE_COMMAND} -E true)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(cyrus_sasl_rpath_rewrite_command
+      ${CMAKE_COMMAND}
+        -DCPKT_AUTOTOOLS_LIBTOOL=${build_dir}/libtool
+        -P ${CMAKE_SOURCE_DIR}/cmake/disable_autotools_absolute_rpath.cmake)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(cyrus_sasl_darwin_install_name_normalize_command
+      ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
+        -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+        -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
+        -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
+  endif()
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  set(cyrus_sasl_md5_header_dir "${prefix_dir}/generated")
+  file(MAKE_DIRECTORY "${cyrus_sasl_md5_header_dir}")
+  if(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(CPKT_CYRUS_SASL_MD5_INT8_TYPE "long long")
+    set(CPKT_CYRUS_SASL_MD5_UINT8_TYPE "unsigned long long")
+  elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(CPKT_CYRUS_SASL_MD5_INT8_TYPE "long")
+    set(CPKT_CYRUS_SASL_MD5_UINT8_TYPE "unsigned long")
+  else()
+    message(FATAL_ERROR "Cyrus SASL has no md5global.h recipe for ${CMAKE_SIZEOF_VOID_P}-byte pointers")
+  endif()
+  configure_file(
+    "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
+    "${cyrus_sasl_md5_header_dir}/md5global.h"
+    @ONLY)
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://github.com/cyrusimap/cyrus-sasl/releases/download/cyrus-sasl-${CPKT_CYRUS_SASL_VERSION}/cyrus-sasl-${CPKT_CYRUS_SASL_VERSION}.tar.gz"
+      URL_HASH "SHA256=7ccfc6abd01ed67c1a0924b353e526f1b766b21f42d4562ee635a8ebfc5bb38c"
+      DOWNLOAD_NAME "cyrus-sasl-${CPKT_CYRUS_SASL_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_krb5_shared_project cpkt_openssl_project
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args}
+        "${source_dir}/configure"
+        --host=${target_triple}
+        --prefix=/usr
+        --libdir=/usr/lib
+        --with-lib-subdir=lib
+        --includedir=/usr/include
+        --sysconfdir=/etc
+        --enable-static
+        --enable-shared
+        --disable-sample
+        --disable-obsolete_cram_attr
+        --disable-obsolete_digest_attr
+        --disable-checkapop
+        --disable-cram
+        --disable-digest
+        --disable-scram
+        --disable-otp
+        --disable-plain
+        --disable-anon
+        --without-saslauthd
+        --enable-gssapi=${CPKT_KRB5_PREFIX}
+        --with-gss_impl=mit
+        --with-openssl=${CPKT_OPENSSL_shared_PREFIX}
+        ${cyrus_sasl_platform_configure_args}
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_CYRUS_SASL_BUILD_DIR=${build_dir}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_gssapi.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_CYRUS_SASL_BUILD_DIR=${build_dir}
+          -P ${CMAKE_SOURCE_DIR}/cmake/enable_cyrus_sasl_static_gs2.cmake
+      BUILD_COMMAND ${cyrus_sasl_rpath_rewrite_command}
+        # Cyrus SASL 2.1.28's out-of-tree Makefile suppresses the makemd5
+        # host tool when both build and target executable suffixes are empty,
+        # but still unconditionally requires its generated header.  It also
+        # considers that missing prerequisite newer than a pre-copied header.
+        # A timestamp-only placeholder followed by the CMake-generated header
+        # keeps the prerequisite older without building or executing a host
+        # helper.
+        COMMAND ${CMAKE_COMMAND} -E touch "${build_dir}/include/makemd5"
+        COMMAND ${CMAKE_COMMAND} -E copy
+        "${cyrus_sasl_md5_header_dir}/md5global.h" "${build_dir}/include/md5global.h"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C include -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C common -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C sasldb -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins -j${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C include install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C lib install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C plugins install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_CYRUS_SASL_INSTALL_DIR=${install_dir}
+          -DCPKT_CYRUS_SASL_MODULE_SUFFIX=${CMAKE_SHARED_MODULE_SUFFIX}
+          -P ${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_plugins.cmake
+        COMMAND ${cyrus_sasl_darwin_install_name_normalize_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${static_library}" "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::cyrus_sasl_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::cyrus_sasl_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::gssapi_krb5_static;cpkt::openssl_ssl_static;cpkt::openssl_crypto_static;${CMAKE_DL_LIBS};Threads::Threads")
+  add_library(cpkt::cyrus_sasl_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::cyrus_sasl_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::cyrus_sasl_static ${project_name})
+    add_dependencies(cpkt::cyrus_sasl_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${static_library}" "Cyrus SASL static library")
+    cpkt_require_dependency_file("${shared_library}" "Cyrus SASL shared library")
+    cpkt_require_dependency_file("${install_dir}/include/sasl/sasl.h" "Cyrus SASL header")
+  endif()
+  set(CPKT_CYRUS_SASL_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_openldap)
+  set(project_name "cpkt_openldap_project")
+  # OpenLDAP is an Autotools project.  Its generated Makefiles must always be
+  # driven by GNU make, never CMake's generator program (which is Ninja for
+  # the shipped presets).
+  find_program(openldap_make_program NAMES gmake make REQUIRED)
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/openldap")
+  set(source_dir "${prefix_dir}/src")
+  # OpenLDAP's static-library rules require their object files in the
+  # configured source tree.  It does not support this partial library build
+  # correctly from a separate VPATH tree.
+  set(build_dir "${source_dir}")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/openldap/install")
+  set(stage_dir "${install_dir}/stage")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  set(ldap_static_library "${install_dir}/lib/libldap${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(lber_static_library "${install_dir}/lib/liblber${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(lutil_static_library "${install_dir}/lib/liblutil${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(ldap_shared_library "${install_dir}/lib/libldap${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(lber_shared_library "${install_dir}/lib/liblber${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  cpkt_get_target_triple(target_triple)
+  cpkt_get_external_c_flags(external_cflags)
+  cpkt_get_autotools_link_flags(external_ldflags)
+  set(env_args "")
+  cpkt_append_pinned_external_toolchain_env_args(env_args)
+  list(APPEND env_args
+    # OpenLDAP contributes static objects to cpkt::postgres.
+    "CFLAGS=${external_cflags} -fPIC"
+    "CPPFLAGS=-I${CPKT_CYRUS_SASL_PREFIX}/include -I${CPKT_OPENSSL_shared_PREFIX}/include -I${CPKT_KRB5_PREFIX}/include"
+    "LDFLAGS=-L${CPKT_CYRUS_SASL_PREFIX}/lib -L${CPKT_OPENSSL_shared_PREFIX}/lib -L${CPKT_KRB5_PREFIX}/lib ${external_ldflags}")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  set(openldap_rpath_rewrite_command ${CMAKE_COMMAND} -E true)
+  set(openldap_darwin_install_name_normalize_command ${CMAKE_COMMAND} -E true)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(openldap_rpath_rewrite_command
+      ${CMAKE_COMMAND}
+        -DCPKT_AUTOTOOLS_LIBTOOL=${build_dir}/libtool
+        -P ${CMAKE_SOURCE_DIR}/cmake/disable_autotools_absolute_rpath.cmake)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(openldap_darwin_install_name_normalize_command
+      ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
+        -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+        -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
+        -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
+  endif()
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-${CPKT_OPENLDAP_VERSION}.tgz"
+      URL_HASH "SHA256=bc91225dbfc50354033b1303bc91d1a7f6ddd1dc32fac950d79c28fe66d6bca8"
+      DOWNLOAD_NAME "openldap-${CPKT_OPENLDAP_VERSION}.tgz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_cyrus_sasl_project cpkt_openssl_project cpkt_krb5_shared_project
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_OPENLDAP_SOURCE_DIR=${source_dir}
+        -P ${CMAKE_SOURCE_DIR}/cmake/patch_openldap_lutil_link.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+          -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/openldap.series
+          -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args}
+        "${source_dir}/configure"
+        --host=${target_triple}
+        --prefix=/usr
+        --libdir=/usr/lib
+        --includedir=/usr/include
+        --sysconfdir=/etc/openldap
+        --localstatedir=/var
+        --enable-static
+        --enable-shared
+        --disable-fast-install
+        --disable-slapd
+        --disable-syslog
+        --with-tls=openssl
+        --with-cyrus-sasl
+        --with-yielding_select=no
+      BUILD_COMMAND ${openldap_rpath_rewrite_command}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args}
+        ${CMAKE_COMMAND}
+          -DCPKT_OPENLDAP_BUILD_DIR=${build_dir}
+          -DCPKT_OPENLDAP_MAKE_PROGRAM=${openldap_make_program}
+          -DCPKT_OPENLDAP_BUILD_JOBS=${CPKT_DEPENDENCY_BUILD_JOBS}
+          -P ${CMAKE_SOURCE_DIR}/cmake/build_openldap_libraries.cmake
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -C include install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_AUTOTOOLS_LIBRARY_SOURCE_DIR=${build_dir}/libraries/liblutil
+          -DCPKT_AUTOTOOLS_LIBRARY_DESTINATION_DIR=${stage_dir}/usr/lib
+          -DCPKT_AUTOTOOLS_LIBRARY_BASENAME=liblutil
+          -P ${CMAKE_SOURCE_DIR}/cmake/copy_autotools_library_artifacts.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_AUTOTOOLS_LIBRARY_SOURCE_DIR=${build_dir}/libraries/liblber/.libs
+          -DCPKT_AUTOTOOLS_LIBRARY_DESTINATION_DIR=${stage_dir}/usr/lib
+          -DCPKT_AUTOTOOLS_LIBRARY_BASENAME=liblber
+          -P ${CMAKE_SOURCE_DIR}/cmake/copy_autotools_library_artifacts.cmake
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_AUTOTOOLS_LIBRARY_SOURCE_DIR=${build_dir}/libraries/libldap/.libs
+          -DCPKT_AUTOTOOLS_LIBRARY_DESTINATION_DIR=${stage_dir}/usr/lib
+          -DCPKT_AUTOTOOLS_LIBRARY_BASENAME=libldap
+          -P ${CMAKE_SOURCE_DIR}/cmake/copy_autotools_library_artifacts.cmake
+        # OpenLDAP's libtool archive can embed liblutil.a as a nested member.
+        # Darwin's linker rejects that archive; liblutil.a is staged and
+        # exported separately in the supported static closure.
+        COMMAND ${CMAKE_COMMAND}
+          -DCPKT_STATIC_ARCHIVE=${stage_dir}/usr/lib/libldap${CMAKE_STATIC_LIBRARY_SUFFIX}
+          -DCPKT_STATIC_ARCHIVE_MEMBER=liblutil${CMAKE_STATIC_LIBRARY_SUFFIX}
+          -DCPKT_STATIC_ARCHIVER=${CMAKE_AR}
+          -DCPKT_STATIC_RANLIB=${CMAKE_RANLIB}
+          -P ${CMAKE_SOURCE_DIR}/cmake/remove_static_archive_member.cmake
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${openldap_darwin_install_name_normalize_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${ldap_static_library}" "${lber_static_library}" "${lutil_static_library}" "${ldap_shared_library}" "${lber_shared_library}"
+      BUILD_IN_SOURCE 1
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::openldap_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::openldap_static PROPERTIES
+    IMPORTED_LOCATION "${ldap_static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${lber_static_library};${lutil_static_library};cpkt::cyrus_sasl_static;cpkt::openssl_ssl_static;cpkt::openssl_crypto_static;cpkt::gssapi_krb5_static;${CMAKE_DL_LIBS};Threads::Threads")
+  add_library(cpkt::openldap_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::openldap_shared PROPERTIES
+    IMPORTED_LOCATION "${ldap_shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${lber_shared_library};cpkt::cyrus_sasl_shared;cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared;cpkt::gssapi_krb5_shared")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::openldap_static ${project_name})
+    add_dependencies(cpkt::openldap_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${ldap_static_library}" "OpenLDAP static library")
+    cpkt_require_dependency_file("${lber_static_library}" "OpenLDAP LBER static library")
+    cpkt_require_dependency_file("${ldap_shared_library}" "OpenLDAP shared library")
+    cpkt_require_dependency_file("${lber_shared_library}" "OpenLDAP LBER shared library")
+    cpkt_require_dependency_file("${install_dir}/include/ldap.h" "OpenLDAP header")
+  endif()
+  set(CPKT_OPENLDAP_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_postgresql)
+  set(project_name "cpkt_postgresql_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/postgresql")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/postgresql/install")
+  set(stage_dir "${install_dir}/stage")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  set(static_library "${install_dir}/lib/libpq${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(common_static_library "${install_dir}/lib/libpgcommon_shlib${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(port_static_library "${install_dir}/lib/libpgport${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_library "${install_dir}/lib/libpq${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  string(REGEX MATCH "^[0-9]+" postgresql_major_version "${CPKT_POSTGRESQL_VERSION}")
+  set(oauth_static_library "${install_dir}/lib/libpq-oauth${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  # libpq dlopens this private module for its built-in OAuth flow. It has no
+  # SONAME or install ID because it is tied to PostgreSQL's major version.
+  set(oauth_shared_library "${install_dir}/lib/libpq-oauth-${postgresql_major_version}${CMAKE_SHARED_MODULE_SUFFIX}")
+  cpkt_get_target_triple(target_triple)
+  cpkt_get_external_c_flags(external_cflags)
+  cpkt_get_autotools_link_flags(external_ldflags)
+  set(postgresql_ldflags "-L${CPKT_ZLIB_PREFIX}/lib -L${CPKT_OPENSSL_shared_PREFIX}/lib -L${CPKT_CURL_PREFIX}/lib -L${CPKT_KRB5_PREFIX}/lib -L${CPKT_OPENLDAP_PREFIX}/lib -L${CPKT_CYRUS_SASL_PREFIX}/lib ${external_ldflags}")
+  set(postgresql_curl_libs "-L${CPKT_CURL_PREFIX}/lib -lcurl")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    string(APPEND postgresql_ldflags
+      " -Wl,-rpath-link,${CPKT_OPENSSL_shared_PREFIX}/lib"
+      " -Wl,-rpath-link,${CPKT_LIBSSH2_PREFIX}/lib"
+      " -Wl,-rpath-link,${CPKT_NGHTTP2_shared_PREFIX}/lib"
+      # libgssapi_krb5 records libkrb5 and its sibling libraries as direct
+      # DT_NEEDED dependencies.  PostgreSQL probes GSSAPI at configure time,
+      # so GNU ld needs the bundled Kerberos directory in its link-time DSO
+      # search closure even though no runtime path is embedded here.
+      " -Wl,-rpath-link,${CPKT_KRB5_PREFIX}/lib"
+      " -Wl,-rpath-link,${CPKT_CYRUS_SASL_PREFIX}/lib")
+    string(APPEND postgresql_curl_libs
+      " -Wl,-rpath-link,${CPKT_OPENSSL_shared_PREFIX}/lib"
+      " -Wl,-rpath-link,${CPKT_LIBSSH2_PREFIX}/lib"
+      " -Wl,-rpath-link,${CPKT_NGHTTP2_shared_PREFIX}/lib"
+      " -Wl,-rpath-link,${CPKT_CYRUS_SASL_PREFIX}/lib")
+  endif()
+  set(postgresql_darwin_install_name_normalize_command ${CMAKE_COMMAND} -E true)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(postgresql_darwin_install_name_normalize_command
+      ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
+        -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+        -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
+        -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
+  endif()
+  set(env_args "")
+  cpkt_append_pinned_external_toolchain_env_args(env_args)
+  list(APPEND env_args
+    # libpq static archives are part of the supported shared-consumer closure.
+    "CFLAGS=${external_cflags} -fPIC"
+    "CPPFLAGS=-I${CPKT_ZLIB_PREFIX}/include -I${CPKT_OPENSSL_shared_PREFIX}/include -I${CPKT_CURL_PREFIX}/include -I${CPKT_KRB5_PREFIX}/include -I${CPKT_OPENLDAP_PREFIX}/include -I${CPKT_CYRUS_SASL_PREFIX}/include"
+    "LDFLAGS=${postgresql_ldflags}"
+    # OpenLDAP keeps liblutil as a private static archive.  It is required
+    # after libldap for PostgreSQL's LDAP configure and final link checks.
+    "LIBS=-llutil"
+    "LIBCURL_CFLAGS=-I${CPKT_CURL_PREFIX}/include"
+    "LIBCURL_LIBS=${postgresql_curl_libs}")
+  set(postgresql_configure_env_args ${env_args})
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # PostgreSQL executes a libcurl feature probe while configuring.  Bundled
+    # shared libraries deliberately use $ORIGIN, so make their build-tree
+    # locations available only to that probe; do not leak an absolute runtime
+    # search path into the installed artifacts.
+    list(APPEND postgresql_configure_env_args
+      "LD_LIBRARY_PATH=${CPKT_CURL_PREFIX}/lib:${CPKT_ZLIB_PREFIX}/lib:${CPKT_OPENSSL_shared_PREFIX}/lib:${CPKT_LIBSSH2_PREFIX}/lib:${CPKT_NGHTTP2_shared_PREFIX}/lib:${CPKT_KRB5_PREFIX}/lib:${CPKT_OPENLDAP_PREFIX}/lib:${CPKT_CYRUS_SASL_PREFIX}/lib")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_CROSSCOMPILING)
+    # PostgreSQL executes libcurl capability probes during configure. The
+    # probes live outside the bundled libraries' @loader_path closure. Embed
+    # temporary rpaths for those executables, then remove them from the
+    # generated build flags before any libraries are linked.
+    set(postgresql_probe_ldflags "${postgresql_ldflags}")
+    foreach(probe_prefix IN ITEMS
+        "${CPKT_CURL_PREFIX}" "${CPKT_ZLIB_PREFIX}"
+        "${CPKT_OPENSSL_shared_PREFIX}" "${CPKT_LIBSSH2_PREFIX}"
+        "${CPKT_NGHTTP2_shared_PREFIX}" "${CPKT_KRB5_PREFIX}"
+        "${CPKT_OPENLDAP_PREFIX}" "${CPKT_CYRUS_SASL_PREFIX}")
+      string(APPEND postgresql_probe_ldflags " -Wl,-rpath,${probe_prefix}/lib")
+    endforeach()
+    list(REMOVE_ITEM postgresql_configure_env_args "LDFLAGS=${postgresql_ldflags}")
+    list(APPEND postgresql_configure_env_args "LDFLAGS=${postgresql_probe_ldflags}")
+  endif()
+  set(postgresql_post_configure_command
+    COMMAND ${CMAKE_COMMAND}
+      -DCPKT_POSTGRESQL_SOURCE_DIR=${source_dir}
+      -P ${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake)
+  if(DEFINED postgresql_probe_ldflags)
+    list(APPEND postgresql_post_configure_command
+      COMMAND ${CMAKE_COMMAND}
+        -DCPKT_POSTGRESQL_BUILD_DIR=${build_dir}
+        "-DCPKT_POSTGRESQL_PROBE_LDFLAGS=${postgresql_probe_ldflags}"
+        "-DCPKT_POSTGRESQL_BASE_LDFLAGS=${postgresql_ldflags}"
+        -P ${CMAKE_SOURCE_DIR}/cmake/remove_postgresql_probe_rpaths.cmake)
+  endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND postgresql_post_configure_command
+      COMMAND ${CMAKE_COMMAND}
+        -DCPKT_POSTGRESQL_SOURCE_DIR=${source_dir}
+        -P ${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_oauth_loader.cmake)
+  endif()
+  # PostgreSQL relies on make's built-in C object rules.  The top-level
+  # c.pkt.systems Makefile exports --no-builtin-rules, so do not propagate
+  # that project policy into PostgreSQL's independent upstream makefiles.
+  # Each invocation supplies an explicit -j setting below.
+  set(postgresql_make_env_args ${env_args} "MAKEFLAGS=")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://ftp.postgresql.org/pub/source/v${CPKT_POSTGRESQL_VERSION}/postgresql-${CPKT_POSTGRESQL_VERSION}.tar.bz2"
+      URL_HASH "SHA256=555610c24d53e4316da5b7d3fc25c279d96856d5e0e23ee308c328c5fa881d9f"
+      DOWNLOAD_NAME "postgresql-${CPKT_POSTGRESQL_VERSION}.tar.bz2"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      DEPENDS cpkt_openldap_project cpkt_cyrus_sasl_project cpkt_krb5_shared_project cpkt_curl_project cpkt_zlib_project cpkt_openssl_project
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/postgresql.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_configure_env_args}
+        "${source_dir}/configure"
+        --host=${target_triple}
+        --prefix=/usr
+        --libdir=/usr/lib
+        --includedir=/usr/include
+        --sysconfdir=/etc
+        --disable-rpath
+        --disable-nls
+        --without-icu
+        --without-readline
+        --with-ssl=openssl
+        --with-gssapi
+        --with-ldap
+        --with-libcurl
+        ${postgresql_post_configure_command}
+      BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        # Generate the server-owned headers consumed by the frontend common
+        # library without building PostgreSQL server or client executables.
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/backend generated-headers -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/common -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/port -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq-oauth -j${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${postgresql_make_env_args} make -C src/interfaces/libpq-oauth install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${postgresql_darwin_install_name_normalize_command}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${build_dir}/src/common/libpgcommon_shlib${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${common_static_library}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${build_dir}/src/port/libpgport${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${port_static_library}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${source_dir}/src/include/postgres_ext.h"
+          "${install_dir}/include/postgres_ext.h"
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+          "${install_dir}/include/libpq"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+          "${source_dir}/src/include/libpq/libpq-fs.h"
+          "${install_dir}/include/libpq/libpq-fs.h"
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}/share"
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${static_library}" "${common_static_library}" "${port_static_library}" "${oauth_static_library}" "${oauth_shared_library}" "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::postgresql_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::postgresql_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${oauth_static_library};${common_static_library};${port_static_library};cpkt::openldap_static;cpkt::gssapi_krb5_static;cpkt::cyrus_sasl_static;cpkt::curl_static;cpkt::openssl_ssl_static;cpkt::openssl_crypto_static;cpkt::zlib_static;${CMAKE_DL_LIBS};Threads::Threads;m")
+  add_library(cpkt::postgresql_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::postgresql_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "cpkt::openldap_shared;cpkt::gssapi_krb5_shared;cpkt::cyrus_sasl_shared;cpkt::curl_shared;cpkt::openssl_ssl_shared;cpkt::openssl_crypto_shared;cpkt::zlib_shared")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::postgresql_static ${project_name})
+    add_dependencies(cpkt::postgresql_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${static_library}" "PostgreSQL libpq static library")
+    cpkt_require_dependency_file("${common_static_library}" "PostgreSQL frontend common static library")
+    cpkt_require_dependency_file("${port_static_library}" "PostgreSQL frontend port static library")
+    cpkt_require_dependency_file("${oauth_static_library}" "PostgreSQL OAuth static library")
+    cpkt_require_dependency_file("${oauth_shared_library}" "PostgreSQL OAuth loadable module")
+    cpkt_require_dependency_file("${shared_library}" "PostgreSQL libpq shared library")
+    cpkt_require_dependency_file("${install_dir}/include/libpq-fe.h" "PostgreSQL libpq header")
+    cpkt_require_dependency_file("${install_dir}/include/libpq/libpq-fs.h" "PostgreSQL large-object flags header")
+  endif()
+  set(CPKT_POSTGRESQL_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_iodbc)
+  set(project_name cpkt_iodbc_project)
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/iodbc")
+  set(source_dir "${prefix_dir}/src")
+  set(build_dir "${prefix_dir}/build")
+  set(stage_dir "${prefix_dir}/stage")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/iodbc/install")
+  set(iodbc_static_library "${install_dir}/lib/libiodbc${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(iodbc_shared_library "${install_dir}/lib/libiodbc${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(inst_static_library "${install_dir}/lib/libiodbcinst${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(inst_shared_library "${install_dir}/lib/libiodbcinst${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  cpkt_get_target_triple(target_triple)
+  cpkt_get_external_c_flags(external_cflags)
+  cpkt_get_autotools_link_flags(external_ldflags)
+  set(env_args "")
+  cpkt_append_pinned_external_toolchain_env_args(env_args)
+  set(iodbc_cflags "${external_cflags} -fPIC -std=gnu89")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # iODBC dispatches driver entry points through intentionally unprototyped
+    # C89 function pointers. Clang's C23 migration warning does not apply.
+    # Its installer passes byte and 16-bit ODBC buffers through equivalent
+    # signed/unsigned pointer types; the public layout is unchanged.
+    string(APPEND iodbc_cflags
+      " -Wno-deprecated-non-prototype -Wno-pointer-sign")
+  endif()
+  list(APPEND env_args
+    "CFLAGS=${iodbc_cflags}"
+    "LDFLAGS=${external_ldflags}")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # Autotools otherwise finds the Linux host linker and emits ELF flags.
+    list(APPEND env_args
+      "LD=${CMAKE_LINKER}"
+      "STRIP=true")
+  endif()
+  set(darwin_normalize_command ${CMAKE_COMMAND} -E true)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(darwin_normalize_command
+      ${CMAKE_COMMAND}
+        -DCPKT_DARWIN_LIBRARY_DIR=${install_dir}/lib
+        -DCPKT_DARWIN_STAGE_LIBRARY_DIR=${stage_dir}/usr/lib
+        -DCPKT_DARWIN_INSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
+        -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
+        -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
+  endif()
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://github.com/openlink/iODBC/releases/download/v${CPKT_IODBC_VERSION}/libiodbc-${CPKT_IODBC_VERSION}.tar.gz"
+      URL_HASH "SHA256=3898b32d07961360f6f2cf36db36036b719a230e476469258a80f32243e845fa"
+      DOWNLOAD_NAME "libiodbc-${CPKT_IODBC_VERSION}.tar.gz"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${prefix_dir}/stamp"
+      TMP_DIR "${prefix_dir}/tmp"
+      PATCH_COMMAND ${CMAKE_COMMAND}
+        -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
+        -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/iodbc.series
+        -P ${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args}
+        "${source_dir}/configure"
+        --host=${target_triple}
+        --prefix=/usr
+        --libdir=/usr/lib
+        --includedir=/usr/include
+        --sysconfdir=/etc
+        --enable-static
+        --enable-shared
+        --disable-gui
+        --disable-libodbc
+      BUILD_COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbcinst -j${CPKT_DEPENDENCY_BUILD_JOBS}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbc -j${CPKT_DEPENDENCY_BUILD_JOBS}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${stage_dir}/usr/include" "${stage_dir}/usr/lib"
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C include install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbcinst install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E chdir "${build_dir}"
+        ${CMAKE_COMMAND} -E env ${env_args} make -s -C iodbc install DESTDIR=${stage_dir}
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/include" "${install_dir}/include"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${stage_dir}/usr/lib" "${install_dir}/lib"
+        COMMAND ${darwin_normalize_command}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${iodbc_static_library}" "${iodbc_shared_library}"
+        "${inst_static_library}" "${inst_shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::iodbc_static STATIC IMPORTED GLOBAL)
+  set(iodbc_static_system_libraries "${CMAKE_DL_LIBS};Threads::Threads")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND iodbc_static_system_libraries "-Wl,-framework,Carbon")
+  endif()
+  set_target_properties(cpkt::iodbc_static PROPERTIES
+    IMPORTED_LOCATION "${iodbc_static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${iodbc_static_system_libraries}")
+  add_library(cpkt::iodbc_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbc_shared PROPERTIES
+    IMPORTED_LOCATION "${iodbc_shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
+  add_library(cpkt::iodbcinst_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbcinst_static PROPERTIES
+    IMPORTED_LOCATION "${inst_static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "${CMAKE_DL_LIBS};Threads::Threads")
+  add_library(cpkt::iodbcinst_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbcinst_shared PROPERTIES
+    IMPORTED_LOCATION "${inst_shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
+  add_library(cpkt::iodbc INTERFACE IMPORTED GLOBAL)
+  set_target_properties(cpkt::iodbc PROPERTIES
+    INTERFACE_LINK_LIBRARIES "cpkt::iodbc_static;cpkt::iodbcinst_static")
+  if(CPKT_BUILD_DEPENDENCIES)
+    foreach(target_name cpkt::iodbc_static cpkt::iodbc_shared
+        cpkt::iodbcinst_static cpkt::iodbcinst_shared)
+      add_dependencies(${target_name} ${project_name})
+    endforeach()
+    cpkt_record_dependency_target(${project_name})
+  else()
+    foreach(required_file "${iodbc_static_library}" "${iodbc_shared_library}"
+        "${inst_static_library}" "${inst_shared_library}"
+        "${install_dir}/include/sql.h" "${install_dir}/include/odbcinst.h")
+      cpkt_require_dependency_file("${required_file}" "iODBC artifact")
+    endforeach()
+  endif()
+  set(CPKT_IODBC_PREFIX "${install_dir}" PARENT_SCOPE)
+endfunction()
+
+function(cpkt_add_sqlite)
+  set(project_name "cpkt_sqlite_project")
+  set(headers_project_name "cpkt_sqlite_headers_project")
+  set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/sqlite")
+  set(source_dir "${prefix_dir}/src")
+  set(headers_source_dir "${prefix_dir}/headers-src")
+  set(build_dir "${prefix_dir}/build")
+  set(install_dir "${CPKT_EXTERNAL_ROOT}/sqlite/install")
+  set(stamp_dir "${prefix_dir}/stamp")
+  set(tmp_dir "${prefix_dir}/tmp")
+  set(static_library "${install_dir}/lib/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  set(shared_library "${install_dir}/lib/libsqlite3${CMAKE_SHARED_LIBRARY_SUFFIX}")
+  set(source_amalgamation "${CMAKE_SOURCE_DIR}/src/sqlite_native_amalgamation.c")
+  set(source_header "${source_dir}/sqlite3.h")
+  cpkt_get_external_c_flags(external_cflags)
+  separate_arguments(sqlite_cflags NATIVE_COMMAND "${external_cflags}")
+  set(sqlite_link_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND sqlite_link_flags "-Wl,--enable-new-dtags,-rpath,$ORIGIN")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND sqlite_link_flags "-Wl,-rpath,@loader_path")
+    list(APPEND sqlite_link_flags
+      "-mmacosx-version-min=${CPKT_MACOS_DEPLOYMENT_TARGET}")
+  endif()
+  if(NOT "${CMAKE_SHARED_LINKER_FLAGS}" STREQUAL "")
+    separate_arguments(sqlite_user_link_flags NATIVE_COMMAND "${CMAKE_SHARED_LINKER_FLAGS}")
+    list(APPEND sqlite_link_flags ${sqlite_user_link_flags})
+  endif()
+  set(sqlite_dl_link_flags "")
+  foreach(sqlite_dl_library IN LISTS CMAKE_DL_LIBS)
+    if(IS_ABSOLUTE "${sqlite_dl_library}" OR sqlite_dl_library MATCHES "^-")
+      list(APPEND sqlite_dl_link_flags "${sqlite_dl_library}")
+    else()
+      list(APPEND sqlite_dl_link_flags "-l${sqlite_dl_library}")
+    endif()
+  endforeach()
+  set(sqlite_compile_definitions
+    -DSQLITE_THREADSAFE=1
+    -DSQLITE_ENABLE_COLUMN_METADATA
+    -DSQLITE_ENABLE_CARRAY
+    -DSQLITE_ENABLE_DBSTAT_VTAB
+    -DSQLITE_ENABLE_DESERIALIZE
+    -DSQLITE_ENABLE_FTS3
+    -DSQLITE_ENABLE_FTS3_PARENTHESIS
+    -DSQLITE_ENABLE_FTS4
+    -DSQLITE_ENABLE_FTS5
+    -DSQLITE_ENABLE_GEOPOLY
+    -DSQLITE_ENABLE_MATH_FUNCTIONS
+    -DSQLITE_ENABLE_NORMALIZE
+    -DSQLITE_ENABLE_PREUPDATE_HOOK
+    -DSQLITE_ENABLE_RTREE
+    -DSQLITE_ENABLE_SESSION
+    -DSQLITE_ENABLE_SETLK_TIMEOUT
+    -DSQLITE_ENABLE_SNAPSHOT
+    -DSQLITE_ENABLE_STMT_SCANSTATUS
+    -DSQLITE_ENABLE_STMTVTAB
+    -DSQLITE_ENABLE_UNLOCK_NOTIFY)
+  set(sqlite_thread_flags "")
+  set(sqlite_shared_link_flags "")
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND sqlite_thread_flags -pthread)
+    set(sqlite_shared_real_library "libsqlite3.so.0.8.6")
+    set(sqlite_shared_abi_library "libsqlite3.so.0")
+    list(APPEND sqlite_shared_link_flags
+      -shared
+      "-Wl,-soname,${sqlite_shared_abi_library}")
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    set(sqlite_shared_real_library "libsqlite3.0.dylib")
+    set(sqlite_shared_abi_library "libsqlite3.0.dylib")
+    # SQLite's autosetup/sqlite-config.tcl retains these historical libtool
+    # dylib versions independently of the SQLite release version.
+    list(APPEND sqlite_shared_link_flags
+      -dynamiclib
+      "-Wl,-install_name,@rpath/${sqlite_shared_abi_library}"
+      -Wl,-compatibility_version,9.0.0
+      -Wl,-current_version,9.6.0)
+  else()
+    message(FATAL_ERROR "SQLite has no shared-library recipe for ${CMAKE_SYSTEM_NAME}")
+  endif()
+  set(sqlite_shared_install_commands
+    COMMAND ${CMAKE_COMMAND} -E copy "${build_dir}/${sqlite_shared_real_library}"
+      "${install_dir}/lib/${sqlite_shared_real_library}")
+  if(NOT sqlite_shared_real_library STREQUAL sqlite_shared_abi_library)
+    list(APPEND sqlite_shared_install_commands
+      COMMAND ${CMAKE_COMMAND} -E create_symlink "${sqlite_shared_real_library}"
+        "${install_dir}/lib/${sqlite_shared_abi_library}")
+  endif()
+  list(APPEND sqlite_shared_install_commands
+    COMMAND ${CMAKE_COMMAND} -E create_symlink "${sqlite_shared_abi_library}"
+      "${shared_library}")
+  cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
+  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    # The official amalgamation is the supported no-generator build input, but
+    # it deliberately omits the public session and RTree extension headers.
+    # Fetch the canonical source tree solely for those installed headers.
+    cpkt_cached_external_project_add(${headers_project_name}
+      URL "https://www.sqlite.org/2026/sqlite-src-3530400.zip"
+      URL_HASH "SHA256=d18fa15aec74d8c17e1463f861095adc01b5ad190256acb4f91d22f0368d232b"
+      DOWNLOAD_NAME "sqlite-src-3530400.zip"
+      PREFIX "${prefix_dir}/headers"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${headers_source_dir}"
+      BINARY_DIR "${prefix_dir}/headers-build"
+      STAMP_DIR "${prefix_dir}/headers-stamp"
+      TMP_DIR "${prefix_dir}/headers-tmp"
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E true
+      BUILD_COMMAND ${CMAKE_COMMAND} -E true
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E true
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    cpkt_cached_external_project_add(${project_name}
+      URL "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip"
+      URL_HASH "SHA256=1e71ddf93849c6a6ecf58b827c0692073d2dd7ee40196158068f7b29f422e87d"
+      DOWNLOAD_NAME "sqlite-amalgamation-3530400.zip"
+      PREFIX "${prefix_dir}"
+      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${build_dir}"
+      STAMP_DIR "${stamp_dir}"
+      TMP_DIR "${tmp_dir}"
+      DEPENDS ${headers_project_name}
+      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
+      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E true
+      BUILD_COMMAND ${CMAKE_COMMAND} -E make_directory "${build_dir}"
+        COMMAND ${CMAKE_C_COMPILER}
+          ${sqlite_cflags}
+          ${sqlite_compile_definitions}
+          ${sqlite_thread_flags}
+          -fPIC
+          -I "${source_dir}"
+          -c "${source_amalgamation}"
+          -o "${build_dir}/sqlite3.o"
+        COMMAND ${CMAKE_AR} rcs "${build_dir}/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${build_dir}/sqlite3.o"
+        COMMAND ${CMAKE_RANLIB} "${build_dir}/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}"
+        COMMAND ${CMAKE_C_COMPILER}
+          ${sqlite_link_flags}
+          ${sqlite_shared_link_flags}
+          ${sqlite_thread_flags}
+          -o "${build_dir}/${sqlite_shared_real_library}"
+          "${build_dir}/sqlite3.o"
+          -lm
+          ${sqlite_dl_link_flags}
+      INSTALL_COMMAND ${CMAKE_COMMAND} -E remove_directory "${install_dir}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${install_dir}/include" "${install_dir}/lib"
+        COMMAND ${CMAKE_COMMAND} -E copy "${source_header}" "${install_dir}/include/sqlite3.h"
+        COMMAND ${CMAKE_COMMAND} -E copy "${source_dir}/sqlite3ext.h"
+          "${install_dir}/include/sqlite3ext.h"
+        COMMAND ${CMAKE_COMMAND} -E copy
+          "${headers_source_dir}/ext/session/sqlite3session.h"
+          "${install_dir}/include/sqlite3session.h"
+        COMMAND ${CMAKE_COMMAND} -E copy
+          "${headers_source_dir}/ext/rtree/sqlite3rtree.h"
+          "${install_dir}/include/sqlite3rtree.h"
+        COMMAND ${CMAKE_COMMAND} -E copy
+          "${headers_source_dir}/ext/fts5/fts5.h"
+          "${install_dir}/include/fts5.h"
+        COMMAND ${CMAKE_COMMAND} -E copy "${build_dir}/libsqlite3${CMAKE_STATIC_LIBRARY_SUFFIX}"
+          "${static_library}"
+        ${sqlite_shared_install_commands}
+        COMMAND ${strip_install_command}
+      BUILD_BYPRODUCTS "${static_library}" "${shared_library}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  endif()
+  add_library(cpkt::sqlite_static STATIC IMPORTED GLOBAL)
+  set_target_properties(cpkt::sqlite_static PROPERTIES
+    IMPORTED_LOCATION "${static_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "m;${CMAKE_DL_LIBS};Threads::Threads")
+  add_library(cpkt::sqlite_shared SHARED IMPORTED GLOBAL)
+  set_target_properties(cpkt::sqlite_shared PROPERTIES
+    IMPORTED_LOCATION "${shared_library}"
+    INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
+    INTERFACE_LINK_LIBRARIES "m;${CMAKE_DL_LIBS};Threads::Threads")
+  if(CPKT_BUILD_DEPENDENCIES)
+    add_dependencies(cpkt::sqlite_static ${project_name})
+    add_dependencies(cpkt::sqlite_shared ${project_name})
+    cpkt_record_dependency_target(${project_name})
+  else()
+    cpkt_require_dependency_file("${static_library}" "SQLite static library")
+    cpkt_require_dependency_file("${shared_library}" "SQLite shared library")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3.h" "SQLite header")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3ext.h" "SQLite extension header")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3session.h" "SQLite session header")
+    cpkt_require_dependency_file("${install_dir}/include/sqlite3rtree.h" "SQLite RTree header")
+    cpkt_require_dependency_file("${install_dir}/include/fts5.h" "SQLite FTS5 header")
+  endif()
+  set(CPKT_SQLITE_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
 function(cpkt_add_cmocka)
@@ -1980,26 +3501,315 @@ function(cpkt_add_cmocka)
 endfunction()
 
 function(cpkt_configure_dependencies)
+  cpkt_prepare_dependency_component(
+    NAME openssl
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/openssl"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/openssl/install"
+    VARIABLES CPKT_OPENSSL_VERSION CPKT_OPENSSL_BUILD_CONFIG_REVISION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_openssl_buildinfo.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_darwin_generated_install_names.cmake"
+    RECIPE_FUNCTIONS cpkt_get_openssl_config_args cpkt_add_openssl)
+  cpkt_prepare_dependency_component(
+    NAME zlib
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/zlib"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/zlib/install"
+    VARIABLES CPKT_ZLIB_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_zlib_single_pass.cmake"
+    RECIPE_FUNCTIONS cpkt_add_zlib)
+  cpkt_prepare_dependency_component(
+    NAME nghttp2
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/nghttp2"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/nghttp2/install"
+    VARIABLES CPKT_NGHTTP2_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_nghttp2)
+  cpkt_prepare_dependency_component(
+    NAME libssh2
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libssh2"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libssh2/install"
+    VARIABLES CPKT_LIBSSH2_VERSION
+    DEPENDS openssl zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_single_pass.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_libssh2_poll_elapsed.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libssh2)
+  cpkt_prepare_dependency_component(
+    NAME curl
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/curl"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/curl/install"
+    VARIABLES CPKT_CURL_VERSION
+    DEPENDS zlib openssl nghttp2 libssh2
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_get_curl_platform_cmake_args cpkt_get_curl_static_platform_libs cpkt_add_curl)
+  cpkt_prepare_dependency_component(
+    NAME libxml2
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libxml2"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libxml2/install"
+    VARIABLES CPKT_LIBXML2_VERSION
+    DEPENDS zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libxml2)
+  cpkt_prepare_dependency_component(
+    NAME libpng
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libpng/install"
+    VARIABLES CPKT_LIBPNG_VERSION
+    DEPENDS zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libpng)
+  cpkt_prepare_dependency_component(
+    NAME libharu
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/libharu"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/libharu/install"
+    VARIABLES CPKT_LIBHARU_VERSION
+    DEPENDS libpng zlib
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_libharu)
+  cpkt_prepare_dependency_component(
+    NAME lua
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/lua"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/lua/install"
+    VARIABLES CPKT_LUA_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/install_lua.cmake"
+    RECIPE_FUNCTIONS cpkt_add_lua)
+  cpkt_prepare_dependency_component(
+    NAME miniaudio
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/miniaudio"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/miniaudio/install"
+    VARIABLES CPKT_MINIAUDIO_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_miniaudio)
+  cpkt_prepare_dependency_component(
+    NAME whisper
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/whisper"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/whisper/install"
+    VARIABLES CPKT_WHISPER_VERSION CPKT_SUS_CPU_ONLY
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_whisper_buildinfo.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/whisper.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/whisper_ggml_validation_logging.patch"
+    RECIPE_FUNCTIONS cpkt_order_shared_install cpkt_add_whisper)
+  cpkt_prepare_dependency_component(
+    NAME mqttc
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/mqtt-c"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/mqtt-c/install"
+    VARIABLES CPKT_MQTTC_COMMIT
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_mqttc)
+  cpkt_prepare_dependency_component(
+    NAME open62541
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/open62541/install"
+    VARIABLES CPKT_OPEN62541_VERSION CPKT_OPEN62541_PATCHSET
+    DEPENDS openssl mqttc
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/series"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0004-link-bundled-openssl-crypto.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0005-route-key-derivation-errors-through-logger.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0006-check-default-history-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0007-safe-reentrant-async-result-callbacks.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0008-preserve-date-parser-overflow-guard-direction.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0009-release-method-argument-ownership.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0010-use-external-source-notification-slots.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0011-check-memory-history-backend-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0012-check-certificate-trust-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0013-own-filestore-policy-metadata.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0014-own-datatype-copy-metadata.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0015-use-mutable-ec-keygen-argument.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0016-fix-variant-range-moves.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0017-preserve-event-source-free-failures.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0018-copy-client-config-owned-values.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0019-check-node-copy-and-filestore-helpers.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0020-check-discovery-and-reverse-connect.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0021-install-native-formatter-and-fix-minima.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0022-check-default-access-control-allocations.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0023-pin-reverse-connect-iteration-handles.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0024-define-discovery-callback-and-unavailable-policies.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0026-count-json-string-closing-quote.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0027-block-on-posix-stdout-lock.patch"
+    RECIPE_FUNCTIONS cpkt_add_open62541)
+  cpkt_prepare_dependency_component(
+    NAME krb5
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/krb5"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/krb5/install"
+    VARIABLES CPKT_KRB5_VERSION CPKT_DARWIN_HOST_MIG_REVISION
+    DEPENDS openssl
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/assert_krb5_features.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_const_correctness.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_tls_bundle.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_error_va_list.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/krb5_gss_trace_callback.patch"
+    RECIPE_FUNCTIONS cpkt_add_krb5)
+  cpkt_prepare_dependency_component(
+    NAME cyrus-sasl
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/cyrus-sasl"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/cyrus-sasl/install"
+    VARIABLES CPKT_CYRUS_SASL_VERSION
+    DEPENDS krb5 openssl
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_relocatable_plugins.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl_build_warnings.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/cyrus_sasl.series"
+      "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_gssapi.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/enable_cyrus_sasl_static_gs2.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/assert_cyrus_sasl_plugins.cmake"
+    RECIPE_FUNCTIONS cpkt_add_cyrus_sasl)
+  cpkt_prepare_dependency_component(
+    NAME openldap
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/openldap"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/openldap/install"
+    VARIABLES CPKT_OPENLDAP_VERSION
+    DEPENDS cyrus-sasl openssl krb5
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/build_openldap_libraries.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_openldap_lutil_link.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/remove_static_archive_member.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_client_const.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_sasl_logging.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/openldap_c89_log_setter.patch"
+    RECIPE_FUNCTIONS cpkt_add_openldap)
+  cpkt_prepare_dependency_component(
+    NAME postgresql
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/postgresql"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/postgresql/install"
+    VARIABLES CPKT_POSTGRESQL_VERSION
+    DEPENDS openldap cyrus-sasl krb5 curl zlib openssl
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patch_postgresql_buildinfo.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/remove_postgresql_probe_rpaths.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/postgresql.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/postgresql_logging.patch"
+    RECIPE_FUNCTIONS cpkt_add_postgresql)
+  cpkt_prepare_dependency_component(
+    NAME iodbc
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/iodbc"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/iodbc/install"
+    VARIABLES CPKT_IODBC_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc.series"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc_c89_sqlbigint.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/patches/iodbc_diag_native_error.patch"
+      "${CMAKE_SOURCE_DIR}/cmake/apply_patch_series.cmake"
+    RECIPE_FUNCTIONS cpkt_add_iodbc)
+  cpkt_prepare_dependency_component(
+    NAME sqlite
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/sqlite"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/sqlite/install"
+    VARIABLES CPKT_SQLITE_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      "${CMAKE_SOURCE_DIR}/src/sqlite_native_amalgamation.c"
+    RECIPE_FUNCTIONS cpkt_add_sqlite)
+
   cpkt_add_openssl()
   cpkt_add_zlib()
   cpkt_add_libssh2()
   cpkt_add_nghttp2()
   cpkt_add_curl()
+  cpkt_add_libpng()
+  cpkt_add_libharu()
   cpkt_add_libxml2()
   cpkt_add_lua()
   cpkt_add_miniaudio()
   cpkt_add_whisper()
   cpkt_add_mqttc()
   cpkt_add_open62541()
+  cpkt_add_krb5()
+  cpkt_add_cyrus_sasl()
+  cpkt_add_openldap()
+  cpkt_add_postgresql()
+  cpkt_add_iodbc()
+  cpkt_add_sqlite()
 
   if(CPKT_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    cpkt_prepare_dependency_component(
+      NAME cmocka
+      BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/cmocka"
+      INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/cmocka/install"
+      VARIABLES CPKT_CMOCKA_VERSION
+      INPUT_FILES
+        "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+        "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+      RECIPE_FUNCTIONS cpkt_add_cmocka)
     cpkt_add_cmocka()
   endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
     get_property(dep_targets GLOBAL PROPERTY CPKT_DEPENDENCY_TARGETS)
     if(dep_targets)
-      add_custom_target(cpkt_deps DEPENDS ${dep_targets})
+      add_custom_target(cpkt_deps_all DEPENDS ${dep_targets})
+      add_custom_target(cpkt_deps DEPENDS cpkt_deps_all)
+      add_custom_target(cpkt_deps_openssl DEPENDS cpkt_openssl_project)
+      add_custom_target(cpkt_deps_zlib DEPENDS cpkt_zlib_project)
+      add_custom_target(cpkt_deps_nghttp2 DEPENDS cpkt_nghttp2_project)
+      add_custom_target(cpkt_deps_libssh2 DEPENDS cpkt_libssh2_project)
+      add_custom_target(cpkt_deps_curl DEPENDS cpkt_curl_project)
+      add_custom_target(cpkt_deps_libpng DEPENDS cpkt_libpng_project)
+      add_custom_target(cpkt_deps_libharu DEPENDS cpkt_libharu_static_project)
+      add_custom_target(cpkt_deps_iodbc DEPENDS cpkt_iodbc_project)
+      add_custom_target(cpkt_deps_libxml2 DEPENDS cpkt_libxml2_static_project)
+      add_custom_target(cpkt_deps_lua DEPENDS cpkt_lua_project)
+      add_custom_target(cpkt_deps_miniaudio DEPENDS cpkt_miniaudio_project)
+      add_custom_target(cpkt_deps_whisper DEPENDS cpkt_whisper_static_project cpkt_whisper_shared_project)
+      add_custom_target(cpkt_deps_mqttc DEPENDS cpkt_mqttc_project)
+      add_custom_target(cpkt_deps_open62541 DEPENDS cpkt_open62541_static_project cpkt_open62541_shared_project)
+      add_custom_target(cpkt_deps_krb5 DEPENDS cpkt_krb5_shared_project)
+      add_custom_target(cpkt_deps_cyrus_sasl DEPENDS cpkt_cyrus_sasl_project)
+      add_custom_target(cpkt_deps_openldap DEPENDS cpkt_openldap_project)
+      add_custom_target(cpkt_deps_postgresql DEPENDS cpkt_postgresql_project)
+      add_custom_target(cpkt_deps_sqlite DEPENDS cpkt_sqlite_project)
+      if(TARGET cpkt_cmocka_project)
+        add_custom_target(cpkt_deps_cmocka DEPENDS cpkt_cmocka_project)
+      endif()
     endif()
   endif()
 endfunction()

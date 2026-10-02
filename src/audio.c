@@ -31,7 +31,15 @@
 #define MA_NO_RUNTIME_LINKING
 #endif
 #define MINIAUDIO_IMPLEMENTATION
+#if defined(__APPLE__) && defined(__clang__)
+/* miniaudio's macOS backend still names the deprecated CoreAudio alias. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 #include <miniaudio.h>
+#if defined(__APPLE__) && defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 #if defined(__GNUC__) || defined(__clang__)
 #define CPKT_AUDIO_EXPORT __attribute__((visibility("default")))
@@ -1571,6 +1579,9 @@ static ma_result cpkt_audio_reader_read(ma_decoder *decoder, void *buffer,
 
   impl = (struct cpkt_audio_decoder_impl *)decoder->pUserData;
   reader = impl != NULL ? &impl->reader : NULL;
+  if (bytes_read != NULL) {
+    *bytes_read = 0;
+  }
   if (reader == NULL || reader->read == NULL || bytes_read == NULL) {
     if (impl != NULL) {
       impl->callback_error = 1;

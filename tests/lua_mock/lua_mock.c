@@ -32,6 +32,8 @@ struct mock_block {
 struct lua_State {
   lua_Alloc alloc_fn;
   void *alloc_user;
+  lua_WarnFunction warn_fn;
+  void *warn_user;
   struct mock_block *blocks;
   struct mock_value stack[128];
   int top;
@@ -169,6 +171,11 @@ void lua_close(lua_State *state) {
     block = next;
   }
   alloc_fn(alloc_user, state, sizeof(*state), 0);
+}
+
+void lua_setwarnf(lua_State *state, lua_WarnFunction callback, void *user) {
+  state->warn_fn = callback;
+  state->warn_user = user;
 }
 
 void lua_pushlightuserdata(lua_State *state, void *value) {

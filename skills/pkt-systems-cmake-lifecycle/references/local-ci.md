@@ -25,7 +25,7 @@ Do not add a separate umbrella target as a standard lifecycle target. The exhaus
 
 Recommended production-loop tiers:
 
-- `make finalize-slice`: formatting plus the narrow debug tests needed before committing a small slice.
+- `make finalize-slice`: formatting, narrow debug checks, and a read-only formatting assertion before committing a small slice. Run it after each implementation iteration and before every commit; any edit after it requires rerunning it or at least `make format` and `make format-check` with the affected checks.
 - `make prerelease`: local, deterministic pre-release confidence. Include formatting, debug unit tests, the native Valgrind target, native fuzz smoke, Lua tests, local example smoke, and deterministic local e2e when those surfaces exist.
 - `make prerelease-live`: opt-in external-provider or credentialed integration tests. Refuse to run unless a project-prefixed environment variable explicitly enables them.
 - `make prerelease-hardening`: the expensive tier. Include `prerelease`, live checks when explicitly enabled, long fuzz runs, benchmark gates when applicable, and the release matrix.
@@ -48,6 +48,19 @@ Add tests that assert observable behavior:
 - Public API success and failure paths.
 - Preferred public API usage style, including receiver-style handle operations when that is the project convention.
 - ABI and exported symbol expectations where ABI is promised.
+- Exact dynamic-export allowlists for every project-owned shared library,
+  facade, plugin, or module: maintain a source-controlled allowlist per binary
+  target, including intentional runtime entry points not declared in a primary
+  C header; inspect target-correct defined dynamic symbols and fail on
+  unexpected or missing exports. Prove a manually declared private sentinel
+  cannot link from a downstream fixture, but treat that as negative evidence
+  rather than a substitute for table inspection. Header absence is not an
+  export policy. Repeat the assertion against extracted SDK libraries.
+- Independently check the dynamic import layer of every project facade,
+  plugin, or module. Imports from the project's core library must resolve only
+  to documented public-header declarations; private-core imports are forbidden.
+  Run the check with target-correct tooling on build outputs and extracted SDK
+  artifacts when dynamic imports are retained.
 - Header self-sufficiency and C-only consumer builds.
 - C89 or project-selected C standard compatibility for installed SDK consumers.
 - Optional C++ consumer builds when headers must be C++ compatible.
@@ -100,7 +113,7 @@ Rules:
 - Linux shared libraries must have the intended SONAME and symlink set.
 - Darwin shared libraries must have explicit install name and compatibility/current version policy when shared libraries are shipped.
 - Removing or changing exported ABI symbols is breaking unless the symbol was explicitly private.
-- ABI symbol checks are required when the project promises stable ABI; otherwise, at minimum verify the shipped shared library exposes only intended public symbols.
+- ABI symbol checks are required when the project promises stable ABI; otherwise, at minimum verify the shipped shared library exposes only the exact intended public symbols. Every project-owned shared library needs an explicit export policy and a dynamic-symbol allowlist check; compiler visibility controls plus an executable symbol-table check are acceptable when they produce the exact approved dynamic table. An unadvertised but linkable symbol is still an accidental ABI surface.
 - Breaking API or ABI changes do not automatically imply a major bump. They require engineer discussion under the semver contract.
 
 
@@ -110,7 +123,7 @@ Valgrind Memcheck is the first-class native memory hardening gate.
 
 Contract:
 
-- `valgrind` builds a native x86_64 Linux Bootlin debug facade subset and runs it with leak checking, origin tracking, and a nonzero error exit code. It must not run through cross-compilation, emulation, or QEMU.
+- `valgrind` runs the native x86_64 Linux Bootlin debug C facade CTests under Memcheck with leak checking, origin tracking, and a nonzero error exit code. Include the executable tests for every public C facade, including local database e2e where that facade needs services; do not limit it to one facade or a mock. It must not run through cross-compilation, emulation, or QEMU.
 - The gate runs serially and fails clearly when the host has not installed Valgrind.
 - Valgrind does not provide true MemorySanitizer coverage; document that boundary rather than claiming MSan equivalence.
 - Release package verification must fail if hardening runtime paths or build paths appear in shipped artifacts.

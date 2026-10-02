@@ -1,10 +1,42 @@
-# Dependency roadmap
+# Dependency roadmap and implementation queue
 
-This roadmap records the next third-party capabilities to add to the
-c.pkt.systems SDK. It is a planning document, not a pin or a compatibility
-commitment. Each implementation must select a stable upstream release, audit
-that exact source archive and its enabled bundled code, preserve upstream ABI
-metadata, and pass the full release matrix before shipment.
+This is the ordered TODO for dependency and facade work in c.pkt.systems. It
+is not a pin or compatibility commitment: each item still needs its exact
+upstream audit, ABI review, and release-matrix evidence before shipment.
+
+## Current implementation queue
+
+- [x] **Repair the Kerberos SDK header closure.** Stage and ship the generated
+  `com_err.h` required by the shipped `krb5.h`; add extracted-SDK coverage that
+  compiles a strict-C89 Kerberos consumer. Build only the `krb5` component and
+  its required closure to prove the component build boundary.
+- [x] **Add `cpkt_openssl`.** The complete public OpenSSL C89 facade now
+  covers every non-C89 public type boundary, ships as separate CMake and
+  pkg-config packages, and has exact export and extracted-SDK verification.
+- [x] **Add `cpkt_nghttp2`.** Provide the complete public nghttp2 C89 facade,
+  including callback, session, frame, and error interfaces.
+- [x] **Add `cpkt_libssh2`.** Provide the complete public libssh2 C89 facade,
+  including session, authentication, channel, SFTP, SCP, and public-key APIs.
+- [x] **Add `cpkt_mqttc`.** Provide the complete public MQTT-C C89 facade,
+  including client lifecycle, packet handling, callbacks, and transport
+  integration.
+- [x] **Sweep `cpkt_postgres` for complete libpq coverage.** Assert every
+  supported libpq public operation is represented by the C89 receiver-shell
+  facade and verify that Postgres-only facade work builds only its dependency
+  closure.
+- [x] **Sweep `cpkt_sqlite` for complete SQLite coverage.** Assert every
+  enabled public SQLite API is represented by the C89 facade and verify that
+  SQLite-only facade work builds only SQLite and its platform closure.
+- [x] **Add `cpkt_lua` last.** The complete C89 facade now covers all 156
+  declared Lua 5.5 public functions and every documented convenience macro
+  equivalent, ships separately through CMake and pkg-config, and verifies its
+  exact dynamic exports and native-import boundary. `cpkt_lua_runtime` remains
+  the priority embedding-policy facade; `cpkt_lua` does not replace it.
+
+The direct C89 downstream interfaces for curl, zlib, miniaudio, OpenLDAP,
+Cyrus SASL, and the core MIT Kerberos/GSSAPI APIs remain available without new
+facades. SQLite has no bundled third-party library dependency; its runtime
+closure is limited to platform facilities.
 
 ## Distribution policy
 
@@ -27,9 +59,11 @@ target:
 
 ## Public API rule: C89 facades
 
-No upstream API is the c.pkt.systems public interface. Each adopted component
-will have a small, independently versioned C89 facade, built as both a shared
+An upstream API that is not fully usable by a strict-C89 downstream consumer
+must have a small, independently versioned C89 facade, built as both a shared
 and static library and accompanied by CMake and pkg-config metadata.
+Upstream interfaces that are already strict-C89 compatible may remain direct
+SDK interfaces.
 
 The facade must:
 
@@ -47,18 +81,19 @@ The facade must:
   consumer tests, and target-appropriate end-to-end tests.
 
 The implementation work includes testing the facade rather than exposing a
-thin renamed upstream API. A C++ implementation is acceptable behind this
-boundary; `tdslite`, for example, will never require a C++ compiler from an
-SDK consumer.
+thin renamed upstream API. c.pkt.systems facade implementation sources are
+C89-only; a dependency with a C++ implementation, such as `tdslite`, requires
+a separately justified C89 implementation boundary and does not introduce C++
+sources or a C++ compiler requirement into this project.
 
 ## Planned database and messaging clients
 
-The order below reflects current priority. PostgreSQL support is first.
+The first two entries are implemented; later entries remain proposals.
 
 | Priority | Component | Capability and boundary | License conclusion | Status / implementation gate |
 | ---: | --- | --- | --- | --- |
-| 1 | [libpq](https://www.postgresql.org/docs/current/libpq.html) | PostgreSQL C client; validate against PostgreSQL and CockroachDB in the facade e2e suite. | PostgreSQL License, a permissive BSD/MIT-like license. | First implementation slice. Build with the selected TLS/authentication configuration and prove shared/static facade consumers. |
-| 2 | [SQLite](https://www.sqlite.org/about.html) | Embedded SQL database. | Public domain for the delivered SQLite library. | Second implementation slice. Pin the amalgamation or source distribution deliberately; expose only the C89 facade. |
+| 1 | [libpq](https://www.postgresql.org/docs/current/libpq.html) | PostgreSQL C client; validate against PostgreSQL and CockroachDB in the facade e2e suite. | PostgreSQL License, a permissive BSD/MIT-like license. | Implemented: strict C89 facade, shared/static consumers, and local PostgreSQL/CockroachDB e2e gate. |
+| 2 | [SQLite](https://www.sqlite.org/about.html) | Embedded SQL database. | Public domain for the delivered SQLite library. | Implemented: pinned amalgamation and C89 facade with local file-format and WAL tests. |
 | 3 | [librdkafka](https://github.com/confluentinc/librdkafka) | Kafka producer, consumer, and administration client. | BSD-2-Clause. | Third implementation slice. Start with a minimal feature set; explicitly select TLS, SASL, and compression dependencies and audit their licenses and static link closure. |
 | 4 | [rabbitmq-c](https://github.com/alanxz/rabbitmq-c) | RabbitMQ/AMQP 0-9-1 C client. | MIT. | Fourth implementation slice. Use the bundled OpenSSL only through the facade and test broker e2e behavior. |
 | 5 | [tdslite](https://github.com/tdslite/tdslite) | Direct Microsoft SQL Server TDS client. It is not a Sybase client commitment. | MIT. | Investigation candidate, not a committed dependency. It is header-only C++11 with a pluggable network layer; prove TLS, SQL Server authentication modes, server-feature coverage, and all-target transport integration before adoption. It must sit behind a C89 facade. |

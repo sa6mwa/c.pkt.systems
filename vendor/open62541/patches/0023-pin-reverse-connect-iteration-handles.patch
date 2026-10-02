@@ -1,0 +1,59 @@
+--- a/src/server/ua_server_binary.c
++++ b/src/server/ua_server_binary.c
+@@ -1026,19 +1026,38 @@
+     return cm->sendWithConnection(cm, connectionId, NULL, &message);
+ }
+ 
++/* Select by stable handles rather than retaining a list link across user
++ * logging/connection callbacks. Those callbacks may remove other entries. */
++static reverse_connect_context *
++nextReverseConnect(UA_BinaryProtocolManager *bpm, UA_UInt64 after,
++                   UA_UInt64 maximum) {
++    reverse_connect_context *candidate = NULL, *rc;
++    LIST_FOREACH(rc, &bpm->reverseConnects, next) {
++        if(rc->handle <= after || rc->handle > maximum || rc->destruction)
++            continue;
++        if(!candidate || rc->handle < candidate->handle)
++            candidate = rc;
++    }
++    return candidate;
++}
++
+ static void
+ retryReverseConnectCallback(UA_Server *server, void *context) {
+     lockServer(server);
+ 
+     UA_BinaryProtocolManager *bpm = (UA_BinaryProtocolManager*)context;
+-
+-    reverse_connect_context *rc = NULL;
+-    LIST_FOREACH(rc, &bpm->reverseConnects, next) {
+-        if(rc->destruction || rc->currentConnection.connectionId)
++    UA_UInt64 after = 0, maximum = bpm->lastReverseConnectHandle;
++    reverse_connect_context *rc;
++    while((rc = nextReverseConnect(bpm, after, maximum)) != NULL) {
++        after = rc->handle;
++        if(rc->currentConnection.connectionId)
+             continue;
+         UA_LOG_INFO(server->config.logging, UA_LOGCATEGORY_SERVER,
+                     "Attempt to reverse reconnect to %S:%d", rc->hostname, rc->port);
+-        attemptReverseConnect(bpm, rc);
++        /* A logger may have removed this entry or initiated its connection. */
++        rc = nextReverseConnect(bpm, after - 1, after);
++        if(rc && !rc->currentConnection.connectionId)
++            attemptReverseConnect(bpm, rc);
+     }
+ 
+     unlockServer(server);
+@@ -1458,8 +1477,10 @@
+     setReverseConnectRetryCallback(bpm, false);
+ 
+     /* Close or free all reverse connections */
+-    reverse_connect_context *rev, *rev_tmp;
+-    LIST_FOREACH_SAFE(rev, &bpm->reverseConnects, next, rev_tmp) {
++    reverse_connect_context *rev;
++    UA_UInt64 after = 0, maximum = bpm->lastReverseConnectHandle;
++    while((rev = nextReverseConnect(bpm, after, maximum)) != NULL) {
++        after = rev->handle;
+         if(rev->currentConnection.connectionId) {
+             UA_ConnectionManager *cm = rev->currentConnection.connectionManager;
+             rev->destruction = true;

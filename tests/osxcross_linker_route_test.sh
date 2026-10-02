@@ -9,8 +9,9 @@ if ! bash "$repo_root/scripts/osxcross_available.sh"; then
   exit 0
 fi
 
-osxcross_root=${OSXCROSS_ROOT:-"$HOME/.local/cross/osxcross"}
-osxcross_host=${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}
+toolchain_report=$("$repo_root/scripts/cpkt-toolchains.sh" discover arm64-apple-darwin)
+osxcross_root=$(printf '%s\n' "$toolchain_report" | sed -n 's/^root=//p')
+osxcross_host=$(printf '%s\n' "$toolchain_report" | sed -n 's/^prefix=//p')
 osxcross_bin="$osxcross_root/bin"
 compiler="$osxcross_bin/$osxcross_host-clang"
 linker="$osxcross_bin/$osxcross_host-ld"
@@ -39,14 +40,11 @@ assert_contains() {
   esac
 }
 
-bad_route_output=$(PATH="$clean_path" "$compiler" -### "$source_file" -o "$binary_file" 2>&1)
-assert_contains "$bad_route_output" '"/usr/bin/ld"' "the known host-linker failure route"
-
-path_route_output=$(PATH="$osxcross_bin:$clean_path" "$compiler" -### "$source_file" -o "$binary_file" 2>&1)
-assert_contains "$path_route_output" "\"$linker\"" "the target linker when osxcross bin is first on PATH"
-
 ld_path_route_output=$(PATH="$clean_path" "$compiler" "--ld-path=$linker" -### "$source_file" -o "$binary_file" 2>&1)
 assert_contains "$ld_path_route_output" "\"$linker\"" "the target linker when --ld-path is absolute"
+PATH="$clean_path" "$compiler" "--ld-path=$linker" "$source_file" -o "$binary_file"
+binary_type=$(file -b "$binary_file")
+assert_contains "$binary_type" 'Mach-O 64-bit arm64 executable' "a linked Darwin arm64 executable"
 
 if ! grep -F 'set(ENV{PATH} "${CPKT_OSXCROSS_BIN_DIR}:$ENV{PATH}")' \
     "$repo_root/cmake/toolchains/arm64-apple-darwin.cmake" >/dev/null 2>&1; then

@@ -1,0 +1,34 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1787,6 +1787,11 @@
+ install(FILES ${UA_install_tools_files} DESTINATION ${open62541_install_tools_dir}
+         PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE)
+ 
++# Source-derived C89 formatting retains the pinned native parser and dtoa.
++install(FILES "deps/mp_printf.c" "deps/mp_printf.h" "deps/dtoa.c" "deps/dtoa.h"
++        DESTINATION ${open62541_install_tools_dir}/formatter
++        PERMISSIONS OWNER_READ GROUP_READ)
++
+ # Recreate the include folder structure from the source also in /usr/include/open62541
+ set(FILES_TO_INSTALL ${exported_headers} ${plugin_headers})
+ set(BASE_PATH_MAIN "${PROJECT_SOURCE_DIR}/include/open62541")
+--- a/deps/mp_printf.c
++++ b/deps/mp_printf.c
+@@ -92,7 +92,7 @@
+ // and well-defined, but if you're not careful you can easily trigger undefined
+ // behavior with -LONG_MIN or -LLONG_MIN
+ #define ABS_FOR_PRINTING(_x)                                            \
+-    ((printf_unsigned_value_t)((_x) > 0 ? (_x) : -((printf_signed_value_t)_x)))
++    ((printf_unsigned_value_t)((_x) > 0 ? (printf_unsigned_value_t)(_x) : (0ULL - (printf_unsigned_value_t)(_x))))
+ 
+ // internal secure strlen @return The length of the string (excluding the
+ // terminating 0) limited by 'maxsize' @note strlen uses size_t, but wes only
+@@ -341,7 +341,7 @@
+             const int w = va_arg(args, int);
+             if(w < 0) {
+                 flags |= FLAGS_LEFT;  // reverse padding
+-                width = (size_t)-w;
++                width = (size_t)(0U - (unsigned int)w);
+             } else {
+                 width = (size_t)w;
+             }

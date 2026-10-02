@@ -1,0 +1,185 @@
+--- a/plugins/crypto/openssl/securitypolicy_common.c
++++ b/plugins/crypto/openssl/securitypolicy_common.c
+@@ -1653,6 +1653,31 @@
+     return UA_STATUSCODE_GOOD;
+ }
+ 
++/* Route one OpenSSL error-queue entry at a time through the policy logger. */
++struct KeyDerivationLogContext {
++    const UA_Logger *logger;
++    UA_Boolean emitted;
++};
++
++static int
++logKeyDerivationError(const char *message, size_t length, void *context) {
++    struct KeyDerivationLogContext *ctx = (struct KeyDerivationLogContext*)context;
++    UA_String text = {length, (UA_Byte*)(uintptr_t)message};
++    UA_LOG_ERROR(ctx->logger, UA_LOGCATEGORY_SECURITYPOLICY,
++                 "OpenSSL key derivation failed: %S", text);
++    ctx->emitted = true;
++    return 1;
++}
++
++void
++UA_OpenSSL_LogKeyDerivationErrors(const UA_Logger *logger) {
++    struct KeyDerivationLogContext ctx = {logger, false};
++    ERR_print_errors_cb(logKeyDerivationError, &ctx);
++    if(!ctx.emitted)
++        UA_LOG_ERROR(logger, UA_LOGCATEGORY_SECURITYPOLICY,
++                     "OpenSSL key derivation failed");
++}
++
+ #if(OPENSSL_VERSION_NUMBER >= 0x30000000L)
+ static UA_StatusCode
+ UA_OpenSSL_HKDF(char * hashAlgorithm,
+@@ -1685,7 +1710,6 @@
+     *p = OSSL_PARAM_construct_end();
+ 
+     if(EVP_KDF_derive(kctx, out->data, out->length, params) <= 0) {
+-        ERR_print_errors_fp(stdout);
+         ret = UA_STATUSCODE_BADINTERNALERROR;
+         goto errout;
+     }
+--- a/plugins/crypto/openssl/securitypolicy_common.h
++++ b/plugins/crypto/openssl/securitypolicy_common.h
+@@ -113,6 +113,10 @@
+ UA_OpenSSL_ECC_NISTP256_GenerateKey (EVP_PKEY ** keyPairOut,
+                                      UA_ByteString * keyPublicEncOut);
+ 
++/* Log and consume key-derivation errors using the owning policy logger. */
++void
++UA_OpenSSL_LogKeyDerivationErrors(const UA_Logger *logger);
++
+ UA_StatusCode
+ UA_OpenSSL_ECC_DeriveKeys (const int curveID,
+                            char * hashAlgorithm,
+--- a/plugins/crypto/openssl/securitypolicy_eccbrainpoolp256r1.c
++++ b/plugins/crypto/openssl/securitypolicy_eccbrainpoolp256r1.c
+@@ -290,9 +290,12 @@
+         (Channel_Context_EccBrainpoolP256r1 *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_ECC_DeriveKeys(OBJ_txt2nid("brainpoolP256r1"), "SHA256",
++    UA_StatusCode derivationStatus = UA_OpenSSL_ECC_DeriveKeys(OBJ_txt2nid("brainpoolP256r1"), "SHA256",
+                                      pctx->applicationType, cc->localEphemeralKeyPair,
+                                      secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ static UA_StatusCode
+--- a/plugins/crypto/openssl/securitypolicy_eccbrainpoolp384r1.c
++++ b/plugins/crypto/openssl/securitypolicy_eccbrainpoolp384r1.c
+@@ -290,9 +290,12 @@
+         (Channel_Context_EccBrainpoolP384r1 *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_ECC_DeriveKeys(OBJ_txt2nid("brainpoolP384r1"), "SHA384",
++    UA_StatusCode derivationStatus = UA_OpenSSL_ECC_DeriveKeys(OBJ_txt2nid("brainpoolP384r1"), "SHA384",
+                                      pctx->applicationType, cc->localEphemeralKeyPair,
+                                      secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ static UA_StatusCode
+--- a/plugins/crypto/openssl/securitypolicy_ecccurve25519.c
++++ b/plugins/crypto/openssl/securitypolicy_ecccurve25519.c
+@@ -610,10 +610,13 @@
+         (Channel_Context_EccCurve25519 *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_XDHE_DeriveKeys(EVP_PKEY_X25519, "SHA256",
++    UA_StatusCode derivationStatus = UA_OpenSSL_XDHE_DeriveKeys(EVP_PKEY_X25519, "SHA256",
+                                        pctx->applicationType,
+                                        cc->localEphemeralKeyPair,
+                                        secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ /* --- Thumbprint --- */
+--- a/plugins/crypto/openssl/securitypolicy_ecccurve448.c
++++ b/plugins/crypto/openssl/securitypolicy_ecccurve448.c
+@@ -600,10 +600,13 @@
+         (Channel_Context_EccCurve448 *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_XDHE_DeriveKeys(EVP_PKEY_X448, "SHA256",
++    UA_StatusCode derivationStatus = UA_OpenSSL_XDHE_DeriveKeys(EVP_PKEY_X448, "SHA256",
+                                        pctx->applicationType,
+                                        cc->localEphemeralKeyPair,
+                                        secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ /* --- Thumbprint --- */
+--- a/plugins/crypto/openssl/securitypolicy_eccnistp256.c
++++ b/plugins/crypto/openssl/securitypolicy_eccnistp256.c
+@@ -309,9 +309,12 @@
+     Channel_Context_EccNistP256 *cc = (Channel_Context_EccNistP256 *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-256"), "SHA256",
++    UA_StatusCode derivationStatus = UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-256"), "SHA256",
+                                      pctx->applicationType, cc->localEphemeralKeyPair,
+                                      secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ static UA_StatusCode
+--- a/plugins/crypto/openssl/securitypolicy_eccnistp256_aesgcm.c
++++ b/plugins/crypto/openssl/securitypolicy_eccnistp256_aesgcm.c
+@@ -379,9 +379,12 @@
+         (Channel_Context_EccNistP256AesGcm *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-256"), "SHA256",
++    UA_StatusCode derivationStatus = UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-256"), "SHA256",
+                                      pctx->applicationType, cc->localEphemeralKeyPair,
+                                      secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ static UA_StatusCode
+--- a/plugins/crypto/openssl/securitypolicy_eccnistp256_chachapoly.c
++++ b/plugins/crypto/openssl/securitypolicy_eccnistp256_chachapoly.c
+@@ -379,9 +379,12 @@
+         (Channel_Context_EccNistP256ChaChaPoly *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-256"), "SHA256",
++    UA_StatusCode derivationStatus = UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-256"), "SHA256",
+                                      pctx->applicationType, cc->localEphemeralKeyPair,
+                                      secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ static UA_StatusCode
+--- a/plugins/crypto/openssl/securitypolicy_eccnistp384.c
++++ b/plugins/crypto/openssl/securitypolicy_eccnistp384.c
+@@ -288,9 +288,12 @@
+     Channel_Context_EccNistP384 *cc = (Channel_Context_EccNistP384 *)channelContext;
+     if(!pctx || !cc)
+         return UA_STATUSCODE_BADUNEXPECTEDERROR;
+-    return UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-384"), "SHA384",
++    UA_StatusCode derivationStatus = UA_OpenSSL_ECC_DeriveKeys(EC_curve_nist2nid("P-384"), "SHA384",
+                                      pctx->applicationType, cc->localEphemeralKeyPair,
+                                      secret, seed, out);
++    if(derivationStatus != UA_STATUSCODE_GOOD)
++        UA_OpenSSL_LogKeyDerivationErrors(policy->logger);
++    return derivationStatus;
+ }
+ 
+ static UA_StatusCode

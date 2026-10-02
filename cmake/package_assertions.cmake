@@ -1,18 +1,32 @@
 function(cpkt_get_osxcross_lookup out_host_var out_hints_var)
-  set(_osxcross_host "${CPKT_OSXCROSS_HOST}")
-  if(_osxcross_host STREQUAL "" AND DEFINED ENV{CPKT_OSXCROSS_HOST})
-    set(_osxcross_host "$ENV{CPKT_OSXCROSS_HOST}")
-  endif()
-  if(_osxcross_host STREQUAL "")
-    set(_osxcross_host "arm64-apple-darwin25")
-  endif()
-
   set(_osxcross_root "${CPKT_OSXCROSS_ROOT}")
   if(_osxcross_root STREQUAL "" AND DEFINED ENV{OSXCROSS_ROOT})
     set(_osxcross_root "$ENV{OSXCROSS_ROOT}")
   endif()
   if(_osxcross_root STREQUAL "" AND DEFINED ENV{HOME})
     set(_osxcross_root "$ENV{HOME}/.local/cross/osxcross")
+  endif()
+
+  set(_osxcross_host "${CPKT_OSXCROSS_HOST}")
+  if(_osxcross_host STREQUAL "" AND DEFINED ENV{CPKT_OSXCROSS_HOST})
+    set(_osxcross_host "$ENV{CPKT_OSXCROSS_HOST}")
+  endif()
+  if(_osxcross_host STREQUAL "")
+    get_filename_component(_cpkt_repo_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}" DIRECTORY)
+    execute_process(
+      COMMAND "${CMAKE_COMMAND}" -E env "OSXCROSS_ROOT=${_osxcross_root}"
+        "${_cpkt_repo_root}/scripts/cpkt-toolchains.sh" discover arm64-apple-darwin
+      RESULT_VARIABLE _resolver_result
+      OUTPUT_VARIABLE _resolver_report
+      ERROR_VARIABLE _resolver_error)
+    if(NOT _resolver_result EQUAL 0 OR NOT _resolver_report MATCHES "status=ready")
+      message(FATAL_ERROR "Darwin toolchain is not ready for package assertions: ${_resolver_error}${_resolver_report}")
+    endif()
+    string(REGEX MATCH "(^|\n)prefix=([^\n]+)" _prefix_match "${_resolver_report}")
+    if(NOT _prefix_match)
+      message(FATAL_ERROR "Darwin toolchain resolver did not report an osxcross prefix")
+    endif()
+    set(_osxcross_host "${CMAKE_MATCH_2}")
   endif()
 
   set(_osxcross_hints "")
@@ -39,11 +53,11 @@ function(cpkt_find_darwin_otool out_var)
   cpkt_get_osxcross_lookup(_osxcross_host _osxcross_hints)
 
   find_program(_cpkt_otool_bin
-    NAMES "${_osxcross_host}-otool" arm64-apple-darwin25-otool otool
+    NAMES "${_osxcross_host}-otool" otool
     HINTS ${_osxcross_hints})
   if(NOT _cpkt_otool_bin)
     message(FATAL_ERROR
-      "otool is required to verify Darwin package artifacts; tried ${_osxcross_host}-otool, arm64-apple-darwin25-otool, and otool")
+      "otool is required to verify Darwin package artifacts; tried ${_osxcross_host}-otool and otool")
   endif()
 
   set(${out_var} "${_cpkt_otool_bin}" PARENT_SCOPE)
@@ -263,36 +277,70 @@ function(cpkt_assert_darwin_install_name file_path expected_install_name descrip
   endif()
 endfunction()
 
+function(cpkt_assert_darwin_dylib_versions file_path expected_install_name
+    expected_compatibility expected_current description)
+  cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+  execute_process(
+    COMMAND "${CPKT_OTOOL_BIN}" -L "${file_path}"
+    RESULT_VARIABLE _otool_result
+    OUTPUT_VARIABLE _otool_output
+    ERROR_VARIABLE _otool_error)
+  if(NOT _otool_result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect ${description}: ${file_path}\n${_otool_error}")
+  endif()
+  set(_expected "${expected_install_name} (compatibility version ${expected_compatibility}, current version ${expected_current})")
+  string(FIND "${_otool_output}" "${_expected}" _version_position)
+  if(_version_position EQUAL -1)
+    message(FATAL_ERROR "${description} must advertise [${_expected}]")
+  endif()
+endfunction()
+
 function(cpkt_assert_darwin_dylib_relocatable file_path description)
   cpkt_find_darwin_otool(CPKT_OTOOL_BIN)
   if(NOT EXISTS "${file_path}")
     message(FATAL_ERROR "missing ${description}: ${file_path}")
   endif()
 
-  execute_process(
-    COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
-    RESULT_VARIABLE _id_result
-    OUTPUT_VARIABLE _id_output
-    ERROR_VARIABLE _id_error
-  )
-  if(NOT _id_result EQUAL 0)
-    message(FATAL_ERROR "failed to inspect Darwin install name for ${description}: ${file_path}\n${_id_error}")
-  endif()
-  string(REPLACE "\r\n" "\n" _id_output "${_id_output}")
-  string(REPLACE "\n" ";" _id_lines "${_id_output}")
-  set(_id_found OFF)
-  foreach(_id_line IN LISTS _id_lines)
-    string(STRIP "${_id_line}" _id_line)
-    if(_id_line MATCHES "^@rpath/[^/]+\\.dylib$")
-      set(_id_found ON)
-    elseif(_id_line MATCHES "^(|.*:)$")
-      continue()
-    elseif(NOT _id_line STREQUAL "")
-      message(FATAL_ERROR "${description} has non-rpath Darwin install name: ${_id_line}")
+  if(file_path MATCHES "[.]dylib$")
+    execute_process(
+      COMMAND "${CPKT_OTOOL_BIN}" -hv "${file_path}"
+      RESULT_VARIABLE _header_result
+      OUTPUT_VARIABLE _header_output
+      ERROR_VARIABLE _header_error
+    )
+    if(NOT _header_result EQUAL 0)
+      message(FATAL_ERROR "failed to inspect Darwin Mach-O type for ${description}: ${file_path}\n${_header_error}")
     endif()
-  endforeach()
-  if(NOT _id_found)
-    message(FATAL_ERROR "${description} must have an @rpath Darwin install name")
+    if(NOT _header_output MATCHES "[ \t]BUNDLE[ \t]")
+      execute_process(
+        COMMAND "${CPKT_OTOOL_BIN}" -D "${file_path}"
+        RESULT_VARIABLE _id_result
+        OUTPUT_VARIABLE _id_output
+        ERROR_VARIABLE _id_error
+      )
+      if(NOT _id_result EQUAL 0)
+        message(FATAL_ERROR "failed to inspect Darwin install name for ${description}: ${file_path}\n${_id_error}")
+      endif()
+      string(REPLACE "\r\n" "\n" _id_output "${_id_output}")
+      string(REPLACE "\n" ";" _id_lines "${_id_output}")
+      set(_id_found OFF)
+      foreach(_id_line IN LISTS _id_lines)
+        string(STRIP "${_id_line}" _id_line)
+        if(_id_line MATCHES "^@rpath/[^/]+\\.dylib$")
+          set(_id_found ON)
+        elseif(_id_line MATCHES "^(|.*:)$")
+          continue()
+        elseif(NOT _id_line STREQUAL "")
+          message(FATAL_ERROR "${description} has non-rpath Darwin install name: ${_id_line}")
+        endif()
+      endforeach()
+      if(NOT _id_found)
+        message(FATAL_ERROR "${description} must have an @rpath Darwin install name")
+      endif()
+    endif()
   endif()
 
   execute_process(
@@ -334,6 +382,8 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
   endif()
   string(REPLACE "\r\n" "\n" _commands_output "${_commands_output}")
   string(REPLACE "\n" ";" _command_lines "${_commands_output}")
+  set(_sasl_module_parent_rpath_found OFF)
+  set(_krb5_tls_module_parent_rpath_found OFF)
   foreach(_command_line IN LISTS _command_lines)
     string(STRIP "${_command_line}" _command_line)
     if(_command_line MATCHES "^path[ \t]+([^ \t]+)")
@@ -342,8 +392,21 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
       if(NOT _rpath MATCHES "^@(loader_path|executable_path)(/.*)?$")
         message(FATAL_ERROR "${description} has non-relocatable Darwin rpath: ${_rpath}")
       endif()
+      if(_rpath STREQUAL "@loader_path/..")
+        set(_sasl_module_parent_rpath_found ON)
+      elseif(_rpath STREQUAL "@loader_path/../../..")
+        set(_krb5_tls_module_parent_rpath_found ON)
+      endif()
     endif()
   endforeach()
+  if(file_path MATCHES "/lib/sasl2/[^/]+[.]so$" AND
+      NOT _sasl_module_parent_rpath_found)
+    message(FATAL_ERROR "${description} cannot resolve bundled sibling libraries from lib/sasl2")
+  endif()
+  if(file_path MATCHES "/lib/krb5/plugins/tls/k5tls[.]so$" AND
+      NOT _krb5_tls_module_parent_rpath_found)
+    message(FATAL_ERROR "${description} cannot resolve bundled sibling libraries from lib/krb5/plugins/tls")
+  endif()
 
   set(_private_path_pattern "(/home/|/Users/|/tmp/|/var/tmp/|/usr/local/|\\.cache|deps-build|package-stage|CMakeFiles)")
   foreach(_metadata_line IN LISTS _id_lines _metadata_lines)
@@ -355,6 +418,28 @@ function(cpkt_assert_darwin_dylib_relocatable file_path description)
       message(FATAL_ERROR "${description} contains local/private Darwin path material: ${_metadata_line}")
     endif()
   endforeach()
+endfunction()
+
+function(cpkt_assert_darwin_deployment_target file_path expected_minimum description)
+  cpkt_find_darwin_otool(_otool)
+  execute_process(
+    COMMAND "${_otool}" -l "${file_path}"
+    RESULT_VARIABLE _result OUTPUT_VARIABLE _output ERROR_VARIABLE _error)
+  if(NOT _result EQUAL 0)
+    message(FATAL_ERROR "failed to inspect Darwin deployment target for ${description}: ${_error}")
+  endif()
+  string(REGEX MATCHALL "cmd LC_BUILD_VERSION" _commands "${_output}")
+  list(LENGTH _commands _command_count)
+  string(REGEX MATCHALL "minos[ \t]+[0-9]+[.][0-9]+" _minimums "${_output}")
+  list(LENGTH _minimums _minimum_count)
+  if(NOT _command_count EQUAL 1 OR NOT _minimum_count EQUAL 1)
+    message(FATAL_ERROR "${description} must have one LC_BUILD_VERSION minimum")
+  endif()
+  string(REGEX REPLACE ".*minos[ \t]+" "" _actual_minimum "${_minimums}")
+  if(NOT _actual_minimum VERSION_EQUAL expected_minimum)
+    message(FATAL_ERROR
+      "${description} records macOS ${_actual_minimum}, expected ${expected_minimum}")
+  endif()
 endfunction()
 
 function(cpkt_read_elf_dynamic_section out_var file_path description)
@@ -469,11 +554,27 @@ if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASS
     "test Darwin install name")
   message(STATUS "CPKT_TEST_DARWIN_INSTALL_NAME=ok")
 endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION)
+  cpkt_assert_darwin_dylib_versions(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_INSTALL_NAME}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_COMPATIBILITY}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_CURRENT}"
+    "test Darwin dylib versions")
+  message(STATUS "CPKT_TEST_DARWIN_VERSION=ok")
+endif()
 if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE)
   cpkt_assert_darwin_dylib_relocatable(
     "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
     "test Darwin relocatable dylib")
   message(STATUS "CPKT_TEST_DARWIN_RELOCATABLE=ok")
+endif()
+if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT)
+  cpkt_assert_darwin_deployment_target(
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_DYLIB}"
+    "${CPKT_PACKAGE_ASSERTIONS_TEST_EXPECTED_DEPLOYMENT}"
+    "test Darwin deployment target")
+  message(STATUS "CPKT_TEST_DARWIN_DEPLOYMENT=ok")
 endif()
 if(DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH)
   cpkt_assert_elf_runpath_file_relocatable(
@@ -492,7 +593,9 @@ if((DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_OTOOL_LOOKUP AND CPKT_PACKAGE_AS
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_LOOKUP) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ AND CPKT_PACKAGE_ASSERTIONS_TEST_NM_SYMBOL_READ) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_INSTALL_NAME) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_VERSION) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_RELOCATABLE) OR
+    (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT AND CPKT_PACKAGE_ASSERTIONS_TEST_DARWIN_DEPLOYMENT) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNPATH) OR
     (DEFINED CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA AND CPKT_PACKAGE_ASSERTIONS_TEST_ELF_RUNTIME_METADATA))
   return()
@@ -526,6 +629,17 @@ execute_process(
 if(NOT _list_result EQUAL 0)
   message(FATAL_ERROR "failed to list ${CPKT_ARCHIVE}\n${_list_error}")
 endif()
+string(REPLACE "\r\n" "\n" _root_listing "${_listing}")
+string(REPLACE "\n" ";" _root_entries "${_root_listing}")
+foreach(_root_entry IN LISTS _root_entries)
+  if(_root_entry STREQUAL "")
+    continue()
+  endif()
+  if(NOT _root_entry MATCHES "^${_archive_stem_re}(/|$)"
+      OR _root_entry MATCHES "(^|/)\\.\\.(/|$)")
+    message(FATAL_ERROR "package archive contains entry outside its root: ${_root_entry}")
+  endif()
+endforeach()
 
 execute_process(
   COMMAND tar --numeric-owner -tvf "${CPKT_ARCHIVE}"
@@ -561,13 +675,32 @@ endif()
 if(_listing MATCHES "(^|\n)${_archive_stem_re}/([^ \n]*/)*cmocka")
   message(FATAL_ERROR "release archive must not contain cmocka")
 endif()
+if(_listing MATCHES "(^|\n)${_archive_stem_re}/(include/pslog[^\n]*|lib/libpslog[^\n]*|lib/(cmake/pslog|pkgconfig/pslog\\.pc)(/|\n|$))")
+  message(FATAL_ERROR "release archive must not contain test-only libpslog")
+endif()
 
 cpkt_extract_archive_for_assertions(_manifest_extract_root)
 set(_manifest_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/manifest.txt")
 if(NOT EXISTS "${_manifest_path}")
   message(FATAL_ERROR "missing package manifest: ${_manifest_path}")
 endif()
+set(_libharu_config_path "${_manifest_extract_root}/${_archive_stem}/include/hpdf_config.h")
+if(NOT EXISTS "${_libharu_config_path}")
+  message(FATAL_ERROR "package is missing libHaru configuration header")
+endif()
+file(READ "${_libharu_config_path}" _libharu_config_text)
+foreach(_libharu_required_feature LIBHPDF_HAVE_LIBPNG LIBHPDF_HAVE_ZLIB)
+  if(NOT _libharu_config_text MATCHES "(^|\n)#define ${_libharu_required_feature}(\n|$)")
+    message(FATAL_ERROR "bundled libHaru lacks ${_libharu_required_feature}")
+  endif()
+endforeach()
 file(READ "${_manifest_path}" _manifest_text)
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  if(NOT _manifest_text MATCHES "(^|\n)macos_deployment_target=([0-9]+[.][0-9]+)(\n|$)")
+    message(FATAL_ERROR "Darwin package manifest is missing macos_deployment_target")
+  endif()
+  set(_manifest_macos_deployment_target "${CMAKE_MATCH_2}")
+endif()
 set(_sus_model_catalog_path "${_manifest_extract_root}/${_archive_stem}/share/c.pkt.systems/sus-model-catalog.tsv")
 if(NOT EXISTS "${_sus_model_catalog_path}")
   message(FATAL_ERROR "missing sus model catalog metadata: ${_sus_model_catalog_path}")
@@ -585,6 +718,32 @@ foreach(_required_model_catalog_entry
     message(FATAL_ERROR "sus model catalog metadata is missing required entry: ${_required_model_catalog_entry}")
   endif()
 endforeach()
+if(NOT _manifest_text MATCHES "(^|\n)openssl_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing openssl_abi_version")
+endif()
+set(_manifest_openssl_abi_version "${CMAKE_MATCH_2}")
+foreach(_pdf_manifest_key libpng_version libharu_version pdf_abi_version)
+  if(NOT _manifest_text MATCHES "(^|\n)${_pdf_manifest_key}=([A-Za-z0-9_.+-]+)(\n|$)")
+    message(FATAL_ERROR "package manifest is missing ${_pdf_manifest_key}")
+  endif()
+  set(_manifest_${_pdf_manifest_key} "${CMAKE_MATCH_2}")
+endforeach()
+if(NOT _manifest_text MATCHES "(^|\n)iodbc_version=([0-9]+[.][0-9]+[.][0-9]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing iodbc_version")
+endif()
+set(_manifest_iodbc_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)nghttp2_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing nghttp2_abi_version")
+endif()
+set(_manifest_nghttp2_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)libssh2_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing libssh2_abi_version")
+endif()
+set(_manifest_libssh2_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)lua_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing lua_abi_version")
+endif()
+set(_manifest_lua_abi_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)lua_runtime_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing lua_runtime_abi_version")
 endif()
@@ -626,11 +785,72 @@ if(DEFINED CPKT_OPEN62541_PATCHSET AND NOT "${CPKT_OPEN62541_PATCHSET}" STREQUAL
   message(FATAL_ERROR
     "configured open62541 patchset ${CPKT_OPEN62541_PATCHSET} does not match package manifest patchset ${_manifest_open62541_patchset}")
 endif()
+if(NOT _manifest_text MATCHES "(^|\n)postgresql_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing postgresql_version")
+endif()
+set(_manifest_postgresql_version "${CMAKE_MATCH_2}")
+string(REGEX MATCH "^[0-9]+" _manifest_postgresql_major_version "${_manifest_postgresql_version}")
+if(NOT _manifest_text MATCHES "(^|\n)postgres_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing postgres_abi_version")
+endif()
+set(_manifest_postgres_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)gssapi_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing gssapi_abi_version")
+endif()
+set(_manifest_gssapi_abi_version "${CMAKE_MATCH_2}")
+if(NOT _manifest_text MATCHES "(^|\n)sasl_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing sasl_abi_version")
+endif()
+set(_manifest_sasl_abi_version "${CMAKE_MATCH_2}")
 if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_version=([A-Za-z0-9_.+-]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing mqtt_c_version")
 endif()
 if(NOT _manifest_text MATCHES "(^|\n)mqtt_c_commit=([A-Fa-f0-9]+)(\n|$)")
   message(FATAL_ERROR "package manifest is missing mqtt_c_commit")
+endif()
+if(NOT _manifest_text MATCHES "(^|\n)mqttc_abi_version=([A-Za-z0-9_.+-]+)(\n|$)")
+  message(FATAL_ERROR "package manifest is missing mqttc_abi_version")
+endif()
+set(_manifest_mqttc_abi_version "${CMAKE_MATCH_2}")
+if(DEFINED CPKT_OPENSSL_ABI_VERSION AND NOT "${CPKT_OPENSSL_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_OPENSSL_ABI_VERSION}" STREQUAL "${_manifest_openssl_abi_version}")
+    message(FATAL_ERROR
+      "configured OpenSSL facade ABI ${CPKT_OPENSSL_ABI_VERSION} does not match package manifest ABI ${_manifest_openssl_abi_version}")
+  endif()
+else()
+  set(CPKT_OPENSSL_ABI_VERSION "${_manifest_openssl_abi_version}")
+endif()
+if(DEFINED CPKT_NGHTTP2_ABI_VERSION AND NOT "${CPKT_NGHTTP2_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_NGHTTP2_ABI_VERSION}" STREQUAL "${_manifest_nghttp2_abi_version}")
+    message(FATAL_ERROR
+      "configured nghttp2 facade ABI ${CPKT_NGHTTP2_ABI_VERSION} does not match package manifest ABI ${_manifest_nghttp2_abi_version}")
+  endif()
+else()
+  set(CPKT_NGHTTP2_ABI_VERSION "${_manifest_nghttp2_abi_version}")
+endif()
+if(DEFINED CPKT_LIBSSH2_ABI_VERSION AND NOT "${CPKT_LIBSSH2_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_LIBSSH2_ABI_VERSION}" STREQUAL "${_manifest_libssh2_abi_version}")
+    message(FATAL_ERROR
+      "configured libssh2 facade ABI ${CPKT_LIBSSH2_ABI_VERSION} does not match package manifest ABI ${_manifest_libssh2_abi_version}")
+  endif()
+else()
+  set(CPKT_LIBSSH2_ABI_VERSION "${_manifest_libssh2_abi_version}")
+endif()
+if(DEFINED CPKT_LUA_ABI_VERSION AND NOT "${CPKT_LUA_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_LUA_ABI_VERSION}" STREQUAL "${_manifest_lua_abi_version}")
+    message(FATAL_ERROR
+      "configured Lua facade ABI ${CPKT_LUA_ABI_VERSION} does not match package manifest ABI ${_manifest_lua_abi_version}")
+  endif()
+else()
+  set(CPKT_LUA_ABI_VERSION "${_manifest_lua_abi_version}")
+endif()
+if(DEFINED CPKT_MQTTC_ABI_VERSION AND NOT "${CPKT_MQTTC_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_MQTTC_ABI_VERSION}" STREQUAL "${_manifest_mqttc_abi_version}")
+    message(FATAL_ERROR
+      "configured MQTT-C facade ABI ${CPKT_MQTTC_ABI_VERSION} does not match package manifest ABI ${_manifest_mqttc_abi_version}")
+  endif()
+else()
+  set(CPKT_MQTTC_ABI_VERSION "${_manifest_mqttc_abi_version}")
 endif()
 if(DEFINED CPKT_LUA_RUNTIME_ABI_VERSION AND NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "")
   if(NOT "${CPKT_LUA_RUNTIME_ABI_VERSION}" STREQUAL "${_manifest_lua_runtime_abi_version}")
@@ -655,6 +875,30 @@ if(DEFINED CPKT_SUS_ABI_VERSION AND NOT "${CPKT_SUS_ABI_VERSION}" STREQUAL "")
   endif()
 else()
   set(CPKT_SUS_ABI_VERSION "${_manifest_sus_abi_version}")
+endif()
+if(DEFINED CPKT_POSTGRES_ABI_VERSION AND NOT "${CPKT_POSTGRES_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_POSTGRES_ABI_VERSION}" STREQUAL "${_manifest_postgres_abi_version}")
+    message(FATAL_ERROR
+      "configured PostgreSQL ABI ${CPKT_POSTGRES_ABI_VERSION} does not match package manifest ABI ${_manifest_postgres_abi_version}")
+  endif()
+else()
+  set(CPKT_POSTGRES_ABI_VERSION "${_manifest_postgres_abi_version}")
+endif()
+if(DEFINED CPKT_GSSAPI_ABI_VERSION AND NOT "${CPKT_GSSAPI_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_GSSAPI_ABI_VERSION}" STREQUAL "${_manifest_gssapi_abi_version}")
+    message(FATAL_ERROR
+      "configured GSSAPI ABI ${CPKT_GSSAPI_ABI_VERSION} does not match package manifest ABI ${_manifest_gssapi_abi_version}")
+  endif()
+else()
+  set(CPKT_GSSAPI_ABI_VERSION "${_manifest_gssapi_abi_version}")
+endif()
+if(DEFINED CPKT_SASL_ABI_VERSION AND NOT "${CPKT_SASL_ABI_VERSION}" STREQUAL "")
+  if(NOT "${CPKT_SASL_ABI_VERSION}" STREQUAL "${_manifest_sasl_abi_version}")
+    message(FATAL_ERROR
+      "configured Cyrus SASL ABI ${CPKT_SASL_ABI_VERSION} does not match package manifest ABI ${_manifest_sasl_abi_version}")
+  endif()
+else()
+  set(CPKT_SASL_ABI_VERSION "${_manifest_sasl_abi_version}")
 endif()
 file(REMOVE_RECURSE "${_manifest_extract_root}")
 
@@ -738,15 +982,110 @@ function(cpkt_assert_dynamic_exports_match file_path allowed_symbol_regex descri
   endforeach()
 endfunction()
 
+# Compare the defined dynamic table with a target-specific, source-controlled
+# allowlist. A prefix check would accept accidental cpkt_openssl_* ABI entries.
+function(cpkt_assert_dynamic_exports_equal file_path allowlist_path description)
+  if(NOT EXISTS "${file_path}")
+    message(FATAL_ERROR "missing ${description}: ${file_path}")
+  endif()
+  if(NOT EXISTS "${allowlist_path}")
+    message(FATAL_ERROR "missing export allowlist for ${description}: ${allowlist_path}")
+  endif()
+  cpkt_find_nm(_cpkt_nm)
+  if(CPKT_TARGET_ID MATCHES "darwin")
+    set(_nm_args -gU "${file_path}")
+  else()
+    set(_nm_args -D --defined-only "${file_path}")
+  endif()
+  execute_process(
+    COMMAND "${_cpkt_nm}" ${_nm_args}
+    RESULT_VARIABLE _nm_result
+    OUTPUT_VARIABLE _nm_output
+    ERROR_VARIABLE _nm_error
+  )
+  if(NOT _nm_result EQUAL 0)
+    message(FATAL_ERROR
+      "failed to inspect defined dynamic exports from ${description}: ${file_path}\n${_nm_error}")
+  endif()
+  set(_actual_symbols "")
+  string(ASCII 9 _symbol_tab)
+  string(REPLACE "\n" ";" _nm_lines "${_nm_output}")
+  foreach(_nm_line IN LISTS _nm_lines)
+    string(STRIP "${_nm_line}" _nm_line)
+    if(_nm_line STREQUAL "")
+      continue()
+    endif()
+    string(REPLACE "${_symbol_tab}" " " _nm_line "${_nm_line}")
+    string(REGEX REPLACE "^.* " "" _symbol_name "${_nm_line}")
+    if(_symbol_name STREQUAL "" OR _symbol_name STREQUAL "${_nm_line}")
+      message(FATAL_ERROR
+        "unable to parse defined dynamic export from ${description}: ${_nm_line}")
+    endif()
+    if(CPKT_TARGET_ID MATCHES "darwin")
+      if(NOT _symbol_name MATCHES "^_")
+        message(FATAL_ERROR "unexpected Mach-O export name in ${description}: ${_symbol_name}")
+      endif()
+      string(SUBSTRING "${_symbol_name}" 1 -1 _symbol_name)
+    endif()
+    if(_symbol_name STREQUAL "_init" OR _symbol_name STREQUAL "_fini")
+      continue()
+    endif()
+    list(APPEND _actual_symbols "${_symbol_name}")
+  endforeach()
+  list(REMOVE_DUPLICATES _actual_symbols)
+  list(SORT _actual_symbols)
+
+  file(STRINGS "${allowlist_path}" _expected_symbols
+    REGEX "^[ \\t]*[^# \\t]")
+  set(_expected_symbols_stripped "")
+  foreach(_expected_symbol IN LISTS _expected_symbols)
+    string(STRIP "${_expected_symbol}" _expected_symbol)
+    list(APPEND _expected_symbols_stripped "${_expected_symbol}")
+  endforeach()
+  list(REMOVE_DUPLICATES _expected_symbols_stripped)
+  list(SORT _expected_symbols_stripped)
+  if(NOT "${_actual_symbols}" STREQUAL "${_expected_symbols_stripped}")
+    string(REPLACE ";" "\n" _actual_display "${_actual_symbols}")
+    string(REPLACE ";" "\n" _expected_display "${_expected_symbols_stripped}")
+    message(FATAL_ERROR
+      "${description} dynamic export allowlist mismatch\nexpected:\n${_expected_display}\nactual:\n${_actual_display}")
+  endif()
+endfunction()
+
 foreach(_path
+    "include/cpkt/openssl.h"
+    "include/cpkt/nghttp2.h"
+    "include/cpkt/libssh2.h"
+    "include/cpkt/mqttc.h"
+    "include/cpkt/lua.h"
     "include/openssl/ssl.h"
+    "lib/libcpkt_openssl.a"
+    "lib/libcpkt_nghttp2.a"
+    "lib/libcpkt_libssh2.a"
+    "lib/libcpkt_mqttc.a"
+    "lib/libcpkt_lua.a"
     "lib/libssl.a"
     "lib/libcrypto.a"
     "lib/cmake/OpenSSL/OpenSSLConfig.cmake"
     "lib/cmake/OpenSSL/OpenSSLConfigVersion.cmake"
+    "lib/cmake/CpktOpenSSL/CpktOpenSSLConfig.cmake"
+    "lib/cmake/CpktOpenSSL/CpktOpenSSLConfigVersion.cmake"
+    "lib/cmake/CpktNghttp2/CpktNghttp2Config.cmake"
+    "lib/cmake/CpktNghttp2/CpktNghttp2ConfigVersion.cmake"
+    "lib/cmake/CpktLibssh2/CpktLibssh2Config.cmake"
+    "lib/cmake/CpktLibssh2/CpktLibssh2ConfigVersion.cmake"
+    "lib/cmake/CpktMqttc/CpktMqttcConfig.cmake"
+    "lib/cmake/CpktMqttc/CpktMqttcConfigVersion.cmake"
+    "lib/cmake/CpktLua/CpktLuaConfig.cmake"
+    "lib/cmake/CpktLua/CpktLuaConfigVersion.cmake"
     "lib/pkgconfig/libssl.pc"
     "lib/pkgconfig/libcrypto.pc"
     "lib/pkgconfig/openssl.pc"
+    "lib/pkgconfig/cpkt-openssl.pc"
+    "lib/pkgconfig/cpkt-nghttp2.pc"
+    "lib/pkgconfig/cpkt-libssh2.pc"
+    "lib/pkgconfig/cpkt-mqttc.pc"
+    "lib/pkgconfig/cpkt-lua.pc"
     "include/curl/curl.h"
     "lib/libcurl.a"
     "lib/cmake/CURL/CURLConfig.cmake"
@@ -787,6 +1126,20 @@ foreach(_path
     "include/cpkt/lua_runtime.h"
     "include/cpkt/sus.h"
     "include/cpkt/opcua.h"
+    "include/cpkt/opcua_types.h"
+    "include/cpkt/opcua_types_base.h"
+    "include/cpkt/opcua_util.h"
+    "include/cpkt/opcua_callbacks.h"
+    "include/cpkt/opcua_constants.h"
+    "include/cpkt/opcua_plugins.h"
+    "share/doc/c.pkt.systems/third_party/opcua-schema/LICENSE"
+    "include/cpkt/gssapi.h"
+    "include/cpkt/sasl.h"
+    "include/cpkt/sasl_plugin.h"
+    "include/cpkt/postgres.h"
+    "include/sqlite3ext.h"
+    "include/krb5.h"
+    "include/com_err.h"
     "lib/libminiaudio.a"
     "lib/libwhisper.a"
     "lib/libggml.a"
@@ -795,13 +1148,56 @@ foreach(_path
     "lib/liblua.a"
     "lib/libmqttc.a"
     "lib/libopen62541.a"
+    "lib/libpng16.a"
+    "lib/libhpdf.a"
+    "lib/libiodbc.a"
+    "lib/libiodbcinst.a"
+    "include/sql.h"
+    "include/sqlext.h"
+    "include/sqltypes.h"
+    "include/odbcinst.h"
+    "include/iodbcinst.h"
+    "lib/cmake/CpktIodbc/CpktIodbcConfig.cmake"
+    "lib/cmake/CpktIodbc/CpktIodbcConfigVersion.cmake"
+    "lib/pkgconfig/libiodbc.pc"
+    "lib/pkgconfig/cpkt-iodbc.pc"
+    "lib/libcpkt_pdf.a"
+    "include/png.h"
+    "include/pngconf.h"
+    "include/pnglibconf.h"
+    "include/hpdf.h"
+    "include/cpkt/pdf.h"
+    "lib/cmake/CpktPng/CpktPngConfig.cmake"
+    "lib/cmake/CpktPng/CpktPngConfigVersion.cmake"
+    "lib/cmake/CpktHaru/CpktHaruConfig.cmake"
+    "lib/cmake/CpktHaru/CpktHaruConfigVersion.cmake"
+    "lib/cmake/CpktPdf/CpktPdfConfig.cmake"
+    "lib/cmake/CpktPdf/CpktPdfConfigVersion.cmake"
+    "lib/pkgconfig/cpkt-png.pc"
+    "lib/pkgconfig/cpkt-haru.pc"
+    "lib/pkgconfig/cpkt-pdf.pc"
     "lib/libcpktaudio.a"
     "lib/libcpkt_lua_runtime.a"
     "lib/libcpktsus.a"
     "lib/libcpkt_opcua.a"
+    "lib/libcpkt_gssapi.a"
+    "lib/libcpkt_postgres.a"
+    "lib/libpq.a"
+    "lib/libpq-oauth.a"
+    "lib/libpgcommon_shlib.a"
+    "lib/libpgport.a"
+    "lib/libldap.a"
+    "lib/liblber.a"
+    "lib/liblutil.a"
+    "lib/libsasl2.a"
+    "lib/libgssapi_krb5.a"
+    "lib/libkrb5_k5tls.a"
+    "lib/krb5/plugins/tls/k5tls.so"
     "lib/cmake/Lua/LuaConfig.cmake"
     "lib/cmake/Lua/LuaConfigVersion.cmake"
     "lib/cmake/miniaudio/miniaudioConfig.cmake"
+    "lib/cmake/CpktGssapi/CpktGssapiConfig.cmake"
+    "lib/cmake/CpktGssapi/CpktGssapiConfigVersion.cmake"
     "lib/cmake/miniaudio/miniaudioConfigVersion.cmake"
     "lib/cmake/whisper/whisperConfig.cmake"
     "lib/cmake/whisper/whisperConfigVersion.cmake"
@@ -815,6 +1211,8 @@ foreach(_path
     "lib/cmake/CpktSus/CpktSusConfigVersion.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfig.cmake"
     "lib/cmake/CpktOpcUa/CpktOpcUaConfigVersion.cmake"
+    "lib/cmake/CpktPostgres/CpktPostgresConfig.cmake"
+    "lib/cmake/CpktPostgres/CpktPostgresConfigVersion.cmake"
     "lib/cmake/open62541/open62541Config.cmake"
     "lib/cmake/open62541/open62541ConfigVersion.cmake"
     "lib/pkgconfig/lua.pc"
@@ -826,13 +1224,20 @@ foreach(_path
     "lib/pkgconfig/cpkt-lua-runtime.pc"
     "lib/pkgconfig/cpkt-sus.pc"
     "lib/pkgconfig/cpkt-opcua.pc"
+    "lib/pkgconfig/cpkt-gssapi.pc"
+    "lib/pkgconfig/cpkt-postgres.pc"
     "lib/pkgconfig/open62541.pc"
     "share/c.pkt.systems/manifest.txt"
     "share/c.pkt.systems/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/LICENSE"
+    "share/doc/c.pkt.systems/THIRD_PARTY_NOTICES.md"
+    "share/doc/c.pkt.systems/docs/pdf-c89-facade.md"
     "share/doc/c.pkt.systems/README.md"
     "share/doc/c.pkt.systems/docs/audio-sus-facade-spec.md"
     "share/doc/c.pkt.systems/docs/opcua-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/docs/gssapi-c89-facade-spec.md"
+    "share/doc/c.pkt.systems/docs/openssl-c89-facade-surface.md"
+    "share/doc/c.pkt.systems/docs/postgres-c89-facade-spec.md"
     "share/doc/c.pkt.systems/docs/sus-model-catalog.tsv"
     "share/doc/c.pkt.systems/examples/abi_smoke.c"
     "share/doc/c.pkt.systems/examples/audio-sus-c89/CMakeLists.txt"
@@ -864,6 +1269,9 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/curl/LICENSE"
     "share/doc/c.pkt.systems/third_party/libssh2/LICENSE"
     "share/doc/c.pkt.systems/third_party/zlib/LICENSE"
+    "share/doc/c.pkt.systems/third_party/libpng/LICENSE"
+    "share/doc/c.pkt.systems/third_party/libharu/LICENSE"
+    "share/doc/c.pkt.systems/third_party/iodbc/LICENSE"
     "share/doc/c.pkt.systems/third_party/nghttp2/LICENSE"
     "share/doc/c.pkt.systems/third_party/libxml2/LICENSE"
     "share/doc/c.pkt.systems/third_party/lua/LICENSE"
@@ -873,10 +1281,48 @@ foreach(_path
     "share/doc/c.pkt.systems/third_party/kblab-whisper-models/PROVENANCE.md"
     "share/doc/c.pkt.systems/third_party/mqtt-c/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/LICENSE"
+    "share/doc/c.pkt.systems/third_party/opcua-formatter/LICENSE"
+    "share/doc/c.pkt.systems/third_party/mit-kerberos/LICENSE"
+    "share/doc/c.pkt.systems/third_party/cyrus-sasl/LICENSE"
+    "share/doc/c.pkt.systems/third_party/openldap/LICENSE"
+    "share/doc/c.pkt.systems/third_party/postgresql/LICENSE"
     "share/doc/c.pkt.systems/third_party/open62541/patches/series"
     "share/doc/c.pkt.systems/third_party/open62541/patches/0001-prefix-embedded-mqtt-c-symbols.patch"
-    "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch")
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0003-stub-posix-ethernet-when-packet-headers-are-missing.patch"
+    "share/doc/c.pkt.systems/third_party/open62541/patches/0004-link-bundled-openssl-crypto.patch")
   cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
+endforeach()
+
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_iodbc_shared_suffix ".dylib")
+else()
+  set(_cpkt_iodbc_shared_suffix ".so")
+endif()
+foreach(_cpkt_iodbc_component iodbc iodbcinst)
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/lib/lib${_cpkt_iodbc_component}${_cpkt_iodbc_shared_suffix}(\n|$)"
+    "iODBC shared ${_cpkt_iodbc_component}")
+endforeach()
+
+if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  set(_cpkt_pdf_shared_paths
+    "lib/libpng16.dylib"
+    "lib/libhpdf.dylib"
+    "lib/libcpkt_pdf.dylib"
+    "lib/libcpkt_pdf.${_manifest_pdf_abi_version}.dylib"
+    "lib/libcpkt_pdf.${CPKT_BUNDLE_VERSION}.dylib")
+else()
+  set(_cpkt_pdf_shared_paths
+    "lib/libpng16.so"
+    "lib/libhpdf.so"
+    "lib/libcpkt_pdf.so"
+    "lib/libcpkt_pdf.so.${_manifest_pdf_abi_version}"
+    "lib/libcpkt_pdf.so.${CPKT_BUNDLE_VERSION}")
+endif()
+foreach(_cpkt_pdf_shared_path IN LISTS _cpkt_pdf_shared_paths)
+  cpkt_assert_archive_contains(
+    "(^|\n)${_archive_stem_re}/${_cpkt_pdf_shared_path}(\n|$)"
+    "${_cpkt_pdf_shared_path}")
 endforeach()
 
 if(CPKT_TARGET_ID MATCHES "-linux-")
@@ -959,9 +1405,9 @@ if(NOT EXISTS "${_facade_header}")
 endif()
 file(READ "${_facade_header}" _facade_header_text)
 foreach(_forbidden_header_token
-    "lua.h"
-    "lauxlib.h"
-    "lualib.h"
+    "#include[ \\t]*<lua\\.h>"
+    "#include[ \\t]*<lauxlib\\.h>"
+    "#include[ \\t]*<lualib\\.h>"
     "lua_State"
     "lua_Integer"
     "lua_Number"
@@ -1033,33 +1479,87 @@ set(_opcua_facade_header "${_opcua_facade_header_extract_root}/${_archive_stem}/
 if(NOT EXISTS "${_opcua_facade_header}")
   message(FATAL_ERROR "missing OPC UA C89 facade header: ${_opcua_facade_header}")
 endif()
-file(READ "${_opcua_facade_header}" _opcua_facade_header_text)
-foreach(_forbidden_header_token
-    "open62541/"
-    "UA_Client"
-    "UA_Server"
-    "UA_StatusCode"
-    "UA_NodeId"
-    "UA_Variant"
-    "stdint\\.h"
-    "stdbool\\.h"
-    "uint8_t"
-    "uint16_t"
-    "uint32_t"
-    "uint64_t"
-    "int8_t"
-    "int16_t"
-    "int32_t"
-    "int64_t"
-    "long long"
-    "inline")
-  if(_opcua_facade_header_text MATCHES "${_forbidden_header_token}")
-    message(FATAL_ERROR "OPC UA C89 facade header contains forbidden token: ${_forbidden_header_token}")
-  endif()
+set(_opcua_contract_headers "${_opcua_facade_header}")
+foreach(_type_header IN ITEMS opcua_types.h opcua_types_base.h opcua_util.h opcua_callbacks.h opcua_constants.h opcua_plugins.h)
+  list(APPEND _opcua_contract_headers
+    "${_opcua_facade_header_extract_root}/${_archive_stem}/include/cpkt/${_type_header}")
 endforeach()
+find_program(_cpkt_header_contract_python NAMES python3 REQUIRED)
+execute_process(
+  COMMAND "${_cpkt_header_contract_python}"
+    "${CMAKE_CURRENT_LIST_DIR}/../tools/opcua/header_contract.py"
+    ${_opcua_contract_headers}
+  RESULT_VARIABLE _opcua_header_contract_result
+  OUTPUT_VARIABLE _opcua_header_contract_output
+  ERROR_VARIABLE _opcua_header_contract_error)
+if(NOT _opcua_header_contract_result EQUAL 0)
+  message(FATAL_ERROR "OPC UA C89 facade header contract failed: ${_opcua_header_contract_error}${_opcua_header_contract_output}")
+endif()
 file(REMOVE_RECURSE "${_opcua_facade_header_extract_root}")
 
+cpkt_extract_archive_for_assertions(_postgres_facade_header_extract_root)
+set(_postgres_facade_header "${_postgres_facade_header_extract_root}/${_archive_stem}/include/cpkt/postgres.h")
+if(NOT EXISTS "${_postgres_facade_header}")
+  message(FATAL_ERROR "missing PostgreSQL C89 facade header: ${_postgres_facade_header}")
+endif()
+file(READ "${_postgres_facade_header}" _postgres_facade_header_text)
+foreach(_forbidden_header_token
+    "libpq"
+    "postgres_ext"
+    "PGconn"
+    "PGresult"
+    "PGcancel"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint64_t"
+    "int64_t"
+    "long long"
+    "extern \\\"C\\\""
+    "inline")
+  if(_postgres_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "PostgreSQL C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_postgres_facade_header_extract_root}")
+
+cpkt_extract_archive_for_assertions(_gssapi_facade_header_extract_root)
+set(_gssapi_facade_header "${_gssapi_facade_header_extract_root}/${_archive_stem}/include/cpkt/gssapi.h")
+if(NOT EXISTS "${_gssapi_facade_header}")
+  message(FATAL_ERROR "missing GSSAPI C89 facade header: ${_gssapi_facade_header}")
+endif()
+file(READ "${_gssapi_facade_header}" _gssapi_facade_header_text)
+foreach(_forbidden_header_token
+    "gssapi/"
+    "stdint\\.h"
+    "stdbool\\.h"
+    "uint32_t"
+    "int32_t"
+    "long long"
+    "extern \\\"C\\\""
+    "inline")
+  if(_gssapi_facade_header_text MATCHES "${_forbidden_header_token}")
+    message(FATAL_ERROR "GSSAPI C89 facade header contains forbidden token: ${_forbidden_header_token}")
+  endif()
+endforeach()
+file(REMOVE_RECURSE "${_gssapi_facade_header_extract_root}")
+
 if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_openssl([^/]*)?\\.dylib$"
+    3
+    "OpenSSL C89 facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_nghttp2([^/]*)?\\.dylib$"
+    3
+    "nghttp2 C89 facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_libssh2([^/]*)?\\.dylib$"
+    3
+    "libssh2 C89 facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_lua(\\.[^/]*)?\\.dylib$"
+    3
+    "Lua C89 facade Darwin shared library entries")
   cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime([^/]*)?\\.dylib$"
     3
@@ -1076,6 +1576,14 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "^${_archive_stem_re}/lib/libcpkt_opcua([^/]*)?\\.dylib$"
     3
     "OPC UA facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_gssapi([^/]*)?\\.dylib$"
+    3
+    "GSSAPI facade Darwin shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_postgres([^/]*)?\\.dylib$"
+    3
+    "PostgreSQL facade Darwin shared library entries")
   foreach(_path
       "lib/libssl.dylib"
       "lib/libcrypto.dylib"
@@ -1096,6 +1604,21 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libopen62541.dylib"
       "lib/libopen62541.1.5.dylib"
       "lib/libopen62541.1.5.8.dylib"
+      "lib/libcpkt_openssl.dylib"
+      "lib/libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib"
+      "lib/libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_nghttp2.dylib"
+      "lib/libcpkt_nghttp2.${CPKT_NGHTTP2_ABI_VERSION}.dylib"
+      "lib/libcpkt_nghttp2.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_libssh2.dylib"
+      "lib/libcpkt_libssh2.${CPKT_LIBSSH2_ABI_VERSION}.dylib"
+      "lib/libcpkt_libssh2.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_lua.dylib"
+      "lib/libcpkt_lua.${CPKT_LUA_ABI_VERSION}.dylib"
+      "lib/libcpkt_lua.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_mqttc.dylib"
+      "lib/libcpkt_mqttc.${CPKT_MQTTC_ABI_VERSION}.dylib"
+      "lib/libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
       "lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
@@ -1104,10 +1627,51 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
       "lib/libcpktaudio.${CPKT_BUNDLE_VERSION}.dylib"
       "lib/libcpktsus.dylib"
       "lib/libcpktsus.${CPKT_SUS_ABI_VERSION}.dylib"
-      "lib/libcpktsus.${CPKT_BUNDLE_VERSION}.dylib")
+      "lib/libcpktsus.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_gssapi.dylib"
+      "lib/libcpkt_gssapi.${CPKT_GSSAPI_ABI_VERSION}.dylib"
+      "lib/libcpkt_gssapi.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libcpkt_sasl.dylib"
+      "lib/libcpkt_sasl.${CPKT_SASL_ABI_VERSION}.dylib"
+      "lib/libcpkt_sasl.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/sasl2/libgssapiv2.so"
+      "lib/sasl2/libgs2.so"
+      "lib/libcpkt_postgres.dylib"
+      "lib/libcpkt_postgres.${CPKT_POSTGRES_ABI_VERSION}.dylib"
+      "lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
+      "lib/libpq.5.dylib"
+      "lib/libpq-oauth-${_manifest_postgresql_major_version}.dylib")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_openssl.${CPKT_OPENSSL_ABI_VERSION}.dylib"
+    "libcpkt_openssl Darwin install name")
+  cpkt_assert_darwin_dylib_versions(
+    "${_assert_extract_root}/${_archive_stem}/lib/libsqlite3.0.dylib"
+    "@rpath/libsqlite3.0.dylib" "9.0.0" "9.6.0"
+    "SQLite Darwin dylib versions")
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libsqlite3.0.dylib"
+    "@rpath/libsqlite3.0.dylib"
+    "SQLite Darwin install name")
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_nghttp2.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_nghttp2.${CPKT_NGHTTP2_ABI_VERSION}.dylib"
+    "libcpkt_nghttp2 Darwin install name")
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_libssh2.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_libssh2.${CPKT_LIBSSH2_ABI_VERSION}.dylib"
+    "libcpkt_libssh2 Darwin install name")
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_lua.${CPKT_LUA_ABI_VERSION}.dylib"
+    "libcpkt_lua Darwin install name")
+  cpkt_assert_darwin_install_name(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib"
+    "@rpath/libcpkt_mqttc.${CPKT_MQTTC_ABI_VERSION}.dylib"
+    "libcpkt_mqttc Darwin install name")
   cpkt_assert_darwin_install_name(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.${CPKT_BUNDLE_VERSION}.dylib"
     "@rpath/libcpkt_lua_runtime.${CPKT_LUA_RUNTIME_ABI_VERSION}.dylib"
@@ -1116,8 +1680,29 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.1.1.2.dylib"
     "@rpath/libmqttc.1.dylib"
     "libmqttc Darwin install name")
-  file(GLOB _packaged_darwin_dylibs
-    "${_assert_extract_root}/${_archive_stem}/lib/*.dylib")
+  set(_krb5_real "${_assert_extract_root}/${_archive_stem}/lib/libkrb5.3.3.dylib")
+  set(_krb5_alias "${_assert_extract_root}/${_archive_stem}/lib/libkrb5.dylib")
+  if(NOT IS_SYMLINK "${_krb5_alias}")
+    message(FATAL_ERROR "Darwin libkrb5 alias must be a symlink to its canonical library")
+  endif()
+  file(READ_SYMLINK "${_krb5_alias}" _krb5_alias_target)
+  if(NOT _krb5_alias_target STREQUAL "libkrb5.3.3.dylib")
+    message(FATAL_ERROR "Darwin libkrb5 alias must point to libkrb5.3.3.dylib")
+  endif()
+  cpkt_assert_darwin_install_name(
+    "${_krb5_real}" "@rpath/libkrb5.3.3.dylib"
+    "canonical libkrb5 Darwin install name")
+  file(STRINGS
+    "${_assert_extract_root}/${_archive_stem}/lib/libpq.5.dylib"
+    _postgresql_oauth_loader_strings
+    REGEX "@loader_path/libpq-oauth-${_manifest_postgresql_major_version}[.]dylib")
+  if(NOT _postgresql_oauth_loader_strings)
+    message(FATAL_ERROR "Darwin libpq must load its private OAuth module beside the library")
+  endif()
+  file(GLOB_RECURSE _packaged_darwin_dylibs
+    "${_assert_extract_root}/${_archive_stem}/lib/*.dylib"
+    "${_assert_extract_root}/${_archive_stem}/lib/sasl2/*.so"
+    "${_assert_extract_root}/${_archive_stem}/lib/krb5/plugins/tls/*.so")
   foreach(_packaged_darwin_dylib IN LISTS _packaged_darwin_dylibs)
     if(IS_SYMLINK "${_packaged_darwin_dylib}")
       continue()
@@ -1126,9 +1711,73 @@ if(CPKT_TARGET_ID STREQUAL "arm64-apple-darwin")
     cpkt_assert_darwin_dylib_relocatable(
       "${_packaged_darwin_dylib}"
       "${_packaged_darwin_dylib_name}")
+    cpkt_assert_darwin_deployment_target(
+      "${_packaged_darwin_dylib}"
+      "${_manifest_macos_deployment_target}"
+      "${_packaged_darwin_dylib_name}")
   endforeach()
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_openssl.txt"
+    "libcpkt_openssl extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_nghttp2.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_nghttp2.txt"
+    "libcpkt_nghttp2 extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_libssh2.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_libssh2.txt"
+    "libcpkt_libssh2 extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_lua.txt"
+    "libcpkt_lua extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_mqttc.txt"
+    "libcpkt_mqttc extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_pdf.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_pdf.txt"
+    "libcpkt_pdf extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_gssapi.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_gssapi.txt"
+    "libcpkt_gssapi extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sasl.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sasl.txt"
+    "libcpkt_sasl extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_postgres.txt"
+    "libcpkt_postgres extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sqlite.${CPKT_BUNDLE_VERSION}.dylib"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sqlite.txt"
+    "libcpkt_sqlite extracted SDK ABI surface")
   file(REMOVE_RECURSE "${_assert_extract_root}")
 else()
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_openssl\\.so([^/]*)?$"
+    3
+    "OpenSSL C89 facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_nghttp2\\.so([^/]*)?$"
+    3
+    "nghttp2 C89 facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_libssh2\\.so([^/]*)?$"
+    3
+    "libssh2 C89 facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_lua\\.so([^/]*)?$"
+    3
+    "Lua C89 facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_mqttc\\.so([^/]*)?$"
+    3
+    "MQTT-C C89 facade Linux shared library entries")
   cpkt_assert_archive_exact_matches(
     "^${_archive_stem_re}/lib/libcpkt_lua_runtime\\.so([^/]*)?$"
     3
@@ -1145,6 +1794,14 @@ else()
     "^${_archive_stem_re}/lib/libcpkt_opcua\\.so([^/]*)?$"
     3
     "OPC UA facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_gssapi\\.so([^/]*)?$"
+    3
+    "GSSAPI facade Linux shared library entries")
+  cpkt_assert_archive_exact_matches(
+    "^${_archive_stem_re}/lib/libcpkt_postgres\\.so([^/]*)?$"
+    3
+    "PostgreSQL facade Linux shared library entries")
   foreach(_path
       "lib/libssl.so"
       "lib/libcrypto.so"
@@ -1180,6 +1837,21 @@ else()
       "lib/libopen62541.so"
       "lib/libopen62541.so.1.5"
       "lib/libopen62541.so.1.5.8"
+      "lib/libcpkt_openssl.so"
+      "lib/libcpkt_openssl.so.${CPKT_OPENSSL_ABI_VERSION}"
+      "lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_nghttp2.so"
+      "lib/libcpkt_nghttp2.so.${CPKT_NGHTTP2_ABI_VERSION}"
+      "lib/libcpkt_nghttp2.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_libssh2.so"
+      "lib/libcpkt_libssh2.so.${CPKT_LIBSSH2_ABI_VERSION}"
+      "lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_lua.so"
+      "lib/libcpkt_lua.so.${CPKT_LUA_ABI_VERSION}"
+      "lib/libcpkt_lua.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_mqttc.so"
+      "lib/libcpkt_mqttc.so.${CPKT_MQTTC_ABI_VERSION}"
+      "lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
       "lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
@@ -1188,7 +1860,20 @@ else()
       "lib/libcpktaudio.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpktsus.so"
       "lib/libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
-      "lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}")
+      "lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_gssapi.so"
+      "lib/libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}"
+      "lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_sasl.so"
+      "lib/libcpkt_sasl.so.${CPKT_SASL_ABI_VERSION}"
+      "lib/libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}"
+      "lib/sasl2/libgssapiv2.so"
+      "lib/sasl2/libgs2.so"
+      "lib/libcpkt_postgres.so"
+      "lib/libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"
+      "lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libpq.so.5.${_manifest_postgresql_major_version}"
+      "lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
     cpkt_assert_archive_contains("(^|\n)${_archive_stem_re}/${_path}(\n|$)" "${_path}")
   endforeach()
 
@@ -1200,6 +1885,13 @@ else()
       "${_legacy_open62541_path}")
   endforeach()
   cpkt_extract_archive_for_assertions(_assert_extract_root)
+  file(STRINGS
+    "${_assert_extract_root}/${_archive_stem}/lib/libpq.so.5.${_manifest_postgresql_major_version}"
+    _postgresql_oauth_loader_strings
+    REGEX "libpq-oauth-${_manifest_postgresql_major_version}[.]so")
+  if(NOT _postgresql_oauth_loader_strings)
+    message(FATAL_ERROR "Linux libpq must name its bundled private OAuth module")
+  endif()
   file(GLOB_RECURSE _elf_runtime_candidates
     LIST_DIRECTORIES FALSE
     "${_assert_extract_root}/${_archive_stem}/bin/*"
@@ -1224,18 +1916,66 @@ else()
       "lib/libcurl.so.4.8.0"
       "lib/libxml2.so.16.1.4"
       "lib/libmqttc.so.1.1.2"
+      "lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_nghttp2.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
+      "lib/libcpkt_lua.so.${CPKT_BUNDLE_VERSION}"
       "lib/libcpkt_lua_runtime.so"
       "lib/libcpktaudio.so"
       "lib/libcpktsus.so"
       "lib/libwhisper.so.1.9.4"
       "lib/libggml.so.0.23.0"
       "lib/libggml-base.so.0.23.0"
-      "lib/libggml-cpu.so.0.23.0")
+      "lib/libggml-cpu.so.0.23.0"
+      "lib/libpq.so.5.${_manifest_postgresql_major_version}"
+      "lib/libpq-oauth-${_manifest_postgresql_major_version}.so")
     cpkt_assert_elf_runpath(
       "${_assert_extract_root}/${_archive_stem}/${_runpath_library}"
       "\\$ORIGIN"
       "${_runpath_library}")
   endforeach()
+  foreach(_kerberos_library
+      "libgssapi_krb5.so.2"
+      "libkrb5.so.3"
+      "libk5crypto.so.3"
+      "libcom_err.so.3"
+      "libkrb5support.so.0")
+    cpkt_assert_elf_runpath(
+      "${_assert_extract_root}/${_archive_stem}/lib/${_kerberos_library}"
+      "\\$ORIGIN"
+      "${_kerberos_library} bundled sibling lookup")
+  endforeach()
+  cpkt_assert_elf_runpath(
+    "${_assert_extract_root}/${_archive_stem}/lib/krb5/plugins/tls/k5tls.so"
+    "\\$ORIGIN/../../.."
+    "Kerberos TLS module bundled sibling lookup")
+  foreach(_sasl_plugin IN ITEMS libgssapiv2.so libgs2.so)
+    cpkt_assert_elf_runpath(
+      "${_assert_extract_root}/${_archive_stem}/lib/sasl2/${_sasl_plugin}"
+      "\\$ORIGIN/.."
+      "${_sasl_plugin} bundled Kerberos lookup")
+  endforeach()
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_openssl.so.${CPKT_OPENSSL_ABI_VERSION}"
+    "libcpkt_openssl SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_nghttp2.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_nghttp2.so.${CPKT_NGHTTP2_ABI_VERSION}"
+    "libcpkt_nghttp2 SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_libssh2.so.${CPKT_LIBSSH2_ABI_VERSION}"
+    "libcpkt_libssh2 SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_lua.so.${CPKT_LUA_ABI_VERSION}"
+    "libcpkt_lua SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_mqttc.so.${CPKT_MQTTC_ABI_VERSION}"
+    "libcpkt_mqttc SONAME")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua_runtime.so.${CPKT_BUNDLE_VERSION}"
     "libcpkt_lua_runtime.so.${CPKT_LUA_RUNTIME_ABI_VERSION}"
@@ -1248,6 +1988,18 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "libcpktsus.so.${CPKT_SUS_ABI_VERSION}"
     "libcpktsus SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_gssapi.so.${CPKT_GSSAPI_ABI_VERSION}"
+    "libcpkt_gssapi SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_sasl.so.${CPKT_SASL_ABI_VERSION}"
+    "libcpkt_sasl SONAME")
+  cpkt_assert_elf_soname(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+    "libcpkt_postgres.so.${CPKT_POSTGRES_ABI_VERSION}"
+    "libcpkt_postgres SONAME")
   cpkt_assert_elf_lacks_needed(
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "libstdc\\+\\+\\.so[^]]*"
@@ -1268,6 +2020,50 @@ else()
     "${_assert_extract_root}/${_archive_stem}/lib/libcpktsus.so.${CPKT_BUNDLE_VERSION}"
     "^cpkt_sus_"
     "libcpktsus public ABI surface")
+  cpkt_assert_dynamic_exports_match(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+    "^cpkt_postgres_"
+    "libcpkt_postgres public ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_openssl.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_openssl.txt"
+    "libcpkt_openssl extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_nghttp2.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_nghttp2.txt"
+    "libcpkt_nghttp2 extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_libssh2.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_libssh2.txt"
+    "libcpkt_libssh2 extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_lua.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_lua.txt"
+    "libcpkt_lua extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_mqttc.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_mqttc.txt"
+    "libcpkt_mqttc extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_pdf.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_pdf.txt"
+    "libcpkt_pdf extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_gssapi.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_gssapi.txt"
+    "libcpkt_gssapi extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sasl.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sasl.txt"
+    "libcpkt_sasl extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_postgres.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_postgres.txt"
+    "libcpkt_postgres extracted SDK ABI surface")
+  cpkt_assert_dynamic_exports_equal(
+    "${_assert_extract_root}/${_archive_stem}/lib/libcpkt_sqlite.so.${CPKT_BUNDLE_VERSION}"
+    "${CMAKE_CURRENT_LIST_DIR}/exports/cpkt_sqlite.txt"
+    "libcpkt_sqlite extracted SDK ABI surface")
   cpkt_assert_elf_soname(
     "${_assert_extract_root}/${_archive_stem}/lib/libmqttc.so.1.1.2"
     "libmqttc.so.1"

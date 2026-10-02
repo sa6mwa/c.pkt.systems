@@ -30,7 +30,8 @@ bash "$repo_root/scripts/run-no-warnings.sh" \
   "clean command" \
   sh -c 'printf "%s\n" "clean output"' >/dev/null
 
-work_root=$(mktemp -d "${TMPDIR:-/tmp}/cpkt-no-warnings-test.XXXXXX")
+mkdir -p "$repo_root/build"
+work_root=$(mktemp -d "$repo_root/build/cpkt-no-warnings-test.XXXXXX")
 trap 'rm -rf "$work_root"' EXIT
 
 if bash "$repo_root/scripts/run-no-warnings.sh" \

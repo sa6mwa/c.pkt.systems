@@ -1,0 +1,77 @@
+--- a/src/server/ua_services_nodemanagement.c
++++ b/src/server/ua_services_nodemanagement.c
+@@ -2914,6 +2914,7 @@
+     /* Filter out the argument nodes */
+     UA_NodeId inputArgsId = UA_NODEID_NULL;
+     UA_NodeId outputArgsId = UA_NODEID_NULL;
++    UA_Boolean inputArgsOwned = false, outputArgsOwned = false;
+     const UA_QualifiedName inputArgsName = UA_QUALIFIEDNAME(0, "InputArguments");
+     const UA_QualifiedName outputArgsName = UA_QUALIFIEDNAME(0, "OutputArguments");
+     for(size_t i = 0; i < br.referencesSize; i++) {
+@@ -2938,6 +2939,7 @@
+         attr.arrayDimensionsSize = 1;
+         UA_Variant_setArray(&attr.value, (void *)(uintptr_t)inputArguments,
+                             inputArgumentsSize, &UA_TYPES[UA_TYPES_ARGUMENT]);
++        inputArgsOwned = true;
+         retval = addNode(server, UA_NODECLASS_VARIABLE, inputArgumentsRequestedNewNodeId,
+                          nodeId, hasproperty, UA_QUALIFIEDNAME(0, name),
+                          propertytype, &attr, &UA_TYPES[UA_TYPES_VARIABLEATTRIBUTES],
+@@ -2958,6 +2960,7 @@
+         attr.arrayDimensionsSize = 1;
+         UA_Variant_setArray(&attr.value, (void *)(uintptr_t)outputArguments,
+                             outputArgumentsSize, &UA_TYPES[UA_TYPES_ARGUMENT]);
++        outputArgsOwned = true;
+         retval = addNode(server, UA_NODECLASS_VARIABLE, outputArgumentsRequestedNewNodeId,
+                          nodeId, hasproperty, UA_QUALIFIEDNAME(0, name),
+                          propertytype, &attr, &UA_TYPES[UA_TYPES_VARIABLEATTRIBUTES],
+@@ -2976,18 +2979,31 @@
+         goto error;
+ 
+     if(inputArgumentsOutNewNodeId != NULL) {
+-        UA_NodeId_copy(&inputArgsId, inputArgumentsOutNewNodeId);
++        retval = UA_NodeId_copy(&inputArgsId, inputArgumentsOutNewNodeId);
++        if(retval != UA_STATUSCODE_GOOD)
++            goto error;
+     }
+     if(outputArgumentsOutNewNodeId != NULL) {
+-        UA_NodeId_copy(&outputArgsId, outputArgumentsOutNewNodeId);
+-    }
+-    UA_BrowseResult_clear(&br);
+-    return retval;
++        retval = UA_NodeId_copy(&outputArgsId, outputArgumentsOutNewNodeId);
++        if(retval != UA_STATUSCODE_GOOD)
++            goto error;
++    }
++    goto cleanup;
+ 
+ error:
+     deleteNode(server, nodeId, true);
+     deleteNode(server, inputArgsId, true);
+     deleteNode(server, outputArgsId, true);
++    if(inputArgumentsOutNewNodeId)
++        UA_NodeId_clear(inputArgumentsOutNewNodeId);
++    if(outputArgumentsOutNewNodeId)
++        UA_NodeId_clear(outputArgumentsOutNewNodeId);
++cleanup:
++    /* Browse results borrow IDs; newly created argument nodes return owned IDs. */
++    if(inputArgsOwned)
++        UA_NodeId_clear(&inputArgsId);
++    if(outputArgsOwned)
++        UA_NodeId_clear(&outputArgsId);
+     UA_BrowseResult_clear(&br);
+     return retval;
+ }
+--- a/src/server/ua_services_method.c
++++ b/src/server/ua_services_method.c
+@@ -234,8 +234,10 @@
+         outputArgsSize = outputArguments->valueSource.internal.value.value.arrayLength;
+     result->outputArguments = (UA_Variant*)
+         UA_Array_new(outputArgsSize+1, &UA_TYPES[UA_TYPES_VARIANT]);
+-    if(!result->outputArguments)
++    if(!result->outputArguments) {
++        UA_NODESTORE_RELEASE(server, (const UA_Node*)outputArguments);
+         return UA_STATUSCODE_BADOUTOFMEMORY;
++    }
+     result->outputArgumentsSize = outputArgsSize;
+ 
+     /* Release the output arguments node */

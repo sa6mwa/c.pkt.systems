@@ -9,6 +9,45 @@ endif()
 
 file(READ "${cmakelists_path}" cmakelists_text)
 
+# Keep the legacy configure probes usable without testing undefined macros in
+# consumers that enable -Wundef. Empty consumer definitions still evaluate to 0.
+foreach(zconf_name zconf.h zconf.h.in)
+  set(zconf_template_path "${CPKT_ZLIB_SOURCE_DIR}/${zconf_name}")
+  file(READ "${zconf_template_path}" zconf_template)
+  foreach(feature UNISTD STDARG)
+    set(legacy_probe "#if HAVE_${feature}_H-0     /* may be set to #if 1 by ./configure */\n#  define Z_HAVE_${feature}_H\n#endif")
+    set(guarded_probe "#ifdef HAVE_${feature}_H\n${legacy_probe}\n#endif")
+    string(FIND "${zconf_template}" "${guarded_probe}" guarded_position)
+    if(guarded_position EQUAL -1)
+      string(FIND "${zconf_template}" "${legacy_probe}" legacy_position)
+      if(legacy_position EQUAL -1)
+        message(FATAL_ERROR "zlib ${feature} header feature anchor is missing")
+      endif()
+      string(REPLACE "${legacy_probe}" "${guarded_probe}" zconf_template "${zconf_template}")
+    endif()
+  endforeach()
+  file(WRITE "${zconf_template_path}" "${zconf_template}")
+endforeach()
+
+# CMake's feature probes are private to zlib. Its installed header must not
+# redefine another project's generic HAVE_* macros (libssh2 uses empty ones).
+if(NOT cmakelists_text MATCHES "set\\(Z_HAVE_UNISTD_H")
+  string(REPLACE "#cmakedefine HAVE_STDARG_H 1" "#cmakedefine Z_HAVE_STDARG_H"
+    cmakelists_text "${cmakelists_text}")
+  string(REPLACE "#cmakedefine HAVE_UNISTD_H 1" "#cmakedefine Z_HAVE_UNISTD_H"
+    cmakelists_text "${cmakelists_text}")
+  set(zconf_configure [=[configure_file(${zlib_BINARY_DIR}/zconf.h.cmakein ${zlib_BINARY_DIR}/zconf.h)]=])
+  set(zconf_namespaced [=[set(Z_HAVE_STDARG_H ${HAVE_STDARG_H})
+set(Z_HAVE_UNISTD_H ${HAVE_UNISTD_H})
+configure_file(${zlib_BINARY_DIR}/zconf.h.cmakein ${zlib_BINARY_DIR}/zconf.h)]=])
+  string(FIND "${cmakelists_text}" "${zconf_configure}" zconf_position)
+  if(zconf_position EQUAL -1)
+    message(FATAL_ERROR "zlib configuration-header generation anchor is missing")
+  endif()
+  string(REPLACE "${zconf_configure}" "${zconf_namespaced}" cmakelists_text "${cmakelists_text}")
+  file(WRITE "${cmakelists_path}" "${cmakelists_text}")
+endif()
+
 if(cmakelists_text MATCHES "add_library\\(zlib_object OBJECT")
   return()
 endif()

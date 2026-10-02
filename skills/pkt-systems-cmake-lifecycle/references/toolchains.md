@@ -6,10 +6,11 @@ This lifecycle owns C and C++ compiler resolution for pkt.systems C/CMake projec
 
 - Every ordinary Linux build uses the pinned Bootlin GCC collection for its target. Its triple-prefixed `gcc`, `g++`, `ld`, `ar`, `ranlib`, `strip`, `nm`, `objcopy`, `objdump`, `addr2line`, `gdb`, and `readelf`, plus its sysroot libc and headers, are one inseparable collection.
 - Do not use `/usr/bin/cc`, `gcc`, `clang`, distro cross compilers, or unpinned compiler paths as a fallback. A cached Bootlin collection is the only Linux default.
-- `arm64-apple-darwin` remains local-osxcross-only. The lifecycle discovers a complete osxcross collection but must not download Apple SDKs or Darwin compiler collections.
+- `arm64-apple-darwin` uses a local, project-pinned osxcross collection. The lifecycle must not download Apple SDKs or Darwin compiler collections. Once that collection is ready, the lifecycle provisions its separately pinned, Linux-host `mig` helper as described below.
+- c.pkt.systems owns the pinned PureDarwin-derived Linux host `mig` and `migcom` build helpers. The resolver downloads and builds them into the shared toolchain cache when ensuring Darwin; neither helper is a workstation package-manager prerequisite or an SDK payload.
 - Native memory checking uses host-provided Valgrind against executables compiled by the selected Bootlin collection. It is a required gate on the native x86_64 Linux host, but it is not an MSan substitute. Never run Valgrind through cross-compilation, an emulator, or QEMU.
 - Native fuzzing uses a pinned cached AFL++ release built with the matching x86_64 Bootlin GCC plugin headers. AFL++ compiler wrappers must delegate to the selected Bootlin `gcc`/`g++`; never use host GCC or Clang for project targets. Never run fuzzing through cross-compilation, an emulator, or QEMU.
-- `clang-format` and `clangd` are host OS development-tool prerequisites only. They must not enter CMake compiler or linker discovery. `clangd` validation is a native development-host editor gate: register and run it only against the native host compile database. Cross-target CTest, package, and release configurations must not invoke it or rely on host `clangd` to emulate a target compiler or sysroot ABI; prove those targets through their selected compiler, supported target runner, and package verification gates.
+- LLVM/Clang is installed by the workstation operator outside all c.pkt.systems caches and artifacts. Host `clang`/`clang++` support osxcross; `clang-format` and `clangd` are native development tools. None may enter Linux CMake compiler or linker discovery. `clangd` validation is a native development-host editor gate: register and run it only against the native host compile database. Cross-target CTest, package, and release configurations must not invoke it or rely on host `clangd` to emulate a target compiler or sysroot ABI; prove those targets through their selected compiler, supported target runner, and package verification gates.
 
 ## Linux Targets
 
@@ -32,11 +33,18 @@ Default root:
 ${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}
 ```
 
-- `archives/` contains verified Bootlin and AFL++ source tarballs.
+- `archives/` contains verified Bootlin, AFL++, and host MIG source tarballs.
 - `roots/` contains extracted immutable compiler collections.
 - `locks/` contains per-collection advisory lock files. Provisioning must hold the matching lock from its post-lock readiness check through publication; a waiting process must recheck readiness and never remove a root another process has already published. Use host `flock` for these lifecycle cache locks, with `CPKT_TOOLCHAIN_LOCK_TIMEOUT` (default `600` seconds) as the bounded wait.
 
 The cache survives project cleans and is shared by all downstream pkt.systems projects. Do not create project-local compiler caches.
+
+Before a download, reuse any archive in `archives/` whose verified SHA-256
+matches the pin, even if its filename differs. A digest hit must make zero
+network requests. Ignore temporary/unpublished files; verify copied bytes before
+atomic publication under the requested name. Local copy/publication errors fail
+provisioning instead of falling back to downloading the same bytes. Bootlin,
+host MIG, and AFL++ share this rule through `scripts/cpkt-archive-cache.sh`.
 
 ## Provisioning
 
@@ -52,6 +60,222 @@ eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
 ```
 
 `ensure all` downloads the six Linux Bootlin collections and reports Darwin osxcross status. It never installs an Apple SDK. `discover` reports all resolved paths, including the selected compiler, linker, binutils, sysroot, static GNU C++ runtime archives, and source. `env` emits shell exports only; it does not modify login-shell files.
+
+## Development-machine provisioning
+
+Native macOS SDK builds that apply bundled dependency patches require GNU
+`patch`. Install Homebrew `gpatch` (`brew install gpatch`) and keep `gpatch` on
+`PATH`; the system BSD `patch` does not apply every bundled patch reliably.
+
+These instructions establish the complete Debian/Ubuntu Linux development
+workstation baseline used across pkt.systems Go work and C/CMake work. They
+are workstation prerequisites, not SDK contents and not release-artifact
+dependencies. They deliberately describe the required state rather than
+shipping or invoking a machine-provisioning script from this skill. Use the
+host package manager with explicit operator authorization where it needs
+`sudo`; do not embed package-manager actions in ordinary project builds.
+
+### Host packages
+
+Refresh apt metadata and install this complete baseline as one transaction:
+
+```sh
+sudo apt-get update
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  autoconf automake binutils bison bzip2 ca-certificates \
+  cmake cpio curl default-jre-headless flex \
+  fuse-overlayfs gawk git git-lfs help2man \
+  libbz2-dev libcairo2-dev liblzma-dev \
+  libssl-dev libtool libxml2-dev libx11-dev make \
+  ninja-build patch perl pkg-config podman python-is-python3 \
+  python3 python3-pip python3-venv qemu-user ripgrep slirp4netns texinfo \
+  uidmap unzip uuid-dev valgrind wget xar xz-utils zip zlib1g-dev
+```
+
+This baseline supplies build/Autotools tools, native quality tools, source and
+archive utilities, Java-based generators, containers with rootless networking,
+QEMU cross-target runners, and headers needed to build osxcross and common
+pkt.systems dependencies. Host tools are
+workstation support only; they must never enter Linux C/C++ compiler discovery.
+Provision the pinned Bootlin collections through the lifecycle resolver before
+configuring every pkt.systems Linux C/C++ build.
+
+The host `curl` command is used for downloads. c.pkt.systems builds libcurl
+from its pinned source and ships its headers and libraries in the SDK; its
+workstation baseline does not require host libcurl development files.
+
+`valgrind` is a host package prerequisite. Install LLVM/Clang separately as
+described below. Confirm the baseline host command surfaces before treating
+the workstation as ready:
+
+```sh
+command -v git cmake ninja podman qemu-aarch64 valgrind
+cmake --version
+```
+
+`cmake` must be at least 3.24 for pkt.systems components that require that
+version. On older Ubuntu releases, install a compatible CMake through the
+organization-approved host package source before continuing.
+
+### Host LLVM and Clang
+
+Install the latest **stable** upstream LLVM release on the development host,
+outside repositories and outside `${CPKT_TOOLCHAIN_CACHE}`. The host installation
+must supply `clang`, `clang++`, `clangd`, `clang-format`, and LLVM tools used by
+osxcross. Do not make c.pkt.systems download, extract, cache, wrap, or package
+LLVM/Clang. Distro packages may lag the upstream stable release; the unversioned
+apt.llvm.org version 23 packages are a development snapshot as of 2026-09-23.
+
+Before installation, check [LLVM's release page](https://llvm.org/) for the
+latest stable release and [its official Linux x86_64 archive](https://github.com/llvm/llvm-project/releases).
+As of 2026-09-23 this is `23.1.2`. For that release, the upstream archive is
+`LLVM-23.1.2-Linux-X64.tar.xz` and its published SHA-256 is
+`b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7`.
+Use the matching published checksum or signature when a newer stable release
+is selected; never reuse this checksum for another archive.
+
+For the current example, install manually in a host-controlled versioned path:
+
+```sh
+LLVM_RELEASE=23.1.2
+LLVM_ARCHIVE="LLVM-${LLVM_RELEASE}-Linux-X64.tar.xz"
+LLVM_ROOT="$HOME/.local/opt/LLVM-${LLVM_RELEASE}-Linux-X64"
+mkdir -p "$HOME/Downloads" "$HOME/.local/opt"
+curl -fL "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_RELEASE}/${LLVM_ARCHIVE}" \
+  -o "$HOME/Downloads/$LLVM_ARCHIVE"
+printf '%s  %s\n' \
+  b5ed9675149cc837c282e9b6962c276c9fa62863d5b2f91537b60848552995b7 \
+  "$HOME/Downloads/$LLVM_ARCHIVE" | sha256sum -c -
+if [ ! -e "$LLVM_ROOT" ]; then
+  tar -xf "$HOME/Downloads/$LLVM_ARCHIVE" -C "$HOME/.local/opt"
+fi
+export PATH="$LLVM_ROOT/bin:$PATH"
+export LD_LIBRARY_PATH="$LLVM_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+"$LLVM_ROOT/bin/clang" --version
+"$LLVM_ROOT/bin/clang++" --version
+"$LLVM_ROOT/bin/clangd" --version
+"$LLVM_ROOT/bin/clang-format" --version
+"$LLVM_ROOT/bin/llvm-config" --version
+```
+
+Stop if checksum verification fails; do not extract or use that archive. The
+selected version must appear in every version output. Check that
+`command -v clang` resolves under `LLVM_ROOT`, and check `ld64.lld` too if
+using osxcross's `llvm` build flavor. Keep these exports in the shell sessions
+that build or invoke osxcross; do not write LLVM paths into c.pkt.systems
+artifacts or use this host Clang to build Linux targets. Record the host LLVM
+version and installation path in workstation records. A newer stable release
+requires a new host installation and fresh verification, not an automatic
+c.pkt.systems cache update.
+
+Install Go independently using the version policy of the Go components being
+worked on. This baseline intentionally does not select, pin, or update Go.
+Rootless Podman is a host package prerequisite for local container-backed e2e. The lifecycle does not provision a container engine into the c.pkt.systems toolchain cache or SDK; follow [podman-kube-e2e.md](podman-kube-e2e.md) for the project service contract.
+
+### Developer identity and local source roots
+
+Perform source checkouts and cross-toolchain builds as the regular developer
+account, never as root. Seed the shared Git defaults for that account:
+
+```sh
+git config --global init.defaultBranch trunk
+git config --global log.showSignature true
+```
+
+The conventional non-repository locations are:
+
+| Purpose | Conventional location |
+| --- | --- |
+| osxcross source checkout | `$HOME/src/osxcross` |
+| osxcross arm64 collection | `$HOME/.local/cross/osxcross` |
+| c.pkt.systems immutable toolchain cache | `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}` |
+
+Keep these outside all source repositories. They may be overridden with
+workstation-local paths, but never written into source, generated packages, or
+release artifacts.
+
+### Darwin osxcross input and setup
+
+The Apple SDK is proprietary input supplied by the developer. Before Darwin
+provisioning, the developer must sign in to Apple Developer Downloads with an
+account entitled to obtain Xcode, download the approved Xcode archive manually,
+and place it at a local path they control. For the currently used SDK source,
+that archive is normally named `Xcode_26.4.1_Apple_silicon.xip`; accept an
+equivalent locally extracted Xcode/SDK only when its SDK version is the
+project-approved one.
+
+Never put that archive in a repository, a c.pkt.systems dependency cache, an
+SDK artifact, or a source archive. Do not place Apple credentials in scripts,
+environment files, or source. The former workstation helper's authenticated
+download pathway is not lifecycle policy: the developer supplies the Xcode
+input manually. If it is absent, stop with an actionable prerequisite naming
+the expected local archive or extracted SDK path. `xar`, `cpio`, `xz`, `bzip2`,
+`libxml2` development headers, OpenSSL development headers, Python, the host
+LLVM/Clang installation above, and the normal build tools are required to turn
+the approved local Xcode input into osxcross's packaged `MacOSX*.sdk` input.
+
+Provision osxcross as a regular developer user from a project-approved pinned
+source revision. Keep its source under `$HOME/src/osxcross`, record the exact
+revision and input SDK version in local workstation records, and publish only
+the generated collection to `$HOME/.local/cross/osxcross` (or the path named by
+`OSXCROSS_ROOT`). A moving `master` checkout is not a reproducible lifecycle
+toolchain.
+
+The provisioning sequence is:
+
+1. Clone or fast-forward the approved osxcross revision; do not overwrite a
+   non-checkout directory.
+2. Use osxcross's SDK packaging helper on the developer-supplied Xcode archive.
+   Place the resulting `MacOSX*.sdk.tar.{xz,bz2,gz}` package in the checkout's
+   `tarballs/` directory. Reuse a matching existing package when present.
+3. Build with the selected host LLVM `bin` first in `PATH`, and set
+   `CC="$LLVM_ROOT/bin/clang"` and `CXX="$LLVM_ROOT/bin/clang++"` in that
+   shell. The osxcross build defaults to host Clang when these variables are
+   unset; its `llvm` build flavor additionally requires `ld64.lld`. Build the
+   required architecture only. The current baseline is
+   `ENABLE_ARCHS=arm64` and `OSX_VERSION_MIN=11.0`; use the packaged SDK's
+   version as `SDK_VERSION`, set `UNATTENDED=1`, and set `TARGET_DIR` to the
+   osxcross collection path.
+4. Locate the generated `arm64-apple-darwin*-clang`, compile a trivial C
+   program, and use `file` to prove the result is a 64-bit arm64 Mach-O
+   executable. A compiler executable alone is not sufficient evidence that the
+   workstation has a usable Darwin SDK.
+5. Remove the original Xcode archive after successful SDK packaging unless the
+   developer explicitly needs to retain their locally controlled copy.
+
+The workstation must not configure a c.pkt.systems Darwin build until this
+Mach-O smoke check passes. Do not distribute osxcross, the SDK package, the
+Xcode archive, or their Apple license material with a c.pkt.systems SDK.
+
+After osxcross can produce a Darwin arm64 Mach-O smoke executable, inspect its
+installed compiler names. osxcross may install `arm64-apple-darwin25.4-clang`
+without an `arm64-apple-darwin25-clang` major version alias. The resolver
+selects the newest complete 25.x prefix by default. To pin a particular
+installed prefix, set `CPKT_OSXCROSS_HOST` before provisioning and CMake
+configuration; the example below shows an optional pin for a 25.4 toolchain.
+`bison` and `flex` from the host baseline are required to build MIG. Provision
+the host-side helper and verify the complete collection:
+
+```sh
+export OSXCROSS_ROOT="${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}"
+ls "$OSXCROSS_ROOT"/bin/arm64-apple-darwin*-clang
+# Optional repository pin: export CPKT_OSXCROSS_HOST=arm64-apple-darwin25.4
+scripts/cpkt-toolchains.sh ensure arm64-apple-darwin
+scripts/cpkt-toolchains.sh discover arm64-apple-darwin
+```
+
+`ensure arm64-apple-darwin` does not obtain Apple content. It uses the pinned
+x86_64 Linux GNU Bootlin collection to build the pinned PureDarwin-derived MIG
+as a static Linux host executable in the shared toolchain cache. `mig` invokes
+the local osxcross target compiler to preprocess Darwin definitions. It is
+build-only tooling: do not bundle it, its source, or its license in the SDK.
+Require `discover` to report `status=ready`, the osxcross compiler/binutils,
+`mig`, `migcom`, and the pinned `mig_revision` before configuring a Darwin
+build. Run the reported `migcom` path with `-version` and confirm it prints
+`cpkt-host-mig`; `file` should identify it as a static x86_64 Linux executable.
+Keep the selected `CPKT_OSXCROSS_HOST` in the shell used for Darwin configure,
+build, and package commands. A bare `mig` in `PATH` is not the readiness check:
+use the resolver-reported pinned paths.
 
 ## CMake Setup
 
@@ -142,6 +366,68 @@ endfunction()
 ```
 
 Keep this policy off Lua sources and known C99 dependency implementations that are deliberately hidden behind C89 facades. Add project-specific `-Werror` policy separately when required by the lifecycle quality gate.
+
+## C89 Large Text Asset Policy
+
+Do not work around C89's conservative source-line limits by splitting a
+production text payload across string arrays and concatenating, appending, or
+otherwise joining it at runtime. A shipped document, template, protocol body,
+query, generated source fragment, or other large logical text value must be
+available to production code as one already-contiguous byte sequence. Production
+code must not need an allocation, copy, `strcat`, `snprintf`, loop, or helper to
+assemble that logical value.
+
+Use this asset pipeline instead:
+
+1. Store the canonical text or document as a separately tracked file artifact.
+   Do not encode the payload as a hand-maintained C string literal.
+2. Use a CMake custom command or CMake-script generator to convert that file
+   into a build-tree `.inc` file containing only comma-separated `0xNN` byte
+   literals with no trailing comma: no declaration, braces, string literals, or
+   other wrapper. Make the source asset, generator, and generated `.inc` explicit
+   build dependencies of the consuming target. Read the asset as bytes: never
+   normalize encoding, line endings, or a final newline. Wrap generated physical
+   lines at 72 columns or fewer so the generated source is safely within
+   conservative C89 limits.
+   Generate to a unique temporary file beside the final output and atomically
+   rename it only after success; each asset/configuration needs its own output
+   path so a parallel build can never compile a partial or colliding `.inc`.
+3. Include that generated file directly in a single project-owned C89 array,
+   for example `static const unsigned char asset[] = {` followed by
+   `#include "generated/asset.inc"` and `};`. When the public or internal API
+   requires a C string, C-string mode is valid only when the canonical payload
+   contains no NUL byte and must append exactly one generated trailing `0x00`
+   after the byte-exact payload. Otherwise expose the array together with its
+   explicit byte length.
+4. Keep the generated array's storage lifetime sufficient for every consumer.
+   Do not replace it with a deferred reconstruction cache or an accessor that
+   materializes a combined string.
+5. Reject an empty canonical payload in raw-byte mode: a zero-length array is
+   not portable C89. C-string mode may represent an empty payload as the one
+   generated `0x00` terminator. Keep generated `.inc` files private to the
+   consuming implementation source; do not include them from public headers or
+   install them. An exception requires an intentional shipped-artifact contract.
+6. When the generated asset is needed to build shipped code, include its
+   canonical asset and generator in every source archive and release manifest.
+   Keep the build-tree `.inc` out of those payloads; an extracted source archive
+   must regenerate it successfully without files from the original checkout.
+
+The generator must preserve every canonical payload byte in order and produce
+deterministic output. Test the generated asset against the canonical file for
+exact payload length and content, preserve final-newline behavior, enforce the
+generated-line limit, and separately test the one-byte generated terminator and
+the no-NUL input rule when C-string mode applies. Test raw empty-payload
+rejection, empty C-string output, and a clean parallel build to prove the
+generator's dependency and atomic-publication contract. Extract the source
+archive and prove it regenerates the asset before compiling the consumer.
+Generate the same asset in two independent clean build trees and byte-compare
+the `.inc` outputs to prove reproducible generated source. Test code may use
+split literals or joins to construct fixtures, but that exemption never permits
+the production implementation or a shipped deliverable to require reconstruction.
+
+This rule does not prohibit an intentionally segmented product design, such as
+a streaming transport whose API deliberately exposes chunks. Such an exception
+must be explicit in the API and tests; it is not a line-length workaround.
 
 ## Static C++ Runtime Contract
 

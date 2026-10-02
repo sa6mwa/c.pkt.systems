@@ -1,0 +1,89 @@
+--- a/src/server/ua_nodes.c
++++ b/src/server/ua_nodes.c
+@@ -536,6 +536,12 @@
+     UA_NodeHead *dsthead = &dst->head;
+     if(srchead->nodeClass != dsthead->nodeClass)
+         return UA_STATUSCODE_BADINTERNALERROR;
++    if(src == dst)
++        return UA_STATUSCODE_GOOD;
++
++    /* The public copy contract resets destination-owned content. Preserve its
++     * allocation class, and never overwrite owned fields or references. */
++    UA_Node_clear(dst);
+ 
+     /* Copy standard content */
+     UA_StatusCode retval = UA_NodeId_copy(&srchead->nodeId, &dsthead->nodeId);
+--- a/plugins/crypto/ua_securitypolicy_filestore.c
++++ b/plugins/crypto/ua_securitypolicy_filestore.c
+@@ -73,6 +73,8 @@
+         return UA_STATUSCODE_BADINTERNALERROR;
+ 
+     UA_StatusCode retval = UA_STATUSCODE_GOOD;
++    char *thumbprintBuffer = NULL;
++    char *subjectNameBuffer = NULL;
+ 
+     UA_String thumbprint = UA_STRING_NULL;
+     thumbprint.length = 40;
+@@ -80,20 +82,36 @@
+ 
+     UA_String subjectName = UA_STRING_NULL;
+ 
+-    UA_CertificateUtils_getThumbprint((UA_ByteString*)(uintptr_t)certificate, &thumbprint);
+-    UA_CertificateUtils_getSubjectName((UA_ByteString*)(uintptr_t)certificate, &subjectName);
+-
+-    if((thumbprint.length + subjectName.length + 2) > fileNameLen) {
+-        UA_String_clear(&thumbprint);
+-        UA_String_clear(&subjectName);
+-        return UA_STATUSCODE_BADINTERNALERROR;
++    if(!thumbprint.data) {
++        retval = UA_STATUSCODE_BADOUTOFMEMORY;
++        goto cleanup;
+     }
+-
+-    char *thumbprintBuffer = (char*)UA_calloc(1, thumbprint.length + 1);
+-    char *subjectNameBuffer = (char*)UA_calloc(1, subjectName.length + 1);
+-
+-    memcpy(thumbprintBuffer, thumbprint.data, thumbprint.length);
+-    memcpy(subjectNameBuffer, subjectName.data, subjectName.length);
++    retval = UA_CertificateUtils_getThumbprint((UA_ByteString*)(uintptr_t)certificate,
++                                               &thumbprint);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++    retval = UA_CertificateUtils_getSubjectName((UA_ByteString*)(uintptr_t)certificate,
++                                                &subjectName);
++    if(retval != UA_STATUSCODE_GOOD)
++        goto cleanup;
++
++    /* Include both brackets and the terminating NUL without overflowing. */
++    if(fileNameLen < 3 || thumbprint.length > fileNameLen - 3 ||
++       subjectName.length > fileNameLen - 3 - thumbprint.length) {
++        retval = UA_STATUSCODE_BADINTERNALERROR;
++        goto cleanup;
++    }
++
++    thumbprintBuffer = (char*)UA_calloc(1, thumbprint.length + 1);
++    subjectNameBuffer = (char*)UA_calloc(1, subjectName.length + 1);
++    if(!thumbprintBuffer || !subjectNameBuffer) {
++        retval = UA_STATUSCODE_BADOUTOFMEMORY;
++        goto cleanup;
++    }
++    if(thumbprint.length)
++        memcpy(thumbprintBuffer, thumbprint.data, thumbprint.length);
++    if(subjectName.length)
++        memcpy(subjectNameBuffer, subjectName.data, subjectName.length);
+ 
+     char *subName = NULL;
+     char *substring = "CN=";
+@@ -118,9 +136,11 @@
+             *p = '_';
+     }
+ 
+-    if(mp_snprintf(fileNameBuf, fileNameLen, "%s[%s]", subName, thumbprintBuffer) < 0)
++    int written = mp_snprintf(fileNameBuf, fileNameLen, "%s[%s]", subName, thumbprintBuffer);
++    if(written < 0 || (size_t)written >= fileNameLen)
+         retval = UA_STATUSCODE_BADINTERNALERROR;
+ 
++cleanup:
+     UA_String_clear(&thumbprint);
+     UA_String_clear(&subjectName);
+     UA_free(thumbprintBuffer);

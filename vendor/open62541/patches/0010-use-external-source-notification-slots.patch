@@ -1,0 +1,46 @@
+--- a/src/server/ua_services_attribute.c
++++ b/src/server/ua_services_attribute.c
+@@ -185,8 +185,8 @@
+     UA_LOCK_ASSERT(&server->serviceMutex);
+ 
+     /* Update the value by the user callback */
+-    if(vn->valueSource.internal.notifications.onRead)
+-        vn->valueSource.internal.notifications.
++    if(vn->valueSource.external.notifications.onRead)
++        vn->valueSource.external.notifications.
+             onRead(server, session ? &session->sessionId : NULL,
+                    session ? session->context : NULL, &vn->head.nodeId,
+                    vn->head.context, rangeptr, *vn->valueSource.external.value);
+@@ -1536,11 +1536,14 @@
+             &node->valueSource.internal.value :
+             (UA_DataValue*)UA_atomic_load((void**)node->valueSource.external.value);
+         retval = writeInternalValueAttribute(oldValue, &adjustedValue, rangeptr);
+-        if(retval == UA_STATUSCODE_GOOD &&
+-           node->valueSource.internal.notifications.onWrite)
+-            node->valueSource.internal.notifications.
+-                onWrite(server, &session->sessionId, session->context,
+-                        &node->head.nodeId, node->head.context, rangeptr, &adjustedValue);
++        const UA_ValueSourceNotifications *notifications =
++            (node->valueSourceType == UA_VALUESOURCETYPE_INTERNAL) ?
++            &node->valueSource.internal.notifications :
++            &node->valueSource.external.notifications;
++        if(retval == UA_STATUSCODE_GOOD && notifications->onWrite)
++            notifications->onWrite(server, &session->sessionId, session->context,
++                                   &node->head.nodeId, node->head.context,
++                                   rangeptr, &adjustedValue);
+         break;
+     }
+     case UA_VALUESOURCETYPE_CALLBACK: {
+--- a/src/server/ua_nodes.c
++++ b/src/server/ua_nodes.c
+@@ -464,9 +464,7 @@
+     if(src->valueSourceType == UA_VALUESOURCETYPE_INTERNAL)
+         retval |= UA_DataValue_copy(&src->valueSource.internal.value,
+                                     &dst->valueSource.internal.value);
+-    else if(src->valueSourceType == UA_VALUESOURCETYPE_EXTERNAL)
+-        retval |= UA_DataValue_copy(*src->valueSource.external.value,
+-                                    &dst->valueSource.internal.value);
++    /* External source pointer slots remain borrowed in node copies. */
+     return retval;
+ }
+ 

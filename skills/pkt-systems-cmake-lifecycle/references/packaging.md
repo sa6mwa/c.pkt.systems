@@ -117,6 +117,11 @@ Package verification must:
 - Verify pkg-config consumers when pkg-config metadata is shipped.
 - Verify example builds from installed examples when examples are shipped.
 - Verify shared-library runpaths use relocatable paths and do not contain build roots.
+- Verify each extracted project-owned shared library, facade, plugin, and
+  module has exactly its source-controlled public dynamic-export set, using
+  target-correct symbol inspection. Also run the negative downstream fixture
+  that manually declares a known private sentinel and must fail to link.
+  Installed headers being free of private declarations is not sufficient.
 - Verify every shipped ELF executable and shared object that has runtime library lookup metadata uses `$ORIGIN`-relative RPATH/RUNPATH only.
 - Verify no shipped Mach-O dynamic library or executable contains local build paths in install names or dependency paths; project-owned Darwin install names should be `@rpath`-relative.
 - Verify no shipped Mach-O dynamic library, module, or executable contains non-system absolute dependency paths such as `/lib`, `/usr/local`, build roots, dependency cache roots, source roots, temporary directories, or home directories. `/usr/lib` and `/System/Library` are the normal allowed absolute system locations.
@@ -203,6 +208,8 @@ Source archives must be staged from an explicit manifest, not from an unfiltered
 Source archive staging must write `RELEASE_MANIFEST` into the staged tree. In a git worktree, derive it from tracked, non-ignored files and add only deliberate generated release files such as source-archive `VERSION` and `RELEASE_MANIFEST`. `/VERSION` remains ignored in the repository and must not be treated as tracked release metadata. Outside git, require an existing release manifest instead of copying the whole tree.
 
 Source archive verification must extract the tarball to a generated temporary directory, configure from the extracted tree, build, run the local tests that do not require unavailable external services, and verify the configured version, generated version header, CMake package metadata, pkg-config metadata, and archive `VERSION` agree. When the source archive is produced from a git worktree, verify the archive payload exactly matches the tracked non-ignored release manifest plus deliberate generated release files.
+
+Binary `package-verify` validates already-produced binary artifacts and their checksum manifest; it must never trigger source-archive reconstruction. Keep source-archive extraction, configure, build, and test behind an explicit `package-source-smoke` step that runs only in the final clean `make release` gate after all binary packages are available.
 
 Source archives may carry release scripts and deterministic fixtures needed to rebuild and test the source package. They must not carry generated dependency archives, local `.env` files, package-manager state, service volumes, VCS metadata, or private review notes unless explicitly part of a public source distribution.
 

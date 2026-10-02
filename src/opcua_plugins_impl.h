@@ -1,0 +1,245 @@
+/* Private public-plugin bridge, included by the type converter's C TU. */
+#include <open62541/plugin/accesscontrol.h>
+#include <open62541/plugin/historydatabase.h>
+static void cpkt_cfg_bind_server_owner(cpkt_opcua_server *, UA_Server *);
+static UA_ServerConfig *cpkt_cfg_server_native(cpkt_opcua_server *);
+static void cpkt_cfg_view_ac_clear(cpkt_opcua_AccessControl *);
+static void cpkt_cfg_view_hdb_clear(cpkt_opcua_HistoryDatabase *);
+static int cpkt_cfg_global_is_view(const cpkt_opcua_GlobalNodeLifecycle *);
+typedef struct {
+  cpkt_opcua_server *owner;
+  cpkt_opcua_AccessControl plugin;
+} cpkt_ac_bridge;
+typedef struct {
+  cpkt_opcua_server *owner;
+  cpkt_opcua_HistoryDatabase plugin;
+} cpkt_hdb_bridge;
+#include <open62541/plugin/historydata/history_data_backend.h>
+#include <open62541/plugin/historydata/history_data_backend_memory.h>
+#include <open62541/plugin/historydata/history_data_gathering_default.h>
+#include <open62541/plugin/historydata/history_database_default.h>
+/* An opaque history value denotes the actual public native DataValue object.
+ * Owned allocations and const borrowed values use the same handle without a
+ * snapshot, cache or incompatible struct access. Only owned handles may be
+ * set/freed; const handles from stock backends retain native lifetimes. */
+static UA_DataValue *cpkt_history_native(cpkt_opcua_history_value *stored) {
+  return (UA_DataValue *)(void *)stored;
+}
+static const UA_DataValue *
+cpkt_history_native_const(const cpkt_opcua_history_value *stored) {
+  return (const UA_DataValue *)(const void *)stored;
+}
+typedef struct {
+  UA_HistoryDataBackend native;
+} cpkt_stock_hb;
+/* Optional session ids may be NULL; byte payloads borrow through the call. */
+static int cpkt_stock_node_valid(const cpkt_opcua_NodeId *node) {
+  const cpkt_opcua_String *bytes;
+  if (!node)
+    return 1;
+  switch (node->identifierType) {
+  case CPKT_OPCUA_NODEIDTYPE_NUMERIC:
+  case CPKT_OPCUA_NODEIDTYPE_GUID:
+    return 1;
+  case CPKT_OPCUA_NODEIDTYPE_STRING:
+    bytes = &node->identifier.string;
+    break;
+  case CPKT_OPCUA_NODEIDTYPE_BYTESTRING:
+    bytes = &node->identifier.byteString;
+    break;
+  default:
+    return 0;
+  }
+  return !bytes->length ||
+         (bytes->data && bytes->data != CPKT_OPCUA_EMPTY_ARRAY_SENTINEL);
+}
+/* The node borrows this pointer slot, not a converted snapshot. Storage and
+ * the slot are independently caller-owned and must outlive every native use. */
+struct cpkt_opcua_external_value {
+  UA_DataValue *native;
+  cpkt_opcua_history_value *selected;
+};
+typedef struct cpkt_hb_bridge cpkt_hb_bridge;
+struct cpkt_hb_bridge {
+  cpkt_opcua_server *owner;
+  cpkt_opcua_HistoryDataBackend plugin;
+  UA_NodeId node;
+  cpkt_hb_bridge *next;
+};
+/* Stock circular reads inspect their native storage context directly. The
+ * synchronous callback dispatch travels in sessionContext and restores the
+ * user's original session context before entering each facade callback. */
+typedef struct {
+  cpkt_hb_bridge forwarded;
+  void *session_context;
+} cpkt_stock_hb_dispatch;
+typedef struct {
+  cpkt_opcua_server *owner;
+  cpkt_opcua_HistoryDataGathering plugin;
+} cpkt_hg_bridge;
+typedef struct {
+  UA_HistoryDataGathering native;
+  cpkt_hb_bridge *bindings;
+} cpkt_stock_hg;
+typedef struct {
+  UA_HistoryDatabase native;
+  cpkt_hg_bridge *gathering;
+} cpkt_stock_hdb;
+static UA_StatusCode cpkt_stock_hg_setting(
+    cpkt_stock_hg *, cpkt_opcua_server *, const cpkt_opcua_NodeId *,
+    const cpkt_opcua_HistorizingNodeIdSettings *, int, UA_Boolean *);
+static void cpkt_history_settings_backend_delete(UA_HistoryDataBackend *);
+static UA_StatusCode
+cpkt_history_settings_load(const UA_HistorizingNodeIdSettings *,
+                           cpkt_opcua_HistorizingNodeIdSettings *);
+static const UA_HistorizingNodeIdSettings *
+cpkt_history_settings_borrow(const cpkt_opcua_history_settings *,
+                             cpkt_opcua_server *);
+typedef struct cpkt_gather_bridge cpkt_gather_bridge;
+struct cpkt_gather_bridge {
+  cpkt_opcua_server *owner;
+  UA_HistoryDataGathering native;
+  cpkt_hb_bridge *backends;
+  int polling_started;
+  int prepared_delete;
+};
+/* NodeIds have no 64-bit members. Borrow bytes instead of allocating in the
+ * pointer-return hook, where there is no status channel for allocation failure.
+ */
+static void cpkt_hb_borrow_node(const UA_NodeId *native,
+                                cpkt_opcua_NodeId *value) {
+  memset(value, 0, sizeof(*value));
+  value->namespaceIndex = native->namespaceIndex;
+  value->identifierType = (cpkt_opcua_NodeIdType)native->identifierType;
+  switch (native->identifierType) {
+  case UA_NODEIDTYPE_NUMERIC:
+    value->identifier.numeric = native->identifier.numeric;
+    break;
+  case UA_NODEIDTYPE_GUID:
+    memcpy(&value->identifier.guid, &native->identifier.guid,
+           sizeof(value->identifier.guid));
+    break;
+  case UA_NODEIDTYPE_STRING:
+    value->identifier.string.length = native->identifier.string.length;
+    value->identifier.string.data = native->identifier.string.data;
+    break;
+  case UA_NODEIDTYPE_BYTESTRING:
+    value->identifier.byteString.length = native->identifier.byteString.length;
+    value->identifier.byteString.data = native->identifier.byteString.data;
+    break;
+  }
+}
+/* clang-format off */
+#include "opcua_nodes_impl.h"
+#include "opcua_producers_impl.h"
+#include "opcua_creation_impl.h"
+#include "opcua_security_impl.h"
+#include "opcua_pubsub_internal.h"
+#include "opcua_plugins_metadata.inc"
+#include "opcua_pubsub_impl.h"
+#include "opcua_nodes_install_impl.h"
+#include "opcua_producers_install_impl.h"
+/* clang-format on */
+static void cpkt_ac_clear(UA_AccessControl *native) {
+  cpkt_ac_bridge *bridge = (cpkt_ac_bridge *)native->context;
+  cpkt_opcua_UserTokenPolicy *policies = bridge->plugin.userTokenPolicies;
+  size_t count = bridge->plugin.userTokenPoliciesSize;
+  if (bridge->plugin.clear)
+    bridge->plugin.clear(&bridge->plugin);
+  cpkt_opcua_array_delete(policies, count,
+                          &cpkt_types[CPKT_OPCUA_TYPES_USERTOKENPOLICY]);
+  UA_Array_delete(native->userTokenPolicies, native->userTokenPoliciesSize,
+                  cpkt_types[CPKT_OPCUA_TYPES_USERTOKENPOLICY].native);
+  memset(native, 0, sizeof(*native));
+  UA_free(bridge);
+}
+static UA_StatusCode cpkt_ac_install(UA_AccessControl *destination,
+                                     cpkt_opcua_server *server,
+                                     const cpkt_opcua_AccessControl *plugin) {
+  cpkt_ac_bridge *bridge;
+  UA_AccessControl native;
+  UA_StatusCode status;
+  void *policies = NULL;
+  void *native_policies = NULL;
+  if (!server || !plugin || plugin->clear == cpkt_cfg_view_ac_clear ||
+      !plugin->activateSession || !plugin->getUserRightsMask ||
+      !plugin->getUserAccessLevel || !plugin->getUserExecutable ||
+      !plugin->getUserExecutableOnObject)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  bridge = (cpkt_ac_bridge *)UA_calloc(1, sizeof(*bridge));
+  if (!bridge)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  status = cpkt_opcua_array_copy(plugin->userTokenPolicies,
+                                 plugin->userTokenPoliciesSize, &policies,
+                                 &cpkt_types[CPKT_OPCUA_TYPES_USERTOKENPOLICY]);
+  if (!status)
+    status = cpkt_array(plugin->userTokenPolicies,
+                        plugin->userTokenPoliciesSize, &native_policies,
+                        &cpkt_types[CPKT_OPCUA_TYPES_USERTOKENPOLICY], 1, 0);
+  if (status) {
+    cpkt_opcua_array_delete(policies, plugin->userTokenPoliciesSize,
+                            &cpkt_types[CPKT_OPCUA_TYPES_USERTOKENPOLICY]);
+    if (native_policies)
+      UA_Array_delete(native_policies, plugin->userTokenPoliciesSize,
+                      cpkt_types[CPKT_OPCUA_TYPES_USERTOKENPOLICY].native);
+    UA_free(bridge);
+    return status;
+  }
+  bridge->owner = server;
+  bridge->plugin = *plugin;
+  bridge->plugin.userTokenPolicies = (cpkt_opcua_UserTokenPolicy *)policies;
+  cpkt_ac_assign(&native, plugin);
+  native.context = bridge;
+  native.clear = cpkt_ac_clear;
+  native.userTokenPoliciesSize = plugin->userTokenPoliciesSize;
+  native.userTokenPolicies = (UA_UserTokenPolicy *)native_policies;
+  if (destination->clear)
+    destination->clear(destination);
+  *destination = native;
+  return 0;
+}
+/** Installs the generated C89 access-control plugin before server startup. */
+cpkt_opcua_StatusCode cpkt_opcua_server_set_access_control_plugin(
+    cpkt_opcua_server *server, const cpkt_opcua_AccessControl *plugin) {
+  if (!server || !server->server || server->destroying || server->started)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  return cpkt_ac_install(&UA_Server_getConfig(server->server)->accessControl,
+                         server, plugin);
+}
+static void cpkt_hdb_clear(UA_HistoryDatabase *native) {
+  cpkt_hdb_bridge *bridge = (cpkt_hdb_bridge *)native->context;
+  if (bridge->plugin.clear)
+    bridge->plugin.clear(&bridge->plugin);
+  memset(native, 0, sizeof(*native));
+  UA_free(bridge);
+}
+static UA_StatusCode
+cpkt_hdb_install(UA_HistoryDatabase *destination, cpkt_opcua_server *server,
+                 const cpkt_opcua_HistoryDatabase *plugin) {
+  cpkt_hdb_bridge *bridge;
+  UA_HistoryDatabase native;
+  if (!server || !plugin || plugin->clear == cpkt_cfg_view_hdb_clear)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  bridge = (cpkt_hdb_bridge *)UA_calloc(1, sizeof(*bridge));
+  if (!bridge)
+    return UA_STATUSCODE_BADOUTOFMEMORY;
+  bridge->owner = server;
+  bridge->plugin = *plugin;
+  cpkt_hdb_assign(&native, plugin);
+  native.context = bridge;
+  native.clear = cpkt_hdb_clear;
+  if (destination->clear)
+    destination->clear(destination);
+  *destination = native;
+  return 0;
+}
+/** Installs the full C89 history plugin using generated native trampolines. */
+cpkt_opcua_StatusCode cpkt_opcua_server_set_history_database_plugin(
+    cpkt_opcua_server *server, const cpkt_opcua_HistoryDatabase *plugin) {
+  if (!server || !server->server || server->destroying || server->started)
+    return UA_STATUSCODE_BADINVALIDARGUMENT;
+  return cpkt_hdb_install(&UA_Server_getConfig(server->server)->historyDatabase,
+                          server, plugin);
+}
+
+#include "opcua_history_impl.h"
