@@ -618,12 +618,17 @@ CPKT_OPENSSL_API int cpkt_openssl_SSL_stream_reset(
 CPKT_OPENSSL_API int cpkt_openssl_SSL_get_conn_close_info(
     SSL *ssl, cpkt_openssl_ssl_conn_close_info *information_out,
     size_t information_length);
-/** C89 adapter for BIO_recvmmsg. */
+/** C89 adapter for BIO_recvmmsg. A zero message count ignores message storage
+ * and stride and still invokes the native BIO, including its callbacks and
+ * errors. processed_out must be non-NULL, as required by upstream. For a
+ * nonempty batch, invalid storage/stride or span overflow returns zero before
+ * native dispatch, leaving processed_out unchanged. */
 CPKT_OPENSSL_API int
 cpkt_openssl_BIO_recvmmsg(BIO *bio, cpkt_openssl_bio_message *messages,
                           size_t message_stride, size_t message_count,
                           cpkt_openssl_u64 flags, size_t *processed_out);
-/** C89 adapter for BIO_sendmmsg. */
+/** C89 adapter for BIO_sendmmsg. Same empty-batch, output-count and nonempty
+ * storage-validation contract as cpkt_openssl_BIO_recvmmsg. */
 CPKT_OPENSSL_API int
 cpkt_openssl_BIO_sendmmsg(BIO *bio, cpkt_openssl_bio_message *messages,
                           size_t message_stride, size_t message_count,
@@ -704,7 +709,13 @@ CPKT_OPENSSL_API int cpkt_openssl_SSL_get_wpoll_descriptor(
 /** C89 replacement for the SSL_as_poll_descriptor inline helper. */
 CPKT_OPENSSL_API void cpkt_openssl_SSL_as_poll_descriptor(
     SSL *ssl, cpkt_openssl_poll_descriptor *descriptor_out);
-/** C89 adapter for SSL_poll. */
+/** C89 adapter for SSL_poll. A zero item count ignores items and item_stride;
+ * upstream waits for a supplied finite timeout, or returns immediately for
+ * NULL timeout, and writes zero to an optional result_count_out. Nonempty
+ * arrays require valid storage and a stride at least sizeof(*items); stride
+ * span overflow is rejected. Facade validation failures return zero before
+ * native dispatch and leave result_count_out unchanged. Native errors and
+ * returned readiness events are preserved. */
 CPKT_OPENSSL_API int
 cpkt_openssl_SSL_poll(cpkt_openssl_ssl_poll_item *items, size_t item_count,
                       size_t item_stride, const struct timeval *timeout,

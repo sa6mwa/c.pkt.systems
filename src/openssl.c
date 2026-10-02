@@ -212,6 +212,13 @@ static void cpkt_openssl_copy_poll_descriptor_from_native(
   }
 }
 
+/* Bound both the native allocation and the caller's strided record span. */
+static int cpkt_openssl_record_span_valid(size_t count, size_t stride,
+                                          size_t element_size) {
+  return count == 0 || (stride >= element_size &&
+                        count - 1 <= (SIZE_MAX - element_size) / stride);
+}
+
 static int
 cpkt_openssl_copy_poll_items_to_native(SSL_POLL_ITEM *native_items,
                                        const cpkt_openssl_ssl_poll_item *items,
@@ -309,10 +316,12 @@ cpkt_openssl_bio_mmsg_callback_invoke(BIO *bio, BIO_MSG *native_messages,
   cpkt_openssl_bio_message *public_messages;
   int result;
 
-  if (bio == NULL || native_messages == NULL ||
-      native_stride < sizeof(*native_messages) ||
+  if (bio == NULL ||
       (message_count != 0 &&
-       message_count > SIZE_MAX / sizeof(*public_messages))) {
+       (native_messages == NULL ||
+        !cpkt_openssl_record_span_valid(message_count, native_stride,
+                                        sizeof(*native_messages)) ||
+        message_count > SIZE_MAX / sizeof(*public_messages)))) {
     return 0;
   }
   facade_bio = (cpkt_openssl_bio *)BIO_get_callback_arg(bio);
@@ -372,9 +381,11 @@ static int cpkt_openssl_bio_callback_mmsg_args(
     return -1;
   }
   native_args = (const BIO_MMSG_CB_ARGS *)(const void *)argument;
-  if (native_args->msg == NULL ||
-      native_args->stride < sizeof(*native_args->msg) ||
-      (native_args->num_msg != 0 &&
+  if (native_args->num_msg != 0 &&
+      (native_args->msg == NULL ||
+       !cpkt_openssl_record_span_valid(native_args->num_msg,
+                                       native_args->stride,
+                                       sizeof(*native_args->msg)) ||
        native_args->num_msg > SIZE_MAX / sizeof(*public_messages))) {
     return -1;
   }
@@ -1572,9 +1583,13 @@ int cpkt_openssl_BIO_recvmmsg(BIO *bio, cpkt_openssl_bio_message *messages,
   BIO_MSG *native_messages;
   int result;
 
-  if (messages == NULL || message_stride < sizeof(*messages) ||
-      (message_count != 0 &&
-       message_count > SIZE_MAX / sizeof(*native_messages))) {
+  if (message_count == 0)
+    return BIO_recvmmsg(bio, NULL, sizeof(*native_messages), 0,
+                        cpkt_openssl_native_u64(flags), processed_out);
+  if (messages == NULL ||
+      !cpkt_openssl_record_span_valid(message_count, message_stride,
+                                      sizeof(*messages)) ||
+      message_count > SIZE_MAX / sizeof(*native_messages)) {
     return 0;
   }
   native_messages = (BIO_MSG *)calloc(message_count, sizeof(*native_messages));
@@ -1601,9 +1616,13 @@ int cpkt_openssl_BIO_sendmmsg(BIO *bio, cpkt_openssl_bio_message *messages,
   BIO_MSG *native_messages;
   int result;
 
-  if (messages == NULL || message_stride < sizeof(*messages) ||
-      (message_count != 0 &&
-       message_count > SIZE_MAX / sizeof(*native_messages))) {
+  if (message_count == 0)
+    return BIO_sendmmsg(bio, NULL, sizeof(*native_messages), 0,
+                        cpkt_openssl_native_u64(flags), processed_out);
+  if (messages == NULL ||
+      !cpkt_openssl_record_span_valid(message_count, message_stride,
+                                      sizeof(*messages)) ||
+      message_count > SIZE_MAX / sizeof(*native_messages)) {
     return 0;
   }
   native_messages = (BIO_MSG *)calloc(message_count, sizeof(*native_messages));
@@ -1980,8 +1999,13 @@ int cpkt_openssl_SSL_poll(cpkt_openssl_ssl_poll_item *items, size_t item_count,
   SSL_POLL_ITEM *native_items;
   int result;
 
-  if (items == NULL || item_stride < sizeof(*items) ||
-      (item_count != 0 && item_count > SIZE_MAX / sizeof(*native_items))) {
+  if (item_count == 0)
+    return SSL_poll(NULL, 0, 0, timeout, cpkt_openssl_native_u64(flags),
+                    result_count_out);
+  if (items == NULL ||
+      !cpkt_openssl_record_span_valid(item_count, item_stride,
+                                      sizeof(*items)) ||
+      item_count > SIZE_MAX / sizeof(*native_items)) {
     return 0;
   }
   native_items = (SSL_POLL_ITEM *)calloc(item_count, sizeof(*native_items));

@@ -23,6 +23,26 @@ returns. Pointer fields remain borrowed; replacement buffers and addresses
 must survive the operation and any subsequent caller use. The facade converts
 only message metadata; it does not copy or stage payload buffers.
 
+`cpkt_openssl_SSL_poll()` preserves native empty-set behavior: with zero
+items, the pointer and stride are unused, a finite timeout is honored, a NULL
+timeout returns immediately, and the optional result count becomes zero.
+Empty `cpkt_openssl_BIO_sendmmsg()` and `cpkt_openssl_BIO_recvmmsg()` calls
+still dispatch through the native BIO, so its method, callbacks, errors and
+processed count remain observable. Their processed-count pointer is required
+by upstream. Nonempty record spans are checked for pointer, minimum stride,
+allocation overflow and stride-span overflow before conversion. Facade
+validation failure leaves the caller's count unchanged.
+
+Static and shared strict-C89 record-boundary tests compare these operations
+with bundled OpenSSL directly. They cover empty pointer/stride combinations,
+NULL and finite timeouts, optional poll counts, high-word flags, padded records,
+partial error output, unsupported descriptors, native error queues, empty
+batch callback delivery/rejection, legacy and extended pre/post callback
+dispatch through native and facade entry points, callback count edits, and
+malformed nonempty spans through both public and callback boundaries. They run in
+the ordinary CTest, Valgrind and cross-target release suites and native Darwin
+CI. This covers facade behavior; it does not retest upstream's QUIC protocol.
+
 The authoritative function inventory is target-specific and is derived from
 OpenSSL's pinned `util/libcrypto.num` and `util/libssl.num` files. An entry
 marked `EXIST::FUNCTION` belongs to the nominal public ABI. The target's

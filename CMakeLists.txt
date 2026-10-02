@@ -1798,6 +1798,26 @@ if(CPKT_BUILD_TESTS)
     target_link_libraries(cpkt_openssl_bio_lifecycle_${_cpkt_bio_linkage}_test PRIVATE
       cpkt_openssl_${_cpkt_bio_linkage})
   endforeach()
+  foreach(_cpkt_record_linkage IN ITEMS static shared)
+    add_executable(cpkt_openssl_record_boundary_${_cpkt_record_linkage}_test
+      tests/openssl_record_boundary_test.c)
+    cpkt_use_local_runtime(cpkt_openssl_record_boundary_${_cpkt_record_linkage}_test
+      cpkt::openssl_ssl_shared cpkt::openssl_crypto_shared)
+    cpkt_configure_c89_target(cpkt_openssl_record_boundary_${_cpkt_record_linkage}_test)
+    cpkt_add_repo_warning_errors(cpkt_openssl_record_boundary_${_cpkt_record_linkage}_test)
+    target_link_libraries(cpkt_openssl_record_boundary_${_cpkt_record_linkage}_test PRIVATE
+      cpkt_openssl_${_cpkt_record_linkage})
+    if(CPKT_CAN_RUN_TARGET_EXECUTABLES)
+      foreach(_cpkt_record_case IN ITEMS poll_empty poll_timeout poll_records
+          poll_invalid mmsg_empty mmsg_invalid mmsg_callbacks)
+        add_test(NAME openssl_${_cpkt_record_case}_${_cpkt_record_linkage}
+          COMMAND cpkt_openssl_record_boundary_${_cpkt_record_linkage}_test
+            ${_cpkt_record_case})
+        set_tests_properties(openssl_${_cpkt_record_case}_${_cpkt_record_linkage}
+          PROPERTIES LABELS "facade;memcheck" TIMEOUT 15)
+      endforeach()
+    endif()
+  endforeach()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     add_test(NAME darwin_bio_runtime_paths
       COMMAND "${Python3_EXECUTABLE}"

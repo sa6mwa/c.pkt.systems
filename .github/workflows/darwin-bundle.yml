@@ -42,13 +42,15 @@ jobs:
         run: |
           python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --verbose \
             --regex '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
-      - name: Verify reentrant OpenSSL BIO lifecycle
+      - name: Verify OpenSSL BIO lifecycle and record boundaries
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
             --target cpkt_openssl_bio_lifecycle_static_test \
-              cpkt_openssl_bio_lifecycle_shared_test
+              cpkt_openssl_bio_lifecycle_shared_test \
+              cpkt_openssl_record_boundary_static_test \
+              cpkt_openssl_record_boundary_shared_test
           python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
-            --regex '^openssl_bio_lifecycle_(static|shared)$'
+            --regex '^openssl_(bio_lifecycle|poll_(empty|timeout|records|invalid)|mmsg_(empty|invalid|callbacks))_(static|shared)$'
       - name: Verify native OPC UA public facade
         run: |
           cmake --build --preset arm64-apple-darwin-native --parallel 2 \
