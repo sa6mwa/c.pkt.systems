@@ -116,6 +116,14 @@ authentication closure. Audio and speech can use core curl/TLS while remaining
 independent of db. Cmocka is available to every group's tests through core, but
 production facade libraries must not acquire a runtime cmocka dependency.
 
+Assign auxiliary runtime archives, loadable modules, generated configuration
+headers, linker scripts and platform support files by their consuming closure
+as well. Whisper/ggml-specific static C++ closure belongs to misc while it is
+only needed there; support files needed by multiple groups belong to core.
+Do not ship glibc/musl, host LLVM/Valgrind/AFL tooling, test executables or
+temporary consumer artifacts in any SDK group. Preserve current supported
+OS/libc runtime floors and disclose any separately approved change.
+
 ### 3.2 Authoritative inventory
 
 Introduce a single declarative, source-controlled inventory consumed by CMake,
@@ -133,6 +141,15 @@ independent handwritten group maps in the packager, smoke verifier, and CI.
 Require explicit ownership for new targets/tests/files and detect omissions.
 Dependency edges must form a DAG with no core-to-optional or db-to-misc edge.
 Test-only usage of cmocka is an explicit edge distinct from production linkage.
+
+Use `cmake/components.json` as the source inventory, with a schema version and
+explicit group/component/target/test records. CMake's JSON support and existing
+Python helpers can consume it without a new external parsing dependency.
+Recipe implementations remain CMake code. Hash a component's normalized record
+and declared helper closure, not the complete inventory file: changing db's
+record must not invalidate core. Validate references, unique ownership and
+cycle freedom before configure or execution. Record shared tooling as tooling,
+not as a fourth shipped package.
 
 ## 4. Build graph and generated state
 
@@ -161,6 +178,12 @@ Each dependency component has one producer graph for a given effective recipe
 and target. Debug, release, package consumers, and group consumers import its
 matching install outputs. They must not each register an independent producer
 against the same ExternalProject stamps/source directory.
+
+A producer may contain separate static/shared upstream build steps where the
+upstream requires them. Both belong to that producer and finish installation
+before it publishes completion. Avoid shared install-prefix races and preserve
+the existing ordered installation of common headers/metadata. Single producer
+ownership does not imply that two required upstream library variants disappear.
 
 Repo-owned debug and release facades retain distinct compiler flags and builds.
 Instrumented variants have distinct effective contracts and owned state; do not
@@ -198,10 +221,12 @@ that does not select the standalone OpenSSL/GSSAPI suites. Report its db
 ownership explicitly. Toolchain discovery may read verified cached tools; an
 optional-only command must not secretly provision missing prerequisites.
 
-Changing a core input makes existing core unusable for selected optional work.
-Fail with an actionable prerequisite diagnostic rather than widening scope.
-An explicitly requested core/all workflow computes the affected downstream
-closure, rebuilds changed producers, and reruns affected integration checks.
+Changing a required core input makes existing core unusable for selected
+optional work. Fail with an actionable prerequisite diagnostic rather than
+widening scope. `GROUP=core` repairs/verifies core only. It makes affected db/misc
+evidence stale through its recorded identities without rewriting their state.
+`GROUP=all` may then build and verify the affected downstream closure. A core
+command must not silently run db/misc integration tests.
 
 ### 4.3 Cleanup and isolation
 
@@ -211,9 +236,81 @@ or toolchain caches, or running services owned by unrelated workflows. Removing
 core explicitly invalidates optional verification that refers to that core.
 
 Global `make clean` and both `make release` runs still remove all
-repository-local generated state. They preserve the shared verified caches.
+repository-local generated build/install/test state. They preserve the shared
+verified caches and only the persistent operation-control state described below.
 Service-owning operations stop their Podman pods before cleanup. Temporary
 fixtures and consumers belong under `build/` and remain removable by the user.
+
+### 4.4 Prerequisite readiness and stable reads
+
+Separate producer completion, development readiness, and final release proof:
+
+| State | Required evidence | Permitted use |
+| --- | --- | --- |
+| Built | Matching build contract and complete validated outputs. | Core's own tests and explicit prerequisite preparation. |
+| Development-ready | Built plus the applicable core test/API/export/header checks for the selected target and debug/release configuration. | Db/misc development builds, tests, and their own native Valgrind/fuzz integration against ordinary core. |
+| Package-ready | Development-ready release configuration plus exact core archive layout/privacy/metadata/consumer checks. | Selected db/misc extracted-package verification against that archive. |
+| Release-proven | All required modes and targets in the current clean release run, including final archives/source/native gates. | Full-release commitment only. |
+
+Readiness profiles explicitly distinguish native x86_64 Linux, executable
+Linux cross targets using the configured runner, native Darwin, and Linux
+osxcross. For osxcross, development/package readiness comprises build,
+header/API/export/metadata checks and cross-compiled/link-checked consumers.
+Record native runtime cases as deferred and required for release, not as
+passed/skipped local cases. This profile permits Darwin optional builds and
+archive preparation before native execution is possible. The later native
+source and exact-archive gates complete release runtime evidence; their absence
+does not make the local osxcross bootstrap impossible. Native host-only clangd,
+Valgrind and AFL gates are never prerequisites of an osxcross configuration.
+
+`make build GROUP=core` publishes built state, not development readiness.
+`make test GROUP=core` builds/verifies that core configuration and publishes
+development readiness; `finalize-slice GROUP=core` adds formatting/hover proof.
+The matching preparation command is therefore `make test GROUP=core PRESET=...`,
+not a build-only command. Core's own tests can bootstrap using built outputs;
+they do not require a successful receipt for themselves before executing.
+Core packaging runs the applicable readiness checks when requested explicitly.
+
+Valgrind on db requires development-ready ordinary core and executes db-owned
+Memcheck/integration checks. It does not require or rerun core's Memcheck suite.
+All-group release still runs core's own Memcheck/fuzz modes. Keep ordinary and
+instrumented target identity explicit in receipts; a profile cannot acquire
+coverage just because another profile uses the same library bytes.
+
+Each configuration's expected core coverage comes from the inventory. A db
+source/test change cannot change that core coverage requirement. A core-specific
+verification input can. A matching receipt must enumerate the cases and modes
+actually completed; undefined or unsupported required coverage is an error.
+
+All mutating lifecycle entrypoints take one repository operation lock before
+checking prerequisites and retain it through validation, build, test and
+completion publication. Put its control file under `build/control/`; managed
+clean preserves the live lock until the operation ends while deleting all
+reusable outputs/receipts. A second operation waits or reports the owner; it
+does not race a consumer with core replacement/cleanup. Do not hold independent
+locks that permit db and core to mutate concurrently. Receipt readers must
+recheck identities under that same lock; atomic receipt writing alone does not
+protect a consumer from prerequisite changes between validation and linkage.
+
+One outer operation owns the lock. Recursive Make calls, child scripts and
+internal service teardown inherit validated delegation and reuse that ownership;
+they do not reacquire it. Bind delegation to the canonical repository root,
+live inherited lock handle and permitted scope/run identifier. An environment
+string alone cannot authorize bypass. Scope may narrow in a child but cannot
+widen an optional-only operation into core/all. Source reconstruction creates
+an explicitly authorized separate context for its extracted root, retaining
+the outer repository lock until it completes.
+
+Supported direct scripts enter through the same outer operation wrapper when
+no delegation exists. Mutation-capable direct repository CMake configure/build
+entrypoints require that wrapper/delegation before they can update producers,
+contracts or owned build output; print the supported Make/wrapper command if
+called without it. Read-only graph queries remain available. Downstream CMake
+discovery in a deployed SDK is not a repository producer and does not need this
+repository lock. Preserve the stable lock file/inode across managed clean and
+waiters; never unlink/recreate it as part of teardown. Bound waits and test
+nested calls, invalid delegation, concurrent clean/replacement, source-root
+delegation and owner interruption without consulting a global process table.
 
 ## 5. Public command contract
 
@@ -242,6 +339,38 @@ which selected commands configure/build and which require existing outputs.
 Tests requiring a prepared core must print the matching core preparation
 commands. `package-verify GROUP=db` verifies db with the matching core and does
 not invoke core's standalone consumer suite.
+
+### 5.1 Selection and error semantics
+
+| Entry point | Explicit optional/core group | Unqualified all-group behavior |
+| --- | --- | --- |
+| `build`, `test`, `debug`, `examples`, `clangd-surface` | One selected preset; build only owned targets and imported prerequisites. `test` retains build-before-test behavior. | Preserve current targets/default matrix or native scope; explicit supported `PRESET` selects one target where the command supports it. |
+| `deps`, `deps-all` | Owned dependency producers only; `deps` still requires `DEPENDENCY`. A requested dependency in another group is an error. | Preserve component closure semantics and configured preset. |
+| `valgrind`, `fuzz-smoke`, `fuzz` | Native-only, owned applicable cases; selected db fuzz is unsupported. | Preserve the full currently applicable native gates. |
+| `package`, `package-verify` | Require an explicit supported release preset. Db/misc verification requires an existing matching verified core archive. | All seven targets and groups. |
+| `clean` | Delete owned state only, with owned-service teardown. | Full repository-local generated-state cleanup. |
+| `format`, `format-check` | Global formatting; the selector does not filter sources. | Same global policy. |
+| `prerelease`, `release-pipeline`, `release-matrix`, `release-final-matrix`, `release` | Reject `GROUP` other than `all`. | Fixed complete target/coverage inventory; no explicit target narrowing. |
+
+Reject unknown groups/presets, conflicting selectors and unsupported modes
+before changing generated state. Distinguish defaults supplied by Make from an
+explicit environment/command-line override: the ordinary default `PRESET=debug`
+must not itself make `make release` fail. Explicit narrowing of an all-matrix
+gate does fail. Reject misuse rather than accepting selectors that are ignored.
+Apply the same rule to `SCOPE`: callers cannot narrow release to binary evidence
+or expand binary prerelease into source reconstruction through an override.
+
+Db e2e owns `build/devenv`; misc workflows do not launch it. `e2e-postgres` accepts
+only db/all scope and native supported execution. Source-archive commands are
+all-group operations and reject partial selection. Selected finalize-slice is
+native debug; a cross preset cannot silently route its clangd check to a host
+configuration or run host clangd against cross-target ABI assumptions.
+
+Missing prerequisite/unsupported selection failures are nonzero and identify
+the group, target/configuration, failed condition and corrective command.
+Selected registration/test execution uses `--no-tests=error` and verifies its
+required executable inventory. An expected empty optional hardening tier is
+reported as not applicable by aggregates; an explicit unsupported gate fails.
 
 `finalize-slice GROUP=db` formats project-owned sources, runs db debug and hover
 checks, and asserts global formatting cleanliness. Global formatting remains
@@ -308,9 +437,20 @@ changed contract invalidate reuse. File timestamps alone are not proof.
 
 Db/misc preparation requires verified core for the selected target and mode.
 For native development this includes the applicable core debug/integration
-checks; cross preparation includes selected core runtime coverage and metadata
-checks. Record the actual coverage, including unsupported runner modes.
+checks; executable Linux cross preparation includes selected core runtime
+coverage and metadata checks. Osxcross uses the explicit local profile in
+section 4.4 with deferred native runtime evidence. Record actual coverage and
+deferred release cases, including unsupported local runner modes.
 Ordinary release core must never borrow unverified/instrumented output.
+
+Local core validation compares the complete prepared core configuration once,
+then supplies each consumer its declared component closure. Db links/tests only
+its closure, not all core libraries. A core component update invalidates core's
+aggregate readiness until explicitly verified again; no optional command
+repairs that state. Completed db/misc records retain the component identities
+they actually consumed, allowing unaffected optional producers to remain built
+after explicit core re-verification. Final distribution combinations always
+bind to the complete exact core package identity.
 
 Core identity is independent of the coordinated release version. Development
 reuse must survive db-only changes in an untagged checkout. Reuse component
@@ -344,6 +484,41 @@ Removing duplicate execution must preserve the fail-fast position of early
 fixtures. When a full suite suppresses an early fixture, require an exact
 matching success record. Direct CTest invocation without such evidence must
 still run the fixture. Reject missing required tests and missing executables.
+
+### 6.5 Record lifecycle and coverage accounting
+
+Use versioned JSON records with explicit kind, group/component, target,
+configuration/profile, normalized input identity, output inventory/digests,
+coverage cases/modes, status and execution-run identifier. Only `status=passed`
+with a complete required set is reusable. A producer contract means expected
+inputs, not completed output: the current contract file written at configure
+time must not be treated as a success receipt.
+
+Invalidate the previous success before replacing outputs or running a required
+verification again. Publish new evidence only after the final successful step
+and validated outputs. An interruption, newly failed rerun or partial install
+must not leave an earlier success record usable for the attempted new state.
+Write temporary records under the owned `build/` directory and atomically
+rename; malformed, unknown-schema and partial records are unusable. Do not
+adopt arbitrary existing install directories into verified state.
+
+An all-group proof run assigns a fresh run identifier. Aggregate required
+coverage as the union of actually passed cases and exactly matched same-run
+proofs, retaining target, mode and input identity for each entry. Deduplicated
+cases appear as reused with their original evidence, not as silent omissions
+or CTest skips counted as passes. Changing a fixture after preflight revokes
+its reusable evidence. Direct CTest has no implicit ambient success cache.
+Global release cleanup prevents the prior rehearsal's receipts from satisfying
+the tagged run, even if output bytes could have matched.
+
+Ordinary dependency producers use their output-affecting effective flags, not
+the importing facade's Debug/Release label. Configuration generators that only
+change orchestration must not cause dependency rebuilds after that equivalence
+is proven. One owning producer graph can be scheduled by either outer generator;
+both-generator behavior must be tested rather than sharing unsound stamps.
+Instrumented upstream dependency variants, if introduced later, require separate
+explicit owned state under `build/` and matching contracts; this work does not
+introduce them or overwrite ordinary `.cache/` installs for fuzzing.
 
 ## 7. Lead-time improvements adapted to the groups
 
@@ -459,11 +634,37 @@ separately approved artifact is added.
 
 ### 8.2 Metadata, file ownership, and notices
 
-Each archive carries a group-specific package manifest under
-`share/c.pkt.systems/packages/`, with group, release version, target/libc,
-required core identity, component versions, and payload file inventory/digests.
-Choose one documented machine-readable schema during implementation. It is
-independently versioned; do not increment it automatically with release tags.
+Each archive carries `share/c.pkt.systems/packages/<group>.json`. Define schema
+version 1 with these required fields:
+
+- `schema_version`, `group`, `release_version`, `target_id` and `libc` (null for
+  Darwin), plus the effective Darwin deployment floor when applicable.
+- `components`: sorted records of component version, pinned source digest,
+  effective features and public ABI identity.
+- `files`: sorted prefix-relative records with path, type, mode and either
+  SHA-256 for a regular file or literal target for a symlink.
+- `package_id`: SHA-256 of the canonical manifest with that field omitted.
+- `requires_core`: null in core; otherwise the required core `package_id`,
+  release version and target identity.
+
+Canonical JSON is UTF-8 without a BOM, with literal non-ASCII characters,
+object keys ordered by Unicode code point, compact separators, no trailing
+newline in the canonical hash input, no duplicate keys and no floating-point
+values. Sort component records by component name and file records by path;
+file paths are normalized POSIX-relative paths. Represent regular-file modes
+as four octal digits; symlink identity uses the literal relative target rather
+than platform-dependent symlink permissions. The manifest excludes its path from
+`files`, preventing a recursive self-hash; the archive SHA-256 binds the exact
+manifest bytes. Fixtures independently validate canonical encoding and identity.
+Reject unknown schema versions rather than guessing compatibility. The schema
+is independently versioned; release tag changes do not increment it.
+
+Package IDs describe portable installed payload, not local receipt paths or
+execution records. Stage core first, finalize its manifest/package ID, then
+bind optional manifests to it. Repackaging identical payload has the same
+package ID; the outer archive digest can differ and is checked separately.
+Any output/metadata change that alters core's package ID makes old optional
+packages unsuitable for combination until explicitly repackaged and verified.
 
 Core owns common project license/base documentation and shared SDK definitions.
 Each group owns its component licenses, notices, package documentation and
@@ -485,13 +686,38 @@ C++ runtime closure correct. Retain exact facade export/import policies and
 full public API coverage checks against installed headers/libraries.
 
 Release combination checks require the same coordinated version and exact
-target/libc, as well as the expected core contract identity. Wrong/missing core
-must fail clearly. Ordinary tar extraction cannot enforce this: provide
-manifest-aware SDK validation and hook it into CMake/pkg-config consumer
-verification and lifecycle acquisition. Do not claim that raw pkg-config or tar
-already validates sibling package versions. Determine how direct pkg-config
-users receive equivalent required-core validation without inventing a second
-installer protocol; document the supported entrypoint.
+target/libc, plus the exact core `package_id`. Wrong/missing core must fail
+clearly. Ordinary tar extraction cannot enforce this; use one validator with
+the entrypoint `python3 <prefix>/share/c.pkt.systems/validate-sdk.py --prefix
+<prefix> --groups core,db` (or core,misc/all selected groups). Ship its standard
+library-only implementation in core. This adds a build-time Python 3
+prerequisite for supported SDK validation, not a runtime requirement of linked
+applications; Python is already used by this repository's development tools.
+
+The validator checks manifests, expected identities and file/symlink inventory
+against the actual selected installed bytes. CMake discovery invokes it before
+creating optional imported targets. Lifecycle acquisition and package verification
+invoke the same validator after extraction. Raw pkg-config cannot execute it:
+the supported direct pkg-config workflow explicitly validates first, then runs
+pkg-config with a prefix-only search path. Document that naked pkg-config does
+not prove package integrity, and test that a mismatched pair fails the validator.
+Require versioned core marker metadata through `Requires`/`Requires.private`
+where appropriate; do not pretend this enforces the package ID by itself.
+
+All CMake/pkg-config dependency discovery must stay inside the selected SDK
+prefix except explicitly permitted OS facilities. Missing SDK libraries must
+not be satisfied by `/usr`, another SDK or a host package registry. Validate
+the selected groups only; an installed unrelated optional manifest must not
+be required for core+db/core+misc discovery.
+
+Avoid hashing the same large payload once per nested `find_dependency` call.
+Within a single CMake configure, cache successful validation by canonical
+prefix, selected groups and package IDs; expansion of the selected groups must
+validate the additional requirement. A new configure/verification operation
+revalidates actual bytes. Frozen extracted stages can supply matching evidence
+within their owning locked operation. Cross-operation reuse cannot rely only
+on mtimes or a prior manifest read. Measure validator IO as part of consumer
+verification so the new integrity gate does not hide a new major bottleneck.
 
 ### 8.3 Consumer combinations
 
@@ -528,6 +754,74 @@ explicit core packaging prerequisite instead of generating/retesting core.
 Reusing a compiled development core does not make a core archive from another
 release version valid for a newly packaged db/misc archive.
 
+### 8.4 Composition, relocation and loader closure
+
+#### Verification scopes and checksum publication
+
+Define `SCOPE=selected|binary|release` for checksum/package verification. These
+are evidence scopes, not package owners. Selected `GROUP=core|db|misc` implies
+selected scope; all-group standalone verification defaults to binary scope.
+Full matrix recipes pass their scope explicitly. Reject inconsistent selectors.
+
+| Scope | Artifact inventory | Manifest/evidence location |
+| --- | --- | --- |
+| selected | One group's archive for one release preset, with existing core prerequisite artifacts for optional checks. | Owned archives under `build/package-stage/<target>/<group>/archives/`; scoped checksums/evidence under the corresponding owned `build/verification/` directory. |
+| binary | Exactly 21 SDK archives and one Darwin smoke ZIP; source not required or certified. | Binary checksum snapshot under `build/verification/binary/<version>/CHECKSUMS`. |
+| release | Exactly those 22 binary payloads plus independently reconstructed all-source archive. | Authoritative `dist/c.pkt.systems-<version>-CHECKSUMS`, listing 23 payloads; its own file is uploaded separately. |
+
+`release-matrix` uses binary scope and never reconstructs source, even if an old
+source archive exists in `dist/`. `release-final-matrix` produces binary and
+source proof, then generates/verifies release scope. `package-source` prepares
+source bytes without certifying reconstruction; `package-source-smoke` records
+successful independent reconstruction. Only that matching receipt satisfies
+release scope. `verify-release-archives` and `verify-release-privacy` use release
+scope explicitly; they cannot silently reduce checks to binary/selected scope.
+
+Packagers no longer each append to an authoritative checksum file. One manifest
+owner generates each snapshot from the declared scope's exact current digests.
+Reject duplicates, missing entries, wrong-version/target filenames, unexpected
+payloads in that scope and hash mismatches. Binary scope explicitly ignores
+but does not certify a source archive belonging to the release scope. Report
+that exclusion; never carry its old digest into a fresh binary snapshot.
+
+Selected packaging does not modify `dist/` or its complete-release evidence.
+All-group publication of new binary/source artifacts to `dist/` invalidates
+previous complete-release manifest/evidence before replacing any payload; a
+failed partial replacement leaves no publishable prior success. Generate a new
+release snapshot only after current full proof. Validate current digests again
+before native handoff/publication. Fixture tests cover fresh output, existing
+source/final manifests, stale receipts, interrupted replacement and selected
+packaging alongside a previously complete `dist/`.
+
+#### Installed composition
+
+Core owns the validator and common metadata helpers; optional archives do not
+copy them. Validate symlinks as inventory entries, require their resolved target
+within the selected prefix and declared groups, and reject dangling links,
+absolute targets, path traversal, duplicate payload paths and symlink/regular-file
+replacement collisions. Installed owned libraries may depend only on their
+group's libraries, core and permitted OS runtime libraries.
+
+Validate ELF `DT_NEEDED`, SONAME and RPATH/RUNPATH, and Darwin install names,
+dependency paths, rpaths and signature validity after mutation. A group archive
+staged in isolation may reference missing core files deliberately; reject
+dependencies on the other optional group. Validate full loader closure and
+static metadata in its composed installation. Never copy core libraries into
+an optional tarball to make an isolated stage's loader checks pass.
+
+Use core-first composition, then both db/misc orders. Extract once per exact
+archive digest into fresh group stages; build fresh isolated combination
+prefixes from them without mutating the stages. Consumer executables and
+temporary extensions remain under `build/`. Each combination relocates to a
+different prefix and is verified again. Extraction-order equivalence compares
+inventory, manifests and runtime behavior, not just tar exit status.
+
+This contract defines fresh installation/composition, not in-place upgrades.
+Prepare upgrades in a new versioned prefix, validate selected groups, then let
+the downstream deployment switch prefixes under its own policy. Do not overlay
+a new release onto an old prefix and leave removed libraries/headers behind.
+No uninstall/migration service or new deployment manager is introduced here.
+
 ## 9. Cmocka promotion to a shipped core dependency
 
 The current pin is `2.0.2`. Preserve that pin initially; this feature is not an
@@ -550,6 +844,20 @@ package assertions explicitly forbid cmocka. Replace those policies coherently:
   mocks/expectations, successful tests, and intentionally failing tests with
   expected nonzero exit/status. Cover static/shared discovery and all targets.
 - Verify native Darwin behavior without silently retaining its exclusion.
+
+Provide `cmocka::cmocka` with the upstream shared-library default, plus explicit
+`cpkt::cmocka_static` and `cpkt::cmocka_shared` targets and corresponding
+documented pkg-config variant selection. Keep repository `cpkt::cmocka` usage
+as a static internal alias during the coherent call-site migration; do not
+change existing test linkage accidentally. The upstream `cmocka-static` target
+under `UNIT_TESTING` is an internal test target, not proof of an installed
+static SDK. Prepare both installed variants explicitly and verify their
+metadata coexist without overwriting one another.
+
+Do not introduce a production behavior switch through `CPKT_BUILD_TESTS`.
+Disabled repository tests still build/package cmocka. Establish upstream
+feature/platform probes and source/ABI provenance for the new shared variant,
+then add native/QEMU consumers that test failure reporting and control flow.
 
 The current upstream public header includes `stdbool.h`, `stdint.h`, and an
 inline helper. Strict C89 usability is therefore an implementation gate, not
@@ -594,6 +902,27 @@ Required behavioral regression matrix:
 | Cmocka production disabled tests configuration | Core still ships both cmocka variants; downstream pass/fail/mock behavior is correct. |
 | Clean all-group release | Seven targets and all groups build; complete suites/packages/source evidence remain mandatory. |
 
+Also require regressions for these newly explicit contracts:
+
+- Built core alone cannot masquerade as development-ready core, but its own
+  tests can bootstrap and publish readiness without a circular prerequisite.
+- Osxcross core can prepare optional Darwin archives with compile/link evidence;
+  it cannot satisfy deferred native runtime/release requirements.
+- Nested Make/script/source reconstruction succeeds without deadlock; direct
+  mutation without valid delegation and concurrent replacement/clean are blocked.
+- Failed required reruns revoke earlier success, even if binaries are unchanged.
+- Binary scope verifies exactly 22 payloads with and without an old source
+  archive; release scope requires all 23 and current reconstruction evidence.
+- Scope/group/preset mismatches fail before mutation; selected packaging leaves
+  `dist/` and other groups unchanged.
+- Canonical manifests have independently reproduced IDs; self-hash handling,
+  symlink inventory, tampering, malformed JSON and extra/missing files fail.
+- Optional CMake discovery and explicit pkg-config validation reject wrong core,
+  host/sibling fallback and cross-group imports while core-only discovery works.
+- Native artifact-input mode runs exact staged archive bytes; wrong commit,
+  manifest digest, asset set, missing credentials or failed runtime proof
+  prevents publication. Native source builds cannot stand in for that mode.
+
 Use real recipe/command fixtures, recorded invocations, and before/after content
 and timestamp checks to falsify cross-group mutation. Synthetic fixtures belong
 under `build/`; include representative real pinned-component transitions and
@@ -606,6 +935,24 @@ Keep the existing release protocol: candidate review and clean rehearsal,
 squash/sign decision, lightweight tag, clean tagged artifact generation,
 verification, push, exact-commit native Darwin success, manifest-selected upload.
 Do not modify release skill authority to remove either clean run.
+
+Run selected-scope validation before mutations. `lifecycle-version-contract`
+remains the first release recipe gate, followed by global clean. Run an
+inventory-backed standalone preflight before any expensive dependency producer:
+validate all target tools/runners, schemas, ownership, supported features and
+portable recipe fixtures. This preflight must not require configured db/misc
+graphs or verified core, which would create a bootstrap dependency. It may use
+the selected compiler and verified source archives for its declared fixtures.
+Preserve missing-prototype, archive cleanup, dependency-order and PostgreSQL
+probe coverage across their applicable target compilers.
+
+Then prepare/test core and each optional group for the native debug graph;
+run all native hardening/e2e modes; prepare/test the complete release matrix;
+stage and verify all archive combinations; reconstruct the native all-source
+archive; and finalize the complete manifest. Core-owned development readiness
+can precede optional builds without pretending that full release proof already
+exists. Package-ready records can precede final source/native release gates;
+they cannot alone authorize publication.
 
 Within each clean release run, build/verify core prerequisites once per effective
 target contract, build db and misc against them, and run their assigned suites.
@@ -622,9 +969,74 @@ osxcross builds are not substitutes for native runtime proof. Push and require
 success on the exact implementation commit before declaring macOS-affecting
 work complete, under the repository's existing authorization/gate rules.
 
+Distinguish three pieces of Darwin evidence: local osxcross compilation/loader
+inspection, native builds/tests on the exact source commit, and native execution
+of the actual cross-built distribution bytes. Today's workflow supplies the
+second and tests its own native-built archive; it does not execute the Linux
+producer's archive. Do not report those as identical artifacts.
+
+Add an artifact-input mode to the existing native workflow. For the final
+tagged run, use an unpublished GitHub draft release in this repository as the
+staging endpoint. This reuses the existing release service; no new staging
+service or temporary candidate tag is needed. The candidate clean rehearsal
+keeps its local cross proof and exact-commit native source gate. Exact
+cross-archive runtime proof additionally gates the final tagged release.
+
+After full local release-scope proof, push the authorized release branch/tag,
+verify the remote lightweight tag resolves to the producer commit, and create
+the draft for that existing tag. Upload precisely the manifest-selected set,
+including the checksum file. Independently check server sizes/digests, then
+dispatch the artifact-input job on the immutable release tag. Supply the
+expected producer commit, manifest SHA-256, draft release ID and asset IDs;
+the runner checks those identities and uses authenticated asset downloads.
+Required draft-read credentials and workflow permissions must be verified by
+a focused transport fixture/preflight; do not assume anonymous browser URLs
+or the existing read-only workflow token can see drafts.
+
+The runner verifies the manifest and three Darwin SDK archives/smoke ZIP before
+extracting, then runs isolated combination consumers against those bytes
+without rebuilding, resigning or replacing SDK libraries. Record digests in
+the run result. Retain the native source-build gate. A cache hit uses already
+verified bytes with no archive-acquisition API/probe/download requests; a miss
+fetches only the expected asset and verifies its pinned digest. Credentials
+must not enter logs, records or artifact payloads.
+
+After exact-commit source and exact-archive runtime gates pass, recheck the
+draft's complete asset set/digests and publish that same draft. No rebuild,
+asset replacement or retag occurs between verification and publication. On
+failure leave the release unpublished and stop; an explicit fix iteration
+resets the plan/evidence rather than silently resuming with mixed artifacts.
+Missing handoff/credentials are blockers, not permission to substitute a
+native-built archive. These steps occur only under release authorization;
+this documentation task creates no release/tag/assets or credential changes.
+The future source lifecycle skill must describe this staged handoff explicitly.
+
+GitHub documents unpublished drafts, authenticated draft visibility, and
+asset download operations in its [release API](https://docs.github.com/en/rest/releases/releases)
+and [asset API](https://docs.github.com/en/rest/releases/assets). Verify the
+implementation's exact credential path rather than infer it from public access.
+
 Regenerate/check the final checksum manifest for the exact 23 payload artifacts
 and upload it as the 24th asset. Verify server sizes/digests after publication.
 Existing version/tag, privacy, loader, license and warning gates remain intact.
+
+### 11.1 Coverage-preserving performance acceptance
+
+Capture monotonic phase durations and executed/reused work for identical target,
+job policy and cache conditions. Compare separately: cold clean release, warm
+all-group build, warm db-only edit, warm misc-only edit, and no-op selected build.
+Warm optional-only runs must execute zero core producer/core-test commands and
+zero other optional-group commands. A no-op build executes no producer work;
+an explicit test command still executes its selected tests. Cold runs rebuild
+all required output from empty local state and retain the same required modes.
+
+The full-source reconstruction uses the pinned native x86_64 GNU target with
+an explicit Release facade configuration, all three groups and fresh local
+producer state. It builds/packages/verifies that target's group composition;
+it does not launch another seven-target matrix, another nested `make release`,
+or another source-archive recursion. Keep both-generator recipe fixtures where
+supported and the shared digest caches. Count added cmocka tests separately from
+existing coverage so a changed test total cannot conceal a removed regression.
 
 ## 12. Repository review and required changes
 
@@ -742,8 +1154,9 @@ before claiming the corresponding implementation complete:
    including mock value width and macro/control-flow semantics.
 4. Complete authoritative payload/test inventory, especially mixed examples,
    shared generated definitions, helper dependencies, and optional API imports.
-5. Manifest schema and manifest-aware acquisition/validation for direct
-   pkg-config users, with explicit supported installation behavior.
+5. Implementation of the defined canonical manifest/validator and transport
+   credential path, with independent fixtures for identities and draft access;
+   schema and supported direct pkg-config workflow are specified above.
 6. Downstream release/acquisition migration needs, without assuming access or
    permission to change adjacent repositories.
 7. Measured source reconstruction, extracted consumer, and e2e wall times after
