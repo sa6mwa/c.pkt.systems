@@ -33,6 +33,16 @@ Recommended production-loop tiers:
 
 These names are preferred over project-specific gate names. Compatibility aliases are acceptable only for already documented public commands.
 
+## Optional Native macOS Hosted Verification
+
+Follow [github-actions.md](github-actions.md) when the engineer opts in or project
+policy records an existing opt-in. The extension includes normal development
+branch pushes and execution of the declared workflow; public GitHub availability
+alone does not enable it. Keep repository commands as the proof authority and
+record exactly which commit, tests, and artifacts were verified. Required native
+coverage fails closed. Release branches/tags stay local until the final tagged
+`make release` and local artifact verification succeed under release authority.
+
 ## Cross-Target Runner Contract
 
 - Each downstream project decides whether to execute cross-target tests under QEMU. QEMU is not an implicit lifecycle requirement merely because a project cross-compiles.

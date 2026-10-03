@@ -52,7 +52,8 @@ Branch decision:
 - If on a feature or fix branch, keep that branch intact, run review and the full clean candidate-branch release rehearsal there, then squash it onto the release branch as one Conventional Commit.
 - If the resolved release branch exists only as `<release-remote>/<release-branch>`, create the local tracking branch before the squash/tag step and verify it points at the remote branch. Stop and ask if neither a local nor remote-tracking release branch exists, if `HEAD` is detached, if `HEAD` is already on a tag, if a merge/rebase/cherry-pick is in progress, or if the current branch has ambiguous release intent.
 - Never push or publish from a dirty worktree.
-- Do not push the release branch or the tag until tagged release artifact generation and verification have succeeded locally.
+- Do not push the release branch or the tag until final tagged `make release` and every local artifact verification gate have succeeded. They remain local even when hosted macOS verification is enabled; never push them just to trigger Actions. A failed local release must remain repairable without rewriting remote release history.
+- An explicit hosted-verification opt-in separately authorizes normal development-branch pushes (including remote branch creation/upstream setup) before release, under [github-actions.md](github-actions.md). It does not grant release publication authority or permit early release-ref pushes. Adopt the declared workflow's push/manual triggers; do not run identical hosted coverage twice.
 
 Version decision:
 
@@ -89,6 +90,7 @@ Release plan preview:
 
 - Before touching the release branch, prepare and report a concise release plan.
 - The plan must include selected version, tag, candidate branch, release remote, release branch name, target release branch commit or merge base, intended Conventional Commit summary, expected artifacts, candidate-branch clean release rehearsal, final tagged clean release gate, optional gates skipped, and engineer decisions required.
+- When hosted verification is enabled, include the opted-in repository/workflow, development push destination, required native coverage, and exact source/artifact identity for each gate. Distinguish candidate checks from final tagged-commit checks and keep all release-ref pushes after local tagged proof.
 - The intended Conventional Commit summary must describe the durable repository change being squashed, such as what was added, fixed, changed, removed, or refactored. Do not use generic release-process wording such as "release version X.Y.Z", "prepare release", "preparing for release", "prep release", or similar; the commit is not the release action and must not be named as if it only performs release administration.
 - If the release plan has unresolved engineer decisions, stop before touching the release branch.
 
@@ -112,6 +114,14 @@ Run this on the feature or fix branch before touching the release branch. The go
 14. Do not run or add a separate umbrella release gate. The final clean gate is `make release`.
 
 If `make release` fails, stop the release process. If the failure is only that the repository refuses untagged release rehearsals, report that lifecycle gap and the closest available clean gate, but do not patch the lifecycle, squash, tag, push, or publish in the same release flow.
+
+When opted in, push the clean committed development branch and obtain the
+declared candidate native evidence through the existing workflow's trigger or
+manual dispatch. Reuse an already-successful exact-commit run only when its
+workflow, selected coverage, and dependency/artifact identities meet the gate.
+Required candidate evidence must pass before squash; supplemental evidence is
+reported separately. Candidate success does not establish success for the final
+squashed/signed commit or the final distribution bytes.
 
 Release matrix gate:
 
@@ -147,13 +157,22 @@ Tagged release artifact generation from the release branch:
 7. Assert every checksum-listed artifact exists under `dist/`.
 8. Assert no extra release-looking artifact under `dist/` is omitted from the checksum manifest unless deliberately excluded.
 9. Verify `git rev-parse HEAD` matches `git rev-parse vX.Y.Z`.
-10. Push the release branch to `<release-remote>`.
+10. Only after every preceding local gate passes, push the release branch to `<release-remote>` with an explicit branch refspec and `--no-follow-tags`; do not implicitly publish the tag with the branch push.
 11. Verify `git rev-parse HEAD` matches `git rev-parse <release-remote>/<release-branch>`.
-12. Push the lightweight tag to `<release-remote>`.
+12. Push only the verified lightweight release tag to `<release-remote>` with an explicit tag refspec; do not use `--tags` or push unrelated refs.
 13. Verify the remote tag identifies the same commit as local `HEAD`.
-14. Create the GitHub release with `gh release create vX.Y.Z` using the checksum-listed artifacts plus the checksum manifest itself. Do not upload from a `dist/` glob.
+14. When project policy requires final hosted native evidence, obtain success for the exact final commit and declared artifact identities before publication; follow [github-actions.md](github-actions.md). Reuse an automatic run on the released branch when it supplies that proof. If artifact verification requires a draft handoff, create an unpublished draft for the existing tag, stage only the verified upload set, and obtain the required native archive evidence before publishing that same draft. A failed/missing gate stops publication; do not substitute candidate evidence or natively rebuilt libraries for the required proof.
+15. Create the GitHub release with `gh release create vX.Y.Z`, or publish the already-verified draft, using the checksum-listed artifacts plus the checksum manifest itself. Do not upload from a `dist/` glob. This step requires release authority independently of hosted-verification opt-in.
 
 If tagged release artifact generation or verification fails after the local lightweight tag is created, stop the release process. Do not push the release branch, push the tag, create the GitHub release, delete or move the tag, fix code, amend the release commit, or rebuild artifacts in the same release flow. Report the failing gate and current local state so the engineer can decide whether to start a separate fix iteration and how to handle the local tag.
+
+In a separately authorized fix iteration, inspect local and remote ref state
+before rewinding an unpushed release commit/tag, preserve intended changes,
+and restart the release gates from scratch after the fix. Development Actions
+opt-in does not authorize that rewind or any remote-history rewrite. If refs
+were already pushed after successful local proof and a final hosted gate now
+fails, report the visible refs and leave the release unpublished; remote repair
+requires its own explicit decision.
 
 Release retry protocol:
 

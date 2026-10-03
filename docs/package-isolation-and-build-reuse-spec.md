@@ -963,7 +963,10 @@ Global clean deletes local build/test records before each run.
 
 Native Darwin workflow changes must cover all group archives and their supported
 combinations. Its current trigger list names `feat/postgres-client` and `trunk`;
-implementation must ensure the actual candidate branch can trigger the workflow.
+its existing `workflow_dispatch` permits checking a pushed development branch
+outside that list. Use the existing automatic run when applicable, otherwise
+dispatch that workflow on the candidate branch; do not push `trunk` to obtain
+development evidence. Implementation must preserve this trigger route.
 Preserve the configured native job limit and diagnostic artifact uploads. Local
 osxcross builds are not substitutes for native runtime proof. Push and require
 success on the exact implementation commit before declaring macOS-affecting
@@ -1009,7 +1012,8 @@ resets the plan/evidence rather than silently resuming with mixed artifacts.
 Missing handoff/credentials are blockers, not permission to substitute a
 native-built archive. These steps occur only under release authorization;
 this documentation task creates no release/tag/assets or credential changes.
-The future source lifecycle skill must describe this staged handoff explicitly.
+The source lifecycle skill's hosted-verification reference describes this
+staged handoff policy; the artifact-input mode remains implementation work.
 
 GitHub documents unpublished drafts, authenticated draft visibility, and
 asset download operations in its [release API](https://docs.github.com/en/rest/releases/releases)
@@ -1020,7 +1024,65 @@ Regenerate/check the final checksum manifest for the exact 23 payload artifacts
 and upload it as the 24th asset. Verify server sizes/digests after publication.
 Existing version/tag, privacy, loader, license and warning gates remain intact.
 
-### 11.1 Coverage-preserving performance acceptance
+### 11.1 Optional hosted verification and push authority
+
+The lifecycle remains local by default. For an eligible GitHub repository,
+offer native macOS hosted verification as an explicit opt-in. Availability or
+public visibility alone does not authorize it. Record the selected repository,
+remote, workflow, native platform/profile and required-versus-supplemental
+coverage in existing project policy. Check runner availability, authentication
+and current public-runner terms; private/paid execution needs a cost decision.
+
+Opt-in includes normal pushes of the committed development branch, creating it
+on the selected remote when absent and setting its upstream. It includes
+dispatching/waiting for the declared workflow and repeats after ordinary fixes;
+no additional permission is needed for each push. Explicitly address only that
+development ref with automatic tag following disabled. Reject diverged pushes,
+mirror remotes, release-branch destinations and unrelated-ref publication.
+This authority does not grant force push, ref deletion, PR creation, repository
+settings/credential changes or release publication.
+
+Keep `trunk` and the actual release tag local until the final tagged clean
+`make release` and all local artifact/checksum/privacy/loader gates succeed.
+Neither candidate Actions checks nor trigger limitations may move this boundary.
+A local failure aborts release with unpublished refs; an explicitly authorized
+fix iteration may repair/rewind the local commit/tag while preserving intended
+changes, then restart release verification. After successful local proof, only
+an actual authorized release may push those refs and stage the draft described
+above. A later hosted failure leaves pushed refs visible and the release
+unpublished; no automatic remote rewind is permitted.
+
+The generic extension can be supplemental. c.pkt.systems already requires
+exact-commit native Darwin success for macOS-affecting work: preserve that
+requirement. Preserve `.github/workflows/darwin-bundle.yml`, its `arm64` job,
+`macos-26` runner, deployment target `15.0`, configured two-job builds,
+120-minute deadline, selected tests and diagnostic archive. Native source jobs
+use the runner's Apple tools, not Linux osxcross. Move existing recipes behind
+repository-owned Make targets during implementation without losing coverage;
+list the optional surfaces in `make help`. This specification/skill update does
+not itself change workflow commands or implement artifact inputs.
+
+Accept only a specific run ID/attempt matching the repository, workflow,
+event/ref, exact expected commit and selected coverage. A dispatch result is
+not a passing check. Verify required jobs and test inventories actually ran;
+success with skipped/missing checks is invalid. Track PR merge revision and
+source head separately. Report source-build and actual cross-archive evidence
+separately, with compiler/SDK/platform identities and archive/manifest digests.
+Cancellation, timeout, missing credentials and unavailable required runners
+are blockers. Inspect/fix ordinary implementation failures and repeat on the
+new commit; during release, failures are stop-only gates.
+
+Actions cache is transport for the existing verified archive cache, not a new
+acquisition policy. Digest hits perform zero archive-acquisition requests;
+push/dispatch/run-inspection control-plane requests remain necessary. Extracted
+state belongs under `.cache/`, diagnostics/scratch under `build/`. Keep cache
+transport optional, secrets excluded, and existing job policy intact. Verify
+the opt-in, ref/trigger ordering, duplicate-run avoidance, evidence identity,
+missing-test/cleanup rejection and local-before-remote release boundary through
+fast fixtures when implementing hosted orchestration. Real native execution
+still gates macOS-affecting executable changes.
+
+### 11.2 Coverage-preserving performance acceptance
 
 Capture monotonic phase durations and executed/reused work for identical target,
 job policy and cache conditions. Compare separately: cold clean release, warm
