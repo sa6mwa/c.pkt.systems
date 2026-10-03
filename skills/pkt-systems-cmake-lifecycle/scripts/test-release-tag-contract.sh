@@ -47,8 +47,8 @@ require_text "$release_ref" \
   'on the current `HEAD`' \
   'release metadata must be tested on active HEAD'
 require_text "$release_ref" \
-  'Treat `v99.99.99` as reserved test-only state, never a real release tag: if it already exists, delete it before detecting exact release tags or making untagged assertions so interrupted prior runs recover automatically.' \
-  'reserved test tag recovers from stale state'
+  'Fail on a pre-existing reserved tag unless a lifecycle-owned recovery record under `build/` identifies the exact lightweight object created by this test.' \
+  'reserved test tag recovery requires recorded ownership'
 require_text "$release_ref" \
   'Create the reserved temporary tag with signing disabled, for example `git -c tag.gpgSign=false tag v99.99.99`, so user or repository signing configuration cannot turn the temporary lightweight tag into an annotated or signed tag or make noninteractive release fail.' \
   'reserved test tag creation is lightweight and noninteractive'
@@ -84,8 +84,8 @@ require_text "$local_ci_ref" \
   'removes the tag with a trap' \
   'documented cleanup mechanism'
 require_text "$local_ci_ref" \
-  'if it already exists, delete it before detecting existing exact release tags or making untagged assertions so interrupted prior runs recover automatically' \
-  'local CI reserved tag recovers from stale state'
+  'automatic recovery and trap cleanup must use compare-and-delete against the recorded object and preserve any changed or unowned ref.' \
+  'local CI reserved tag cleanup preserves changed and unowned refs'
 require_text "$local_ci_ref" \
   'Create the reserved temporary tag with signing disabled, for example `git -c tag.gpgSign=false tag v99.99.99`, so user or repository signing configuration cannot turn the temporary lightweight tag into an annotated or signed tag or make noninteractive release fail.' \
   'local CI reserved tag creation is lightweight and noninteractive'

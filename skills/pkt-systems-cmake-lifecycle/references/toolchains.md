@@ -46,17 +46,34 @@ atomic publication under the requested name. Local copy/publication errors fail
 provisioning instead of falling back to downloading the same bytes. Bootlin,
 host MIG, and AFL++ share this rule through `scripts/cpkt-archive-cache.sh`.
 
+## Resolver location
+
+Use the activated skill's `scripts/` directory, or the project's explicitly
+declared vendored helper directory. In this skill's source repository that is
+`skills/pkt-systems-cmake-lifecycle/scripts`; an installed skill normally uses
+`${CODEX_HOME:-$HOME/.codex}/skills/pkt-systems-cmake-lifecycle/scripts`.
+Resolve it from the actual skill location when a different installation root
+is in use. Do not assume a downstream checkout contains either `skills/` or
+vendored copies under `scripts/`.
+
+Set a shell variable `lifecycle_scripts_dir` to that resolved directory.
+Keep the complete helper set together, including `cpkt-archive-cache.sh`,
+`cpkt-toolchains.sh` and `cpkt-aflpp.sh`; do not copy a resolver without its
+sibling helpers. CMake examples below take the same directory through the
+explicit `CPKT_LIFECYCLE_SCRIPTS_DIR` input (for example `-D` on configure).
+This local tool-discovery hint must not enter installed/exported metadata.
+
 ## Provisioning
 
 Use the lifecycle resolvers directly or vendor their exact content into a downstream repository:
 
 ```sh
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure all
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover aarch64-linux-gnu
-eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env aarch64-linux-gnu)"
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" ensure all
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" discover aarch64-linux-gnu
+eval "$("$lifecycle_scripts_dir/cpkt-toolchains.sh" env aarch64-linux-gnu)"
 
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh ensure
-eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
+"$lifecycle_scripts_dir/cpkt-aflpp.sh" ensure
+eval "$("$lifecycle_scripts_dir/cpkt-aflpp.sh" env)"
 ```
 
 `ensure all` downloads the six Linux Bootlin collections and reports Darwin osxcross status. It never installs an Apple SDK. `discover` reports all resolved paths, including the selected compiler, linker, binutils, sysroot, static GNU C++ runtime archives, and source. `env` emits shell exports only; it does not modify login-shell files.
@@ -175,7 +192,9 @@ Rootless Podman is a host package prerequisite for local container-backed e2e. T
 ### Developer identity and local source roots
 
 Perform source checkouts and cross-toolchain builds as the regular developer
-account, never as root. Seed the shared Git defaults for that account:
+account, never as root. Global Git settings are operator-selected preferences,
+not automatic lifecycle provisioning. Only if the engineer explicitly requests
+these account-wide defaults, use:
 
 ```sh
 git config --global init.defaultBranch trunk
@@ -240,8 +259,9 @@ The provisioning sequence is:
    program, and use `file` to prove the result is a 64-bit arm64 Mach-O
    executable. A compiler executable alone is not sufficient evidence that the
    workstation has a usable Darwin SDK.
-5. Remove the original Xcode archive after successful SDK packaging unless the
-   developer explicitly needs to retain their locally controlled copy.
+5. Retain the developer-supplied Xcode archive by default. Successful packaging
+   does not authorize deleting it; remove that input only when the engineer
+   explicitly requests its deletion.
 
 The workstation must not configure a c.pkt.systems Darwin build until this
 Mach-O smoke check passes. Do not distribute osxcross, the SDK package, the
@@ -260,8 +280,8 @@ the host-side helper and verify the complete collection:
 export OSXCROSS_ROOT="${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}"
 ls "$OSXCROSS_ROOT"/bin/arm64-apple-darwin*-clang
 # Optional repository pin: export CPKT_OSXCROSS_HOST=arm64-apple-darwin25.4
-scripts/cpkt-toolchains.sh ensure arm64-apple-darwin
-scripts/cpkt-toolchains.sh discover arm64-apple-darwin
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" ensure arm64-apple-darwin
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" discover arm64-apple-darwin
 ```
 
 `ensure arm64-apple-darwin` does not obtain Apple content. It uses the pinned
@@ -282,8 +302,13 @@ use the resolver-reported pinned paths.
 Resolve the collection before `project()` through a CMake toolchain file or a compiler bootstrap module. This reusable pattern parses the resolver output and sets every relevant tool, not only `CMAKE_C_COMPILER`:
 
 ```cmake
+list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CPKT_LIFECYCLE_SCRIPTS_DIR)
 function(project_configure_bootlin_toolchain target_id)
-  set(resolver "${CMAKE_SOURCE_DIR}/scripts/cpkt-toolchains.sh")
+  if(NOT DEFINED CPKT_LIFECYCLE_SCRIPTS_DIR OR
+      NOT EXISTS "${CPKT_LIFECYCLE_SCRIPTS_DIR}/cpkt-toolchains.sh")
+    message(FATAL_ERROR "Set CPKT_LIFECYCLE_SCRIPTS_DIR to the resolved lifecycle scripts directory")
+  endif()
+  set(resolver "${CPKT_LIFECYCLE_SCRIPTS_DIR}/cpkt-toolchains.sh")
   execute_process(COMMAND "${resolver}" ensure "${target_id}"
     RESULT_VARIABLE result ERROR_VARIABLE error)
   if(NOT result EQUAL 0)
@@ -295,11 +320,11 @@ function(project_configure_bootlin_toolchain target_id)
     message(FATAL_ERROR "Unable to inspect the pinned Bootlin toolchain: ${error}")
   endif()
   foreach(key cc cxx ld ar ranlib strip nm objcopy objdump addr2line readelf sysroot root)
-    string(REGEX MATCH "${key}=([^\r\n]+)" match "${description}")
+    string(REGEX MATCH "(^|[\r\n])${key}=([^\r\n]+)" match "${description}")
     if(NOT match)
       message(FATAL_ERROR "Bootlin resolver did not report ${key} for ${target_id}")
     endif()
-    set(bootlin_${key} "${CMAKE_MATCH_1}")
+    set(bootlin_${key} "${CMAKE_MATCH_2}")
   endforeach()
   set(CMAKE_C_COMPILER "${bootlin_cc}" CACHE FILEPATH "" FORCE)
   set(CMAKE_CXX_COMPILER "${bootlin_cxx}" CACHE FILEPATH "" FORCE)
@@ -328,18 +353,18 @@ For AFL++ fuzzing, first configure the ordinary Bootlin x86_64 collection, then 
 An AFL++ CMake toolchain file must call the Bootlin setup before `project()`, then replace only the C/C++ compiler drivers with the resolver-reported wrappers. Keep the linker and all binary utilities from Bootlin:
 
 ```cmake
-cpkt_configure_bootlin_toolchain(x86_64-linux-gnu)
-execute_process(COMMAND "${CMAKE_SOURCE_DIR}/scripts/cpkt-aflpp.sh" discover
+project_configure_bootlin_toolchain(x86_64-linux-gnu)
+execute_process(COMMAND "${CPKT_LIFECYCLE_SCRIPTS_DIR}/cpkt-aflpp.sh" discover
   RESULT_VARIABLE result OUTPUT_VARIABLE description ERROR_VARIABLE error)
 if(NOT result EQUAL 0)
   message(FATAL_ERROR "Unable to provision pinned AFL++: ${error}")
 endif()
 foreach(key cc cxx helper root)
-  string(REGEX MATCH "${key}=([^\r\n]+)" match "${description}")
+  string(REGEX MATCH "(^|[\r\n])${key}=([^\r\n]+)" match "${description}")
   if(NOT match)
     message(FATAL_ERROR "AFL++ resolver did not report ${key}")
   endif()
-  set(afl_${key} "${CMAKE_MATCH_1}")
+  set(afl_${key} "${CMAKE_MATCH_2}")
 endforeach()
 set(ENV{AFL_PATH} "${afl_helper}")
 set(CMAKE_C_COMPILER "${afl_cc}" CACHE FILEPATH "" FORCE)
@@ -445,10 +470,10 @@ For Darwin, do not apply the GNU runtime archive contract. osxcross/Apple Clang 
 Run these checks after changing either resolver or the toolchain policy:
 
 ```sh
-bash -n skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh
-skills/pkt-systems-cmake-lifecycle/scripts/test-cpkt-toolchain-resolvers.sh
-skills/pkt-systems-cmake-lifecycle/scripts/test-cpkt-aflpp-resolver.sh
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
+bash -n "$lifecycle_scripts_dir/cpkt-toolchains.sh"
+"$lifecycle_scripts_dir/test-cpkt-toolchain-resolvers.sh"
+"$lifecycle_scripts_dir/test-cpkt-aflpp-resolver.sh"
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" discover
 ```
 
 For a changed pin, also run `ensure` and a configure/build using that target. For AFL++ changes, run `cpkt-aflpp.sh ensure`, compile a small target through the wrapper, and prove `afl-showmap` observes distinct execution paths.

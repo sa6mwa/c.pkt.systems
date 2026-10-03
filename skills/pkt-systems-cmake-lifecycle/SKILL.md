@@ -2,18 +2,19 @@
 name: pkt-systems-cmake-lifecycle
 description: >-
   Self-contained lifecycle authority for pkt.systems-style C/CMake repositories
-  that consume c.pkt.systems SDK bundles: bootstrap new components, migrate
+  that consume or produce c.pkt.systems SDK bundles: bootstrap new components, migrate
   existing projects, standardize Make/CMake/dependency/test/e2e/Lua/package/release
   workflows, resolve and cache cpkt C/C++ toolchains, preserve bespoke behavior
   behind lifecycle extension points, verify thoroughly, squash/tag, build dist
-  artifacts, and publish GitHub releases.
+  artifacts, publish GitHub releases, and report project dependencies including
+  c.pkt.systems, other pkt.systems components, external libraries, and vendored code.
 metadata:
   short-description: pkt.systems C/CMake lifecycle
 ---
 
 # pkt.systems C/CMake Lifecycle
 
-Use this skill from a C/CMake repository root when asked to work on a pkt.systems-style C component that consumes SDK bundles from `c.pkt.systems`. This includes ordinary engineering work, lifecycle consolidation, bootstrap, migration, verification, packaging, and release.
+Use this skill from a C/CMake repository root when asked to work on a pkt.systems-style C component that consumes or produces SDK bundles from `c.pkt.systems`. This includes dependency inventory questions, ordinary engineering work, lifecycle consolidation, bootstrap, migration, verification, packaging, and release.
 
 This skill is the process authority. It must not require external example repositories, prior local knowledge, or historical convention lookup. Everything needed to shape the repository lifecycle is encoded in this skill and its first-level references.
 
@@ -34,6 +35,7 @@ This skill is the process authority. It must not require external example reposi
 - Make `make help` the authoritative human command index.
 - `dist/` is generated output, not the release manifest. Release uploads must come from a verified checksum or manifest file.
 - Git commits created by this workflow use Conventional Commits.
+- Report the project's dependencies when this skill is first used for the current task/session, on an explicit dependency-inventory request, and after a successful release. Use repository evidence, distinguish declared/resolved/shipped dependencies, and include c.pkt.systems, other pkt.systems components, external libraries, and vendored code when present. Follow [references/dependency-reporting.md](references/dependency-reporting.md); do not acquire or update dependencies just to report them.
 - Local CI/CD is the default operating model. Native macOS verification through GitHub Actions is an optional, explicit opt-in; repository availability alone does not enable it. The opt-in authorizes normal development-branch pushes, including creating the remote branch and setting its upstream, and running the declared verification workflow. It does not authorize early release-branch or release-tag pushes. Follow [references/github-actions.md](references/github-actions.md); preserve already-declared project requirements for native evidence.
 - Toolchain resolution is lifecycle-owned. Every Linux build uses a complete pinned Bootlin GCC collection, including compiler, linker, binutils, libc, headers, and C++ runtime; never select a host compiler or host binutils fallback. Native memory checking uses host-provided Valgrind; fuzzing uses a pinned cached AFL++ GCC-plugin build tied to the selected Bootlin GCC collection. LLVM/Clang, including `clangd` and `clang-format`, is a host-provided development and osxcross prerequisite: do not download, cache, or package it through c.pkt.systems toolchain or SDK workflows. `clangd` validation is native-host-only: cross-target CTest, packaging, and release configurations must not invoke it or depend on host `clangd` reproducing a target ABI. C/C++ compiler discovery, automatic download, cache layout, static C++ runtime metadata, C89 compiler policy, and downstream setup must follow [references/toolchains.md](references/toolchains.md) and use the shared cache root `${CPKT_TOOLCHAIN_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/toolchains}`. Do not create project-specific toolchain cache directories.
 - Dependency acquisition is lifecycle-owned. Cache every checksum-pinned external archive, including `c.pkt.systems` SDK bundles, third-party sources, and test-only packages, under `${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}`. A verified SHA-256 hit must perform zero network requests, regardless of archive name, URL, source root, build mode, or source-archive reconstruction. Never override the resolved shared cache with a repository-local or temporary cache for real dependencies. This is a shared archive cache, not a build tree: local `.cache/` holds disposable extracted sources, dependency builds, and install roots. Verify every cache hit, publish verified downloads through an atomic rename, and never let clean, release, or packaging remove the shared archive cache. Follow [references/dependencies.md](references/dependencies.md).
@@ -46,6 +48,7 @@ Use the lifecycle on every pkt.systems C/CMake task, but do not turn every reque
 - If the request is ordinary engineering work, use the lifecycle as constraints, verification policy, and command discovery. Make the requested change with the smallest coherent repository impact.
 - If the request is lifecycle work, actively shape the repository toward the consolidated lifecycle while preserving product behavior and bespoke project value.
 - If the request is release work, follow the release protocol exactly.
+- If the request is only to identify dependencies, use the read-only reporting mode in [references/dependency-reporting.md](references/dependency-reporting.md). Return the inventory and evidence gaps without starting implementation, provisioning, tests, release, or hosted verification.
 - If the request is ambiguous, inspect first. Ask only when ambiguity changes product behavior, API/ABI, release authority, external services, lifecycle architecture, or unsupported-tool decisions.
 
 Do not maintain an exhaustive list of possible engineering task types. Instead, map the work to affected surfaces: public API, ABI, dependencies, build graph, tests, hardening, Podman Kube e2e, Lua, packaging, release, benchmarks, fuzzing, documentation, or local developer workflow.
@@ -68,6 +71,7 @@ Read references only after the request and repository state indicate they are re
 - Read [references/operability.md](references/operability.md) for repository layout, CMake presets, Make targets, script surfaces, cache discipline, diagnostics, and lifecycle command shape.
 - Read [references/toolchains.md](references/toolchains.md) when touching C/C++ compiler discovery, cross-target setup, autodownloaded compiler collections, CMake toolchain files or presets, static C++ runtime closure, downstream setup instructions, release target matrices, or package metadata that exposes compiler/runtime requirements.
 - Read [references/dependencies.md](references/dependencies.md) when touching SDK dependencies, cache invalidation, dependency provenance, bundled/external dependency rules, license provenance, any JSON behavior owned by `lonejson`, or project-owned dependency behavior.
+- Read [references/dependency-reporting.md](references/dependency-reporting.md) for the initial dependency summary, explicit inventory questions, dependency changes, and release reports. Read the acquisition/provenance reference as well when those surfaces change.
 - Read [references/local-ci.md](references/local-ci.md) when touching build/test gates, API or ABI behavior, native memory checking, fuzzing, benchmarks, install-tree consumers, or quality contracts.
 - Read [references/github-actions.md](references/github-actions.md) when native macOS hosted verification is requested, declared by project policy, or being evaluated for an eligible GitHub repository. It defines opt-in, development-branch push authority, existing-workflow adoption, evidence identity, and the release-ref boundary.
 - Read [references/podman-kube-e2e.md](references/podman-kube-e2e.md) when the repository has or needs deterministic local service e2e, including migration from containerd/Compose.
@@ -83,7 +87,7 @@ Suggested starting sets:
 - Existing repository consolidation: `migration`, `operability`, `api-design`, then inspect and load the affected surface references.
 - Ordinary feature or fix: inspect first, then load only the affected surface references. Do not run the migration procedure unless the feature requires lifecycle restructuring.
 - Cross-target, compiler, or C++ facade work: `toolchains`, `operability`, `packaging`, and any API/dependency references affected by the product change.
-- Release: `release`, `packaging`, `local-ci`, `toolchains`, and any optional surface references whose artifacts or gates are part of the release; include `github-actions` when hosted verification is enabled or required by project policy.
+- Release: `release`, `packaging`, `local-ci`, `toolchains`, `dependency-reporting`, and any optional surface references whose artifacts or gates are part of the release; include `github-actions` when hosted verification is enabled or required by project policy.
 
 ## Test and example runtime
 
@@ -99,15 +103,21 @@ development-machine and user-supplied Xcode requirements in
 
 On a native x86_64 Linux development host, install Valgrind through the host OS package manager and follow [references/toolchains.md](references/toolchains.md#host-llvm-and-clang) to install the latest stable host LLVM/Clang release, including `clangd` and `clang-format`. c.pkt.systems does not provision or ship these host tools. Valgrind and AFL++ are never run through a cross target, emulator, or QEMU.
 
-Darwin MIG is different: c.pkt.systems owns its pinned PureDarwin-derived Linux host `mig`/`migcom` build helper. After the developer supplies a working osxcross SDK, run `scripts/cpkt-toolchains.sh ensure arm64-apple-darwin`. The resolver selects the newest complete Darwin 25.x osxcross prefix by default; set `CPKT_OSXCROSS_HOST` to pin an exact installed prefix. Check `discover arm64-apple-darwin` for `status=ready`, `mig`, and `migcom` before configuring Darwin. Follow [references/toolchains.md](references/toolchains.md#darwin-osxcross-input-and-setup) for the complete commands. MIG stays in the shared toolchain cache and is never shipped in an SDK.
+Darwin MIG is different: c.pkt.systems owns its pinned PureDarwin-derived Linux host `mig`/`migcom` build helper. After the developer supplies a working osxcross SDK, run `cpkt-toolchains.sh ensure arm64-apple-darwin` from the resolved lifecycle scripts directory. The resolver selects the newest complete Darwin 25.x osxcross prefix by default; set `CPKT_OSXCROSS_HOST` to pin an exact installed prefix. Check `discover arm64-apple-darwin` for `status=ready`, `mig`, and `migcom` before configuring Darwin. Follow [references/toolchains.md](references/toolchains.md#darwin-osxcross-input-and-setup) for the complete commands. MIG stays in the shared toolchain cache and is never shipped in an SDK.
+
+Resolve `lifecycle_scripts_dir` from the activated skill or the project's declared
+vendored helper directory; consuming repositories need not contain `skills/`.
+See [references/toolchains.md](references/toolchains.md#resolver-location).
+Set `target_id` to the selected target before running these commands:
 
 ```sh
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh discover
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh ensure <target|all>
-eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-toolchains.sh env <target>)"
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" discover
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" ensure "$target_id"
+eval "$("$lifecycle_scripts_dir/cpkt-toolchains.sh" env "$target_id")"
 
-skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh ensure
-eval "$(skills/pkt-systems-cmake-lifecycle/scripts/cpkt-aflpp.sh env)"
+# Native x86_64 Linux AFL++ only:
+"$lifecycle_scripts_dir/cpkt-aflpp.sh" ensure
+eval "$("$lifecycle_scripts_dir/cpkt-aflpp.sh" env)"
 ```
 
 Downstream projects may vendor or call this lifecycle script, but the policy and cache root stay identical across pkt.systems C projects.
@@ -117,6 +127,7 @@ Downstream projects may vendor or call this lifecycle script, but the policy and
 When finished, report:
 
 - Lifecycle surfaces added or changed.
+- Dependency summary and relevant changes; after a successful release, the exact released dependency inventory and target differences, following [references/dependency-reporting.md](references/dependency-reporting.md).
 - Gates run and results.
 - Artifacts produced.
 - Release tag and GitHub release URL when applicable.

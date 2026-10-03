@@ -6,8 +6,8 @@ For an existing repository:
 
 1. Inventory current public API, ABI, binaries, examples, tests, dependencies, release artifacts, e2e services, Lua artifacts, benchmarks, fuzz targets, vendored patches, and documented commands.
 2. Classify each behavior into a lifecycle surface.
-3. Keep product behavior and artifact compatibility unless the user explicitly requests a breaking cleanup.
-4. Inventory public API style separately from implementation style. Prefer receiver-style handle functions for new usage, but do not remove public free-function compatibility surfaces without explicit approval.
+3. Preserve product behavior and declared artifact/consumer compatibility commitments. For pre-1.0 non-ABI refactors without an external-support commitment, prefer a clean cutover without legacy paths or shims; do not ask solely because the old non-ABI interface changes. Shared-library ABI and published bundle/dependency compatibility requirements still apply regardless of maturity.
+4. Inventory public API style separately from implementation style. Prefer receiver-style handle functions for new usage. Preserve free-function compatibility surfaces when a mature API or declared support commitment requires them; otherwise follow the preceding clean-cutover rule.
 5. Update examples and documentation snippets to the preferred public style and add executable checks that prevent regression to discouraged usage forms.
 6. Replace bespoke command names with standard Make targets. Keep compatibility aliases only when already documented public commands.
 7. Move long orchestration into standard scripts.

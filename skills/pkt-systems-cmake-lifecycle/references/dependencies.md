@@ -1,8 +1,15 @@
 # Dependencies And Provenance
 
+For initial summaries, explicit dependency questions and exact released
+inventories, follow [dependency-reporting.md](dependency-reporting.md). Reporting
+is read-only unless the task also authorizes dependency or documentation changes.
+
 ## Dependencies
 
-Projects consume external C dependencies as SDK bundles from `c.pkt.systems`. The lifecycle must support:
+Downstream projects consume external C dependencies as SDK bundles from
+`c.pkt.systems`. A bundle producer such as c.pkt.systems instead acquires its
+pinned upstream sources and builds its own SDK; it must not depend on itself.
+The lifecycle must support the applicable producer or consumer surfaces:
 
 - Host debug dependency root.
 - Host release dependency root.
@@ -116,12 +123,12 @@ Rules:
 - Pkg-config metadata for static consumers must use `Requires.private` for dependencies that also ship `.pc` files and `Libs.private` for private system libraries or linker flags. Do not make consumers spell out `-ldl`, `-lm`, `-lz`, `-pthread`, framework flags, or similar workaround closures when those are requirements of bundled dependencies.
 - Shared SDKs must not require bundled private static archives unless the project deliberately ships them as part of the artifact contract.
 - Do not implement bespoke JSON parsers, serializers, tokenizers, compactors, escaping logic, or JSON framing code when the project declares `lonejson` as a dependency. `lonejson` owns all JSON parsing, serialization, validation, streaming, framing, escaping, and fixture normalization surfaces.
-- If a project has legacy ad hoc JSON handling, migrate it behind `lonejson` during lifecycle consolidation and add tests that prove behavior is preserved.
-- If the needed JSON behavior cannot be implemented through `lonejson`, stop and flag it to the engineer. Propose a change request for adding the missing capability to `lonejson` instead of implementing bespoke JSON behavior in the consuming project.
+- When a project already declares `lonejson` and the task authorizes lifecycle consolidation of its legacy JSON handling, migrate that handling behind the dependency and test preservation of behavior. Do not add lonejson or migrate unrelated code merely because this skill is active.
+- If the needed JSON behavior cannot be implemented through the project's declared `lonejson` dependency, stop and flag it to the engineer. Propose a change request for the missing capability instead of bespoke JSON behavior in that consuming project. This rule does not select a dependency for projects that do not declare it.
 - Do not implement bespoke parsers, serializers, tokenizers, compactors, escaping logic, or framing code for a data format when the project declares a lifecycle component that owns that format.
-- If a project has legacy ad hoc structured-data handling covered by a lifecycle dependency, migrate it behind that dependency during lifecycle consolidation and add tests that prove behavior is preserved.
+- When the project declares the format-owning dependency and the task authorizes lifecycle consolidation, migrate legacy structured-data handling covered by it behind that dependency and test preservation of behavior.
 - If the needed structured-data behavior cannot be implemented through the declared lifecycle dependency, stop and flag it to the engineer. Propose a change request for adding the missing capability to the owning dependency instead of implementing bespoke behavior in the consuming project.
-- Exceptions require explicit engineer approval and must be documented as a narrow non-JSON-parser use case, such as fixed test fixture text or protocol examples that are not parsed or serialized by project code.
+- Exceptions to declared format-ownership rules require explicit engineer approval and documentation as a narrow non-parser use case, such as fixed fixture text or protocol examples not parsed/serialized by project code.
 - Do not implement a bespoke structured logging subsystem when the project declares a pkt.systems logging dependency. Put logging behind a narrow adapter, keep it optional at the public API boundary, and test that disabling logging removes side effects.
 - Logging dependencies must not leak into public headers unless the project deliberately accepts that type as part of the API. When a logger handle is accepted publicly, forward-declare it where possible and document that ownership stays with the caller.
 - Host dependency modes must validate ABI-sensitive dependencies, not just headers. Wrong-ABI or partial host installs must fail with actionable diagnostics or fall back to bundled SDK mode when auto mode is explicitly supported.
@@ -131,7 +138,7 @@ Rules:
 - Downloads must use the shared verified archive cache: hash an existing global archive before reuse, retry transient download failures a bounded number of times, hash a temporary download before atomic publication, and extract only into a repository-local target-specific dependency root.
 - Auto mode may choose host dependencies only when all required headers, libraries, package metadata, and ABI checks pass. Partial host installs must not shadow a valid bundled SDK configuration.
 - Host mode must not require bundled SDK checksums for unsupported host target IDs.
-- Deprecate old dependency-mode names with warnings and force them to the current spelling; remove the compatibility alias only as an explicit breaking change.
+- Preserve or deliberately deprecate existing dependency-mode names when a mature API or declared external-support commitment requires compatibility. For pre-1.0 non-ABI refactors without that commitment, make the clean cutover and do not add aliases unless requested. Published bundle/dependency compatibility and shared-library ABI obligations remain in force regardless of maturity.
 
 Dependency provenance contract:
 

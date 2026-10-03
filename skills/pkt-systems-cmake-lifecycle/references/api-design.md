@@ -29,7 +29,7 @@ Receiver-style API rule:
 - Keep free functions as public surface for constructors, pure helpers, factory helpers, registration helpers, serialization helpers, compatibility wrappers, and operations that genuinely do not belong to one receiver.
 - If both receiver-style and legacy/free-function handle operations exist, examples and documentation must prefer the receiver-style form.
 - Add an executable API-style check when a project has a preferred public usage style. For example, scan examples and documentation snippets for discouraged handle-operation forms and fail with a clear message. Keep the allowlist explicit so public compatibility functions remain available but do not become the documented happy path by accident.
-- Do not rename or remove public functions silently. Naming cleanups that affect public users require engineer discussion and compatibility strategy.
+- Explain public naming/removal changes. For mature APIs or declared external-support commitments, agree on the compatibility transition; for pre-1.0 non-ABI refactors without such a commitment, make the clean cutover without adding shims or asking solely because names change. Shared-library ABI breaks still require the appropriate ABI bump, and published bundle/dependency compatibility obligations remain in force.
 - Raw protocol/builders may use free functions or receiver methods according to clarity. High-level application workflows should prefer receiver-style handles because they keep multi-object flows readable.
 
 Naming:
@@ -107,7 +107,7 @@ Recommended source split:
 
 Dependency boundaries:
 
-- `lonejson` owns JSON parsing, serialization, validation, streaming, framing, escaping, and fixture normalization. Do not write bespoke JSON logic in consuming projects.
+- When the project declares `lonejson`, it owns JSON parsing, serialization, validation, streaming, framing, escaping, and fixture normalization; do not write bespoke JSON logic in that consuming project. Do not infer or introduce a lonejson dependency merely from this rule. Adding it or migrating unrelated code to it requires task authority.
 - Logging belongs behind the project logging adapter and the selected logging dependency. Public APIs should not force downstream users to accept hidden logging side effects.
 - Transport dependencies, SDK bundle roots, and host dependency probes stay below the public API. Public C headers must not expose dependency cache paths or private build details.
 - If a host dependency mode exists, probe ABI-sensitive dependencies and fail with actionable diagnostics on missing or wrong-ABI libraries. Auto modes must fall back conservatively rather than accepting partial host installs.

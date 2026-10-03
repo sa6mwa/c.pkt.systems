@@ -28,7 +28,20 @@ dist/<project>-<version>-CHECKSUMS
 
 The checksum manifest is the release upload manifest. It must be SHA-256, must list every artifact intended for the GitHub release, must itself be uploaded to the GitHub release, and must be the only source used to select non-manifest `gh release create` upload arguments.
 
-When Lua artifacts exist, the checksum manifest must include the standalone Lua source package, the rendered release rockspec, and the LuaRocks `.src.rock`, in addition to C binary and source archives.
+When Lua artifacts exist, the final complete-release checksum manifest must include the standalone Lua source package, the rendered release rockspec, and the LuaRocks `.src.rock`, in addition to C binary and source archives.
+
+Binary rehearsal uses an explicitly scoped binary manifest under `build/`, not
+a partial replacement for `dist/<project>-<version>-CHECKSUMS`. Keep its entries
+artifact-relative to `dist/` and give the verifier that base separately. Derive
+the expected set from the selected project/version/target binary inventory,
+not from an unrestricted glob. Check exact membership, bytes and every binary
+layout/privacy/loader/dependency obligation for that scope. Existing identified
+source distributions or artifacts for another identity/version remain out of
+scope during warm rehearsal; do not delete them or let them satisfy its proof.
+Unexpected/missing binary artifacts within the selected scope are failures.
+Final clean `make release` assembles all surfaces and replaces the final manifest
+only with the complete verified release set. A binary manifest cannot authorize
+uploads, native final-artifact handoff or publication.
 
 Release artifact privacy and relocatability are hard packaging invariants, not cosmetic cleanup. Every artifact that can be uploaded or consumed must be free of workstation-local paths, including binary SDK tarballs, CLI tarballs, source archives, Lua source rocks, rockspecs, checksum manifests, smoke bundles, and nested archives inside package formats.
 
@@ -82,7 +95,7 @@ For each target archive, answer these questions in the package verification test
 
 Package generation must:
 
-- Clean `dist/` before release packaging.
+- Clean `dist/` at the start of each required clean `make release` run, not in each per-target packaging recipe. Warm binary rehearsal/package entrypoints preserve identified out-of-scope artifacts and use the explicit binary manifest scope above. Final clean release still rejects stale/unlisted distribution artifacts before publication.
 - Build each requested target from the correct preset and dependency root.
 - Stage through `cmake --install`.
 - Strip project-owned libraries where appropriate.
@@ -97,7 +110,7 @@ Package generation must:
 - Use an explicit artifact manifest or narrow, version-qualified artifact patterns for checksum generation. Do not include build intermediates, package staging directories, or stale artifacts by accident.
 - Package artifacts correctly in the first place. Do not rely on a sanitized repack step to hide local paths after generation, and do not rely on Darwin `install_name_tool` as a routine final-package cleanup step.
 
-Package verification must:
+Final complete-release package verification must:
 
 - Verify checksums.
 - Verify `dist/<project>-<version>-CHECKSUMS` is present and is the only active checksum manifest for the release.
@@ -175,10 +188,10 @@ Darwin Mach-O invariant:
 Darwin tool discovery:
 
 - Do not assume Darwin inspection tools are on `PATH`.
-- The pkt.systems standard osxcross install location is `${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}`. The default Darwin host is `${CPKT_OSXCROSS_HOST:-arm64-apple-darwin25}`. Therefore the default tool paths are `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-otool`, `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-install_name_tool`, and `$HOME/.local/cross/osxcross/bin/arm64-apple-darwin25-strip`.
+- The pkt.systems standard osxcross install location is `${OSXCROSS_ROOT:-$HOME/.local/cross/osxcross}`. With `CPKT_OSXCROSS_HOST` unset, resolve the newest complete Darwin 25.x prefix and use its reported tool paths. An explicit value pins an exact installed prefix. Do not invent major-version aliases such as `arm64-apple-darwin25-otool`; the installed tools may only have a `25.4` prefix. Follow [toolchains.md](toolchains.md#darwin-osxcross-input-and-setup).
 - Do not assume Darwin linker tools are selected merely because `${host}-clang` is invoked by absolute path. Some osxcross clang wrappers still delegate to the first `ld` found in `PATH`; on Linux that can be `/usr/bin/ld`, which violates the basic cross-compilation invariant. Darwin configure, build, package-smoke, and installed-example link commands must run with `${OSXCROSS_ROOT}/bin` prepended to `PATH`.
-- Darwin CMake toolchains must set `CMAKE_LINKER` to `${OSXCROSS_ROOT}/bin/${CPKT_OSXCROSS_HOST}-ld` and force executable, shared, and module links through an absolute `--ld-path=${CMAKE_LINKER}` flag. Upstream dependency build systems that bypass CMake must receive equivalent environment, normally `PATH=${OSXCROSS_ROOT}/bin:$PATH` plus `LDFLAGS=--ld-path=${CMAKE_LINKER}` or an upstream-specific linker override. Do not use an absolute path with `-fuse-ld`; Clang reserves that option for linker flavor and deprecates path use.
-- Package verification should include a linker-route regression when osxcross is available. It should dry-run or link a minimal Darwin executable and assert that the accepted lifecycle route selects `${CPKT_OSXCROSS_HOST}-ld`, not `/usr/bin/ld` or another host linker.
+- Darwin CMake toolchains must set `CMAKE_LINKER` to the resolver-reported absolute linker for the selected prefix and force executable, shared, and module links through `--ld-path=${CMAKE_LINKER}`. This applies when the pin variable is unset as well. Upstream dependency build systems that bypass CMake must receive equivalent environment, normally `PATH=${OSXCROSS_ROOT}/bin:$PATH` plus `LDFLAGS=--ld-path=${CMAKE_LINKER}` or an upstream-specific linker override. Do not use an absolute path with `-fuse-ld`; Clang reserves that option for linker flavor and deprecates path use.
+- Package verification should include a linker-route regression when osxcross is available. It should dry-run or link a minimal Darwin executable and assert the route selects the resolved Darwin linker, not `/usr/bin/ld` or another host linker; cover discovery without a pin and an explicit prefix pin.
 - Prefer configured CMake tool state when locating Darwin tools: `CMAKE_C_COMPILER`, `CMAKE_STRIP`, `CMAKE_INSTALL_NAME_TOOL`, `CPKT_OTOOL`, and `CMAKE_OTOOL` when present.
 - Discover configured CMake tool state from the active preset build directory, normally by reading `CMakeCache.txt` or using non-mutating CMake cache introspection after configure. Tool lookup scripts should accept an explicit build directory or target ID so they inspect the same configured build that produced the package.
 - Prefer a shared `scripts/discover_target_tools.sh` helper for this lookup so package generation, package verification, Darwin smoke bundles, and release privacy verification agree on the selected tools.
