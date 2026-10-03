@@ -68,15 +68,29 @@ This local tool-discovery hint must not enter installed/exported metadata.
 Use the lifecycle resolvers directly or vendor their exact content into a downstream repository:
 
 ```sh
-"$lifecycle_scripts_dir/cpkt-toolchains.sh" ensure all
-"$lifecycle_scripts_dir/cpkt-toolchains.sh" discover aarch64-linux-gnu
-eval "$("$lifecycle_scripts_dir/cpkt-toolchains.sh" env aarch64-linux-gnu)"
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" ensure all || exit 1
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" discover aarch64-linux-gnu || exit 1
+resolved_toolchain_env=$("$lifecycle_scripts_dir/cpkt-toolchains.sh" env aarch64-linux-gnu) || exit 1
+eval "$resolved_toolchain_env"
 
-"$lifecycle_scripts_dir/cpkt-aflpp.sh" ensure
-eval "$("$lifecycle_scripts_dir/cpkt-aflpp.sh" env)"
+"$lifecycle_scripts_dir/cpkt-aflpp.sh" ensure || exit 1
+resolved_aflpp_env=$("$lifecycle_scripts_dir/cpkt-aflpp.sh" env) || exit 1
+eval "$resolved_aflpp_env"
 ```
 
 `ensure all` downloads the six Linux Bootlin collections and reports Darwin osxcross status. It never installs an Apple SDK. `discover` reports all resolved paths, including the selected compiler, linker, binutils, sysroot, static GNU C++ runtime archives, and source. `env` emits shell exports only; it does not modify login-shell files.
+
+Capture and check `env` output before evaluating it. `eval "$(resolver env)"`
+can return success on failed discovery and leave stale compiler settings active;
+never use that shape for resolver invocation. These preparation examples terminate
+the calling script/session on failure rather than continuing with stale settings.
+
+Both resolvers' `discover` and `env` are non-provisioning paths. Bootlin discovery
+reports `status=missing` without installing; AFL++ discovery/environment fails with
+the matching preparation command if Bootlin or AFL++ is absent/incomplete. Only
+`ensure` provisions. Selected operations validate existing tools and refuse missing
+prerequisites; ordinary unselected builds may ensure collections through their
+authorized outer wrapper. Never call `ensure` solely for inventory reporting.
 
 ## Development-machine provisioning
 
@@ -299,7 +313,12 @@ use the resolver-reported pinned paths.
 
 ## CMake Setup
 
-Resolve the collection before `project()` through a CMake toolchain file or a compiler bootstrap module. This reusable pattern parses the resolver output and sets every relevant tool, not only `CMAKE_C_COMPILER`:
+Resolve the collection before `project()` through a CMake toolchain file or a
+compiler bootstrap module. The outer lifecycle wrapper handles permitted provisioning
+before configure; selected operations require explicit prerequisite preparation.
+This read-only discovery pattern refuses missing collections and sets every relevant
+tool, not only `CMAKE_C_COMPILER`. Repeated toolchain/try-compile evaluation must not
+trigger provisioning:
 
 ```cmake
 list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES CPKT_LIFECYCLE_SCRIPTS_DIR)
@@ -309,15 +328,13 @@ function(project_configure_bootlin_toolchain target_id)
     message(FATAL_ERROR "Set CPKT_LIFECYCLE_SCRIPTS_DIR to the resolved lifecycle scripts directory")
   endif()
   set(resolver "${CPKT_LIFECYCLE_SCRIPTS_DIR}/cpkt-toolchains.sh")
-  execute_process(COMMAND "${resolver}" ensure "${target_id}"
-    RESULT_VARIABLE result ERROR_VARIABLE error)
-  if(NOT result EQUAL 0)
-    message(FATAL_ERROR "Unable to install the pinned Bootlin toolchain: ${error}")
-  endif()
   execute_process(COMMAND "${resolver}" discover "${target_id}"
     RESULT_VARIABLE result OUTPUT_VARIABLE description ERROR_VARIABLE error)
   if(NOT result EQUAL 0)
     message(FATAL_ERROR "Unable to inspect the pinned Bootlin toolchain: ${error}")
+  endif()
+  if(NOT description MATCHES "(^|[\r\n])status=ready([\r\n]|$)")
+    message(FATAL_ERROR "Missing pinned Bootlin collection; prepare explicitly with: ${resolver} ensure ${target_id}")
   endif()
   foreach(key cc cxx ld ar ranlib strip nm objcopy objdump addr2line readelf sysroot root)
     string(REGEX MATCH "(^|[\r\n])${key}=([^\r\n]+)" match "${description}")
@@ -357,7 +374,7 @@ project_configure_bootlin_toolchain(x86_64-linux-gnu)
 execute_process(COMMAND "${CPKT_LIFECYCLE_SCRIPTS_DIR}/cpkt-aflpp.sh" discover
   RESULT_VARIABLE result OUTPUT_VARIABLE description ERROR_VARIABLE error)
 if(NOT result EQUAL 0)
-  message(FATAL_ERROR "Unable to provision pinned AFL++: ${error}")
+  message(FATAL_ERROR "Unable to inspect prepared AFL++; run ${CPKT_LIFECYCLE_SCRIPTS_DIR}/cpkt-aflpp.sh ensure explicitly: ${error}")
 endif()
 foreach(key cc cxx helper root)
   string(REGEX MATCH "(^|[\r\n])${key}=([^\r\n]+)" match "${description}")
@@ -469,10 +486,16 @@ For Darwin, do not apply the GNU runtime archive contract. osxcross/Apple Clang 
 
 Run these checks after changing either resolver or the toolchain policy:
 
+Set `project_root` to the validated current checkout root. Keep the supplied
+test helpers' temporary fixtures under its ignored `build/`, including when
+the helpers themselves come from the installed skill:
+
 ```sh
 bash -n "$lifecycle_scripts_dir/cpkt-toolchains.sh"
-"$lifecycle_scripts_dir/test-cpkt-toolchain-resolvers.sh"
-"$lifecycle_scripts_dir/test-cpkt-aflpp-resolver.sh"
+test_work_root="$project_root/build/toolchain-checks"
+mkdir -p "$test_work_root"
+TMPDIR="$test_work_root" "$lifecycle_scripts_dir/test-cpkt-toolchain-resolvers.sh"
+TMPDIR="$test_work_root" "$lifecycle_scripts_dir/test-cpkt-aflpp-resolver.sh"
 "$lifecycle_scripts_dir/cpkt-toolchains.sh" discover
 ```
 

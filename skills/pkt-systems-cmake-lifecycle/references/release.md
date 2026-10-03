@@ -27,20 +27,20 @@ Recommended Make target shape:
 
 - Release orchestration belongs to Make, not CMake. CMake is a build, test, install, and package-configuration surface invoked by the Make targets; it must not become the public release pipeline, own tag mutation, or replace `make release` as the final local gate.
 - `make prerelease` should run the ordinary local proof and a binary-only `release-matrix` without cleaning generated state first. This gives fast release-equivalent binary-package feedback while engineers are still iterating.
-- `make release` must run `make lifecycle-version-contract` first, before cleaning generated state, building, packaging, or producing artifacts. It must then clean generated state, run every ordinary proof required by `prerelease`, and enter a final release matrix that also produces and reconstructs the source archive.
-- Keep source-archive reconstruction out of `prerelease`, binary `release-matrix`, and `package-verify`. It is the final all-component reconstruction gate: after binary packages exist, generate the source archive, run `package-source-smoke`, regenerate/check the manifest, and verify the complete release artifact set.
+- `make release` must run `make lifecycle-version-contract` first, before cleaning generated state, building, packaging, or producing artifacts. It then cleans generated state, runs every ordinary proof required by `prerelease`, and enters the final matrix for all declared artifact surfaces, including production/reconstruction of source archives when shipped.
+- Keep source-archive reconstruction out of `prerelease`, binary `release-matrix`, and `package-verify`. When source archives are shipped, it is the final all-component reconstruction gate: after binary packages exist, generate the source archive, run `package-source-smoke`, regenerate/check the manifest, and verify the complete release artifact set. Do not introduce a source distribution merely because this skill is active.
 - `release-pipeline` should run the ordinary local proof in order, then the binary release matrix. Keep expensive optional hardening either inside the matrix when mandatory for release or behind an explicitly named target such as `prerelease-hardening`.
 - Tag-mutating version and manifest contract checks must live behind the focused `make lifecycle-version-contract` target. `make release` is the only standard release-flow target that runs this check, and it must run it before `clean`, `release-pipeline`, `release-matrix`, `package-verify`, checksum generation, or artifact production. Do not wire tests that create, delete, or otherwise mutate git tags into `test`, `test-all`, `prerelease`, `release-pipeline`, `release-matrix`, `package-verify`, or any other late release-flow command. This placement makes manual release (`make release`, squash, tag, push) exercise the exact-tag contract while failing before expensive or publishable release work begins.
 - `release-matrix` should build every supported release target, run host-executable tests for the host release target, run every cross-target QEMU test suite the project has opted into, produce binary SDK artifacts, generate the binary checksum manifest, and run binary package, checksum, privacy, relocatability, instrumentation-leak, and loader-metadata verification. `make release` then runs the final source-archive reconstruction and verifies the complete manifest. Selected QEMU coverage is mandatory: fail clearly when its runner or configuration is unavailable; see [local-ci.md](local-ci.md).
 - `prerelease-artifacts`, when kept for compatibility, should be an alias for `release-matrix`.
 - `prerelease-hardening`, when no extra hardening tier exists, should be an alias for `prerelease` until a real hardening tier is defined.
 - `prerelease-live` must fail closed unless live external-provider checks are explicitly enabled through a documented environment variable and credentials are available.
-- `make help` must describe the public release targets and make clear that `release` is the clean final gate while `prerelease` is the same proof graph without the initial clean.
+- `make help` must describe `prerelease` as incremental ordinary proof plus binary-matrix verification. Clean `release` additionally runs the pre-clean version contract and final source/non-binary distribution gates. Prerelease does not supply their proof.
 
 Executable lifecycle tests:
 
-- Add a focused test that asserts `release` runs `lifecycle-version-contract` before `clean`, that it runs every ordinary prerelease proof before the final matrix, and that only the final clean release path runs source-archive reconstruction.
-- Add focused tests for checksum-manifest generation and upload-set selection: every release-looking artifact under `dist/` must be checksum-listed, every checksum-listed artifact must exist, and the checksum manifest itself must be included in release uploads.
+- Add a focused test that asserts `release` runs `lifecycle-version-contract` before `clean`, that it runs every ordinary prerelease proof before the final matrix, and that shipped source archives are reconstructed only on the final clean release path or through an explicitly requested standalone source-smoke command.
+- Add focused tests for checksum-manifest generation and upload-set selection: in complete-release scope, every intended release artifact under `dist/` must be checksum-listed, every listed artifact must exist, and the manifest itself must be uploaded. Reject stale/unlisted release artifacts except documented exclusions. Selected/binary fixtures check their exact declared inventories and prove identified out-of-scope source/other-version artifacts neither enter nor satisfy their evidence; see [packaging.md](packaging.md).
 - Add a focused `make lifecycle-version-contract` test for lightweight-tag version behavior and release-command version selection. Use a temporary lightweight semver tag such as `v99.99.99` on the current `HEAD` and clean it with a trap. Treat `v99.99.99` as reserved test-only state, never a real release tag. Fail on a pre-existing reserved tag unless a lifecycle-owned recovery record under `build/` identifies the exact lightweight object created by this test. Persist that record only after exclusive tag creation succeeds; automatic recovery and trap cleanup must use compare-and-delete against the recorded object and preserve any changed or unowned ref. Interruption before ownership is recorded fails closed. Create the reserved temporary tag with signing disabled, for example `git -c tag.gpgSign=false tag v99.99.99`, so user or repository signing configuration cannot turn the temporary lightweight tag into an annotated or signed tag or make noninteractive release fail. Assert with `git cat-file -t <tag>` that accepted exact release tags and the reserved temporary test tag resolve directly to a `commit`; reject annotated or signed tag objects. If `HEAD` already has a non-reserved exact lightweight release tag, assert that the exact tag wins and skip the temporary-tag block; final tagged release runs must not create the reserved temporary tag. Do not create another checkout, git worktree, copied repository, generated source archive, or source-archive staging fixture for this; extra checkout topology can hide the real release-branch `HEAD` contract. Keep these tests out of prerelease, ordinary tests, package verification, and release-matrix command graphs. `make release` must run this target as its first recipe command. This pre-clean gate should prove the Make-owned release entrypoint observes exact lightweight tags; it should not configure CMake merely to satisfy the tag-mutation contract. CMake version propagation belongs in the Make-driven build/package tests and package verification, where CMake is invoked as an implementation surface of the release graph.
 - Add focused tests for artifact verification failures that previously could escape until publish time: local source/cache/build path leaks, local `file://` URLs, hardening or fuzzer instrumentation markers, non-relocatable RPATH/RUNPATH/install-name metadata, missing dependency manifests, and stale or omitted release artifacts.
 - Tests should exercise observable release contracts through the public Make/script surfaces rather than only checking implementation details. Light structural tests are acceptable for target wiring because the target graph is part of the lifecycle contract.
@@ -103,9 +103,12 @@ Run this for every release candidate after establishing the release base,
 including direct releases from the default branch. For a topic branch it
 precedes squash; for a direct release it runs on the current untagged release
 candidate with its meaningful review baseline. It always precedes tagging and
-proves that candidate tree from a clean slate; subsequent ref or tree changes
-invalidate the proof. Direct release does not eliminate this first clean run
-or the later final tagged clean run.
+proves that candidate tree and effective inputs from a clean slate. Changes to
+the pinned release base, source tree or effective inputs require renewed preparation
+and proof. An authorized equivalent squash or signing/message-only amendment may
+retain matching source-tree/review proof with its original provenance; exact-commit
+evidence and ref checks must identify the resulting commit. Direct release does
+not eliminate this first clean run or the later final tagged clean run.
 
 The supplementary commands below apply only to required proof not already
 included in the successful clean rehearsal, or an explicitly requested extra
@@ -140,6 +143,12 @@ reported separately. Candidate success does not establish success for the final
 squashed/signed commit or the final distribution bytes.
 
 Release matrix gate:
+
+For implemented package groups, every clean release run covers the complete
+inventory and combinations. Reject explicit partial group/target/evidence selectors
+before mutation. Matching producers and exact repeated fixtures may be reused within
+that run; prior rehearsal evidence cannot satisfy the final tagged clean run. Follow
+[package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md).
 
 - The release matrix builds every supported target preset.
 - It runs host-executable release tests for the host target.

@@ -17,7 +17,7 @@ Rules:
 - After e2e service edits, run `dev-reset`, `dev-up`, and `test-e2e` or the closest project-specific local e2e gate.
 - After Lua facade edits, run `lua-rock`, `lua-test`, and any Lua benchmark gate that protects a hot path.
 - Do not run `make clean` reflexively between ordinary build, test, debug, Valgrind, e2e, Lua, fuzz, or benchmark targets. Reuse configured builds and cached dependencies for fast iteration unless there is a concrete stale-state reason.
-- Run `make clean` deliberately when dependency versions, dependency URLs, dependency checksums, toolchain files, target IDs, cache layout, package layout, release versioning, or generated dependency roots change, or when a failure plausibly comes from stale build/dependency state.
+- Diagnose stale state from effective input contracts; changes to versions, source bytes, helpers, toolchains, layout or version-bearing outputs require repair only of affected owned state. A changed URL with identical verified bytes does not itself require rebuilding. Use explicit component/group preparation or cleanup where supported. Reserve global `make clean` for required clean gates, an intentional full reset, or a demonstrated problem that scoped repair cannot resolve; a selected consumer must not clean/rebuild its borrowed prerequisites.
 - When the skill already covers a lifecycle-mechanical decision, do not ask for permission. Implement, verify, and report.
 - Ask only for product, architecture, ABI/API, release authority, external service, or unsupported-tool decisions.
 
@@ -25,7 +25,7 @@ Execution tiers:
 
 - **Inner loop**: seconds to low minutes; targeted configure/build/test commands for the edited surface.
 - **Confidence loop**: normal local verification such as `test-all`, deterministic e2e, Lua tests, fuzz smoke, benchmark gates, and package verification.
-- **Release loop**: clean, serialized, no shortcuts; candidate branch gates, review, squash to local `main`, lightweight tag, final tagged build, package verification, push, and GitHub release.
+- **Release loop**: clean, serialized, no shortcuts; candidate branch gates, review, squash to the resolved local release branch, lightweight tag, final tagged build, package verification, push, and GitHub release. Follow [release.md](release.md).
 
 Failure taxonomy:
 
@@ -78,7 +78,7 @@ PKT_DIAGNOSTIC_END
 ```
 
 - Keep diagnostics short. Put long compiler, e2e, package, or benchmark logs before the diagnostic block or in named log files referenced by `artifact` or `next`.
-- Do not make persistent generated report files part of the default lifecycle. Keep diagnostics in command output and the active agent context unless the engineer explicitly asks for report artifacts.
+- Do not create unsolicited tracked audit/report artifacts. Human diagnostics stay in command output; machine completion/verification receipts and operation logs required for reuse belong under ignored `build/`. Follow [package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md).
 
 
 ## Lifecycle Spine
@@ -169,10 +169,15 @@ Rules:
 - `scripts/` holds stateful orchestration and long logic.
 - `cmake/` holds CMake modules, toolchains, package scripts, archive assertions, version logic, and config templates.
 - `dist/`, `build/`, generated dependency roots, local service state, and package-manager build directories are generated.
-- Source archives may include static Docker config, release scripts, examples, tests, and fixture descriptors. They must not include generated service state, dependency caches, build trees, package-manager temp trees, credentials, or VCS internals.
-- `make clean` is the go-to full generated-state reset. It removes `build/`, `dist/`, generated dependency/cache roots under the repository's `.cache/`, and package-manager build state. It must not remove or mutate the shared `${CPKT_DEPENDENCY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/c.pkt.systems/deps}` archive cache or the sibling toolchain cache.
+- Source archives may include tracked Podman Kube config, release scripts, examples, tests, and fixture descriptors. They must not include generated service state, dependency caches, build trees, package-manager temp trees, credentials, or VCS internals.
+- Unqualified `make clean` is the full generated-state reset. It removes reusable build/evidence, `dist/`, generated dependency roots under `.cache/`, and package-manager build state. Preserve the stable operation lock file/inode across owners and waiters and any unresolved owned recovery record, as described in [package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md). Such control state cannot satisfy reusable verification. Selected cleanup removes only owned state. Neither mutates shared archive/toolchain caches.
 - `make clean-dist` removes only release artifacts under `dist/`.
 - Do not make normal build/test targets depend on `make clean`; fast local CI/CD depends on cache reuse.
+
+Group-owned build layouts and selectors apply only where implemented or explicitly
+requested. Keep presets and Make/helper path resolution coherent at cutover; a
+generic `build/${presetName}` default does not override declared group isolation.
+Follow [package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md).
 
 
 ## Generated Workspaces
@@ -260,8 +265,6 @@ Core targets:
 - `make test-all`
 - `make valgrind`
 - `make package`
-- `make package-source`
-- `make package-source-smoke`
 - `make package-checksums`
 - `make package-verify`
 - `make verify-release-archives`
@@ -274,6 +277,7 @@ Core targets:
 - `make release`
 - `make print-release-version`
 - `make format`
+- `make format-check`
 - `make clean`
 - `make clean-dist`
 
@@ -289,7 +293,6 @@ Conditional standard targets, required when the surface exists:
 - `make fuzz`
 - `make fuzz-smoke`
 - `make fuzz-long`
-- `make fuzz`
 - `make bench`
 - `make benchmarks`
 - `make bench-check`
@@ -317,6 +320,8 @@ Conditional standard targets, required when the surface exists:
 - `make lua-bench`
 - `make lua-bench-gate`
 - `make package-single-header`
+- `make package-source`
+- `make package-source-smoke`
 - `make release-darwin-smoke-bundle`
 - `make vendor-<name>`
 - `make vendor-<name>-apply`
@@ -330,6 +335,7 @@ Make rules:
 - `make help` must list every root target intended for humans or agents, including required opt-in environment variables for integration, live, service, and package-manager targets.
 - Release orchestration belongs to Make. CMake is invoked by Make as a build, test, install, and package-configuration surface; do not expose CMake presets or CMake scripts as the public release pipeline or as substitutes for `make release`.
 - `make format` formats project-owned C, headers, examples, tests, and generated single-header inputs with clang-format using the checked-in `.clang-format`.
+- `make format-check` is a read-only formatting assertion; run it after the last edit and before committing.
 - `make print-release-version` prints exactly the version that packaging/release targets will use.
 - `make finalize-slice` is the default pre-commit gate for ordinary implementation slices: format plus the narrow local tests that catch common regressions quickly.
 - `make prerelease` is deterministic local verification. It must not require real credentials or live external providers.
@@ -337,7 +343,7 @@ Make rules:
 - `make prerelease-hardening` is expensive and may combine deterministic, live, long fuzz, benchmark, and release-matrix gates.
 - `make release-matrix` builds, tests, packages, checksums, and verifies the release target set without requiring a clean tree. `make release` is the clean final pipeline.
 - `make lifecycle-version-contract` is the focused pre-clean release contract for exact lightweight-tag version behavior through release-owned script and Make surfaces. It may create and delete only the reserved temporary lightweight tag used by the project test, must fail on an unowned pre-existing reserved tag, may recover only the exact lightweight object identified by a lifecycle-owned record under `build/`, must persist that record only after exclusive tag creation succeeds, and must compare-and-delete the recorded object during recovery/trap cleanup while preserving changed or unowned refs, must create the reserved tag with signing disabled so it remains lightweight and noninteractive, must reject annotated or signed semver tag objects on `HEAD`, must clean its own tag with a trap, and must not be called from `test`, `test-all`, `prerelease`, `release-pipeline`, `release-matrix`, or `package-verify`. It should not configure CMake solely to test tag mutation; CMake version behavior is covered when the Make-owned release graph invokes CMake build and package surfaces.
-- `make package-verify` must include release privacy verification for checksum-listed artifacts. `make verify-release-privacy` may exist as a focused gate for the same invariant, but it is not a substitute for including the check in package verification.
+- `make package-verify` must include privacy verification for all checksum-listed artifacts in its declared selected/binary/release scope. `make verify-release-privacy` may expose the same invariant, but cannot replace package verification. Partial scope cannot satisfy complete-release proof; see [packaging.md](packaging.md).
 - `make package-source-smoke` extracts the source archive and proves it can configure, build, test, and resolve the same version without repository metadata.
 - `make release` is the final clean release action and gate. Its first recipe command must be `make lifecycle-version-contract`, followed by `make clean`, followed by the shared release proof graph. It must fail on warnings for project-owned and otherwise controllable code using `-Werror` or the platform equivalent, while allowing documented exclusions for upstream dependency warnings outside practical project control.
 - Core targets are the default lifecycle vocabulary. Conditional standard targets are not optional once the matching surface exists in the project.
@@ -384,7 +390,7 @@ Script safety contract:
 - Resolve the repository root once and operate relative to it.
 - Validate argument count and required files before mutating generated state.
 - Trap cleanup for temporary directories, child processes, local daemons, and service state created by the script.
-- Destructive cleanup must be limited to known generated directories inside the repository such as `build/`, `dist/`, `.cache/`, package-manager build roots, and temporary directories. Container service state belongs under `build/devenv/`; `dev-reset` removes that root only after stopping its pods. Cleanup must not reach tracked `devenv/` config, the shared XDG/HOME `c.pkt.systems/deps` archive cache, or the toolchain cache.
+- Destructive cleanup must be limited to known generated directories owned by the selected operation. Borrowed prerequisite roots and unrelated groups are read-only. Global clean preserves the stable operation lock inode and unresolved owned recovery records while removing reusable output/evidence. Container service state belongs under `build/devenv/`; `dev-reset` removes that root only after stopping its pods. Cleanup must not reach tracked config, shared archive/toolchain caches, or unrelated services.
 - Scripts that delete or recreate a directory must refuse empty paths, `/`, the repository root, parent directories, home directories, and any path outside the expected generated-state root.
 - Never remove source-controlled files, parent directories, home directories, or arbitrary user-provided paths.
 - Print actionable errors with the failed surface, phase, and next step. Use the structured diagnostic block for important lifecycle failures.

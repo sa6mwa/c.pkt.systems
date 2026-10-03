@@ -34,7 +34,8 @@ Receiver-style API rule:
 
 Naming:
 
-- Use one project prefix for all public C symbols, CMake options, CMake targets, pkg-config variables, environment variables, and Make/service variables.
+- Use one project prefix for project-owned public C symbols and project-specific CMake options/targets, pkg-config variables, environment variables and Make/service settings. Preserve standard lifecycle selectors such as `PRESET` and `GROUP`.
+- Native bundled dependency APIs and official imported CMake targets retain their upstream names. Preserve required foreign-runtime entry names too. A dependency facade follows its declared namespace while preserving upstream operation names/suffixes, ownership and semantics; do not force a native API into receiver style or rename it merely to fit a generic convention. Document intentional C89 type/ABI conversions.
 - Use `project_type_verb` for receiver functions, `project_verb_type` only when the operation is clearly a factory or cross-type helper, and `project_constant_name` for macros.
 - Name buffered, spooled, source-backed, and streaming APIs precisely. Do not call an API streaming unless bytes or records flow from producer to consumer without full-message materialization.
 - Name configuration helpers by the side effect they perform, such as `config_use_provider`, `load_dotenv_key`, or `auth_default_path`. Do not hide environment, filesystem, or credential reads inside generic constructors.
@@ -116,6 +117,7 @@ Dependency boundaries:
 Streaming and spooling:
 
 - Streaming APIs must stream for real. They may use bounded parser, serializer, transport, and OS buffers, but must not materialize the whole message behind a streaming-looking API.
+- A facade forwarding an existing upstream source/sink callback API must not add full-value buffering or rewrite the backend's mechanism. Preserve native names and document backend buffering where relevant; callback forwarding alone does not promise bounded memory inside the dependency. If a requested workflow requires true streaming end to end and the backend cannot provide it, report that unmet requirement before implementation.
 - File-backed or memory-backed spill behavior is acceptable only when explicitly named and documented as spooled or file-backed.
 - Source/sink callback APIs must define ownership, retry behavior, EOF, close semantics, partial read/write behavior, and error propagation.
 - Source/sink adapters should support callback-backed streams, file-backed streams where appropriate, and interop wrappers for dependency-native source/sink types when the dependency is part of the public integration contract.
@@ -143,6 +145,10 @@ When a library has low-level protocol builders and high-level workflow helpers, 
 ## Cross-Facade Borrowed Views
 
 When a project ships multiple facades, such as a core C SDK plus a Lua C module, keep language runtimes and facade internals out of the core C SDK.
+
+Here, core means the language-agnostic project library API, not a package group
+named core. Intentional upstream Lua headers/libraries in a bundled SDK retain
+their native API; these rules govern project-owned cross-facade boundaries.
 
 Rules:
 
@@ -188,7 +194,7 @@ Rules:
 
 ## API Verification Checklist
 
-Add executable checks for:
+Add executable checks for the applicable public/shipped surfaces:
 
 - Every public header compiles standalone.
 - A C-only consumer builds with the selected C standard.

@@ -2,6 +2,11 @@
 
 Enable Lua facade support when the project ships Lua bindings, a Lua C module, Lua runner behavior, or Lua release artifacts.
 
+This reference governs downstream Lua facade and source-rock distribution. A
+bundle producer may intentionally ship upstream Lua runtime/development files
+under its declared SDK contract; that does not require it to ship downstream Lua
+facades or source rocks. Follow [packaging.md](packaging.md) for that distinction.
+
 Repository contract:
 
 ```text

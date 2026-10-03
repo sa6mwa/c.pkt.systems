@@ -1,5 +1,13 @@
 # Local Build, Test, Quality, Fuzzing, And Benchmarking
 
+For selected groups and producer/test reuse, follow
+[package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md).
+Required coverage is inventory-derived; narrower operations cannot silently build
+or retest prerequisites. Reuse exact same-run proof without conflating Debug/Release,
+plain/Memcheck, build-tree/extracted-package or source/final-byte evidence. Existing
+matching prerequisite readiness supports development, not persistent skipping of
+selected tests or reuse across the two clean release runs.
+
 ## Build And Test Gates
 
 Fast local confidence:
@@ -31,7 +39,9 @@ Recommended production-loop tiers:
 - `make prerelease-hardening`: the expensive tier. Include `prerelease`, live checks when explicitly enabled, long fuzz runs, benchmark gates when applicable, and the release matrix.
 - `make release-matrix`: incrementally build, test, package, checksum, and verify the binary SDK/runtime artifacts for every release target, including their headers, metadata, notices and applicable binary smoke bundles. Source archives, standalone source distributions/source rocks and single-header distributions are assembled and verified by final `make release` after the binary matrix; source reconstruction is not a matrix prerequisite.
 
-These names are preferred over project-specific gate names. Compatibility aliases are acceptable only for already documented public commands.
+These names are preferred over project-specific gate names. Retain compatibility
+aliases only for an explicit request or declared external-support commitment;
+documentation alone does not prevent a pre-1.0 clean cutover.
 
 ## Optional Native macOS Hosted Verification
 

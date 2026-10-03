@@ -23,10 +23,11 @@ This skill is the process authority. It must not require external example reposi
 - No scanner, test, verifier, packaging helper, or other tool may create temporary files or directories in the repository root or source directories. Put repository-local scratch under the repository's `build/`, which must be excluded by a checked-in `/build/` rule in `.gitignore`. Resolve that location independently of the caller's working directory; see [references/operability.md](references/operability.md#generated-workspaces).
 - Local container-backed e2e uses rootless Podman Kube manifests. Keep all project-owned container state, caches, and temporary files under `build/devenv/`; `dev-reset` must remove them as the ordinary host user after stopping the pods. Follow [references/podman-kube-e2e.md](references/podman-kube-e2e.md).
 - Do not tell the user or future agents to derive this lifecycle from other repositories.
-- Do not write source-repository provenance, workstation-local paths, parent-relative project paths, credentials, or temporary machine paths into generated repository files.
+- Do not write source-repository provenance, workstation-local paths, parent-relative project paths, credentials, or temporary machine paths into tracked/generated source or distribution files. Necessary local paths and generated test credentials may exist only in ignored local build/control/dependency state, with appropriate permissions and explicit exclusion from source/release artifacts; see [references/operability.md](references/operability.md) and [references/podman-kube-e2e.md](references/podman-kube-e2e.md).
 - Release artifacts must be relocatable and must not contain `$HOME`, source repository paths, build directory paths, dependency cache paths, package-manager temporary paths, or any absolute local workstation path. The release gate must expand and scan all checksum-listed artifacts, including nested source rocks and nested source archives, inspect runtime loader metadata, and fail before release on any local path or non-relocatable runtime path.
 - Preserve project-specific behavior, but move lifecycle behavior behind the standard surfaces when doing lifecycle work. Do not broaden ordinary engineering requests into lifecycle migrations unless the requested change requires it.
 - Verification is the release gate. Each new lifecycle behavior must have an executable check.
+- Where the project supports selected packages/groups, preserve their build, test, cleanup and payload ownership boundaries. Import verified prerequisites; missing/stale prerequisites fail with a preparation command rather than silently widening scope. Producer and verification reuse follow [references/package-isolation-and-build-reuse.md](references/package-isolation-and-build-reuse.md). A planned split is not an implemented command or published asset contract.
 - `release` is the final local release action and gate. Do not introduce a separate umbrella target as the accepted final gate; put the complete clean release pipeline behind `make release` and expose narrower rehearsals through named targets such as `prerelease`, `prerelease-hardening`, and `release-matrix`.
 - Release uploads must include the checksum manifest, normally `dist/<project>-<version>-CHECKSUMS`, and GitHub release assets must be selected from that manifest rather than from a `dist/` glob.
 - Treat warnings as errors for all project-owned and otherwise controllable build outputs. Use compiler warning flags plus `-Werror` or the platform equivalent, and use fatal linker-warning flags where supported. Exclude noisy upstream dependency builds only when the warnings are outside the project’s practical control; wrappers, facades, generated project-owned code, package smoke consumers, and release verification helpers remain warning-clean release blockers.
@@ -72,6 +73,7 @@ Read references only after the request and repository state indicate they are re
 - Read [references/toolchains.md](references/toolchains.md) when touching C/C++ compiler discovery, cross-target setup, autodownloaded compiler collections, CMake toolchain files or presets, static C++ runtime closure, downstream setup instructions, release target matrices, or package metadata that exposes compiler/runtime requirements.
 - Read [references/dependencies.md](references/dependencies.md) when touching SDK dependencies, cache invalidation, dependency provenance, bundled/external dependency rules, license provenance, any JSON behavior owned by `lonejson`, or project-owned dependency behavior.
 - Read [references/dependency-reporting.md](references/dependency-reporting.md) for the initial dependency summary, explicit inventory questions, dependency changes, and release reports. Read the acquisition/provenance reference as well when those surfaces change.
+- Read [references/package-isolation-and-build-reuse.md](references/package-isolation-and-build-reuse.md) when changing component producer ownership, build/verification reuse, selected group operations, or composable SDK acquisition and packaging. It applies to implemented or explicitly requested capabilities, without requiring every project to split packages.
 - Read [references/local-ci.md](references/local-ci.md) when touching build/test gates, API or ABI behavior, native memory checking, fuzzing, benchmarks, install-tree consumers, or quality contracts.
 - Read [references/github-actions.md](references/github-actions.md) when native macOS hosted verification is requested, declared by project policy, or being evaluated for an eligible GitHub repository. It defines opt-in, development-branch push authority, existing-workflow adoption, evidence identity, and the release-ref boundary.
 - Read [references/podman-kube-e2e.md](references/podman-kube-e2e.md) when the repository has or needs deterministic local service e2e, including migration from containerd/Compose.
@@ -109,15 +111,19 @@ Resolve `lifecycle_scripts_dir` from the activated skill or the project's declar
 vendored helper directory; consuming repositories need not contain `skills/`.
 See [references/toolchains.md](references/toolchains.md#resolver-location).
 Set `target_id` to the selected target before running these commands:
+This block is explicit prerequisite preparation, not a selected consumer operation
+or read-only inventory request. Stop immediately on a resolver failure.
 
 ```sh
 "$lifecycle_scripts_dir/cpkt-toolchains.sh" discover
-"$lifecycle_scripts_dir/cpkt-toolchains.sh" ensure "$target_id"
-eval "$("$lifecycle_scripts_dir/cpkt-toolchains.sh" env "$target_id")"
+"$lifecycle_scripts_dir/cpkt-toolchains.sh" ensure "$target_id" || exit 1
+resolved_toolchain_env=$("$lifecycle_scripts_dir/cpkt-toolchains.sh" env "$target_id") || exit 1
+eval "$resolved_toolchain_env"
 
 # Native x86_64 Linux AFL++ only:
-"$lifecycle_scripts_dir/cpkt-aflpp.sh" ensure
-eval "$("$lifecycle_scripts_dir/cpkt-aflpp.sh" env)"
+"$lifecycle_scripts_dir/cpkt-aflpp.sh" ensure || exit 1
+resolved_aflpp_env=$("$lifecycle_scripts_dir/cpkt-aflpp.sh" env) || exit 1
+eval "$resolved_aflpp_env"
 ```
 
 Downstream projects may vendor or call this lifecycle script, but the policy and cache root stay identical across pkt.systems C projects.

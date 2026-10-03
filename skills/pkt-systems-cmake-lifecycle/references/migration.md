@@ -9,7 +9,7 @@ For an existing repository:
 3. Preserve product behavior and declared artifact/consumer compatibility commitments. For pre-1.0 non-ABI refactors without an external-support commitment, prefer a clean cutover without legacy paths or shims; do not ask solely because the old non-ABI interface changes. Shared-library ABI and published bundle/dependency compatibility requirements still apply regardless of maturity.
 4. Inventory public API style separately from implementation style. Prefer receiver-style handle functions for new usage. Preserve free-function compatibility surfaces when a mature API or declared support commitment requires them; otherwise follow the preceding clean-cutover rule.
 5. Update examples and documentation snippets to the preferred public style and add executable checks that prevent regression to discouraged usage forms.
-6. Replace bespoke command names with standard Make targets. Keep compatibility aliases only when already documented public commands.
+6. Replace bespoke command names with standard Make targets. Retain compatibility aliases only when a declared external-support commitment or explicit engineer request requires them. Documentation alone does not require legacy aliases for a pre-1.0 clean cutover.
 7. Move long orchestration into standard scripts.
 8. Normalize presets, target IDs, dependency roots, cache layout, host/bundled dependency modes, and target-tool discovery for packaging and verification.
 9. If package, release, Darwin, or runtime-path scripts each discover tools independently, consolidate them behind a shared helper such as `scripts/discover_target_tools.sh` and add regression tests for configured CMake cache values, compiler sibling tools, osxcross-prefixed tools, and PATH fallback.

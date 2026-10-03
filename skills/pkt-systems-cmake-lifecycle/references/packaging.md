@@ -14,11 +14,17 @@ Default target IDs:
 - `armhf-linux-musl`
 - `arm64-apple-darwin`, optional when the Darwin cross toolchain exists
 
-Binary SDK naming:
+Default single-package binary SDK naming:
 
 ```text
 dist/<project>-<version>-<target-id>.tar.gz
 ```
+
+For implemented composable SDK packages, use the repository's declared group
+artifact inventory and common prefix instead. Follow
+[package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md) for
+payload ownership, prerequisite identities, acquisition and combination tests.
+Do not infer asset names or change current acquisition from a proposed split.
 
 Checksum manifest:
 
@@ -43,6 +49,14 @@ Final clean `make release` assembles all surfaces and replaces the final manifes
 only with the complete verified release set. A binary manifest cannot authorize
 uploads, native final-artifact handoff or publication.
 
+Selected package operations stage artifacts/checksums/evidence only in their owned
+workspace under `build/`, leaving `dist/` and complete-release evidence unchanged.
+They validate only that scope and its existing prerequisite archives; they do not
+regenerate prerequisites. Binary-matrix publication to `dist/` invalidates previous
+complete-release evidence before replacing payloads. Final release regenerates the
+complete manifest after all required proof. Scoped manifest paths are relative to
+their declared artifact base, whether `dist/` or selected owned staging.
+
 Release artifact privacy and relocatability are hard packaging invariants, not cosmetic cleanup. Every artifact that can be uploaded or consumed must be free of workstation-local paths, including binary SDK tarballs, CLI tarballs, source archives, Lua source rocks, rockspecs, checksum manifests, smoke bundles, and nested archives inside package formats.
 
 Optional artifacts:
@@ -57,6 +71,15 @@ dist/<project>-<version>-1.src.rock
 ```
 
 Binary SDK archive contract:
+
+These defaults describe a project's C SDK. A declared bundle producer also ships
+its selected upstream runtime/development payload, including native Lua headers,
+libraries or an interpreter when explicitly part of that bundle. The Lua exclusions
+below concern downstream facade/source-rock payload and package-manager state;
+they do not prohibit an intentionally bundled upstream Lua dependency. A composable
+group archive contains only its owned subset; required closure is checked in the
+selected installation combination, not by demanding prerequisite files in every
+archive.
 
 - The tarball's first and only top-level directory is `<project>-<version>-<target-id>/`.
 - Every architecture target uses the same internal directory contract. File formats and suffixes vary by target, but paths do not.
@@ -89,7 +112,7 @@ For each target archive, answer these questions in the package verification test
 - Is pkg-config metadata under `lib/pkgconfig/` relocatable and free of build/cache paths?
 - Are all release-consumer metadata files free of `$HOME`, repository paths, build roots, dependency caches, package-manager temporary paths, and absolute local `file://` URLs?
 - Are docs, license, examples, and metadata under `share/` only?
-- Are Lua files and Lua C binding/facade sources absent from the C binary SDK archive?
+- Are downstream Lua facade/source-rock files and package-manager state absent from the C binary SDK, with any intentionally bundled upstream Lua payload matching its declared inventory?
 - Are all runtime paths relocatable according to the runtime path invariant?
 - Are forbidden generated or private files absent?
 
@@ -98,7 +121,7 @@ Package generation must:
 - Clean `dist/` at the start of each required clean `make release` run, not in each per-target packaging recipe. Warm binary rehearsal/package entrypoints preserve identified out-of-scope artifacts and use the explicit binary manifest scope above. Final clean release still rejects stale/unlisted distribution artifacts before publication.
 - Build each requested target from the correct preset and dependency root.
 - Stage through `cmake --install`.
-- Strip project-owned libraries where appropriate.
+- Strip project-owned libraries only when the platform's final-byte and signing policy permits it; follow the Darwin rules below.
 - For Darwin artifacts, prefer link/install-time metadata over package-time mutation. Build final Mach-O install names, dependency paths, and rpaths correctly before staging whenever the build system can do so.
 - Treat absolute build, install, dependency-cache, toolchain, and package-manager paths in generated metadata or binary loader/debug metadata as release-blocking defects.
 - Generate pkg-config files with `${pcfiledir}` or another relocatable prefix, never with the staging or install-time `CMAKE_INSTALL_PREFIX`.
@@ -149,7 +172,7 @@ Final complete-release package verification must:
 
 Per-target SDK smoke contract:
 
-- `package-verify` must extract each `dist/<project>-<version>-<target-id>.tar.gz` into a temporary directory and test the extracted SDK, not only the staging tree.
+- `package-verify` must extract every declared target/group archive in its evidence scope into an owned workspace under `build/` and test the extracted SDK, not only the staging tree. The single-package default is `dist/<project>-<version>-<target-id>.tar.gz`; selected packages use owned staging. Composable SDKs require their declared installation combinations and prerequisite identities.
 - Assert the extracted archive has exactly one root: `<project>-<version>-<target-id>/`.
 - Assert `include/`, `bin/`, `lib/`, `lib/cmake/`, `lib/pkgconfig/`, and `share/` contents match the binary SDK archive contract.
 - Use `file`, compiler target metadata, or target-specific inspection tools to verify shipped libraries and binaries match `<target-id>` when tooling is available.
@@ -158,10 +181,10 @@ Per-target SDK smoke contract:
 - Configure and build a minimal pkg-config consumer when `lib/pkgconfig/<project>.pc` is shipped.
 - Link static and shared consumers when both static and shared libraries are shipped.
 - For static pkg-config smoke tests, force an actual static link when the target toolchain supports it; otherwise document that the test is only validating metadata expansion, not static linkability.
-- Run consumers and shipped CLI binaries only when executable on the host or through an explicitly supported runner. Otherwise, build/link smoke checks are enough for cross targets.
+- Run consumers and shipped CLI binaries when executable on the host or through an explicitly supported runner. Otherwise record compile/link proof and deferred runtime cases; this is local package readiness only. Required release runtime evidence must still pass through the declared native/runner gate; unsupported local execution cannot waive it.
 - For CLI binaries, run `--version` or the project equivalent when execution is supported.
 - Verify runtime paths after extraction.
-- For shipped Darwin artifacts, inspect install names, dependency paths, rpaths, and code-signature load-command presence with the discovered target-correct `otool`. Optional Darwin targets may be skipped before packaging when the toolchain is unavailable, but a packaged Darwin artifact must not skip Mach-O loader metadata verification. Run Darwin smoke bundles only when the required runtime/toolchain exists.
+- For shipped Darwin artifacts, inspect install names, dependency paths, rpaths, and code-signature load-command presence with the discovered target-correct `otool`. Optional Darwin targets may be skipped before packaging when the toolchain is unavailable, but a mandatory target or required runtime gate cannot be skipped. A packaged Darwin artifact must not skip Mach-O metadata verification. Run Darwin smoke bundles when the required runtime/toolchain exists; required deferred native cases remain release blockers until proven.
 
 Runtime path invariant:
 
@@ -208,7 +231,7 @@ Darwin tool discovery:
 
 Release privacy gate:
 
-- `make package-verify` must include the privacy and relocatability gate for every checksum-listed release artifact.
+- `make package-verify` must include the privacy and relocatability gate for every checksum-listed artifact in its declared scope. Complete-release verification covers every final manifest payload; selected/binary verification cannot count as that complete proof.
 - Projects may expose `make verify-release-privacy` as a focused alias, but it must not be the only place the privacy gate runs.
 - The privacy gate must report the exact artifact and extracted file that leaked local material.
 - It must fail on the current repository path, `$HOME`, `file://$HOME`, `file://<repo>`, absolute local or non-system RPATH/RUNPATH, Darwin project-owned install names outside `@rpath`, Darwin absolute non-system dependency paths such as `/lib/...` or `/usr/local/...`, and dependency paths pointing at local build trees.
@@ -222,7 +245,7 @@ Source archive staging must write `RELEASE_MANIFEST` into the staged tree. In a 
 
 Source archive verification must extract the tarball to a generated temporary directory, configure from the extracted tree, build, run the local tests that do not require unavailable external services, and verify the configured version, generated version header, CMake package metadata, pkg-config metadata, and archive `VERSION` agree. When the source archive is produced from a git worktree, verify the archive payload exactly matches the tracked non-ignored release manifest plus deliberate generated release files.
 
-Binary `package-verify` validates already-produced binary artifacts and their checksum manifest; it must never trigger source-archive reconstruction. Keep source-archive extraction, configure, build, and test behind an explicit `package-source-smoke` step that runs only in the final clean `make release` gate after all binary packages are available.
+Binary `package-verify` validates already-produced binary artifacts and their checksum manifest; it must never trigger source-archive reconstruction. Keep source extraction, configure, build and test behind `package-source-smoke`. Automatic prerelease/matrix/package verification orchestration runs it only in clean `make release` after binary packages are available. An explicitly requested standalone source-smoke operation is also supported; its proof does not replace either required clean release run.
 
 Source archives may carry release scripts and deterministic fixtures needed to rebuild and test the source package. They must not carry generated dependency archives, local `.env` files, package-manager state, service volumes, VCS metadata, or private review notes unless explicitly part of a public source distribution.
 

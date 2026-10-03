@@ -62,6 +62,11 @@ dependency documentation/manifests only when that work is part of the task.
 
 ## Inventory boundaries
 
+For implemented selectable SDKs, report the selected groups, their prerequisite
+closure and supplied-but-unused packages separately. Follow
+[package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md) for
+composition evidence. A planned split must remain identified as planned.
+
 Use one inventory with distinct categories and dependency relationships:
 
 - **c.pkt.systems SDK:** selected bundle version/revision, target/group and

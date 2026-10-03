@@ -21,6 +21,11 @@ The lifecycle must support the applicable producer or consumer surfaces:
 - Reuse downloaded SDK bundles and per-target dependency install roots across debug, release, hardening, e2e, fuzz, benchmark, and package builds.
 - Bundled SDK mode, host dependency mode, and conservative auto mode when a project benefits from all three.
 
+For implemented composable SDKs, select and validate the required package closure
+using [package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md).
+For producer reuse, apply its build-identity and completion-evidence rules even
+when the project ships one package. Proposed layouts do not select current assets.
+
 ## Upgrade compatibility
 
 Apply the repository's supported consumer and ABI boundary to dependency and
@@ -77,7 +82,7 @@ deps/
 ```
 
 - The global cache holds verified immutable archives only. Do not put extracted trees, CMake build directories, install prefixes, package-manager state, generated headers, or dependency stamps there.
-- Keep extraction, build, install, and stamp state under the consuming repository's `.cache/`, keyed only by the target ID and the dependency name. Do not put dependency-set IDs, toolchain IDs, version hashes, URLs, compiler metadata, build-option hashes, or other semantic cache IDs in repo-local path names. Repo-local dependency roots are disposable build state; lifecycle entrypoints may delete them freely, and the next dependency acquisition must reuse the verified global archive without network access.
+- Keep ordinary extraction, build, install, and stamp state under the consuming repository's `.cache/`, keyed only by the target ID and the dependency name. Do not put dependency-set IDs, toolchain IDs, version hashes, URLs, compiler metadata, build-option hashes, or other semantic cache IDs in repo-local path names. Explicit instrumented variants require separately owned state and contracts as described in [package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md). These roots are disposable, but deletion stays within the operation's owned scope; borrowed prerequisites are read-only. A later acquisition reuses the verified global archive without network access.
 - Key each archive by its required SHA-256. Archive names are for diagnostics only; never accept an archive because its filename, component name, version, or URL happens to match.
 - Before every cache reuse, calculate SHA-256 and compare it to the dependency's pinned expected digest. A corrupt entry is not a cache hit.
 - A verified digest hit must make zero network requests, including HEAD requests, URL probes, or release-metadata refreshes. Reuse identical verified bytes even when the requested asset name or URL changes; names are diagnostic aliases, not cache identities. Ignore unpublished partial downloads when searching the digest entry.
@@ -107,13 +112,13 @@ Rules:
 
 - Do not vendor generated dependency installs into release source.
 - Shared archive cache reuse is the default. Do not re-download a verified global archive when the requested SHA-256 already exists and verifies.
-- Repo-local dependency builds and install roots are not durable lifecycle cache. `make clean`, `make release`, and dependency-clean targets may delete the repository `.cache/` tree and rebuild it from verified global archives. Normal no-clean entrypoints such as `make prerelease` must rely on explicit stale-root detection: when dependency source, patch, toolchain, ABI-relevant build options, or cache layout changes, delete the affected repo-local target roots and rebuild them from verified global archives. Prefer this simple invalidation model over fragile local path keys.
+- Repo-local dependency builds and install roots are disposable local state. Unqualified global clean/release removes that state; selected cleanup/dependency operations remove only owned roots. Normal no-clean entrypoints use explicit stale-component detection for source, patches, output-affecting helpers/options, toolchain and layout. Repair only the stale owned component and affected dependency closure from verified archives; selected consumers fail instead of repairing borrowed prerequisites. Preserve matching unrelated components.
 - Model each upstream as an independently buildable component. Keep its extraction/build root at `.cache/deps-build/<target-id>/<component>/`, its install root at `.cache/deps/<target-id>/<component>/install/`, and its contract at `.cache/dependency-contracts/<target-id>/<component>.txt`. Do not make façades, tests, examples, or a single component target depend on a universal all-dependencies target.
 - Expose `cpkt_deps_<component>` targets and a Make entrypoint such as `make deps DEPENDENCY=<component> PRESET=<preset>` for a component closure. Direct dependency edges must build only the required transitive closure. Reserve `cpkt_deps_all` for intentional complete-SDK assembly and final release work.
-- A component contract includes only that component's recipe, pinned inputs, relevant options/toolchain state, and direct dependency contract identifiers. A contract-engine bookkeeping change must not invalidate every component. When migrating the contract schema, adopt compatible existing roots without deleting them; later contract mismatches delete only lifecycle-owned roots for the stale component and its dependents.
+- A component contract includes its recipe, output-affecting helper closure, pinned inputs, relevant options/toolchain state, and direct dependency contract identifiers. A bookkeeping-only change must not invalidate every component. Schema migration may adopt old state only after proving equivalent meaning and validating completed outputs; expected configure-time contracts alone are not success. Reject unknown/incompatible evidence. Later mismatches repair only stale owned components and affected dependents, subject to selected-operation boundaries.
 - When dependency rebuilding is disabled, a stale component root must fail with an actionable diagnostic. Never delete caller-owned roots; require the caller to refresh them or remove the override.
 - Compiler collection metadata may be recorded for diagnostics and package provenance, but it must not become a repo-local cache path component. For a pinned Bootlin build, diagnostics should include the Bootlin target ID, pinned collection release/root, and sysroot path; GCC version alone and `CMAKE_C_COMPILER_TARGET` are insufficient to describe the selected compiler collection.
-- `scripts/deps.sh` should refresh stale repo-local dependency roots by deleting the disposable local extraction/build/install root and rebuilding from the verified global archive. Stale local state must not be hidden behind longer path names.
+- `scripts/deps.sh` refreshes stale owned component roots from verified global archives. A selected invocation must not delete/rebuild borrowed prerequisite roots or provision missing prerequisite tools. Stale local state must not be hidden behind longer path names.
 - Do not leak dependency cache paths into package metadata, CMake config files, pkg-config files, binaries, scripts, or release archives.
 - Imported CMake targets and pkg-config metadata must expose only the public dependency contract needed by downstream consumers.
 - Static SDKs may require downstream consumers to provide dependency include and library roots; encode that clearly in CMake package config, pkg-config metadata, tests, and README examples.

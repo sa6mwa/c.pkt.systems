@@ -223,12 +223,12 @@ require_file_contains \
   'explicit dependency root override is required before reusing a non-default dependency cache'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/dependencies.md \
-  'Repo-local dependency roots are disposable build state' \
+  'These roots are disposable, but deletion stays within the operation.s owned scope; borrowed prerequisites are read-only' \
   'dependency lifecycle keeps repo-local roots target-only and disposable'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/dependencies.md \
-  'Normal no-clean entrypoints such as `make prerelease` must rely on explicit stale-root detection' \
-  'dependency lifecycle documents no-clean prerelease stale-root invalidation'
+  'Normal no-clean entrypoints use explicit stale-component detection' \
+  'dependency lifecycle documents no-clean component invalidation'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/toolchains.md \
   'locks/.*per-collection advisory lock files' \
@@ -254,8 +254,12 @@ require_file_contains \
   'pre-clean tag contract is not a CMake pipeline'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/release.md \
-  'Treat `v99\.99\.99` as reserved test-only state, never a real release tag: if it already exists, delete it before detecting exact release tags or making untagged assertions so interrupted prior runs recover automatically\.' \
-  'reserved tag stale state recovers automatically'
+  'Fail on a pre-existing reserved tag unless a lifecycle-owned recovery record under `build/` identifies the exact lightweight object created by this test\.' \
+  'reserved tag recovery requires recorded ownership'
+require_file_contains \
+  skills/pkt-systems-cmake-lifecycle/references/release.md \
+  'automatic recovery and trap cleanup must use compare-and-delete against the recorded object and preserve any changed or unowned ref\.' \
+  'reserved tag cleanup preserves changed and unowned refs'
 require_file_contains \
   skills/pkt-systems-cmake-lifecycle/references/release.md \
   'git -c tag\.gpgSign=false tag v99\.99\.99' \

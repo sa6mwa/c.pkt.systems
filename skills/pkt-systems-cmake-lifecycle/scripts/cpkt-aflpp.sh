@@ -49,19 +49,28 @@ ready() {
   local r=$1 id=$2
   [[ -x "$r/bin/afl-fuzz" && -x "$r/bin/afl-showmap" &&
      -x "$r/bin/cpkt-afl-gcc" && -x "$r/bin/cpkt-afl-g++" &&
+     -x "$r/bin/afl-cc" && -x "$r/bin/afl-gcc-fast" && -x "$r/bin/afl-g++-fast" &&
      -f "$r/lib/afl/afl-gcc-pass.so" && -f "$r/lib/afl/afl-compiler-rt.o" &&
      -f "$r/.cpkt-aflpp-revision-$revision-$id" ]]
 }
 
 bootlin_description() {
   [[ -x "$bootlin" ]] || die "Bootlin resolver missing: $bootlin"
-  "$bootlin" ensure x86_64-linux-gnu >/dev/null
-  "$bootlin" discover x86_64-linux-gnu
+  local description
+  description=$("$bootlin" discover x86_64-linux-gnu) || die 'unable to inspect pinned Bootlin collection'
+  [[ "$(value status "$description")" == ready ]] || die "Bootlin collection is not ready; run: $bootlin ensure x86_64-linux-gnu"
+  printf '%s\n' "$description"
+}
+
+require_native_host() {
+  [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is native Linux-only'
+  case "$(uname -m)" in x86_64|amd64) ;; *) die "native x86_64 Linux is required; no cross, emulator, or QEMU runner is supported";; esac
 }
 
 ensure() {
-  [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is native Linux-only'
-  case "$(uname -m)" in x86_64|amd64) ;; *) die "native x86_64 Linux is required; no cross, emulator, or QEMU runner is supported";; esac
+  require_native_host
+  [[ -x "$bootlin" ]] || die "Bootlin resolver missing: $bootlin"
+  "$bootlin" ensure x86_64-linux-gnu >/dev/null
   local r c d br id
   d=$(bootlin_description); br=$(value root "$d"); id=$(collection_id "$br")
   r=$(root "$id"); c=$(cache)
@@ -70,8 +79,7 @@ ensure() {
 }
 
 ensure_locked() {
-  [[ "$(uname -s)" = Linux ]] || die 'AFL++ GCC-plugin fuzzing is native Linux-only'
-  case "$(uname -m)" in x86_64|amd64) ;; *) die "native x86_64 Linux is required; no cross, emulator, or QEMU runner is supported";; esac
+  require_native_host
   local r c archive desc cc cxx br id tmp src dl include_flag library_flag rpath_flag
   c=$(cache); archive="$c/archives/$archive_name"
   desc=$(bootlin_description)
@@ -115,8 +123,20 @@ ensure_locked() {
   ready "$tmp/root" "$id" || die 'incomplete AFL++ build'; rm -rf "$r"; mv "$tmp/root" "$r"; rm -rf "$tmp"; trap - EXIT HUP INT TERM
 }
 
-report() { local d br id r; ensure; d=$(bootlin_description); br=$(value root "$d"); id=$(collection_id "$br"); r=$(root "$id"); printf 'version=%s\ncache=%s\nsource=aflplusplus\nroot=%s\nafl_fuzz=%s\nafl_showmap=%s\ncc=%s\ncxx=%s\nhelper=%s\n' "$version" "$(cache)" "$r" "$r/bin/afl-fuzz" "$r/bin/afl-showmap" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/lib/afl"; }
-env_out() { local d cc cxx br id r; ensure; d=$(bootlin_description); cc=$(value cc "$d"); cxx=$(value cxx "$d"); br=$(value root "$d"); id=$(collection_id "$br"); r=$(root "$id"); printf 'export CPKT_AFLPP_ROOT=%q\nexport AFL_PATH=%q\nexport AFL_CC=%q\nexport AFL_CXX=%q\nexport CC=%q\nexport CXX=%q\nexport PATH=%q\n' "$r" "$r/lib/afl" "$cc" "$cxx" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/bin:$PATH"; }
+report() {
+  local d br id r
+  require_native_host
+  d=$(bootlin_description); br=$(value root "$d"); id=$(collection_id "$br"); r=$(root "$id")
+  ready "$r" "$id" || die "AFL++ is not ready for $id; run: $0 ensure"
+  printf 'status=ready\nversion=%s\ncache=%s\nsource=aflplusplus\nroot=%s\nafl_fuzz=%s\nafl_showmap=%s\ncc=%s\ncxx=%s\nhelper=%s\n' "$version" "$(cache)" "$r" "$r/bin/afl-fuzz" "$r/bin/afl-showmap" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/lib/afl"
+}
+env_out() {
+  local d cc cxx br id r
+  require_native_host
+  d=$(bootlin_description); cc=$(value cc "$d"); cxx=$(value cxx "$d"); br=$(value root "$d"); id=$(collection_id "$br"); r=$(root "$id")
+  ready "$r" "$id" || die "AFL++ is not ready for $id; run: $0 ensure"
+  printf 'export CPKT_AFLPP_ROOT=%q\nexport AFL_PATH=%q\nexport AFL_CC=%q\nexport AFL_CXX=%q\nexport CC=%q\nexport CXX=%q\nexport PATH=%q\n' "$r" "$r/lib/afl" "$cc" "$cxx" "$r/bin/cpkt-afl-gcc" "$r/bin/cpkt-afl-g++" "$r/bin:$PATH"
+}
 case "${1:-}" in
   ensure) [[ $# -eq 1 ]] || die 'usage: cpkt-aflpp.sh ensure'; ensure;;
   discover) [[ $# -eq 1 ]] || die 'usage: cpkt-aflpp.sh discover'; report;;
