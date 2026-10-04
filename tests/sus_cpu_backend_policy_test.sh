@@ -65,7 +65,12 @@ for cmake_arg in \
     "whisper.cpp dependency build must keep first-release CPU-only flag: $cmake_arg"
 done
 
-require_file_contains \
-  "$package_bundle" \
-  '"sus_backend_capabilities=${CPKT_SUS_BACKEND_CAPABILITIES}\n"' \
-  'package manifest must record compiled cpkt_sus backend capabilities'
+python3 - "$repo_root" <<'PYTEST'
+import json,pathlib,sys
+r=pathlib.Path(sys.argv[1]);d=json.loads((r/'cmake/components.json').read_text())
+f=d['components']['whisper']['package']['facades'][0]
+assert f['features']['backend_capabilities']=='CPKT_SUS_BACKEND_CAPABILITIES'
+assert "record['features'][feature]=configured[variable]" in (r/'scripts/cpkt_packages.py').read_text()
+assert "whisper['features'].get('backend_capabilities')!='cpu'" in (r/'scripts/cpkt_sdk_consumer.py').read_text()
+assert any('cpkt_sus_backend_capabilities' in (r/i['source']).read_text() and '"cpu"' in (r/i['source']).read_text() for i in d['installed_consumers'].values() if i.get('pc')=='cpkt-sus')
+PYTEST

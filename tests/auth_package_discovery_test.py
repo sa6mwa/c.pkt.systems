@@ -31,16 +31,16 @@ foreach(component IN ITEMS SSL Crypto)
 endforeach()
 set(OpenSSL_FOUND TRUE)
 ''')
-        source = (args.repo / 'cmake/package_bundle.cmake').read_text()
+        source = (args.repo / 'cmake/package_metadata.cmake').read_text()
         for package in ('CpktGssapi', 'Kerberos5'):
-            start = source.index('file(WRITE "${_stage_root}/lib/cmake/' + package + '/')
+            start = source.index('cpkt_metadata_file(WRITE "${_stage_root}/lib/cmake/' + package + '/')
             end = source.index('\n)\n', start) + 3
             (prefix / 'lib/cmake' / package).mkdir()
             generator = root / (package + '-generate.cmake')
             generator.write_text('set(_stage_root "' + str(prefix) + '")\n'
                                  'set(_cpkt_static_library_suffix .a)\n'
                                  'set(_cpkt_shared_library_suffix .so)\n'
-                                 + source[start:end])
+                                 + source[start:end].replace('cpkt_metadata_file(', 'file('))
             subprocess.run(['cmake', '-P', str(generator)], check=True,
                            capture_output=True, text=True)
         relocated = root / 'relocated sdk'

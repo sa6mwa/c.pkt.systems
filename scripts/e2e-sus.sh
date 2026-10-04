@@ -2,8 +2,14 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-test_bin=${1:-"$repo_root/build/debug/cpkt_sus_audio_integration_test"}
-build_dir=${2:-"$repo_root/build/debug"}
+
+case ${GROUP:-misc} in misc|all) ;; *) printf 'this operation requires GROUP=misc|all\n' >&2; exit 2 ;; esac
+if [[ -z ${CPKT_OPERATION_FD:-} ]]; then
+  exec python3 "$repo_root/scripts/cpkt_operation.py" --group misc -- bash "$0" "$@"
+fi
+python3 "$repo_root/scripts/cpkt_operation.py" --group misc --check
+test_bin=${1:-"$repo_root/build/x86_64-linux-gnu/misc/Debug/cpkt_sus_audio_integration_test"}
+build_dir=${2:-"$repo_root/build/x86_64-linux-gnu/misc/Debug"}
 audio_url=${CPKT_SUS_E2E_AUDIO_URL:-"https://pkt.systems/trajectory/assets/narration/intro/intro.mp3"}
 index_url=${CPKT_SUS_E2E_INDEX_URL:-"https://pkt.systems/trajectory/index.html"}
 cache_root=${CPKT_SUS_E2E_CACHE:-"${XDG_CACHE_HOME:-"$HOME/.cache"}/c.pkt.systems/e2e/sus"}

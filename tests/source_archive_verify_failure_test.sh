@@ -312,6 +312,113 @@ vendor/open62541/patches/0024-define-discovery-callback-and-unavailable-policies
 vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch
 vendor/open62541/patches/0026-count-json-string-closing-quote.patch
 vendor/open62541/patches/0027-block-on-posix-stdout-lock.patch
+cmake/CpktCmockaFacade.cmake
+cmake/CpktComposition.cmake
+cmake/CpktGroups.cmake
+cmake/CpktOperation.cmake
+cmake/CpktPackage.cmake
+cmake/CpktReadOnlyAflToolchain.cmake
+cmake/CpktReadOnlyToolchain.cmake
+cmake/CpktSDKValidate.cmake
+cmake/CpktToolchainDiscovery.cmake
+cmake/cmocka_metadata.cmake
+cmake/components.json
+cmake/exports/cpkt_cmocka.txt
+cmake/package_inspection.cmake
+cmake/package_metadata.cmake
+docs/cmocka-c89.md
+docs/sdk-installation.md
+scripts/cpkt_afl_discover.py
+scripts/cpkt_archive_assert.py
+scripts/cpkt_archive_extract.py
+scripts/cpkt_build_guard.py
+scripts/cpkt_clangd_check.py
+scripts/cpkt_cmake_inputs.py
+scripts/cpkt_configure_guard.py
+scripts/cpkt_darwin.py
+scripts/cpkt_expected_tests.py
+scripts/cpkt_fuzz_run.py
+scripts/cpkt_github_handoff.py
+scripts/cpkt_helper_dispatch.py
+scripts/cpkt_helper_proof.py
+scripts/cpkt_inventory.py
+scripts/cpkt_inventory_cli.py
+scripts/cpkt_lifecycle.py
+scripts/cpkt_operation.py
+scripts/cpkt_packages.py
+scripts/cpkt_preflight.py
+scripts/cpkt_presets.py
+scripts/cpkt_receipt_cli.py
+scripts/cpkt_receipts.py
+scripts/cpkt_reserved_tag.py
+scripts/cpkt_sdk_consumer.py
+scripts/cpkt_sdk_examples.py
+scripts/cpkt_service_exec.py
+scripts/cpkt_source_proof.py
+scripts/cpkt_source_reconstruct.py
+scripts/cpkt_verify_manifest.py
+scripts/group-build.py
+src/cmocka_c89.c
+tests/cmocka_c89_surface.c
+tests/cmocka_downstream_behavior.c
+tests/cmocka_downstream_compile.py
+tests/cmocka_downstream_failure.py
+tests/dist_manifest_test.py
+tests/github_actions_contract_test.py
+tests/lifecycle_recipe_contract.py
+tests/package_integration_contract_test.py
+tests/package_recipe_graph_test.py
+tests/package_smoke_contract_test.py
+tools/generate_cmocka_c89.py
+scripts/validate-sdk.py
+scripts/cpkt_package_command.py
+examples/db-sdk/CMakeLists.txt
+examples/db-sdk/main.c
+tests/audio_sus_package_policy_test.py
+tests/lua_symbol_test_registration_fixture.py
+tests/package_isolation_build_test.py
+tests/package_producer_reuse_test.py
+tests/sdk-consumers/cmocka_native.c
+tests/sdk-consumers/cpkt_composition.c
+tests/sdk-consumers/cpkt_all.c
+tests/sdk-consumers/cpkt_audio_facade_strict.c
+tests/sdk-consumers/cpkt_audio_sus_facade_strict.c
+tests/sdk-consumers/cpkt_crypto.c
+tests/sdk-consumers/cpkt_curl.c
+tests/sdk-consumers/cpkt_gssapi_facade_strict.c
+tests/sdk-consumers/cpkt_iodbc_strict.c
+tests/sdk-consumers/cpkt_libssh2.c
+tests/sdk-consumers/cpkt_libssh2_facade_strict.c
+tests/sdk-consumers/cpkt_libssh2_private_sentinel.c
+tests/sdk-consumers/cpkt_libxml2.c
+tests/sdk-consumers/cpkt_lua.c
+tests/sdk-consumers/cpkt_lua_facade_strict.c
+tests/sdk-consumers/cpkt_lua_runtime_module.c
+tests/sdk-consumers/cpkt_lua_runtime_strict.c
+tests/sdk-consumers/cpkt_mqttc.c
+tests/sdk-consumers/cpkt_mqttc_facade_strict.c
+tests/sdk-consumers/cpkt_mqttc_private_sentinel.c
+tests/sdk-consumers/cpkt_nghttp2.c
+tests/sdk-consumers/cpkt_nghttp2_facade_strict.c
+tests/sdk-consumers/cpkt_nghttp2_private_sentinel.c
+tests/sdk-consumers/cpkt_opcua_facade_strict.c
+tests/sdk-consumers/cpkt_open62541.c
+tests/sdk-consumers/cpkt_openldap.c
+tests/sdk-consumers/cpkt_openssl_facade_strict.c
+tests/sdk-consumers/cpkt_openssl_private_sentinel.c
+tests/sdk-consumers/cpkt_pdf_facade_strict.c
+tests/sdk-consumers/cpkt_postgres_facade_strict.c
+tests/sdk-consumers/cpkt_sasl_facade_strict.c
+tests/sdk-consumers/cpkt_sqlite_facade_strict.c
+tests/sdk-consumers/cpkt_ssl.c
+tests/sdk-consumers/cpkt_sus_facade_strict.c
+tests/sdk-consumers/cpkt_zlib.c
+tests/sdk-consumers/sqlite_extension_from_package.c
+tests/sdk-consumers/sqlite_extension_package_consumer.c
+tests/sdk-consumers/sus_mixed_main.c
+tests/sdk-consumers/sus_mixed_probe.cpp
+tests/sus_split_runtime_policy_test.py
+vendor/open62541/patches/0028-keep-disabled-lock-assert-warning-clean.patch
 '
 
 make_archive() {
@@ -430,6 +537,15 @@ done <<EOF
 $required_payloads
 EOF
 printf 'VERSION\nRELEASE_MANIFEST\n' >> "$fixture_root/RELEASE_MANIFEST"
+# Build a complete current source fixture, including inventory-followed helpers.
+# The malformed fixtures above remain independent of the production packager.
+while IFS= read -r payload; do
+  case "$payload" in build/*|dist/*|.cache/*|.git/*) continue ;; esac
+  [[ -f "$repo_root/$payload" ]] || continue
+  mkdir -p "$fixture_root/$(dirname -- "$payload")"
+  cp "$repo_root/$payload" "$fixture_root/$payload"
+done < <(git -C "$repo_root" ls-files --cached --others --exclude-standard)
+(cd "$fixture_root" && find . -type f | sed 's#^\./##' | sed '/^extra-unlisted.txt$/d' | sort > RELEASE_MANIFEST)
 printf 'extra\n' > "$fixture_root/extra-unlisted.txt"
 expect_verify_failure "$(make_archive manifest-mismatch c.pkt.systems-1.2.3)" \
   "source archive payload does not match RELEASE_MANIFEST"
@@ -437,6 +553,18 @@ expect_verify_failure "$(make_archive manifest-mismatch c.pkt.systems-1.2.3)" \
 # A parent-only signal during configure must stop before build, not merely
 # remove the extraction directory and continue into the next release command.
 rm "$fixture_root/extra-unlisted.txt"
+(cd "$fixture_root" && find . -type f | sed 's#^\./##' | sort > RELEASE_MANIFEST)
+for missing in \
+  scripts/cpkt_package_command.py \
+  tools/generate_cmocka_c89.py \
+  tests/sdk-consumers/cpkt_ssl.c \
+  vendor/open62541/patches/0028-keep-disabled-lock-assert-warning-clean.patch
+do
+  mv "$fixture_root/$missing" "$work_root/held-payload"
+  expect_verify_failure "$(make_archive manifest-mismatch c.pkt.systems-1.2.3)" \
+    "source archive is missing required payload: $missing"
+  mv "$work_root/held-payload" "$fixture_root/$missing"
+done
 valid_archive=$(make_archive manifest-mismatch c.pkt.systems-1.2.3)
 real_cmake=$(command -v cmake)
 mkdir -p "$work_root/bin"

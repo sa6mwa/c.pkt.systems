@@ -1,21 +1,18 @@
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := help
+.NOTPARALLEL:
 MAKEFLAGS += --no-builtin-rules
-
-CMAKE := cmake
-CTEST := ctest
-RELEASE_PRESETS := x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release
-E2E_SUS_PRESET ?= release
-
-STATIC_LIVE_PRESET ?= x86_64-linux-musl-release
+GROUP ?= all
 PRESET ?= debug
+SCOPE ?=
 DEPENDENCY ?=
-
-.PHONY: help deps deps-all deps-debug deps-release deps-cross build build-debug build-release build-host cross-build test test-debug test-host test-cross cross-test test-all test-install-tree test-e2e debug examples clangd-surface e2e-sus e2e-postgres e2e-cpktxscribe dev-up dev-down dev-ps dev-logs dev-reset example-audio-vox-intro example-audio-live-vox example-audio-live-vox-static example-sus-vox-intro example-sus-live-vox example-sus-live-vox-static cpktxscribe valgrind fuzz-smoke fuzz fuzz-long package package-source package-source-smoke package-checksums package-verify verify-release-archives verify-release-privacy prerelease prerelease-live prerelease-hardening release-pipeline release-matrix release-final-matrix finalize-slice lifecycle-version-contract release print-release-version format format-check source-archive verify-source-archive clean clean-dist
+PRESET_EXPLICIT := $(if $(filter command line environment environment override,$(origin PRESET)),yes,no)
+SCOPE_EXPLICIT := $(if $(filter command line environment environment override,$(origin SCOPE)),yes,no)
+.PHONY: help print-release-version build build-debug build-host build-release clangd-surface clean clean-dist cpktxscribe cross-build cross-test debug deps deps-all deps-cross deps-debug deps-release dev-down dev-logs dev-ps dev-reset dev-up e2e-cpktxscribe e2e-postgres e2e-sus example-audio-live-vox example-audio-live-vox-static example-audio-vox-intro example-sus-live-vox example-sus-live-vox-static example-sus-vox-intro examples finalize-slice format format-check fuzz fuzz-long fuzz-smoke lifecycle-version-contract package package-checksums package-source package-source-smoke package-verify prerelease prerelease-hardening prerelease-live release release-final-matrix release-matrix release-pipeline source-archive test test-all test-cross test-darwin-native test-darwin-sdk test-debug test-e2e test-github-actions-contracts test-host test-install-tree valgrind verify-release-archives verify-release-privacy verify-source-archive
 
 help:
-	@printf 'Usage: make <target>\n\n'
+	@printf 'Usage: make <target> [GROUP=core|db|misc|all] [PRESET=<preset>] [SCOPE=selected|binary|release]\n\n'
 	@printf 'Core:\n'
 	@printf '  %-30s %s\n' 'help' 'Show this command index.'
 	@printf '  %-30s %s\n' 'deps DEPENDENCY=<name>' 'Build one dependency closure (set PRESET, default debug).'
@@ -59,7 +56,7 @@ help:
 	@printf '  %-30s %s\n' 'fuzz' 'Build and run bounded AFL++ GCC-plugin facade fuzz tests.'
 	@printf '  %-30s %s\n' 'fuzz-long' 'Run extended AFL++ fuzzing; requires CPKT_FUZZ_LONG_ENABLE=1.'
 	@printf '\nTools:\n'
-	@printf '  %-30s %s\n' 'cpktxscribe' 'Build host audio transcription CLI under build/debug/tools/.'
+	@printf '  %-30s %s\n' 'cpktxscribe' 'Build native misc transcription CLI using verified core.'
 	@printf '\nPackaging:\n'
 	@printf '  %-30s %s\n' 'package' 'Build package artifacts for all supported release targets.'
 	@printf '  %-30s %s\n' 'package-source' 'Build the source release archive.'
@@ -83,256 +80,13 @@ help:
 	@printf '\nCleanup:\n'
 	@printf '  %-30s %s\n' 'clean' 'Remove generated build, cache, and dist output.'
 	@printf '  %-30s %s\n' 'clean-dist' 'Remove only release artifacts under dist/.'
-
-deps-debug:
-	$(CMAKE) --preset debug
-
-deps:
-	@test -n "$(DEPENDENCY)" || { printf 'deps requires DEPENDENCY=<name>; use a cpkt_deps_<name> CMake target\n' >&2; exit 2; }
-	$(CMAKE) --preset $(PRESET)
-	$(CMAKE) --build --preset $(PRESET) --target cpkt_deps_$(DEPENDENCY)
-
-deps-all:
-	$(CMAKE) --preset $(PRESET)
-	$(CMAKE) --build --preset $(PRESET) --target cpkt_deps_all
-
-deps-release:
-	@for preset in $(RELEASE_PRESETS); do \
-		$(CMAKE) --preset "$$preset"; \
-	done
-
-deps-cross:
-	@for preset in aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release; do \
-		$(CMAKE) --preset "$$preset"; \
-	done
-	bash ./scripts/osxcross_available.sh
-	$(CMAKE) --preset arm64-apple-darwin-release
-
-build:
-	bash ./scripts/build.sh release
-
-build-debug:
-	bash ./scripts/build.sh debug
-
-build-release: build
-
-build-host: build-debug
-
-cross-build: build-release
-
-test:
-	bash ./scripts/test.sh release
-
-test-debug:
-	bash ./scripts/test.sh debug
-
-test-host: test-debug
-
-test-cross:
-	bash ./scripts/test.sh release
-
-cross-test: test-cross
-
-test-install-tree: package-verify
-
-test-all:
-	$(MAKE) debug
-	$(MAKE) e2e-postgres
-	$(MAKE) clangd-surface
-	$(MAKE) valgrind
-	$(MAKE) fuzz-smoke
-
-debug:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug
-	$(CTEST) --preset debug
-
-examples:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpkt_lua_runtime_c89_example cpkt_opcua_c89_example cpkt_audio_sus_c89_example cpkt_audio_vox_intro_c89_example cpkt_audio_live_vox_c89_example cpkt_sus_vox_intro_c89_example cpkt_sus_live_vox_c89_example cpkt_abi_smoke_shared cpkt_abi_smoke_static cpkt_mqttc_smoke_shared cpkt_mqttc_smoke_static cpkt_whisper_smoke_shared
-	$(CTEST) --preset debug -R 'example' --output-on-failure
-
-clangd-surface:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug
-	bash ./scripts/verify-clangd-surface.sh "$$(pwd)" "$$(pwd)/build/debug"
-
-e2e-sus:
-	$(CMAKE) --preset $(E2E_SUS_PRESET)
-	$(CMAKE) --build --preset $(E2E_SUS_PRESET) --target cpkt_sus_audio_integration_test
-	bash ./scripts/e2e-sus.sh "$$(pwd)/build/$(E2E_SUS_PRESET)/cpkt_sus_audio_integration_test" "$$(pwd)/build/$(E2E_SUS_PRESET)"
-
-e2e-postgres:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpkt_postgres_integration_test
-	bash ./scripts/test-e2e.sh "$$(pwd)/build/debug/cpkt_postgres_integration_test"
-
-test-e2e: e2e-postgres
-
-dev-up:
-	bash ./scripts/devenv.sh up
-
-dev-down:
-	bash ./scripts/devenv.sh down
-
-dev-ps:
-	bash ./scripts/devenv.sh ps
-
-dev-logs:
-	bash ./scripts/devenv.sh logs
-
-dev-reset:
-	bash ./scripts/devenv.sh reset
-
-e2e-cpktxscribe:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpktxscribe
-	bash ./scripts/e2e-cpktxscribe.sh "$$(pwd)/build/debug/tools/cpktxscribe" "$$(pwd)/build/debug"
-
-example-audio-vox-intro:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpkt_audio_vox_intro_c89_example
-	bash ./scripts/run-audio-vox-intro.sh "$$(pwd)/build/debug/cpkt_audio_vox_intro_c89_example"
-
-example-audio-live-vox:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpkt_audio_live_vox_c89_example
-	"$$(pwd)/build/debug/cpkt_audio_live_vox_c89_example" $(CPKT_AUDIO_LIVE_VOX_ARGS)
-
-example-audio-live-vox-static:
-	$(CMAKE) --preset $(STATIC_LIVE_PRESET)
-	$(CMAKE) --build --preset $(STATIC_LIVE_PRESET) --target cpkt_audio_live_vox_static_c89_example
-	@printf 'built: %s\n' "$$(pwd)/build/$(STATIC_LIVE_PRESET)/cpkt_audio_live_vox_static_c89_example"
-
-example-sus-vox-intro:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpkt_sus_vox_intro_c89_example
-	bash ./scripts/run-sus-vox-intro.sh "$$(pwd)/build/debug/cpkt_sus_vox_intro_c89_example" "$$(pwd)/build/debug"
-
-example-sus-live-vox:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpkt_sus_live_vox_c89_example
-	"$$(pwd)/build/debug/cpkt_sus_live_vox_c89_example" $(CPKT_SUS_LIVE_VOX_ARGS)
-
-example-sus-live-vox-static:
-	$(CMAKE) --preset $(STATIC_LIVE_PRESET)
-	$(CMAKE) --build --preset $(STATIC_LIVE_PRESET) --target cpkt_sus_live_vox_static_c89_example
-	@printf 'built: %s\n' "$$(pwd)/build/$(STATIC_LIVE_PRESET)/cpkt_sus_live_vox_static_c89_example"
-
-cpktxscribe:
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug --target cpktxscribe
-	@printf 'built: %s\n' "$$(pwd)/build/debug/tools/cpktxscribe"
-
-valgrind:
-	bash ./scripts/require-native-hardening-host.sh valgrind
-	@command -v valgrind >/dev/null || { printf 'valgrind is required for make valgrind; install it with the host OS package manager\n' >&2; exit 1; }
-	$(CMAKE) --preset debug
-	$(CMAKE) --build --preset debug
-	$(CTEST) --test-dir build/debug -T memcheck -L memcheck --stop-on-failure --no-tests=error --output-on-failure --overwrite 'MemoryCheckCommandOptions=--error-exitcode=1 --leak-check=full --track-origins=yes --show-leak-kinds=definite,indirect' --overwrite 'MemoryCheckSuppressionFile=$(CURDIR)/tests/valgrind.supp'
-	CPKT_POSTGRES_E2E_MEMCHECK=1 bash ./scripts/test-e2e.sh "$$(pwd)/build/debug/cpkt_postgres_integration_test"
-
-fuzz-smoke:
-	bash ./scripts/fuzz.sh smoke
-
-fuzz:
-	bash ./scripts/fuzz.sh standard
-
-fuzz-long:
-	@test "$${CPKT_FUZZ_LONG_ENABLE:-}" = 1 || { printf 'fuzz-long requires CPKT_FUZZ_LONG_ENABLE=1\n' >&2; exit 2; }
-	bash ./scripts/fuzz.sh long
-
-package:
-	bash ./scripts/package.sh
-
-package-source:
-	bash ./scripts/package-source.sh
-
-package-source-smoke: package-source
-	bash ./scripts/source-archive-verify.sh "dist/c.pkt.systems-$$(bash ./scripts/release-version.sh "$$(pwd)").tar.gz"
-
-package-checksums:
-	bash ./scripts/verify-dist-manifest.sh "$$(pwd)/dist" c.pkt.systems "$$(bash ./scripts/release-version.sh "$$(pwd)")"
-
-package-verify:
-	bash ./scripts/package-verify.sh
-
-verify-release-archives: package-verify
-
-verify-release-privacy: package-verify
-
-release-pipeline:
-	$(MAKE) format
-	$(MAKE) format-check
-	$(MAKE) debug
-	$(MAKE) e2e-postgres
-	$(MAKE) clangd-surface
-	$(MAKE) valgrind
-	$(MAKE) fuzz-smoke
-	$(MAKE) release-matrix
-
-prerelease:
-	$(MAKE) release-pipeline
-
-prerelease-live:
-	@test "$${CPKT_LIVE_CHECKS:-}" = 1 || { printf 'prerelease-live requires CPKT_LIVE_CHECKS=1 because it contacts external providers\n' >&2; exit 2; }
-	$(MAKE) e2e-sus e2e-cpktxscribe
-
-prerelease-hardening:
-	$(MAKE) prerelease
-	$(MAKE) fuzz
-
-release-matrix:
-	$(MAKE) package
-	$(MAKE) package-checksums
-	$(MAKE) package-verify
-
-release-final-matrix:
-	$(MAKE) package
-	$(MAKE) package-source
-	$(MAKE) package-source-smoke
-	$(MAKE) package-checksums
-	$(MAKE) package-verify
-
-finalize-slice:
-	$(MAKE) format
-	$(MAKE) debug
-	$(MAKE) clangd-surface
-	$(MAKE) format-check
-
-lifecycle-version-contract:
-	bash ./tests/release_version_contract_test.sh
+	@printf '\nSelection: unqualified build/test retain six Linux Release targets; selected build/test use native debug by default.\nSelected packaging requires explicit Release PRESET, writes only build/, and borrows matching package-ready core.\nRelease/matrix/source gates reject narrowing before clean. Formatting stays global. Local jobs=8, native Darwin jobs=2; explicit configured limits are honored.\n'
+	@printf '  %-30s %s\n' 'test-darwin-native' 'Native Darwin source/runtime proof (Apple tools, jobs=2).'
+	@printf '  %-30s %s\n' 'test-darwin-sdk' 'Execute supplied Darwin SDK combinations without changing libraries.'
+	@printf '  %-30s %s\n' 'test-github-actions-contracts' 'Offline workflow/handoff identity fixtures.'
 
 print-release-version:
-	@bash ./scripts/release-version.sh "$$(pwd)"
+	@bash scripts/release-version.sh "$(CURDIR)"
 
-format:
-	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format\n' >&2; exit 1; }
-	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format -i
-
-format-check:
-	@command -v clang-format >/dev/null || { printf 'clang-format is required for make format-check\n' >&2; exit 1; }
-	find include src tests examples fuzz tools -type f \( -name '*.c' -o -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format --dry-run --Werror
-
-release:
-	$(MAKE) lifecycle-version-contract
-	$(MAKE) clean
-	$(MAKE) format
-	$(MAKE) format-check
-	$(MAKE) debug
-	$(MAKE) e2e-postgres
-	$(MAKE) clangd-surface
-	$(MAKE) valgrind
-	$(MAKE) fuzz-smoke
-	$(MAKE) release-final-matrix
-
-source-archive: package-source-smoke
-
-verify-source-archive:
-	bash ./scripts/source-archive-verify.sh "dist/c.pkt.systems-$$(bash ./scripts/release-version.sh "$$(pwd)").tar.gz"
-
-clean:
-	bash ./scripts/clean.sh all
-
-clean-dist:
-	bash ./scripts/clean.sh dist
+build build-debug build-host build-release clangd-surface clean clean-dist cpktxscribe cross-build cross-test debug deps deps-all deps-cross deps-debug deps-release dev-down dev-logs dev-ps dev-reset dev-up e2e-cpktxscribe e2e-postgres e2e-sus example-audio-live-vox example-audio-live-vox-static example-audio-vox-intro example-sus-live-vox example-sus-live-vox-static example-sus-vox-intro examples finalize-slice format format-check fuzz fuzz-long fuzz-smoke lifecycle-version-contract package package-checksums package-source package-source-smoke package-verify prerelease prerelease-hardening prerelease-live release release-final-matrix release-matrix release-pipeline source-archive test test-all test-cross test-darwin-native test-darwin-sdk test-debug test-e2e test-github-actions-contracts test-host test-install-tree valgrind verify-release-archives verify-release-privacy verify-source-archive:
+	@python3 scripts/cpkt_lifecycle.py "$@" --group "$(GROUP)" --preset "$(PRESET)" --preset-explicit "$(PRESET_EXPLICIT)" --scope "$(SCOPE)" --scope-explicit "$(SCOPE_EXPLICIT)" --dependency "$(DEPENDENCY)"

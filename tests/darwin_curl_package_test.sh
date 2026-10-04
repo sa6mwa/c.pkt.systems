@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
-  printf 'usage: %s <arm64-apple-darwin SDK archive>\n' "$0" >&2
+  printf 'usage: %s <arm64-apple-darwin validated core SDK prefix>\n' "$0" >&2
   exit 2
 fi
 if [ "$(uname -s)" != Darwin ]; then
@@ -11,27 +11,26 @@ if [ "$(uname -s)" != Darwin ]; then
 fi
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-archive=$1
-case "$archive" in
-  /*) ;;
-  *) archive="$(pwd)/$archive" ;;
-esac
-work_root="$repo_root/build/darwin-curl-package-test"
-rm -rf "$work_root"
-mkdir -p "$work_root/extracted" "$work_root/consumer"
-(cd "$work_root/extracted" && cmake -E tar xf "$archive")
-prefix_count=0
-prefix=
-for candidate in "$work_root/extracted"/*; do
-  [ -d "$candidate" ] || continue
-  prefix_count=$((prefix_count + 1))
-  prefix=$candidate
-done
-if [ "$prefix_count" -ne 1 ] || [ ! -f "$prefix/lib/libcurl.a" ] ||
-    [ ! -f "$prefix/lib/libcurl.dylib" ]; then
-  printf 'SDK archive has no unique prefix with static and shared libcurl\n' >&2
-  exit 1
+if [[ -z ${CPKT_OPERATION_FD:-} ]]; then
+  exec python3 "$repo_root/scripts/cpkt_operation.py" --group core -- bash "$0" "$@"
 fi
+python3 "$repo_root/scripts/cpkt_operation.py" --group core --check
+prefix=$1
+if [[ ! -d "$prefix" ]]; then
+  printf 'pass an already validated native core SDK prefix\n' >&2
+  exit 2
+fi
+python3 "$prefix/share/c.pkt.systems/validate-sdk.py" --prefix "$prefix" --groups core
+work_root="$repo_root/build/verification/arm64-apple-darwin/core/native-package-runtime"
+python3 - "$work_root" <<'PYSAFE'
+from pathlib import Path
+import sys
+sys.path.insert(0,'scripts')
+from cpkt_packages import safe_owned
+safe_owned(Path(sys.argv[1]))
+PYSAFE
+rm -rf "$work_root"
+mkdir -p "$work_root/consumer"
 python3 "$repo_root/tests/auth_package_discovery_test.py" "$repo_root" \
   --scratch "$work_root" --compiler "$(xcrun --find clang)" --sdk-prefix "$prefix"
 cat > "$work_root/consumer/lua_facade.c" <<'EOF'
@@ -102,8 +101,10 @@ endforeach()
 EOF
 cmake -S "$work_root/consumer" -B "$work_root/consumer-build" -G Ninja \
   "-DCMAKE_PREFIX_PATH=$prefix" \
+  "-DCMAKE_C_COMPILER=$(xcrun --find clang)" \
+  "-DCMAKE_OSX_DEPLOYMENT_TARGET=15.0" \
   "-DCPKT_SDK_PREFIX=$prefix" \
   "-DCPKT_SOURCE_DIR=$repo_root" \
   "-DCPKT_PYTHON3=$(command -v python3)"
-cmake --build "$work_root/consumer-build"
+cmake --build "$work_root/consumer-build" --parallel 2
 ctest --test-dir "$work_root/consumer-build" --output-on-failure

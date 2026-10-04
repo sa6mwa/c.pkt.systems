@@ -1,0 +1,15 @@
+--- a/include/open62541/config.h.in
++++ b/include/open62541/config.h.in
+@@ -462,5 +462,6 @@
+ static UA_INLINE void
+ UA_LOCK_ASSERT(UA_Lock *lock) {
++    (void)lock; /* UA_assert may be disabled in a release SDK. */
+     UA_assert(lock->count > 0);
+ }
+ 
+@@ -504,4 +505,5 @@
+ static UA_INLINE void
+ UA_LOCK_ASSERT(UA_Lock *lock) {
++    (void)lock; /* UA_assert may be disabled in a release SDK. */
+     UA_assert(lock->count > 0);
+ }

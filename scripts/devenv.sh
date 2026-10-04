@@ -2,6 +2,13 @@
 set -Eeuo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+case ${GROUP:-db} in db|all) ;; *) printf 'this operation requires GROUP=db|all\n' >&2; exit 2 ;; esac
+if [[ -z ${CPKT_OPERATION_FD:-} ]]; then
+  exec python3 "$repo_root/scripts/cpkt_operation.py" --group db -- bash "$0" "$@"
+fi
+python3 "$repo_root/scripts/cpkt_operation.py" --group db --check
+podman() { python3 "$repo_root/scripts/cpkt_service_exec.py" podman "$@"; }
 state_root="$repo_root/build/devenv"
 manifest="$state_root/devenv.yaml"
 checkout_id=$(printf '%s' "$repo_root" | sha256sum | cut -c1-10)

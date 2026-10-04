@@ -3,7 +3,9 @@
 The SDK builds and ships pinned source releases for OpenSSL, zlib, curl,
 nghttp2, libssh2, libxml2, libpng, libHaru, iODBC, Lua, miniaudio, whisper.cpp and
 ggml, open62541, MQTT-C, MIT Kerberos, Cyrus SASL, OpenLDAP, PostgreSQL
-libpq, and SQLite. CMocka is used for build tests. OPC UA logging tests use
+libpq, SQLite, and cmocka. Core ships native cmocka static/shared libraries and
+its upstream C99 headers alongside the complete [C89 test facade](cmocka-c89.md).
+Production facades do not link cmocka. OPC UA logging tests use
 MIT-licensed [libpslog 0.11.0](https://github.com/sa6mwa/libpslog/releases/tag/v0.11.0)'s
 target-specific static release binaries, verified against the
 SHA-256 pins in [CpktTestPslog.cmake](../cmake/CpktTestPslog.cmake). They are
@@ -19,10 +21,29 @@ its own SDK package metadata.
 The authoritative versions and verified source archive hashes are the pins
 in [CMakeLists.txt](../CMakeLists.txt) and
 [CpktDependencies.cmake](../cmake/CpktDependencies.cmake). The generated SDK
-dependency manifest records what a particular release actually contains.
+group manifests record what a particular release actually contains, including
+source digests, compiled features, ABI identities and the exact required core ID.
 Licenses and required notices are shipped under
-`share/doc/c.pkt.systems/third_party/`, with the aggregate notice source at
+`share/doc/c.pkt.systems/<group>/third_party/`, with the aggregate notice source at
 [THIRD_PARTY_NOTICES.md](third_party/THIRD_PARTY_NOTICES.md).
+
+[components.json](../cmake/components.json) owns component, facade, header,
+metadata, test and payload assignments. Core is independently usable; db and
+misc each require the exact same-version, same-target core recorded by their
+manifest, and neither optional group requires the other.
+
+| Group | Bundled components |
+| --- | --- |
+| core | OpenSSL, zlib, nghttp2, libssh2, curl, libxml2, Lua, MQTT-C, MIT Kerberos, Cyrus SASL, OpenLDAP, cmocka |
+| db | PostgreSQL libpq, iODBC, SQLite |
+| misc | libpng, libHaru, miniaudio, whisper.cpp/ggml, open62541 |
+
+Use the [installation guide](sdk-installation.md) for package combinations and
+validation before CMake or direct pkg-config discovery. GNU's complete shared
+SDK retains the glibc 2.43 floor; Darwin retains its 15.0 deployment floor.
+Optional development and consumer verification discover the selected toolchain
+without provisioning or repairing prerequisites. OpenSSL producers remain
+serial; local configured job limits are 8 and native Darwin limits are 2.
 
 iODBC 3.52.16 supplies the ODBC driver manager (`libiodbc`) and configuration
 API (`libiodbcinst`), not a

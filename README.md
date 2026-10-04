@@ -25,13 +25,15 @@ The project builds release artifacts for:
 - MQTT-C
 - open62541
 
-Release tarballs always contain the complete installable SDK surface: headers,
+Each group tarball contains its complete installable SDK surface: headers,
 static archives, shared libraries, CMake package metadata, and pkg-config
 metadata. Partial static-only or shared-only dependency bundles are not
 supported.
 
-cmocka is built for Linux tests when tests are enabled. It is not shipped in
-release tarballs.
+Core ships native cmocka static/shared libraries and upstream C99 headers, plus
+the complete C89 test facade at `cpkt/cmocka.h`. Production facades do not link
+cmocka. The facade uses explicit function tokens for mock retrieval and paired
+32-bit words for full 64-bit values; see [the cmocka guide](docs/cmocka-c89.md).
 
 It does not build or package project-level pkt.systems libraries such as
 `lonejson` or `libpslog`; those are released and consumed independently.
@@ -161,8 +163,11 @@ to executable paths when QEMU is installed elsewhere; use those values for
 configure, test, and package verification.
 
 The release matrix builds each dependency tree, runs the ABI/link smoke tests
-where the target can execute locally, writes `dist/c.pkt.systems-<version>-<target>.tar.gz`,
-writes `dist/c.pkt.systems-<version>-CHECKSUMS`, and verifies the archive contents.
+where the target can execute locally, writes `dist/c.pkt.systems-<version>-<group>-<target>.tar.gz` for `core`,
+`db`, and `misc`, then verifies their contents and all installation combinations.
+There is no fourth monolithic SDK archive. Binary scope has exactly 22 payloads
+and keeps its checksum proof under `build/verification/binary/`; release scope
+has 23 payloads plus the sole `dist/c.pkt.systems-<version>-CHECKSUMS` manifest.
 It also packages the Darwin
 `dist/c.pkt.systems-<version>-arm64-apple-darwin-smoke-test.zip`.
 The final `make release` additionally writes and verifies
@@ -193,7 +198,9 @@ Check this workflow before a Darwin release. The release's Darwin archive is
 still built from this repository with the local osxcross release preset. Source
 archive verification extracts the source tarball, checks its `RELEASE_MANIFEST`,
 verifies that non-git version resolution uses the injected `VERSION` file, and
-builds/runs the facade-only local tests from the extracted tree.
+reconstructs fresh native GNU Release producers once, runs every owned suite
+and composition coverage, and proves all packaged group combinations. The shared
+verified source archive cache is retained; compiled state is recreated.
 
 To build only the source archive:
 
@@ -208,9 +215,31 @@ To verify existing archives:
 make verify-release-archives
 ```
 
+
+Select a group without mutating siblings or repairing core implicitly:
+
+```sh
+make test GROUP=core PRESET=debug
+make test GROUP=db PRESET=debug
+make package GROUP=core PRESET=x86_64-linux-gnu-release
+make package GROUP=db PRESET=x86_64-linux-gnu-release
+make package GROUP=misc PRESET=x86_64-linux-gnu-release
+make package-verify GROUP=db PRESET=x86_64-linux-gnu-release
+make package-checksums GROUP=db PRESET=x86_64-linux-gnu-release
+```
+
+Selected package/checksum/proof outputs stay under `build/`. Optional packaging
+borrows a matching package-ready core archive; prepare it explicitly when stale.
+Core-only, core+db, core+misc, and all are supported installed closures; db and misc
+never require each other. `GROUP=all` binary operations cover all seven targets.
+Complete release/source gates reject explicit group/preset narrowing before clean.
+Local producer/consumer jobs default to 8; native Darwin jobs are 2. Explicit
+configured limits are honored. OpenSSL remains serial pending all-target evidence.
+Read [installation and validation](docs/sdk-installation.md) before importing a SDK.
+
 ## SDK Layout
 
-Each archive extracts to one directory:
+Each group archive extracts to the same directory:
 
 ```text
 c.pkt.systems-<version>-<target>/
@@ -660,7 +689,7 @@ AFL++ 5.02c is cached and built against the pinned Bootlin x86_64 GCC
 plugin headers; `fuzz-smoke` runs bounded AFL++ jobs against the mock-backed Lua
 runtime and public OPC UA facades. The OPC UA fuzzer reuses the normal debug
 dependency install tree for linkage. These hardening builds live under
-`build/debug`, `build/fuzz`, and `build/opcua-fuzz`; they are part of the
+`build/x86_64-linux-gnu/<group>/Debug`, `Valgrind`, and `Fuzz`; they are part of the
 shared prerelease and release proof graph and never instrument release package
 artifacts. Valgrind and AFL++ never run via a cross target, emulator, or QEMU.
 
@@ -684,7 +713,10 @@ out of scope; supported downstream speech use goes through `cpkt_sus`.
 [latest stable host LLVM installation](skills/pkt-systems-cmake-lifecycle/references/toolchains.md#host-llvm-and-clang),
 which also supplies Clang for osxcross. c.pkt.systems does not download, cache,
 or ship LLVM/Clang. `make clangd-surface` configures
-the native debug compile database and checks declaration-local Doxygen comments
+the native Debug group databases and atomically publishes their merged editor
+database under `build/clangd` after all checks pass. Selected checks read and
+write only their own group; all-group native Debug checks publish the editor
+database with actual compiler flags and generated include paths. It checks declaration-local Doxygen comments
 for most public facades and non-static implementations. SQLite uses group-level
 documentation for its broad header surface. The target checks that the shipped
 examples and the PDF facade test are present in `compile_commands.json`, then
@@ -700,7 +732,7 @@ both debug and release builds; these executables are not shipped in the SDK.
 CTest, e2e scripts, and named example targets execute them normally, for example:
 
 ```sh
-./build/debug/tools/cpktxscribe --help
+./build/x86_64-linux-gnu/misc/Debug/tools/cpktxscribe --help
 ```
 
 Shipped libraries and installed example sources keep normal runtime metadata.

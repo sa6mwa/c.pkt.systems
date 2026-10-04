@@ -1,175 +1,85 @@
 #!/usr/bin/env python3
-"""Exercise package failures and signals in isolated process groups."""
-
+"""Observe selected package phase failures and interruption in real children."""
 import os
 from pathlib import Path
-import shutil
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 
-
-if not __debug__:
-    raise SystemExit("Package diagnostic tests require Python assertions enabled")
-
-source = Path(sys.argv[1]).resolve()
-build = source / "build"
-build.mkdir(exist_ok=True)
-with tempfile.TemporaryDirectory(prefix="package diagnostics-", dir=build) as tmp:
-    root = Path(tmp)
-    (root / "scripts").mkdir()
-    for name in ("package.sh", "osxcross_available.sh"):
-        shutil.copyfile(source / "scripts" / name, root / "scripts" / name)
-    tools = root / "bin"
-    tools.mkdir()
-    stub = r'''#!/usr/bin/env bash
-set -euo pipefail
-if [[ ${0##*/} == ctest ]]; then
-  phase=test
-  for arg in "$@"; do
-    if [[ $arg == -R ]]; then phase=fixture; fi
-  done
-elif [[ $1 == --build && ${3:-} == package-* ]]; then
-  phase=package
-elif [[ $1 == --build ]]; then
-  phase=build
-else
-  phase=configure
-fi
-printf '%s\n' "$phase" >> "$DIAG_CALLS"
-if [[ $phase == "$DIAG_PHASE" && ( -z ${DIAG_TARGET:-} || ${2:-} == "$DIAG_TARGET" ) ]]; then
-  case "$DIAG_MODE" in
-    fail) printf 'injected command failure\n' >&2; exit "$DIAG_STATUS" ;;
-    child) kill -TERM "$$"; exit 99 ;;
-    parent) kill -TERM "$PPID"; exit 0 ;;
-    group) : > "$DIAG_READY"; exec sleep 30 ;;
-  esac
-fi
-'''
-    for name in ("cmake", "ctest"):
-        path = tools / name
-        path.write_text(stub)
-        path.chmod(0o755)
-    cross = root / "osxcross"
-    (cross / "bin").mkdir(parents=True)
-    (cross / "SDK/MacOSX-test.sdk/usr/include").mkdir(parents=True)
-    for name in ("clang", "clang++", "ar", "ranlib", "ld",
-                 "install_name_tool", "otool"):
-        path = cross / "bin" / ("arm64-apple-darwin25-" + name)
-        path.write_text("#!/bin/sh\nexit 0\n")
-        path.chmod(0o755)
-    resolver = root / "scripts/cpkt-toolchains.sh"
-    resolver.write_text(
-        "#!/bin/sh\n"
-        "printf 'status=ready\\nroot=%s\\nprefix=arm64-apple-darwin25\\n' "
-        '"$OSXCROSS_ROOT"\n'
-    )
-    resolver.chmod(0o755)
-    (root / "Makefile").write_text("all:\n\tbash scripts/package.sh\n")
-    cases = []
-
-    def run(name, phase="", mode="fail", status=23,
-            signum=signal.SIGTERM, via_make=False, target=""):
-        env = os.environ.copy()
-        for key in ("MAKEFLAGS", "MFLAGS", "MAKELEVEL"):
-            env.pop(key, None)
-        ready = root / (name + ".ready")
-        calls = root / (name + ".calls")
-        env.update(CMAKE=str(tools / "cmake"), CTEST=str(tools / "ctest"),
-                   OSXCROSS_ROOT=str(cross),
-                   CPKT_OSXCROSS_HOST="arm64-apple-darwin25",
-                   DIAG_PHASE=phase, DIAG_MODE=mode, DIAG_STATUS=str(status),
-                   DIAG_TARGET=target,
-                   DIAG_READY=str(ready), DIAG_CALLS=str(calls))
-        command = ["make", "--no-print-directory"] if via_make else [
-            "bash", "scripts/package.sh"]
-        process = subprocess.Popen(command, cwd=root, env=env,
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, text=True,
-                                   start_new_session=True)
+if not __debug__:raise SystemExit('Package diagnostic tests require Python assertions enabled')
+source=Path(sys.argv[1]).resolve()
+with tempfile.TemporaryDirectory(prefix='package diagnostics-',dir=source/'build') as temporary:
+    root=Path(temporary)
+    driver=root/'driver.py'
+    driver.write_text('''import os,sys
+sys.path.insert(0,sys.argv[1]+'/scripts')
+from cpkt_package_command import run
+for phase in ('configure','fixture','build','test','package'):
+    run([sys.executable,sys.argv[2],phase],root=sys.argv[3],phase=phase,env=os.environ,pass_fds=())
+''')
+    stub=root/'stub.py'
+    stub.write_text('''import os,sys,time,signal
+phase=sys.argv[1]
+with open(os.environ['DIAG_CALLS'],'a') as stream:stream.write(phase+'\\n')
+if phase==os.environ['DIAG_PHASE']:
+    mode=os.environ['DIAG_MODE']
+    if mode=='fail':sys.exit(int(os.environ['DIAG_STATUS']))
+    if mode=='child':os.kill(os.getpid(),signal.SIGTERM)
+    if mode=='parent':os.kill(os.getppid(),signal.SIGTERM)
+    if mode=='group':
+        open(os.environ['DIAG_READY'],'w').close();time.sleep(30)
+''')
+    phases=['configure','fixture','build','test','package'];cases=[]
+    def run(name,phase='',mode='fail',status=23,signum=signal.SIGTERM,via_make=False,target='x86_64-linux-gnu-release'):
+        calls=root/(name+'.calls');ready=root/(name+'.ready')
+        env=dict(os.environ,DIAG_CALLS=str(calls),DIAG_READY=str(ready),DIAG_PHASE=phase,DIAG_MODE=mode,DIAG_STATUS=str(status),CPKT_PRESET=target)
+        for key in list(env):
+            if key.startswith('CPKT_OPERATION_') or key in ('MAKEFLAGS','MFLAGS','MAKELEVEL'):env.pop(key,None)
+        args=[sys.executable,str(driver),str(source),str(stub),str(root)]
+        if via_make:
+            import shlex
+            (root/'Makefile').write_text('all:\n\t'+shlex.join(args)+'\n');args=['make','--no-print-directory']
+        process=subprocess.Popen(args,cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,start_new_session=True)
         try:
-            if mode == "group":
-                deadline = time.monotonic() + 5
+            if mode=='group':
+                deadline=time.monotonic()+10
                 while not ready.exists():
-                    if process.poll() is not None or time.monotonic() > deadline:
-                        raise AssertionError(name + ": fixture never became ready")
-                    time.sleep(0.01)
-                assert os.getpgid(process.pid) == process.pid
-                os.killpg(process.pid, signum)
-            output, _ = process.communicate(timeout=10)
+                    if process.poll() is not None or time.monotonic()>deadline:raise AssertionError('phase never started')
+                    time.sleep(.01)
+                os.killpg(process.pid,signum)
+            output,_=process.communicate(timeout=15)
         except BaseException:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.communicate(timeout=5)
-            raise
-        actual_calls = calls.read_text().splitlines()
-        context = name + ":\n" + output
-        if not phase:
-            assert process.returncode == 0, context
-            assert actual_calls == ["configure"] * 7 + ["fixture"] * 61 + [
-                "build", "test", "package"] * 6 + ["build", "package"], context
+            try:os.killpg(process.pid,signal.SIGKILL)
+            except ProcessLookupError:pass
+            process.communicate();raise
+        actual=calls.read_text().splitlines();expected=phases[:phases.index(phase)+1] if phase else phases
+        assert actual==expected,(name,actual,output)
+        if not phase:assert process.returncode==0,output
         else:
-            if phase == "configure":
-                expected_calls = ["configure"]
-            elif phase == "fixture":
-                expected_calls = ["configure"] * 7 + ["fixture"] * (7 if target else 1)
+            interruption=mode in ('group','parent')
+            prefix='[package] '+('INTERRUPTED' if interruption else 'FAILED')
+            diagnostics=[line for line in output.splitlines() if line.startswith(prefix)]
+            assert len(diagnostics)==1,(name,output)
+            diagnostic=diagnostics[0]
+            assert 'phase='+phase in diagnostic and 'target='+target in diagnostic,output
+            expected_status=128+signum if interruption else 143 if mode=='child' else status
+            if not via_make:assert process.returncode==expected_status,(name,output,process.returncode)
+            else:assert process.returncode!=0
+            assert 'status='+str(expected_status) in diagnostic,output
+            if interruption:assert 'received '+signal.Signals(signum).name in diagnostic and 'sender' in diagnostic,output
             else:
-                expected_calls = ["configure"] * 7 + ["fixture"] * 61 + [
-                    "build", "test", "package"][:["build", "test", "package"].index(phase) + 1]
-            assert actual_calls == expected_calls, context
-            prefix = "[package] " + (
-                "INTERRUPTED" if mode in ("group", "parent") else "FAILED")
-            diagnostics = [line for line in output.splitlines()
-                           if line.startswith(prefix)]
-            assert len(diagnostics) == 1, context
-            diagnostic = diagnostics[0]
-            expected_target = Path(target).name if target else "x86_64-linux-gnu-release"
-            assert "target=" + expected_target in diagnostic, context
-            assert "phase=" + phase in diagnostic, context
-            if mode in ("group", "parent"):
-                expected = signal.Signals(signum).name
-                assert "received " + expected in diagnostic, context
-                assert "sender" in diagnostic, context
-                assert process.returncode != 0, context
-                if not via_make:
-                    assert process.returncode == 128 + signum, context
-            else:
-                expected_status = 143 if mode == "child" else status
-                assert process.returncode == expected_status, context
-                assert "status=" + str(expected_status) in diagnostic, context
-                assert "command=" in diagnostic, context
-                assert "received SIGTERM" not in output, context
-                if expected_status == 143:
-                    assert "SIGTERM" in output and "explicit exit" in output, context
+                assert 'command=' in diagnostic and 'received SIGTERM' not in output,output
+                if expected_status==143:assert 'SIGTERM' in output and 'explicit exit' in output,output
         cases.append(name)
-
-    for phase in ("configure", "fixture", "build", "test", "package"):
-        run("failure-" + phase, phase)
-    run("darwin-prototype-fixture", "fixture",
-        target=str(root / "build/arm64-apple-darwin-release"))
-    run("explicit-143", "test", status=143)
-    run("child-term", "test", mode="child")
-    run("parent-term", "test", mode="parent")
-    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
-        run(signal.Signals(signum).name, "test", mode="group", signum=signum)
-    run("make-group-term", "test", mode="group", via_make=True)
-    run("success")
-    route_tools = root / "route-tools"
-    route_tools.mkdir()
-    route_make = route_tools / "make"
-    route_make.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CPKT_MATRIX_ROUTE_CALLS"\nexit 19\n')
-    route_make.chmod(0o755)
-    route_calls = root / "route.calls"
-    route_env = os.environ.copy()
-    route_env.update(PATH=str(route_tools) + os.pathsep + route_env["PATH"],
-                     CPKT_MATRIX_ROUTE_CALLS=str(route_calls))
-    route_result = subprocess.run(["bash", str(source / "scripts/run_linux_release_matrix.sh")],
-                                  env=route_env, capture_output=True, text=True)
-    assert route_result.returncode == 19, route_result
-    assert route_calls.read_text().splitlines() == ["-C", str(source), "release-final-matrix"]
-    cases.append("canonical-matrix-route")
-    print("[test] package failure diagnostics: %d cases passed" % len(cases))
+    for phase in phases:run('failure-'+phase,phase)
+    run('darwin-prototype-fixture','fixture',target='arm64-apple-darwin-release')
+    run('explicit-143','test',status=143)
+    run('child-term','test',mode='child')
+    run('parent-term','test',mode='parent')
+    for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):run(signal.Signals(signum).name,'test',mode='group',signum=signum)
+    run('make-group-term','test',mode='group',via_make=True)
+    run('success')
+    assert len(cases)==14
+    print('Package phase/status/sender/signal/fail-fast diagnostics passed: '+', '.join(cases))

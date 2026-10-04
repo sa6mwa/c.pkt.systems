@@ -10,13 +10,13 @@ require_configuration() {
   local configure=$3
 
   if ! awk -v target="$target" -v source="$source" -v configure="$configure" '
-    index($0, "add_library(" target " ") == 1 {
+    index($0, "cpkt_group_add_library(" target " ") == 1 {
       if (index($0, source) == 0)
         exit 1
       inside = 1
       next
     }
-    inside && index($0, "add_library(") == 1 { exit 1 }
+    inside && index($0, "cpkt_group_add_library(") == 1 { exit 1 }
     inside && $0 == configure { found = 1; exit }
     END { exit found ? 0 : 1 }
   ' "$cmake_file"; then
@@ -54,7 +54,7 @@ require_configuration cpkt_lua_static '"${CPKT_LUA_FACADE_SOURCE}"' \
 require_configuration cpkt_lua_shared '"${CPKT_LUA_FACADE_SOURCE}"' \
   'cpkt_configure_c89_lua_native_header_target(cpkt_lua_shared)'
 
-if rg -n 'target_compile_features\(cpkt_[A-Za-z0-9_]+[[:space:]]+PRIVATE[[:space:]]+c_std_[0-9]+' "$cmake_file"; then
+if rg -n '(target_compile_features|cpkt_group_target_command\(target_compile_features)\(cpkt_[A-Za-z0-9_]+[[:space:]]+PRIVATE[[:space:]]+c_std_[0-9]+' "$cmake_file"; then
   printf 'production facade targets must not select a post-C89 language standard\n' >&2
   exit 1
 fi

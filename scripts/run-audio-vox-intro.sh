@@ -2,7 +2,10 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-example_bin=${1:-"$repo_root/build/debug/cpkt_audio_vox_intro_c89_example"}
+native_preset=debug
+if [ "$(uname -s)" = "Darwin" ]; then native_preset=arm64-apple-darwin-debug; fi
+native_build=$(python3 "$repo_root/scripts/group-build.py" path --group misc --preset "$native_preset")
+example_bin=${1:-"$native_build/cpkt_audio_vox_intro_c89_example"}
 audio_url=${CPKT_AUDIO_VOX_INTRO_URL:-"https://pkt.systems/trajectory/assets/narration/intro/intro.mp3"}
 cache_root=${CPKT_AUDIO_VOX_INTRO_CACHE:-"${XDG_CACHE_HOME:-"$HOME/.cache"}/c.pkt.systems/examples/audio-vox-intro"}
 audio_path="$cache_root/intro.mp3"

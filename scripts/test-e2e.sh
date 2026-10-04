@@ -2,6 +2,12 @@
 set -Eeuo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+case ${GROUP:-db} in db|all) ;; *) printf 'this operation requires GROUP=db|all\n' >&2; exit 2 ;; esac
+if [[ -z ${CPKT_OPERATION_FD:-} ]]; then
+  exec python3 "$repo_root/scripts/cpkt_operation.py" --group db -- bash "$0" "$@"
+fi
+python3 "$repo_root/scripts/cpkt_operation.py" --group db --check
 executable=${1:?pass the built PostgreSQL facade integration executable}
 postgres_port=${CPKT_DEV_POSTGRES_PORT:-55432}
 cockroach_port=${CPKT_DEV_COCKROACH_PORT:-56257}
@@ -24,6 +30,7 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
+trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 

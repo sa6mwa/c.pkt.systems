@@ -73,7 +73,7 @@ def main() -> None:
     cache = args.configured_binary_dir.resolve() / "CMakeCache.txt"
     compiler = cache_value(cache, "CMAKE_C_COMPILER")
     toolchain = cache_value(cache, "CMAKE_TOOLCHAIN_FILE")
-    target = Path(toolchain).stem
+    target = cache_value(cache, "CPKT_TARGET_ID")
     nm = cache_value(cache, "CMAKE_NM")
     darwin = target == "arm64-apple-darwin"
     if target not in (

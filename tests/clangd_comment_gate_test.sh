@@ -7,13 +7,27 @@ if [[ $# -ne 1 ]]; then
 fi
 
 checker=$1
-work_dir=$(mktemp -d)
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$checker")/.." && pwd)
+mkdir -p "$repo_dir/build"
+work_dir=$(mktemp -d "$repo_dir/build/clangd-comment-fixture.XXXXXX")
 trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 source_dir="$work_dir/source"
 build_dir="$work_dir/build"
 mkdir -p "$source_dir/include/cpkt" "$source_dir/src" "$source_dir/examples" "$source_dir/tests" \
   "$build_dir/generated/opcua/cpkt" "$build_dir/generated/lua/include/cpkt" "$work_dir/bin"
+mkdir -p "$source_dir/scripts" "$source_dir/cmake"
+cp "$repo_dir"/scripts/cpkt_*.py "$source_dir/scripts/"
+python3 - "$source_dir" <<'PY'
+import json,sys
+from pathlib import Path
+root=Path(sys.argv[1])
+inputs=['include/cpkt/facade.h','src/facade.c','src/private.c']
+hover=['examples/abi_smoke.c']
+(root/'cmake/components.json').write_text(json.dumps({'groups':{
+    group:{'verification_inputs':inputs} for group in ('core','db','misc')},
+    'hover':{group:hover for group in ('core','db','misc')}}))
+PY
 
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/bin/clangd"
 chmod +x "$work_dir/bin/clangd"
@@ -51,11 +65,28 @@ for source_file in \
   tests/pdf_facade_test.c; do
   mkdir -p "$(dirname "$source_dir/$source_file")"
   : > "$source_dir/$source_file"
-  printf '"%s/%s"\n' "$source_dir" "$source_file" >> "$build_dir/compile_commands.json"
 done
+python3 - "$source_dir" "$build_dir" <<'PY'
+import json,shutil,sys
+from pathlib import Path
+source,build=map(Path,sys.argv[1:])
+entries=[{'directory':str(build),'file':str(path),'arguments':[shutil.which('cc'),'-c',str(path)]}
+         for path in source.rglob('*.c') if path.name not in ('facade.c','private.c')]
+(build/'compile_commands.json').write_text(json.dumps(entries))
+PY
 
 run_gate() {
-  PATH="$work_dir/bin:$PATH" bash "$checker" "$source_dir" "$build_dir"
+  local selected key owned_build
+  (
+    for key in ${!CPKT_OPERATION_@}; do unset "$key"; done
+    for selected in misc core; do
+      owned_build="$source_dir/build/x86_64-linux-gnu/$selected/Debug"
+      mkdir -p "$owned_build"
+      cp -R "$build_dir/." "$owned_build/"
+      printf 'CPKT_TARGET_ID:INTERNAL=x86_64-linux-gnu\nCMAKE_BUILD_TYPE:STRING=Debug\nCPKT_GROUP:STRING=%s\n' "$selected" > "$owned_build/CMakeCache.txt"
+      GROUP="$selected" PATH="$work_dir/bin:$PATH" bash "$checker" "$source_dir" "$owned_build" || exit "$?"
+    done
+  )
 }
 
 printf '/** Generated schema declaration. */\nvoid cpkt_opcua_fixture(void);\n' > "$build_dir/generated/opcua/cpkt/opcua_types.h"
@@ -64,6 +95,7 @@ printf '/** Generated plugin declarations. */\n' > "$build_dir/generated/opcua/c
 
 write_header '/** Public facade declaration. */'
 write_source '/** Public facade definition. */'
+: > "$source_dir/src/private.c"
 write_lua_header '/** Generated Lua facade declaration. */'
 run_gate
 

@@ -24,7 +24,11 @@ For implemented composable SDK packages, use the repository's declared group
 artifact inventory and common prefix instead. Follow
 [package-isolation-and-build-reuse.md](package-isolation-and-build-reuse.md) for
 payload ownership, prerequisite identities, acquisition and combination tests.
-Do not infer asset names or change current acquisition from a proposed split.
+For c.pkt.systems, the source inventory declares core/db/misc archives as
+`c.pkt.systems-<version>-<group>-<target>.tar.gz` under a common prefix, with
+schema-1 manifests and the installed validator. Consult that inventory and its
+executable contracts. Publication/native/reconstruction evidence is still a
+separate requirement; the implemented naming does not certify an unrun mode.
 
 Checksum manifest:
 
@@ -282,3 +286,13 @@ Rules:
 - `upgrade` refuses dirty upstream state.
 - Verification clones or copies the upstream to a temporary generated directory, applies the patch series, and builds it there.
 - Vendored build output must not leak into release artifacts.
+
+For the c.pkt.systems source reconstruction surface, `make package-source-smoke`
+creates source once and reconstructs native GNU Release groups from fresh local
+compiled state with the effective repository-configured job limit, generator and
+shared digest cache. Eight is this producer’s local default/ceiling; explicit
+lower limits are honored, and native Darwin uses two. Never discover host cores
+or substitute a host compiler or an unrelated cache.
+Selected staging/checksums/verification stays under the group's build namespace;
+optional staging requires an exact package-ready core archive and never repairs it.
+Binary scope has 22 payloads; release has 23 and one checksum upload manifest.

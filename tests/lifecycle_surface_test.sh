@@ -35,16 +35,8 @@ require_file_contains() {
 require_ordered_make_recipe() {
   target=$1
   expected=$2
-  actual=$(awk -v target="$target" '
-    $0 == target ":" { found = 1; next }
-    found && /^[^[:space:]#]/ { exit }
-    found && /^\t\$\(MAKE\) / { sub(/^\t\$\(MAKE\) /, ""); print }
-  ' "$repo_root/Makefile")
-  if [ "$actual" != "$expected" ]; then
-    printf 'Make target %s must serialize this lifecycle recipe:\nexpected:\n%s\nactual:\n%s\n' \
-      "$target" "$expected" "$actual" >&2
-    exit 1
-  fi
+  python3 "$repo_root/tests/lifecycle_recipe_contract.py" "$target" "$expected"
+
 }
 
 for target in \
@@ -81,7 +73,7 @@ done
 
 require_file_contains \
   CMakePresets.json \
-  'cmake/toolchains/x86_64-linux-gnu.cmake' \
+  'cmake/CpktReadOnlyToolchain.cmake' \
   'host Linux presets select the pinned Bootlin collection'
 require_file_contains \
   CMakeLists.txt \
@@ -97,7 +89,7 @@ require_file_contains \
   'dependency archives publish by atomic rename'
 require_file_contains \
   CMakePresets.json \
-  'cmake/toolchains/aflpp-x86_64-linux-gnu.cmake' \
+  'cmake/CpktReadOnlyAflToolchain.cmake' \
   'fuzz presets select pinned AFL++ GCC instrumentation'
 if grep -Eq '"CMAKE_C_COMPILER"[[:space:]]*:[[:space:]]*"clang"' "$repo_root/CMakePresets.json"; then
   printf 'sanitizer presets must not select host clang\n' >&2
@@ -132,7 +124,6 @@ package-verify'
 require_ordered_make_recipe \
   release-final-matrix \
   'package
-package-source
 package-source-smoke
 package-checksums
 package-verify'
@@ -165,26 +156,8 @@ if make -C "$repo_root" fuzz-long >/dev/null 2>&1; then
   printf 'fuzz-long must require CPKT_FUZZ_LONG_ENABLE=1\n' >&2
   exit 1
 fi
-require_file_contains \
-  scripts/package.sh \
-  'x86_64-linux-gnu-release x86_64-linux-musl-release aarch64-linux-gnu-release aarch64-linux-musl-release armhf-linux-gnu-release armhf-linux-musl-release' \
-  'full Linux release preset matrix'
-require_file_contains \
-  scripts/package.sh \
-  'package-arm64-apple-darwin-release' \
-  'required arm64 Darwin package target'
-require_file_contains \
-  scripts/package.sh \
-  'arm64-apple-darwin-release is required for c\.pkt\.systems releases' \
-  'Darwin package prerequisite fails closed'
-require_file_contains \
-  scripts/package-verify.sh \
-  'x86_64-linux-gnu x86_64-linux-musl aarch64-linux-gnu aarch64-linux-musl armhf-linux-gnu armhf-linux-musl arm64-apple-darwin' \
-  'full Linux and Darwin package verification matrix'
-require_file_contains \
-  scripts/package-verify.sh \
-  'arm64-apple-darwin package verification requires a complete local osxcross SDK toolchain' \
-  'Darwin package verification prerequisite fails closed'
+python3 "$repo_root/tests/package_integration_contract_test.py" Fixtures.test_release_rejects_narrowing_before_clean Fixtures.test_exact_checksum_scopes
+python3 "$repo_root/tests/github_actions_contract_test.py"
 require_file_contains \
   CMakeLists.txt \
   'static_archive_pic_link' \
@@ -209,14 +182,8 @@ require_file_contains \
   CMakePresets.json \
   '"CPKT_BUILD_DEPENDENCIES": "OFF"' \
   'fuzz presets do not build third-party dependency trees'
-require_file_contains \
-  scripts/fuzz.sh \
-  '\$cmake" --build --preset debug --target cpkt_opcua_static' \
-  'fuzz gates prepare the normal OPC UA facade dependency prerequisite before AFL++ fuzzing'
-require_file_contains \
-  scripts/configure-preset.sh \
-  '-DCPKT_EXTERNAL_ROOT="\$external_root"' \
-  'OPC UA fuzz configure reuses the debug dependency install root'
+require_file_contains scripts/group-build.py 'CPKT_BORROW_ORDINARY_DEPENDENCIES=ON' 'fuzz imports ordinary dependencies without producers'
+require_file_contains scripts/group-build.py 'validate_core' 'fuzz requires verified ordinary core'
 require_file_contains \
   CMakeLists.txt \
   'CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE' \
@@ -272,26 +239,7 @@ require_file_contains \
   scripts/release-version.sh \
   'candidate_type=\$\(git -C "\$repo_root" cat-file -t "\$candidate_tag"\)' \
   'shared version resolver checks tag object type'
-require_file_contains \
-  scripts/configure-preset.sh \
-  '\.cache/deps-build/x86_64-linux-gnu/\*/AFL_' \
-  'fresh fuzz configure removes generated AFL dependency build caches'
-require_file_contains \
-  scripts/configure-preset.sh \
-  '\.cache/deps/x86_64-linux-gnu/\*/AFL_' \
-  'fresh fuzz configure removes generated AFL dependency install caches'
-require_file_contains \
-  scripts/package-install-smoke.sh \
-  'cpkt_add_static_archive_pic_smoke' \
-  'install-tree static archive PIC smoke'
-require_file_contains \
-  scripts/package-install-smoke.sh \
-  'target_command_env=\("LD_LIBRARY_PATH=\$osxcross_root/lib\$\{LD_LIBRARY_PATH:\+:\$LD_LIBRARY_PATH\}"\)' \
-  'Darwin package target-tool commands receive the osxcross linker runtime environment'
-require_file_contains \
-  scripts/package-install-smoke.sh \
-  'cpkt_cmake_build_checked "cmake aggregate consumer build" "\$cmake_build_dir"' \
-  'install-tree aggregate CMake consumer build uses the lifecycle build launcher'
+python3 "$repo_root/tests/package_smoke_contract_test.py"
 require_file_contains \
   cmake/CpktDependencies.cmake \
   'LD_LIBRARY_PATH=\$\{CPKT_OSXCROSS_ROOT\}/lib:\$ENV\{LD_LIBRARY_PATH\}' \

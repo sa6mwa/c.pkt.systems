@@ -15,19 +15,24 @@ trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
 
 configure_log="$work_dir/configure.log"
 
-if env -u HOME -u XDG_CACHE_HOME -u CPKT_DEPENDENCY_CACHE \
-  cmake \
-    -S "$source_dir" \
-    -B "$work_dir" \
-    -DCPKT_BUILD_DEPENDENCIES=OFF \
-    -DCPKT_BUILD_TESTS=OFF \
-    -DCPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE=ON \
-    -DCPKT_CALLER_OWNED_DEPENDENCY_ROOTS=ON \
-    -DCPKT_EXTERNAL_ROOT="$external_root" \
-    -DCPKT_DEPENDENCY_BUILD_ROOT="$dependency_build_root" \
-    >"$configure_log" 2>&1; then
-  printf 'configure unexpectedly succeeded with dependency rebuilding disabled and empty caller-owned roots\n' >&2
-  exit 1
+mkdir -p "$work_dir/source"
+cat > "$work_dir/source/CMakeLists.txt" <<'CMAKE'
+cmake_minimum_required(VERSION 3.21)
+project(disabled_caller_roots C)
+set(CPKT_BUILD_DEPENDENCIES OFF)
+set(CPKT_TARGET_ARCH x86_64)
+set(CPKT_TARGET_OS linux)
+set(CPKT_TARGET_LIBC gnu)
+set(CPKT_DEPENDENCY_BUILD_TYPE Release)
+include("${CPKT_REPO_ROOT}/cmake/CpktDependencies.cmake")
+cpkt_add_openssl()
+CMAKE
+if env -u HOME -u XDG_CACHE_HOME -u CPKT_DEPENDENCY_CACHE cmake \
+  -S "$work_dir/source" -B "$work_dir/binary" \
+  -DCPKT_REPO_ROOT="$source_dir" \
+  -DCPKT_EXTERNAL_ROOT="$external_root" \
+  -DCPKT_DEPENDENCY_BUILD_ROOT="$dependency_build_root" >"$configure_log" 2>&1; then
+  printf 'disabled real recipe accepted empty caller-owned roots\n' >&2; exit 1
 fi
 
 if ! grep -F "$external_root/openssl/install/lib/libcrypto.a" "$configure_log" >/dev/null 2>&1; then

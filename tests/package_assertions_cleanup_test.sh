@@ -8,7 +8,8 @@ fi
 
 source_dir=$1
 assertion_parent="$source_dir/build/package-assertions"
-work_dir=$(mktemp -d)
+mkdir -p "$source_dir/build/fixtures"
+work_dir=$(mktemp -d "$source_dir/build/fixtures/cleanup.XXXXXXXX")
 trap 'rm -rf -- "$work_dir"' EXIT
 
 if [[ -d "$assertion_parent" ]]; then
@@ -38,7 +39,7 @@ if output=$(bash "$source_dir/scripts/run-package-assertions.sh" \
 fi
 
 case "$output" in
-  *'missing package manifest:'*) ;;
+  *'missing regular manifest for core'*) ;;
   *)
     printf 'package assertions cleanup regression did not reach extraction failure\n%s\n' "$output" >&2
     exit 1
@@ -62,25 +63,33 @@ if [[ "$legacy_before" != "$legacy_after" ]]; then
   exit 1
 fi
 
-mkdir -p "$work_dir/bin"
-cat > "$work_dir/bin/cmake" <<EOF
-#!/usr/bin/env bash
-for arg in "\$@"; do
-  case "\$arg" in
-    -DCPKT_ASSERTION_WORK_ROOT=*)
-      printf '%s\\n' "\${arg#-DCPKT_ASSERTION_WORK_ROOT=}" > '$work_dir/signalled-workspace'
-      ;;
-  esac
-done
-kill -TERM "\$PPID"
-exit 0
-EOF
-chmod +x "$work_dir/bin/cmake"
-
-if output=$(PATH="$work_dir/bin:$PATH" bash "$source_dir/scripts/run-package-assertions.sh" \
-    -DCPKT_ARCHIVE="$archive" \
-    -DCPKT_TARGET_ID=x86_64-linux-gnu \
-    -DCPKT_BUNDLE_VERSION=0.0.0 2>&1); then
+cat > "$work_dir/interrupted.py" <<'PYDRIVER'
+import os, pathlib, signal, sys, time
+sys.path.insert(0,sys.argv[1]+'/scripts')
+import cpkt_archive_assert as archive
+from cpkt_operation import operation_fds, run
+import subprocess
+if 'CPKT_OPERATION_FD' not in os.environ:
+    sys.exit(run(sys.argv[1],'core',[sys.executable,__file__,*sys.argv[1:]]))
+if '--child' not in sys.argv:
+    process=subprocess.Popen([sys.executable,__file__,*sys.argv[1:],'--child'],pass_fds=operation_fds())
+    output=pathlib.Path(sys.argv[3]);deadline=time.monotonic()+10
+    while not output.exists():
+        if process.poll() is not None or time.monotonic()>deadline:raise RuntimeError('signal fixture failed before extraction')
+        time.sleep(.01)
+    process.send_signal(signal.SIGTERM)
+    status=process.wait(timeout=10)
+    if status!=143:raise RuntimeError('incorrect signal status '+str(status))
+    sys.exit(status)
+workspace_record=pathlib.Path(sys.argv[3])
+def extract(path,workspace,expected):
+    workspace_record.write_text(str(workspace))
+    time.sleep(60)
+archive.safe_extract=extract
+sys.argv=['archive','--archive',sys.argv[2],'--target','x86_64-linux-gnu','--version','0.0.0','--group','core']
+archive.main()
+PYDRIVER
+if output=$(python3 "$work_dir/interrupted.py" "$source_dir" "$archive" "$work_dir/signalled-workspace" 2>&1); then
   printf 'package assertion wrapper reported success after TERM\n%s\n' "$output" >&2
   exit 1
 fi
@@ -106,9 +115,15 @@ mkdir -p \
   "$clean_fixture/.cache" \
   "$clean_fixture/dist" \
   "$clean_fixture/package-assertions-stale"
-cp "$source_dir/scripts/clean.sh" "$clean_fixture/scripts/clean.sh"
+cp -a "$source_dir/scripts" "$clean_fixture/"
+cp -a "$source_dir/cmake" "$clean_fixture/"
+cp "$source_dir/CMakePresets.json" "$clean_fixture/"
+for fd_name in CPKT_OPERATION_FD CPKT_OPERATION_CAP_FD; do
+  if [[ -n ${!fd_name:-} ]]; then eval "exec ${!fd_name}>&-"; fi
+done
+unset CPKT_OPERATION_FD CPKT_OPERATION_CAP_FD CPKT_OPERATION_ROOT CPKT_OPERATION_SCOPE CPKT_OPERATION_RUN
 bash "$clean_fixture/scripts/clean.sh" all
-for removed_path in build .cache dist package-assertions-stale; do
+for removed_path in .cache dist package-assertions-stale; do
   if [[ -e "$clean_fixture/$removed_path" ]]; then
     printf 'clean left generated package assertion state: %s\n' "$removed_path" >&2
     exit 1

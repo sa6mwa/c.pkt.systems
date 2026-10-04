@@ -1,5 +1,5 @@
 CompileFlags:
-  CompilationDatabase: build/x86_64-linux-gnu-release
+  CompilationDatabase: build/clangd
   Add:
     - -Wall
     - -Wextra

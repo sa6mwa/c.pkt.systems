@@ -5,6 +5,18 @@ on:
     branches: [feat/postgres-client, trunk]
   pull_request:
   workflow_dispatch:
+    inputs:
+      lane:
+        description: Native source only, or final tagged producer artifacts plus source
+        type: choice
+        options: [source, artifact]
+        default: source
+      producer_commit:
+        description: Exact final producer commit (artifact lane)
+        type: string
+      handoff:
+        description: Complete pinned draft handoff JSON (artifact lane)
+        type: string
 
 permissions:
   contents: read
@@ -15,79 +27,69 @@ jobs:
     timeout-minutes: 120
     env:
       MACOSX_DEPLOYMENT_TARGET: "15.0"
+      CPKT_DEPENDENCY_BUILD_JOBS: "2"
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.producer_commit || github.sha }}
       - name: Install build tools
         run: brew install cmake ninja coreutils gnu-sed gnu-tar gpatch util-linux pkg-config
-      - name: Configure native arm64 bundle
+      - name: Native source and runtime contract
         run: |
-          cmake --preset arm64-apple-darwin-native \
-            -DCPKT_DEPENDENCY_BUILD_JOBS=2 \
-            -DCPKT_DARWIN_HOST_MIG:FILEPATH="$(xcrun --find mig)" \
-            -DCPKT_DARWIN_HOST_MIGCOM:FILEPATH="$(xcrun --find migcom)" \
-            -DCPKT_OTOOL:FILEPATH="$(xcrun --find otool)" \
-            -DCMAKE_OTOOL:FILEPATH="$(xcrun --find otool)"
-      - name: Run portable build fixtures
-        run: |
-          cmake --build --preset arm64-apple-darwin-native --target cpkt_gssapi_shared -- -n >/dev/null
-          for fixture in auth_package_discovery selected_test_executables darwin_bio_runtime_paths darwin_postgres_runtime_paths krb5_trace_prototypes patch_series_portability static_archive_member_cleanup postgresql_probe_rpaths; do
-            python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
-              --regex "^${fixture}$"
-          done
-      - name: Build curl test binaries
-        run: |
-          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
-            --target cpkt_curl_async_dns_static_test cpkt_curl_async_dns_shared_test
-      - name: Run native curl tests
-        run: |
-          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --verbose \
-            --regex '^curl_(server_bind|(async_dns|multi_socket)_(static|shared))$'
-      - name: Verify OpenSSL BIO lifecycle and record boundaries
-        run: |
-          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
-            --target cpkt_openssl_bio_lifecycle_static_test \
-              cpkt_openssl_bio_lifecycle_shared_test \
-              cpkt_openssl_record_boundary_static_test \
-              cpkt_openssl_record_boundary_shared_test
-          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
-            --regex '^openssl_(bio_lifecycle|poll_(empty|timeout|records|invalid)|mmsg_(empty|invalid|callbacks))_(static|shared)$'
-      - name: Verify native OPC UA public facade
-        run: |
-          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
-            --target cpkt_opcua_logging_static_test cpkt_opcua_logging_shared_test \
-              cpkt_opcua_types_static_test cpkt_opcua_types_shared_test \
-              cpkt_opcua_stdout_static_test cpkt_opcua_stdout_shared_test \
-              cpkt_opcua_types_fixture_test cpkt_opcua_types_cpp_test \
-              cpkt_opcua_c89_example cpkt_opcua_public_api_complete
-          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
-            --regex '^opcua_'
-      - name: Verify SQLite borrowed VFS handles
-        run: |
-          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
-            --target cpkt_sqlite_vfs_wal_capability_test cpkt_sqlite_vfs_handles_shared_test
-          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
-            --regex '^sqlite_vfs_(borrowed_file|provider_identity)(_shared)?$'
-      - name: Verify PostgreSQL registration snapshots
-        run: |
-          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
-            --target cpkt_postgres_pending_registration_static_test \
-              cpkt_postgres_pending_registration_shared_test
-          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native \
-            --regex '^postgres_pending_registration_(static|shared)$'
-      - name: Verify bundled OpenSSL provenance
-        run: python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --regex '^open62541_openssl_provenance$'
-      - name: Package SDK
-        run: cmake --build --preset arm64-apple-darwin-native --parallel 2 --target package-bundle
-      - name: Verify OpenLDAP build target closure
-        run: |
-          cmake --build --preset arm64-apple-darwin-native --parallel 2 \
-            --target cpkt_openldap_static_test cpkt_openldap_shared_test
-          python3 scripts/run-selected-tests.py --test-dir build/arm64-apple-darwin-native --regex '^openldap_(static|shared)$'
-      - name: Test packaged curl, OpenLDAP, and Lua static and shared
-        run: bash tests/darwin_curl_package_test.sh dist/*-arm64-apple-darwin.tar.gz
-      - name: Preserve diagnostic SDK archive
-        uses: actions/upload-artifact@v7.0.1
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          make test-darwin-native
+      - name: Preserve diagnostic SDK archives and test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cpkt-native-arm64-apple-darwin
-          path: dist/*-arm64-apple-darwin.tar.gz
+          path: |
+            dist/*-arm64-apple-darwin*.tar.gz
+            dist/*-arm64-apple-darwin-smoke-test.zip
+            build/darwin-source-evidence.json
+            build/arm64-apple-darwin/*/Release/cpkt-test-results.xml
+            build/arm64-apple-darwin/*/Release/Testing/Temporary/LastTest.log
+            build/control/events.jsonl
+          if-no-files-found: error
+  arm64-artifact:
+    if: github.event_name == 'workflow_dispatch' && inputs.lane == 'artifact'
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+      CPKT_DEPENDENCY_BUILD_JOBS: "2"
+      CPKT_EXPECTED_PRODUCER_COMMIT: ${{ inputs.producer_commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.producer_commit }}
+      - name: Install consumer tools
+        run: brew install cmake ninja coreutils gnu-tar pkg-config
+      - name: Validate final tag, credentials and pinned handoff before cache acquisition
+        env:
+          CPKT_DRAFT_TOKEN: ${{ secrets.CPKT_DRAFT_TOKEN }}
+          CPKT_HANDOFF: ${{ inputs.handoff }}
+        run: |
+          test "${GITHUB_REF_TYPE}" = tag
+          test -n "${CPKT_DRAFT_TOKEN}"
+          mkdir -p build/darwin-artifact-input
+          python3 -c 'import os,pathlib; pathlib.Path("build/darwin-artifact-input/handoff.json").write_text(os.environ["CPKT_HANDOFF"])'
+          python3 scripts/cpkt_github_handoff.py preflight --handoff build/darwin-artifact-input/handoff.json --producer-commit "$CPKT_EXPECTED_PRODUCER_COMMIT"
+      - name: Acquire only digest-pinned producer Darwin artifacts
+        env:
+          CPKT_DRAFT_TOKEN: ${{ secrets.CPKT_DRAFT_TOKEN }}
+        run: python3 scripts/cpkt_github_handoff.py download --handoff build/darwin-artifact-input/handoff.json --producer-commit "$CPKT_EXPECTED_PRODUCER_COMMIT"
+      - name: Execute exact producer SDK combinations
+        run: make test-darwin-sdk
+      - name: Preserve producer artifact diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cpkt-producer-arm64-apple-darwin
+          path: |
+            build/darwin-artifact-evidence.json
+            build/darwin-artifact-input/handoff.json
+            build/control/events.jsonl
           if-no-files-found: error

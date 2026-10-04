@@ -4,6 +4,44 @@ set -euo pipefail
 SOURCE_DIR="${1:?usage: verify-clangd-surface.sh <source-dir> <build-dir>}"
 BUILD_DIR="${2:?usage: verify-clangd-surface.sh <source-dir> <build-dir>}"
 COMPILE_COMMANDS="${BUILD_DIR}/compile_commands.json"
+group=${GROUP:-all}
+if [[ $# -gt 2 ]]; then
+  [[ $# -eq 4 && $3 == --group ]] || { printf 'usage: verify-clangd-surface.sh <source-dir> <build-dir> [--group core|db|misc|all]\n' >&2; exit 2; }
+  [[ $group == all || $group == "$4" ]] || { printf 'conflicting GROUP selectors\n' >&2; exit 2; }
+  group=$4
+fi
+case "$group" in core|db|misc|all) ;; *) printf 'unknown GROUP: %s\n' "$group" >&2; exit 2 ;; esac
+export GROUP="$group"
+if [[ -z ${CPKT_OPERATION_FD:-} ]]; then
+  exec python3 "${SOURCE_DIR}/scripts/cpkt_operation.py" --group "$group" -- bash "$0" "$SOURCE_DIR" "$BUILD_DIR"
+fi
+python3 "${SOURCE_DIR}/scripts/cpkt_operation.py" --group "$group" --check
+host_os=$(uname -s)
+expected_target=x86_64-linux-gnu
+if [[ $host_os == Darwin ]]; then expected_target=arm64-apple-darwin; fi
+if ! grep -q "^CPKT_TARGET_ID:.*=$expected_target$" "$BUILD_DIR/CMakeCache.txt" ||
+    ! grep -Eq '^CMAKE_BUILD_TYPE:.*=(Debug|Release)$' "$BUILD_DIR/CMakeCache.txt"; then
+  printf 'selected clangd surface requires a native Debug or Release configuration\n' >&2
+  exit 2
+fi
+
+if [[ $group == all ]]; then
+  configuration=$(sed -n 's/^CMAKE_BUILD_TYPE:.*=//p' "$BUILD_DIR/CMakeCache.txt")
+  for selected_group in core db misc; do
+    selected_dir="${SOURCE_DIR}/build/${expected_target}/${selected_group}/${configuration}"
+    GROUP="$selected_group" python3 "${SOURCE_DIR}/scripts/cpkt_operation.py" \
+      --group "$selected_group" -- bash "$0" "$SOURCE_DIR" "$selected_dir"
+  done
+  if [[ $configuration == Debug ]]; then
+    python3 "$SOURCE_DIR/scripts/cpkt_clangd_check.py" --root "$SOURCE_DIR" \
+      --group all --publish-editor --native-target "$expected_target"
+  fi
+  exit 0
+fi
+if ! grep -q "^CPKT_GROUP:.*=$group$" "$BUILD_DIR/CMakeCache.txt"; then
+  printf 'compile database group does not match GROUP=%s: %s\n' "$group" "$BUILD_DIR" >&2
+  exit 2
+fi
 
 if [[ ! -f "${COMPILE_COMMANDS}" ]]; then
   printf 'compile database not found: %s\n' "${COMPILE_COMMANDS}" >&2
@@ -21,6 +59,8 @@ require_compile_command() {
 
 python3 - "$SOURCE_DIR" "$BUILD_DIR" <<'PY'
 import pathlib
+import json
+import os
 import re
 import sys
 
@@ -156,8 +196,14 @@ def verify_source(path, documented_symbols, private_symbols):
     return failures
 
 
-public_headers = sorted((source_dir / "include" / "cpkt").glob("*.h"))
-facade_sources = sorted((source_dir / "src").glob("*.c"))
+inventory = json.loads((source_dir / "cmake/components.json").read_text())
+group = os.environ.get("GROUP", "all")
+selected_inputs = set()
+for owner, item in inventory["groups"].items():
+    if group in (owner, "all"):
+        selected_inputs.update(item["verification_inputs"])
+public_headers = sorted(source_dir / name for name in selected_inputs if name.startswith("include/") and name.endswith(".h"))
+facade_sources = sorted(source_dir / name for name in selected_inputs if name.startswith(("src/", "cmake/")) and name.endswith(".c"))
 
 if not public_headers:
     print("no public facade headers found under include/cpkt", file=sys.stderr)
@@ -175,16 +221,17 @@ for header in public_headers:
         re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(",
                    header.read_text(encoding="utf-8"))
     )
-opcua_types_header = build_dir / "generated/opcua/cpkt/opcua_types.h"
-if not opcua_types_header.is_file():
-    sys.exit("generated OPC UA C89 schema header is missing")
-for filename in ("opcua_types.h", "opcua_constants.h", "opcua_plugins.h"):
-    generated_header = opcua_types_header.with_name(filename)
-    if not generated_header.is_file():
-        sys.exit(f"generated OPC UA header is missing: {filename}")
-    for line, symbol in verify_header(generated_header):
-        all_failures.append((generated_header, line, symbol))
-    documented_symbols.update(re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(", generated_header.read_text()))
+if group in ("misc", "all"):
+    opcua_types_header = build_dir / "generated/opcua/cpkt/opcua_types.h"
+    if not opcua_types_header.is_file():
+        sys.exit("generated OPC UA C89 schema header is missing")
+    for filename in ("opcua_types.h", "opcua_constants.h", "opcua_plugins.h"):
+        generated_header = opcua_types_header.with_name(filename)
+        if not generated_header.is_file():
+            sys.exit(f"generated OPC UA header is missing: {filename}")
+        for line, symbol in verify_header(generated_header):
+            all_failures.append((generated_header, line, symbol))
+        documented_symbols.update(re.findall(r"\b(cpkt_[A-Za-z0-9_]+)\s*\(", generated_header.read_text()))
 # The OPC UA implementation has private linkage across several source files.
 # Only explicitly hidden helper declarations can be exempt from public API
 # comments. The export gate independently verifies their object visibility.
@@ -201,20 +248,27 @@ for source in facade_sources:
 
 # The complete Lua C89 header is generated in the build tree, so the installed
 # header scan above cannot see its function comments.
-lua_header = build_dir / "generated/lua/include/cpkt/lua.h"
-if not lua_header.is_file():
-    print(f"generated Lua facade header not found: {lua_header}", file=sys.stderr)
-    sys.exit(1)
-lua_lines = lua_header.read_text(encoding="utf-8").splitlines()
-lua_declarations = 0
-for index, line in enumerate(lua_lines):
-    if line.startswith("CPKT_LUA_API "):
-        lua_declarations += 1
-        if not previous_nonblank_is_doxygen_comment(lua_lines, index):
-            all_failures.append((lua_header, index + 1, line.strip()))
-if lua_declarations < 156:
-    print(f"generated Lua facade has only {lua_declarations} public declarations", file=sys.stderr)
-    sys.exit(1)
+if group in ("core", "all"):
+    if 'cpkt_cmocka_${_variant}' in inventory.get('targets', {}):
+        cmocka_header = build_dir/'generated/cmocka/include/cpkt/cmocka.h'
+        if not cmocka_header.is_file():
+            sys.exit('generated C89 cmocka header is missing')
+        for line, symbol in verify_header(cmocka_header):
+            all_failures.append((cmocka_header,line,symbol))
+    lua_header = build_dir / "generated/lua/include/cpkt/lua.h"
+    if not lua_header.is_file():
+        print(f"generated Lua facade header not found: {lua_header}", file=sys.stderr)
+        sys.exit(1)
+    lua_lines = lua_header.read_text(encoding="utf-8").splitlines()
+    lua_declarations = 0
+    for index, line in enumerate(lua_lines):
+        if line.startswith("CPKT_LUA_API "):
+            lua_declarations += 1
+            if not previous_nonblank_is_doxygen_comment(lua_lines, index):
+                all_failures.append((lua_header, index + 1, line.strip()))
+    if lua_declarations < 156:
+        print(f"generated Lua facade has only {lua_declarations} public declarations", file=sys.stderr)
+        sys.exit(1)
 
 if all_failures:
     for path, line, symbol in all_failures:
@@ -225,29 +279,22 @@ if all_failures:
     sys.exit(1)
 PY
 
-require_compile_command "examples/abi_smoke.c"
-require_compile_command "examples/audio-sus-c89/main.c"
-require_compile_command "examples/audio-vox-intro-c89/main.c"
-require_compile_command "examples/sus-vox-intro-c89/main.c"
-require_compile_command "examples/lua-runtime-c89/main.c"
-require_compile_command "examples/lua-runtime-c89/host_module.c"
-require_compile_command "examples/opcua-c89/main.c"
-require_compile_command "tests/opcua_logging_test.c"
-require_compile_command "tests/opcua_types_test.c"
-require_compile_command "tests/pdf_facade_test.c"
-
 if ! command -v clangd >/dev/null 2>&1; then
-  printf 'clangd is required for make clangd-surface; install it with the host OS package manager\n' >&2
+  printf 'clangd is required; install it with the host OS package manager\n' >&2
   exit 1
 fi
-
-clangd --check="${SOURCE_DIR}/examples/abi_smoke.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/examples/audio-sus-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/examples/audio-vox-intro-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/examples/sus-vox-intro-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/examples/lua-runtime-c89/host_module.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/examples/opcua-c89/main.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/tests/pdf_facade_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/tests/opcua_logging_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
-clangd --check="${SOURCE_DIR}/tests/opcua_types_test.c" --compile-commands-dir="${BUILD_DIR}" >/dev/null
+mapfile -t hover_inputs < <(python3 - "$SOURCE_DIR" "$group" <<'PYTHON'
+import json,sys
+from pathlib import Path
+inventory=json.loads((Path(sys.argv[1]) / 'cmake/components.json').read_text())
+for owner, paths in inventory['hover'].items():
+    if sys.argv[2] in (owner, 'all'):
+        print('\n'.join(paths))
+PYTHON
+)
+for source_file in "${hover_inputs[@]}"; do
+  require_compile_command "$source_file"
+  python3 "$SOURCE_DIR/scripts/cpkt_clangd_check.py" --root "$SOURCE_DIR" \
+    --group "$group" --build "$BUILD_DIR" --source "$SOURCE_DIR/$source_file" \
+    --gate "$0" --checker "$(command -v clangd)" >/dev/null
+done

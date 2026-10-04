@@ -3,6 +3,11 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+case ${GROUP:-all} in all|all) ;; *) printf 'this operation requires GROUP=all|all\n' >&2; exit 2 ;; esac
+if [[ -z ${CPKT_OPERATION_FD:-} ]]; then
+  exec python3 "$repo_root/scripts/cpkt_operation.py" --group all -- bash "$0" "$@"
+fi
+python3 "$repo_root/scripts/cpkt_operation.py" --group all --check
 
 bundle_version=$(bash "$repo_root/scripts/release-version.sh" "$repo_root")
 if [ -z "$bundle_version" ]; then
@@ -57,6 +62,7 @@ stage_root="$stage_parent/$archive_stem"
 manifest_tmp="$stage_parent/source-files.txt"
 manifest_with_generated="$stage_parent/source-files-with-generated.txt"
 mkdir -p "$stage_root" "$dist_dir"
+python3 "$repo_root/scripts/cpkt_source_proof.py" --invalidate "$bundle_version"
 
 git_top_level=
 if git_top_level=$(git -C "$repo_root" rev-parse --show-toplevel 2>/dev/null); then
@@ -108,14 +114,6 @@ cp "$manifest_with_generated" "$stage_root/RELEASE_MANIFEST"
   "$gnu_tar" --sort=name --owner=0 --group=0 --numeric-owner -czf "$archive_path" -- "$archive_stem"
 )
 
-sha_output=$(cmake -E sha256sum "$archive_path")
-sha_hash=${sha_output%% *}
-tmp_checksums="$stage_parent/CHECKSUMS"
-if [ -f "$checksums_path" ]; then
-  grep -v -E "[[:space:]]$archive_name\$" "$checksums_path" > "$tmp_checksums" || true
-fi
-printf '%s  %s\n' "$sha_hash" "$archive_name" >> "$tmp_checksums"
-mv "$tmp_checksums" "$checksums_path"
 
 cmake \
   -DCPKT_ROOT="$repo_root" \

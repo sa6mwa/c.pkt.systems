@@ -2,11 +2,23 @@
 set -euo pipefail
 
 repo_root=${1:?repository root is required}
+# The miniature repository gets its own lock. Close inherited capabilities;
+# the parent process continues holding the real repository operation lock.
+for inherited in CPKT_OPERATION_FD CPKT_OPERATION_CAP_FD; do
+  descriptor=${!inherited:-}
+  if [[ $descriptor =~ ^[0-9]+$ ]]; then exec {descriptor}>&-; fi
+done
+for key in ${!CPKT_OPERATION_@}; do unset "$key"; done
 fixture=$(mktemp -d "$repo_root/build/devenv-lifecycle.XXXXXX")
 trap 'cmake -E remove_directory "$fixture"' EXIT
 mkdir -p "$fixture/scripts" "$fixture/bin" "$fixture/pods"
 cp "$repo_root/scripts/devenv.sh" "$fixture/scripts/devenv.sh"
 cp "$repo_root/scripts/clean.sh" "$fixture/scripts/clean.sh"
+cp "$repo_root"/scripts/cpkt_*.py "$fixture/scripts/"
+cp "$repo_root/scripts/group-build.py" "$fixture/scripts/"
+mkdir -p "$fixture/cmake"
+cp "$repo_root/cmake/components.json" "$fixture/cmake/"
+cp "$repo_root/CMakePresets.json" "$fixture/"
 cp "$repo_root/scripts/test-e2e.sh" "$fixture/scripts/test-e2e.sh"
 cp "$repo_root/scripts/e2e-postgres.sh" "$fixture/scripts/e2e-postgres.sh"
 cp "$repo_root/devenv.yaml.in" "$fixture/devenv.yaml.in"
@@ -121,7 +133,12 @@ bash "$devenv" up >/dev/null
 mkdir -p "$fixture/.cache" "$fixture/dist"
 : > "$fixture/.cache/keep-on-teardown-failure"
 : > "$fixture/dist/keep-on-teardown-failure"
-if CPKT_MOCK_POD_RM_FAIL=1 bash "$fixture/scripts/clean.sh" all >/dev/null 2>&1; then
+clean_fixture() (
+  for key in ${!CPKT_OPERATION_@}; do unset "$key"; done
+  export GROUP=all PRESET=debug
+  bash "$fixture/scripts/clean.sh" all
+)
+if CPKT_MOCK_POD_RM_FAIL=1 clean_fixture >/dev/null 2>&1; then
   printf 'clean succeeded while database pods remained running\n' >&2
   exit 8
 fi
@@ -131,8 +148,9 @@ if [[ ! -d $fixture/build/devenv || ! -f $fixture/.cache/keep-on-teardown-failur
   printf 'clean deleted generated state after pod teardown failed\n' >&2
   exit 9
 fi
-bash "$fixture/scripts/clean.sh" all
-if [[ -e $fixture/build || -e $fixture/.cache || -e $fixture/dist ]] ||
+clean_fixture
+if [[ ! -f $fixture/build/control/operation.lock || -e $fixture/.cache || -e $fixture/dist ]] ||
+    [[ $(find "$fixture/build" -mindepth 1 -maxdepth 1 -printf '%f\n') != control ]] ||
     find "$CPKT_MOCK_PODS" -type f | grep -q .; then
   printf 'clean left database pods or generated state behind\n' >&2
   exit 10

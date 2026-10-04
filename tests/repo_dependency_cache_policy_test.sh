@@ -16,8 +16,8 @@ for required in \
   'cpkt_prepare_dependency_component' \
   'CPKT_DEPENDENCY_CONTRACT_ROOT' \
   'file(REMOVE_RECURSE "${_root}")' \
-  'Dependency rebuilding is disabled; reconfigure with CPKT_BUILD_DEPENDENCIES=ON to refresh only this component.' \
-  'caller-owned dependency state' \
+  'build inputs changed or absent' \
+  'caller-owned roots' \
   'must not contain symlinks'; do
   if ! grep -F "$required" "$repo_root/CMakeLists.txt" "$contract" >/dev/null 2>&1; then
     printf 'component dependency cache policy is missing: %s\n' "$required" >&2
@@ -30,30 +30,16 @@ if grep -n -E 'add_dependencies\\([^)]*cpkt_deps\\)' "$repo_root/CMakeLists.txt"
   exit 1
 fi
 
-for component in \
-  openssl zlib nghttp2 libssh2 curl libxml2 lua miniaudio whisper mqttc \
-  open62541 krb5 cyrus_sasl openldap postgresql sqlite; do
-  if ! grep -F "add_custom_target(cpkt_deps_$component" "$dependencies" >/dev/null 2>&1; then
-    printf 'independent dependency target is missing: %s\n' "$component" >&2
+python3 "$repo_root/scripts/cpkt_inventory_cli.py" --root "$repo_root" --group all --closure >/dev/null
+for required in 'cpkt_deps_${_component}' 'DEPENDS ${_component_targets}' 'cpkt_deps_all DEPENDS ${_all_dependency_targets}' 'ExternalProject_Add_Step(${_last_project} cpkt-receipt'; do
+  if ! grep -F "$required" "$dependencies" >/dev/null; then
+    printf 'inventory-owned complete producer policy is missing: %s\n' "$required" >&2
     exit 1
   fi
 done
 
-if ! grep -F 'add_custom_target(cpkt_deps_all DEPENDS ${dep_targets})' "$dependencies" >/dev/null 2>&1; then
-  printf 'complete dependency closure target is missing\n' >&2
-  exit 1
-fi
-
-if ! rg -U 'DEPENDS\s+cpkt_deps_all' "$repo_root/CMakeLists.txt" >/dev/null 2>&1; then
-  printf 'SDK bundle assembly must retain the complete dependency closure\n' >&2
-  exit 1
-fi
-
-if ! grep -F 'clean_one "$repo_root/.cache"' "$repo_root/scripts/clean.sh" >/dev/null 2>&1; then
-  printf 'make clean must delete repo-local dependency state under .cache\n' >&2
-  exit 1
-fi
-
+python3 "$repo_root/tests/package_isolation_build_test.py" Isolation.test_stable_inode_bounded_wait_and_owner_interruption
+python3 "$repo_root/tests/package_recipe_graph_test.py" "$repo_root"
 for lifecycle_script in build.sh test.sh package.sh; do
   if grep -F 'bash "$repo_root/scripts/clean.sh" all' "$repo_root/scripts/$lifecycle_script" >/dev/null 2>&1; then
     printf 'scripts/%s must not clean generated state during normal lifecycle work\n' "$lifecycle_script" >&2

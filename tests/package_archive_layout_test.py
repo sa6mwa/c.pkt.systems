@@ -6,6 +6,9 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import os
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+from cpkt_operation import operation_fds
 
 
 if not __debug__:
@@ -26,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="package-layout-", dir=source / "build")
             "bash", str(source / "scripts/run-package-assertions.sh"),
             "-DCPKT_ARCHIVE=" + str(archive),
             "-DCPKT_TARGET_ID=x86_64-linux-gnu", "-DCPKT_BUNDLE_VERSION=1.2.3"],
-            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,pass_fds=operation_fds() if 'CPKT_OPERATION_FD' in os.environ else ())
         assert result.returncode != 0, result.stdout
         assert "package archive contains entry outside its root" in result.stdout, result.stdout
     for entry in ["include/pslog.h", "lib/libpslog.a", "lib/libpslog.so.0",
@@ -40,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix="package-layout-", dir=source / "build")
             "bash", str(source / "scripts/run-package-assertions.sh"),
             "-DCPKT_ARCHIVE=" + str(archive), "-DCPKT_TARGET_ID=x86_64-linux-gnu",
             "-DCPKT_BUNDLE_VERSION=1.2.3"], text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
+            stderr=subprocess.STDOUT,pass_fds=operation_fds() if 'CPKT_OPERATION_FD' in os.environ else ())
         assert result.returncode != 0, result.stdout
         assert "release archive must not contain test-only libpslog" in result.stdout, result.stdout
     archive = root / "c.pkt.systems-1.2.3.tar.gz"
@@ -50,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix="package-layout-", dir=source / "build")
         result = subprocess.run([
             "bash", str(source / "scripts/source-archive-verify.sh"),
             str(archive), "1.2.3"], text=True, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT)
+            stderr=subprocess.STDOUT,pass_fds=operation_fds() if 'CPKT_OPERATION_FD' in os.environ else ())
         assert result.returncode != 0, result.stdout
         assert "source archive contains unsafe entry" in result.stdout, result.stdout
 print("[test] package archive layout rejection passed")

@@ -54,6 +54,10 @@ def compile_command(build, target):
         for segment in line.strip().split(" && "):
             if "sqlite_native_amalgamation.c" in segment and " -c " in segment:
                 arguments = shlex.split(segment)
+                if len(arguments) > 4 and Path(arguments[1]).name == 'cpkt_build_guard.py':
+                    if Path(arguments[2]).resolve() != repo or arguments[3] != 'db':
+                        raise RuntimeError('unexpected production launcher context')
+                    arguments = arguments[4:]
                 if "-c" in arguments and "-o" in arguments:
                     return arguments
     raise RuntimeError("SQLite compile recipe missing in " + str(build))
@@ -112,7 +116,7 @@ with tempfile.TemporaryDirectory(prefix="sqlite-owned-input-", dir=configured) a
         assert all(marker.exists() for marker in markers)
         helper.write_text(helper.read_text() + "\n/* contract fixture edit */\n")
         output = run(["cmake", "--build", str(binary), "--target", "contract_probe"])
-        assert "Refreshed dependency component sqlite" in output, output
+        assert "Refreshed dependency sqlite: effective inputs changed" in output, output
         assert not markers[0].exists() and markers[1].exists()
         assert (contract / "sqlite.txt").read_text() != before
         assert (contract / "zlib.txt").read_text() == zlib_before
@@ -120,7 +124,8 @@ with tempfile.TemporaryDirectory(prefix="sqlite-owned-input-", dir=configured) a
 
     # Take the compile command from the configured production ExternalProject
     # rule, retaining its pinned compiler, target flags and staged include.
-    command = compile_command(configured, "cpkt_sqlite_project")
+    producer = repo / 'build' / cache_value(configured,'CPKT_TARGET_ID') / 'db/producer'
+    command = compile_command(producer, "cpkt_sqlite_project")
     if command[0] != compiler:
         raise RuntimeError("SQLite compilation did not select the configured compiler")
     source_index = command.index("-c") + 1

@@ -90,20 +90,21 @@ done
 
 first_output=$(configure_fixture "$fixture_root" -DCPKT_BUILD_DEPENDENCIES=ON -DCPKT_OPENSSL_VERSION=one -DCPKT_CURL_VERSION=one -DCPKT_SQLITE_VERSION=one 2>&1)
 for component in openssl curl sqlite; do
-  test -e "$external_root/$component/install/sentinel"
-  test -e "$build_root/$component/sentinel"
+  test ! -e "$external_root/$component/install/sentinel"
+  test ! -e "$build_root/$component/sentinel"
   test -f "$fixture_root/.cache/dependency-contracts/$target_id/$component.txt"
+  mkdir -p "$external_root/$component/install" "$build_root/$component"
+  : > "$external_root/$component/install/sentinel"
+  : > "$build_root/$component/sentinel"
 done
-if [[ "$first_output" != *"Adopted existing dependency component openssl"* ||
-      "$first_output" != *"Adopted existing dependency component curl"* ||
-      "$first_output" != *"Adopted existing dependency component sqlite"* ]]; then
-  printf 'component contract migration did not report adoption\n%s\n' "$first_output" >&2
-  exit 1
-fi
+case "$first_output" in
+  *"Refreshed dependency openssl"*) ;;
+  *) printf 'unverified existing state was not invalidated\n%s\n' "$first_output" >&2; exit 1 ;;
+esac
 
 sqlite_output=$(configure_fixture "$fixture_root" -DCPKT_BUILD_DEPENDENCIES=ON -DCPKT_OPENSSL_VERSION=one -DCPKT_CURL_VERSION=one -DCPKT_SQLITE_VERSION=two 2>&1)
 case "$sqlite_output" in
-  *"Refreshed dependency component sqlite"*) ;;
+  *"Refreshed dependency sqlite"*) ;;
   *) printf 'sqlite-only change did not refresh sqlite\n%s\n' "$sqlite_output" >&2; exit 1 ;;
 esac
 test ! -e "$external_root/sqlite/install/sentinel"
@@ -119,7 +120,7 @@ mkdir -p "$external_root/sqlite/install" "$build_root/sqlite"
 openssl_output=$(configure_fixture "$fixture_root" -DCPKT_BUILD_DEPENDENCIES=ON -DCPKT_OPENSSL_VERSION=two -DCPKT_CURL_VERSION=one -DCPKT_SQLITE_VERSION=two 2>&1)
 for component in openssl curl; do
   case "$openssl_output" in
-    *"Refreshed dependency component $component"*) ;;
+    *"Refreshed dependency $component"*) ;;
     *) printf 'OpenSSL change did not refresh dependent %s\n%s\n' "$component" "$openssl_output" >&2; exit 1 ;;
   esac
   test ! -e "$external_root/$component/install/sentinel"
@@ -137,7 +138,7 @@ if [ "$disabled_status" -eq 0 ]; then
   exit 1
 fi
 case "$disabled_output" in
-  *"dependency component sqlite"*"Dependency rebuilding is disabled"*) ;;
+  *"dependency component sqlite"*"build inputs"*"changed or absent"*) ;;
   *) printf 'disabled rebuild did not identify stale sqlite\n%s\n' "$disabled_output" >&2; exit 1 ;;
 esac
 
@@ -147,7 +148,6 @@ caller_build="$caller_root/.cache/deps-build/$target_id"
 mkdir -p "$caller_external/sqlite/install" "$caller_build/sqlite"
 : > "$caller_external/sqlite/install/sentinel"
 : > "$caller_build/sqlite/sentinel"
-configure_fixture "$caller_root" -DCPKT_BUILD_DEPENDENCIES=ON -DCPKT_EXTERNAL_ROOT="$caller_external" -DCPKT_DEPENDENCY_BUILD_ROOT="$caller_build" -DCPKT_EXTERNAL_ROOT_LIFECYCLE_OWNED=OFF -DCPKT_OPENSSL_VERSION=one -DCPKT_CURL_VERSION=one -DCPKT_SQLITE_VERSION=one >/dev/null
 set +e
 caller_output=$(configure_fixture "$caller_root" -DCPKT_BUILD_DEPENDENCIES=ON -DCPKT_EXTERNAL_ROOT="$caller_external" -DCPKT_DEPENDENCY_BUILD_ROOT="$caller_build" -DCPKT_EXTERNAL_ROOT_LIFECYCLE_OWNED=OFF -DCPKT_OPENSSL_VERSION=one -DCPKT_CURL_VERSION=one -DCPKT_SQLITE_VERSION=two 2>&1)
 caller_status=$?
@@ -157,7 +157,7 @@ if [ "$caller_status" -eq 0 ]; then
   exit 1
 fi
 case "$caller_output" in
-  *"caller-owned dependency state"*) ;;
+  *"caller-owned roots"*) ;;
   *) printf 'caller-owned root failure was not actionable\n%s\n' "$caller_output" >&2; exit 1 ;;
 esac
 test -e "$caller_external/sqlite/install/sentinel"
@@ -169,9 +169,6 @@ mkdir -p "$symlink_target/cache/deps/$target_id/openssl/install" \
 : > "$symlink_target/cache/deps/$target_id/openssl/install/sentinel"
 : > "$symlink_target/cache/deps-build/$target_id/openssl/sentinel"
 cmake -E create_symlink "$symlink_target/cache" "$symlink_root/.cache"
-configure_fixture "$symlink_root" -DCPKT_BUILD_DEPENDENCIES=ON \
-  -DCPKT_OPENSSL_VERSION=one -DCPKT_CURL_VERSION=one \
-  -DCPKT_SQLITE_VERSION=one >/dev/null
 set +e
 symlink_output=$(configure_fixture "$symlink_root" -DCPKT_BUILD_DEPENDENCIES=ON \
   -DCPKT_OPENSSL_VERSION=two -DCPKT_CURL_VERSION=one \

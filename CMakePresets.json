@@ -10,118 +10,133 @@
       "name": "base",
       "hidden": true,
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
+      "binaryDir": "${sourceDir}/build/${presetName}/$env{GROUP}",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "CPKT_BUILD_DEPENDENCIES": "ON",
+        "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_BUILD_TESTS": "ON",
-        "CPKT_DIST_DIR": "${sourceDir}/dist"
+        "CPKT_DIST_DIR": "${sourceDir}/dist",
+        "CPKT_GROUP": "$env{GROUP}"
       }
     },
     {
       "name": "x86_64-linux-gnu-release",
       "inherits": "base",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-gnu.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyToolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CPKT_TARGET_ARCH": "x86_64",
         "CPKT_TARGET_OS": "linux",
         "CPKT_TARGET_LIBC": "gnu"
-      }
+      },
+      "binaryDir": "${sourceDir}/build/x86_64-linux-gnu/$env{GROUP}/Release"
     },
     {
       "name": "release",
-      "inherits": "x86_64-linux-gnu-release"
+      "inherits": "x86_64-linux-gnu-release",
+      "binaryDir": "${sourceDir}/build/x86_64-linux-gnu/$env{GROUP}/Release"
     },
     {
       "name": "debug",
       "inherits": "base",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-gnu.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyToolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "CPKT_TARGET_ARCH": "x86_64",
         "CPKT_TARGET_OS": "linux",
         "CPKT_TARGET_LIBC": "gnu"
-      }
+      },
+      "binaryDir": "${sourceDir}/build/x86_64-linux-gnu/$env{GROUP}/Debug"
     },
     {
       "name": "valgrind",
       "inherits": "debug",
       "cacheVariables": {
         "CPKT_BUILD_DEPENDENCIES": "OFF",
-        "CPKT_FACADE_ONLY": "ON"
-      }
+        "CPKT_FACADE_ONLY": "ON",
+        "CPKT_BORROW_ORDINARY_DEPENDENCIES": "ON"
+      },
+      "binaryDir": "${sourceDir}/build/x86_64-linux-gnu/$env{GROUP}/Valgrind"
     },
     {
       "name": "fuzz",
       "inherits": "debug",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/aflpp-x86_64-linux-gnu.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyAflToolchain.cmake",
       "cacheVariables": {
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "ON",
-        "CPKT_ENABLE_FUZZING": "ON"
-      }
+        "CPKT_ENABLE_FUZZING": "ON",
+        "CPKT_BORROW_ORDINARY_DEPENDENCIES": "ON"
+      },
+      "binaryDir": "${sourceDir}/build/x86_64-linux-gnu/$env{GROUP}/Fuzz"
     },
     {
       "name": "opcua-fuzz",
       "inherits": "debug",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/aflpp-x86_64-linux-gnu.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyAflToolchain.cmake",
       "cacheVariables": {
         "CPKT_ALLOW_DEPENDENCY_ROOT_OVERRIDE": "ON",
         "CPKT_BUILD_DEPENDENCIES": "OFF",
         "CPKT_FACADE_ONLY": "OFF",
-        "CPKT_ENABLE_FUZZING": "ON"
-      }
+        "CPKT_ENABLE_FUZZING": "ON",
+        "CPKT_BORROW_ORDINARY_DEPENDENCIES": "ON"
+      },
+      "binaryDir": "${sourceDir}/build/x86_64-linux-gnu/$env{GROUP}/Fuzz"
     },
     {
       "name": "x86_64-linux-musl-release",
       "inherits": "x86_64-linux-gnu-release",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/x86_64-linux-musl.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyToolchain.cmake",
       "cacheVariables": {
         "CPKT_TARGET_ARCH": "x86_64",
         "CPKT_TARGET_OS": "linux",
         "CPKT_TARGET_LIBC": "musl"
-      }
+      },
+      "binaryDir": "${sourceDir}/build/x86_64-linux-musl/$env{GROUP}/Release"
     },
     {
       "name": "aarch64-linux-gnu-release",
       "inherits": "x86_64-linux-gnu-release",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/aarch64-linux-gnu.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyToolchain.cmake",
       "cacheVariables": {
         "CPKT_TARGET_ARCH": "aarch64",
         "CPKT_TARGET_OS": "linux",
         "CPKT_TARGET_LIBC": "gnu"
-      }
+      },
+      "binaryDir": "${sourceDir}/build/aarch64-linux-gnu/$env{GROUP}/Release"
     },
     {
       "name": "aarch64-linux-musl-release",
       "inherits": "x86_64-linux-gnu-release",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/aarch64-linux-musl.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyToolchain.cmake",
       "cacheVariables": {
         "CPKT_TARGET_ARCH": "aarch64",
         "CPKT_TARGET_OS": "linux",
         "CPKT_TARGET_LIBC": "musl"
-      }
+      },
+      "binaryDir": "${sourceDir}/build/aarch64-linux-musl/$env{GROUP}/Release"
     },
     {
       "name": "armhf-linux-gnu-release",
       "inherits": "x86_64-linux-gnu-release",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/armhf-linux-gnu.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyToolchain.cmake",
       "cacheVariables": {
         "CPKT_TARGET_ARCH": "armhf",
         "CPKT_TARGET_OS": "linux",
         "CPKT_TARGET_LIBC": "gnu"
-      }
+      },
+      "binaryDir": "${sourceDir}/build/armhf-linux-gnu/$env{GROUP}/Release"
     },
     {
       "name": "armhf-linux-musl-release",
       "inherits": "x86_64-linux-gnu-release",
-      "toolchainFile": "${sourceDir}/cmake/toolchains/armhf-linux-musl.cmake",
+      "toolchainFile": "${sourceDir}/cmake/CpktReadOnlyToolchain.cmake",
       "cacheVariables": {
         "CPKT_TARGET_ARCH": "armhf",
         "CPKT_TARGET_OS": "linux",
         "CPKT_TARGET_LIBC": "musl"
-      }
+      },
+      "binaryDir": "${sourceDir}/build/armhf-linux-musl/$env{GROUP}/Release"
     },
     {
       "name": "arm64-apple-darwin-native",
@@ -133,7 +148,8 @@
         "CPKT_TARGET_ARCH": "arm64",
         "CPKT_TARGET_OS": "darwin",
         "CPKT_TARGET_LIBC": ""
-      }
+      },
+      "binaryDir": "${sourceDir}/build/arm64-apple-darwin/$env{GROUP}/Release"
     },
     {
       "name": "arm64-apple-darwin-release",
@@ -143,7 +159,16 @@
         "CPKT_TARGET_ARCH": "arm64",
         "CPKT_TARGET_OS": "darwin",
         "CPKT_TARGET_LIBC": ""
-      }
+      },
+      "binaryDir": "${sourceDir}/build/arm64-apple-darwin/$env{GROUP}/Release"
+    },
+    {
+      "name": "arm64-apple-darwin-debug",
+      "inherits": "arm64-apple-darwin-native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      },
+      "binaryDir": "${sourceDir}/build/arm64-apple-darwin/$env{GROUP}/Debug"
     }
   ],
   "buildPresets": [
@@ -248,6 +273,10 @@
         "package-bundle",
         "package-darwin-smoke-test"
       ]
+    },
+    {
+      "name": "arm64-apple-darwin-debug",
+      "configurePreset": "arm64-apple-darwin-debug"
     }
   ],
   "testPresets": [
@@ -303,6 +332,13 @@
     {
       "name": "armhf-linux-musl-release",
       "configurePreset": "armhf-linux-musl-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "arm64-apple-darwin-debug",
+      "configurePreset": "arm64-apple-darwin-debug",
       "output": {
         "outputOnFailure": true
       }

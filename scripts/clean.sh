@@ -1,51 +1,15 @@
 #!/usr/bin/env bash
-set -eu
-
+set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
-
-clean_one() {
-  path=$1
-  case "$path" in
-    "$repo_root/build" | "$repo_root/.cache" | "$repo_root/dist")
-      rm -rf "$path"
-      ;;
-    *)
-      printf 'refusing to remove unsafe generated path: %s\n' "$path" >&2
-      exit 1
-      ;;
-  esac
-}
-
-clean_legacy_package_assertions() {
-  shopt -s nullglob
-  for path in "$repo_root"/package-assertions-*; do
-    if [ -d "$path" ]; then
-      rm -rf -- "$path"
-    fi
-  done
-}
-
-mode=${1:-all}
-
+mode=${GROUP:-all}
+if [[ $# -gt 0 && $1 != --* ]]; then mode=$1; shift; fi
+if [[ $# -gt 0 ]]; then
+  [[ $# -eq 2 && $1 == --group ]] || { printf 'usage: clean.sh [core|db|misc|all|dist] [--group core|db|misc|all]\n' >&2; exit 2; }
+  [[ $mode == all || $mode == dist || $mode == "$2" ]] || { printf 'conflicting GROUP selectors\n' >&2; exit 2; }
+  if [[ $mode == dist ]]; then export GROUP="$2"; else mode=$2; fi
+fi
 case "$mode" in
-  all)
-    if [ -d "$repo_root/build/devenv" ]; then
-      bash "$repo_root/scripts/devenv.sh" down || {
-        printf 'refusing to clean generated state while database pods may be running\n' >&2
-        exit 1
-      }
-    fi
-    clean_legacy_package_assertions
-    clean_one "$repo_root/build"
-    clean_one "$repo_root/.cache"
-    clean_one "$repo_root/dist"
-    ;;
-  dist)
-    clean_one "$repo_root/dist"
-    ;;
-  *)
-    printf 'usage: %s [all|dist]\n' "$0" >&2
-    exit 2
-    ;;
+  all|core|db|misc) exec python3 "$script_dir/group-build.py" clean --group "$mode" ;;
+  dist) exec python3 "$script_dir/group-build.py" clean --dist-only ;;
+  *) printf 'usage: %s [all|core|db|misc|dist]\n' "$0" >&2; exit 2 ;;
 esac

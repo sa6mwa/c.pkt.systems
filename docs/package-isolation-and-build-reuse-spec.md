@@ -2,10 +2,11 @@
 
 ## Status and scope
 
-This is an implementation specification, not a description of functionality
-already delivered. It records the agreed architecture and reviews the work
-needed against the repository at release `v0.11.0`, commit
-`b786205fa7b5501b356676b4808f619b0d316492`.
+This specification records the agreed architecture and the original review
+against release `v0.11.0`, commit
+`b786205fa7b5501b356676b4808f619b0d316492`. The source implementation now follows
+this contract. The implementation evidence boundary at the end distinguishes
+executed focused checks from the parent gates still required before release.
 
 Keep one repository, one coordinated version, and one lifecycle. Produce three
 binary SDK packages: **core**, **db**, and **misc**. Make their ownership a real
@@ -168,10 +169,8 @@ build/package-stage/<target>/<group>/
 build/devenv/
 ```
 
-This is a proposed owned-build layout; migration must update callers of the
-current `build/debug` and `build/<target>-release` paths coherently. Do not leave
-parallel legacy graphs or compatibility symlinks unless an external commitment
-requires them. Component roots must not acquire semantic hash/version suffixes;
+This owned-build layout applies to all callers. Do not leave parallel legacy
+graphs or compatibility symlinks unless an external commitment requires them. Component roots must not acquire semantic hash/version suffixes;
 store identity inside contract records.
 
 Each dependency component has one producer graph for a given effective recipe
@@ -1223,3 +1222,23 @@ before claiming the corresponding implementation complete:
    permission to change adjacent repositories.
 7. Measured source reconstruction, extracted consumer, and e2e wall times after
    instrumentation; the baseline currently lacks complete phase boundaries.
+
+## Implementation evidence boundary
+
+The source implementation now defines inventory-owned group graphs, serialized
+selected operations, schema-1 installed validation, split staging, consumer
+composition, source reconstruction and separate Darwin source/artifact lanes.
+Readiness and release receipts are runtime evidence, never supplied by this
+specification. Reproduce verification through `make finalize-slice`,
+`make test-all`, and the clean `make release`, including independent source
+reconstruction and all seven targets. Native macOS additionally requires a
+successful workflow on the exact candidate commit; final tagged producer bytes
+use its separate authenticated artifact lane during an actual release.
+The receipt and installed-consumer identities include static runtime archives
+outside the sysroot. Darwin identities include framework headers, SDK settings,
+the actual host Clang behind osxcross, and its builtin resources; a wrapper path
+alone does not identify that compiler. Timestamp preservation cannot hide byte
+changes. The independent contract tests exercise these invalidations alongside
+archive corruption, scope violations, and composition in both optional orders.
+OpenSSL parallel build ordering remains serial until the required all-target/native
+evidence supports a change. No versions or ABI identities are changed by this split.

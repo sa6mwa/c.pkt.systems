@@ -1,6 +1,10 @@
 # Third party notices
 
-The entries below identify the pinned PDF and ODBC dependencies and the generated OPC UA schema model. The complete license text for each is included in `share/doc/c.pkt.systems/third_party/<name>/LICENSE` in every SDK archive.
+The entries below describe bundled declarations and model notices. Each group ships
+its own component licenses and notices under
+`share/doc/c.pkt.systems/<group>/third_party/<name>/`. Core also owns the common
+project license and validator. Component and notice ownership is recorded in
+`cmake/components.json`; installing an optional group does not require a sibling.
 
 | Component | Version | License | Source |
 | --- | --- | --- | --- |
@@ -48,3 +52,9 @@ Pfrommer). Their complete copyright/permission notices are shipped in
 argument extraction for C89 schema records and explicit paired 64-bit values;
 it preserves both upstream notices in the generated source. This private C99
 boundary is compiled into `cpkt_opcua`; public declarations remain strict C89.
+
+Core ships cmocka 2.0.2 under Apache-2.0, retaining Google Inc. and Andreas
+Schneider copyright notices. `tools/generate_cmocka_c89.py` reproduces and adapts
+the full native public declarations into `cpkt/cmocka.h` plus private conversion
+code. The original native header/library ABI remains shipped alongside the C89
+facade. Complete terms are in core's `third_party/cmocka/LICENSE`.

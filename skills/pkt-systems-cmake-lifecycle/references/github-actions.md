@@ -190,3 +190,14 @@ workflow YAML when changed. Native behavior still needs real hosted execution
 on the exact implementation commit. Verify cold and restored archive-cache
 paths when adding cache transport. A local fixture or YAML lint is not native
 runtime evidence.
+
+In c.pkt.systems, `test-darwin-native`, `test-darwin-sdk`, and
+`test-github-actions-contracts` are the implemented recipe surfaces. The native
+source lane covers all owned runtime suites and installation combinations. The
+artifact lane uses an actual final tag and an explicit authenticated draft-read
+credential with pinned producer commit, draft/asset IDs, sizes and API digests.
+The transport helper accepts a verified cache hit without probes or network calls.
+Source and exact producer-artifact evidence stay separate; neither an offline
+fixture nor an earlier source run supplies final native artifact proof. Automatic
+gates do not stage or publish drafts. Staging requires an explicitly authorized
+final release operation after full local proof and the existing remote final tag.

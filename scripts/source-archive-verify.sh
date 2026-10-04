@@ -3,6 +3,11 @@ set -euo pipefail
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+case ${GROUP:-all} in all) ;; *) printf 'this operation requires GROUP=all\n' >&2; exit 2 ;; esac
+if [[ -z ${CPKT_OPERATION_FD:-} ]]; then
+  exec python3 "$repo_root/scripts/cpkt_operation.py" --group all -- bash "$0" "$@"
+fi
+python3 "$repo_root/scripts/cpkt_operation.py" --group all --check
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
   printf 'usage: %s <archive.tar.gz> [expected-version]\n' "$0" >&2
@@ -75,10 +80,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-(
-  cd "$work_dir"
-  cmake -E tar xf "$archive_path" >/dev/null
-)
+python3 "$repo_root/scripts/cpkt_archive_extract.py" "$archive_path" "$work_dir" "$archive_stem" --source
 
 root_count=$(find "$work_dir" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
 if [ "$root_count" != "1" ]; then
@@ -333,6 +335,71 @@ for required in \
   tests/sqlite_api_coverage_test.sh \
   tests/sqlite_header_facade_test.sh \
   examples/opcua-c89/main.c \
+  scripts/cpkt_afl_discover.py \
+  scripts/cpkt_build_guard.py \
+  scripts/cpkt_clangd_check.py \
+  scripts/cpkt_cmake_inputs.py \
+  scripts/cpkt_configure_guard.py \
+  scripts/cpkt_expected_tests.py \
+  scripts/cpkt_fuzz_run.py \
+  scripts/cpkt_helper_dispatch.py \
+  scripts/cpkt_helper_proof.py \
+  scripts/cpkt_inventory.py \
+  scripts/cpkt_inventory_cli.py \
+  scripts/cpkt_lifecycle.py \
+  scripts/cpkt_operation.py \
+  scripts/cpkt_packages.py \
+  scripts/cpkt_package_command.py \
+  scripts/cpkt_archive_assert.py \
+  scripts/cpkt_archive_extract.py \
+  scripts/cpkt_source_reconstruct.py \
+  scripts/cpkt_source_proof.py \
+  scripts/cpkt_github_handoff.py \
+  scripts/cpkt_darwin.py \
+  scripts/group-build.py \
+  src/cmocka_c89.c \
+  cmake/CpktPackage.cmake \
+  cmake/cmocka_metadata.cmake \
+  cmake/exports/cpkt_cmocka.txt \
+  tests/cmocka_downstream_behavior.c \
+  tests/cmocka_downstream_compile.py \
+  tests/cmocka_downstream_failure.py \
+  tests/package_recipe_graph_test.py \
+  tests/package_smoke_contract_test.py \
+  tests/lifecycle_recipe_contract.py \
+  tests/dist_manifest_test.py \
+  scripts/cpkt_verify_manifest.py \
+  scripts/cpkt_sdk_examples.py \
+  tests/github_actions_contract_test.py \
+  tests/package_integration_contract_test.py \
+  tests/cmocka_c89_surface.c \
+  docs/sdk-installation.md \
+  docs/cmocka-c89.md \
+  scripts/cpkt_preflight.py \
+  scripts/cpkt_presets.py \
+  scripts/cpkt_receipt_cli.py \
+  scripts/cpkt_receipts.py \
+  scripts/cpkt_reserved_tag.py \
+  scripts/cpkt_sdk_consumer.py \
+  scripts/cpkt_service_exec.py \
+  scripts/validate-sdk.py \
+  cmake/CpktCmockaFacade.cmake \
+  cmake/CpktComposition.cmake \
+  cmake/CpktDependencies.cmake \
+  cmake/CpktDependencyArchiveCache.cmake \
+  cmake/CpktDependencyContract.cmake \
+  cmake/CpktGroups.cmake \
+  cmake/CpktLocalRuntime.cmake \
+  cmake/CpktOperation.cmake \
+  cmake/CpktReadOnlyAflToolchain.cmake \
+  cmake/CpktReadOnlyToolchain.cmake \
+  cmake/CpktSDKValidate.cmake \
+  cmake/CpktTestPslog.cmake \
+  cmake/CpktToolchainDiscovery.cmake \
+  cmake/components.json \
+  cmake/package_inspection.cmake \
+  cmake/package_metadata.cmake \
+  tools/generate_cmocka_c89.py \
   scripts/package-source.sh \
   scripts/cpkt-archive-cache.sh \
   skills/pkt-systems-cmake-lifecycle/scripts/cpkt-archive-cache.sh \
@@ -381,7 +448,54 @@ for required in \
   vendor/open62541/patches/0024-define-discovery-callback-and-unavailable-policies.patch \
   vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch \
   vendor/open62541/patches/0026-count-json-string-closing-quote.patch \
-  vendor/open62541/patches/0027-block-on-posix-stdout-lock.patch
+  vendor/open62541/patches/0027-block-on-posix-stdout-lock.patch \
+  examples/db-sdk/CMakeLists.txt \
+  examples/db-sdk/main.c \
+  tests/audio_sus_package_policy_test.py \
+  tests/lua_symbol_test_registration_fixture.py \
+  tests/package_isolation_build_test.py \
+  tests/package_producer_reuse_test.py \
+  tests/sdk-consumers/cmocka_native.c \
+  tests/sdk-consumers/cpkt_composition.c \
+  tests/sdk-consumers/cpkt_all.c \
+  tests/sdk-consumers/cpkt_audio_facade_strict.c \
+  tests/sdk-consumers/cpkt_audio_sus_facade_strict.c \
+  tests/sdk-consumers/cpkt_crypto.c \
+  tests/sdk-consumers/cpkt_curl.c \
+  tests/sdk-consumers/cpkt_gssapi_facade_strict.c \
+  tests/sdk-consumers/cpkt_iodbc_strict.c \
+  tests/sdk-consumers/cpkt_libssh2.c \
+  tests/sdk-consumers/cpkt_libssh2_facade_strict.c \
+  tests/sdk-consumers/cpkt_libssh2_private_sentinel.c \
+  tests/sdk-consumers/cpkt_libxml2.c \
+  tests/sdk-consumers/cpkt_lua.c \
+  tests/sdk-consumers/cpkt_lua_facade_strict.c \
+  tests/sdk-consumers/cpkt_lua_runtime_module.c \
+  tests/sdk-consumers/cpkt_lua_runtime_strict.c \
+  tests/sdk-consumers/cpkt_mqttc.c \
+  tests/sdk-consumers/cpkt_mqttc_facade_strict.c \
+  tests/sdk-consumers/cpkt_mqttc_private_sentinel.c \
+  tests/sdk-consumers/cpkt_nghttp2.c \
+  tests/sdk-consumers/cpkt_nghttp2_facade_strict.c \
+  tests/sdk-consumers/cpkt_nghttp2_private_sentinel.c \
+  tests/sdk-consumers/cpkt_opcua_facade_strict.c \
+  tests/sdk-consumers/cpkt_open62541.c \
+  tests/sdk-consumers/cpkt_openldap.c \
+  tests/sdk-consumers/cpkt_openssl_facade_strict.c \
+  tests/sdk-consumers/cpkt_openssl_private_sentinel.c \
+  tests/sdk-consumers/cpkt_pdf_facade_strict.c \
+  tests/sdk-consumers/cpkt_postgres_facade_strict.c \
+  tests/sdk-consumers/cpkt_sasl_facade_strict.c \
+  tests/sdk-consumers/cpkt_sqlite_facade_strict.c \
+  tests/sdk-consumers/cpkt_ssl.c \
+  tests/sdk-consumers/cpkt_sus_facade_strict.c \
+  tests/sdk-consumers/cpkt_zlib.c \
+  tests/sdk-consumers/sqlite_extension_from_package.c \
+  tests/sdk-consumers/sqlite_extension_package_consumer.c \
+  tests/sdk-consumers/sus_mixed_main.c \
+  tests/sdk-consumers/sus_mixed_probe.cpp \
+  tests/sus_split_runtime_policy_test.py \
+  vendor/open62541/patches/0028-keep-disabled-lock-assert-warning-clean.patch
 do
   if [ ! -f "$source_root/$required" ]; then
     printf 'source archive is missing required payload: %s\n' "$required" >&2
@@ -405,24 +519,21 @@ cmake \
   -DCPKT_SCAN_PATHS="$archive_path" \
   -P "$repo_root/tests/privacy_scan.cmake"
 
-build_dir="$work_dir/build"
-# Preserve a configured native cache override across source reconstruction.
-# The archive contains no local cache; it reuses the host's verified bytes.
-if [ -z "${CPKT_DEPENDENCY_CACHE:-}" ] && [ -f "$repo_root/build/debug/CMakeCache.txt" ]; then
-  CPKT_DEPENDENCY_CACHE=$(sed -n 's/^CPKT_DEPENDENCY_CACHE:PATH=//p' "$repo_root/build/debug/CMakeCache.txt" | tail -n 1)
-  export CPKT_DEPENDENCY_CACHE
-fi
-source_toolchain_file=${CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE:-\
-"$source_root/cmake/toolchains/x86_64-linux-gnu.cmake"}
-if [ ! -f "$source_toolchain_file" ]; then
-  printf 'source archive toolchain file does not exist: %s\n' "$source_toolchain_file" >&2
+
+if [[ -n ${CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE:-} && ! -f $CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE ]]; then
+  printf 'source archive toolchain file does not exist: %s\n' "$CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE" >&2
   exit 1
 fi
-cmake -S "$source_root" -B "$build_dir" \
-  -DCMAKE_TOOLCHAIN_FILE="$source_toolchain_file" \
-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-  -DCPKT_BUILD_TESTS=ON
-cmake --build "$build_dir"
-ctest --test-dir "$build_dir" --output-on-failure
-
+if [[ -n ${CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE:-} && $(realpath "$CPKT_SOURCE_ARCHIVE_TOOLCHAIN_FILE") != $(realpath "$repo_root/cmake/toolchains/x86_64-linux-gnu.cmake") ]]; then
+  printf 'source reconstruction requires the selected pinned native GNU toolchain, not an arbitrary override\n' >&2
+  exit 1
+fi
+reconstruction_environment=$(python3 "$repo_root/scripts/cpkt_source_reconstruct.py" --environment-from "$repo_root")
+# JSON is parsed into quoted shell exports; configured paths are never shell code.
+eval "$(python3 -c 'import json,shlex,sys; print("\n".join("export "+k+"="+shlex.quote(v) for k,v in json.loads(sys.argv[1]).items()))' "$reconstruction_environment")"
+mkdir -p "$repo_root/build/verification/source/$expected_version"
+reconstruction_log="$repo_root/build/verification/source/$expected_version/reconstruction.log"
+python3 "$repo_root/scripts/cpkt_operation.py" --root "$repo_root" --group all \
+  --source-root "$source_root" -- python3 "$source_root/scripts/cpkt_source_reconstruct.py" 2>&1 | tee "$reconstruction_log"
+python3 "$repo_root/scripts/cpkt_source_proof.py" "$archive_path" "$expected_version" "$source_root"
 printf '[package] verified source archive %s\n' "$archive_path"

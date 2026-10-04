@@ -74,6 +74,29 @@ function(cpkt_record_dependency_target target_name)
   set_property(GLOBAL APPEND PROPERTY CPKT_DEPENDENCY_TARGETS "${target_name}")
 endfunction()
 
+function(cpkt_component_producer_prerequisites output component)
+  if(NOT DEFINED CPKT_INVENTORY)
+    # Standalone recipe-plan fixtures retain their complete producer graph.
+    set(${output} "${ARGN}" PARENT_SCOPE)
+    return()
+  endif()
+  string(JSON _count LENGTH "${CPKT_INVENTORY}" components "${component}" dependencies)
+  set(_targets "")
+  if(_count GREATER 0)
+    math(EXPR _last "${_count} - 1")
+    foreach(_index RANGE 0 ${_last})
+      string(JSON _dependency GET "${CPKT_INVENTORY}" components "${component}" dependencies ${_index})
+      get_property(_registered GLOBAL PROPERTY "CPKT_PRODUCER_TARGETS_${_dependency}" SET)
+      if(NOT _registered)
+        message(FATAL_ERROR "${component} prerequisite ${_dependency} has not been validated")
+      endif()
+      get_property(_owned GLOBAL PROPERTY "CPKT_PRODUCER_TARGETS_${_dependency}")
+      list(APPEND _targets ${_owned})
+    endforeach()
+  endif()
+  set(${output} "${_targets}" PARENT_SCOPE)
+endfunction()
+
 function(cpkt_require_dependency_file path label)
   if(NOT EXISTS "${path}")
     message(FATAL_ERROR
@@ -219,7 +242,8 @@ function(cpkt_append_external_pkg_config_env_args out_var)
   else()
     set(_pkg_config_libdir "${CPKT_EXTERNAL_ROOT}/.pkgconfig-empty")
   endif()
-  file(MAKE_DIRECTORY "${CPKT_EXTERNAL_ROOT}/.pkgconfig-empty")
+  # PKG_CONFIG_LIBDIR overrides the system search even when this empty fallback
+  # path is absent. Imports must not provision producer or shared directories.
 
   list(APPEND _args
     PKG_CONFIG_PATH=
@@ -466,7 +490,9 @@ function(cpkt_add_openssl)
   cpkt_get_openssl_config_args(config_args)
 
   cpkt_normalize_prefix(env_prefix "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   # OpenSSL 3.6's generated assembly dependency graph races under parallel
   # make in the pinned cross-toolchain environment.  Keep this producer
   # serial; downstream ExternalProjects can still build in parallel.
@@ -530,7 +556,11 @@ function(cpkt_add_openssl)
     )
   endif()
 
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+
+  endif()
 
   set(openssl_crypto_static_extra_libs "")
   if(CPKT_TARGET_ARCH STREQUAL "armhf")
@@ -603,7 +633,9 @@ function(cpkt_add_nghttp2)
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_get_target_triple(autotools_host)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   set(nghttp2_env_args
     CC=${CMAKE_C_COMPILER}
     AR=${CMAKE_AR}
@@ -699,7 +731,9 @@ function(cpkt_add_zlib)
   cpkt_append_common_external_cmake_args(common_cmake_args)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(zlib_shared_library "${install_dir}/lib/libz.${CPKT_ZLIB_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")
@@ -796,7 +830,9 @@ function(cpkt_add_libssh2)
   cpkt_append_common_external_cmake_args(common_cmake_args)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
 
   set(libssh2_shared_library "${install_dir}/lib/libssh2${CMAKE_SHARED_LIBRARY_SUFFIX}")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -982,7 +1018,9 @@ function(cpkt_add_curl)
   cpkt_append_common_external_cmake_args(common_cmake_args)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(curl_install_rpath "@loader_path")
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -1104,6 +1142,7 @@ function(cpkt_add_curl)
 endfunction()
 
 function(cpkt_add_libpng)
+  cpkt_component_producer_prerequisites(producer_prerequisites libpng cpkt_zlib_project)
   set(project_name cpkt_libpng_project)
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/libpng")
   set(source_dir "${prefix_dir}/src")
@@ -1116,7 +1155,9 @@ function(cpkt_add_libpng)
   cpkt_get_external_cmake_configure_command(cmake_configure_command)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(install_rpath "@loader_path")
   else()
@@ -1135,7 +1176,7 @@ function(cpkt_add_libpng)
       TMP_DIR "${prefix_dir}/tmp"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS cpkt_zlib_project
+      DEPENDS ${producer_prerequisites}
       CONFIGURE_COMMAND ${cmake_configure_command}
         -DCMAKE_INSTALL_PREFIX=${install_dir}
         -DCMAKE_INSTALL_LIBDIR=lib
@@ -1193,7 +1234,9 @@ function(cpkt_add_libharu)
   cpkt_get_external_cmake_configure_command(cmake_configure_command)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(install_rpath "@loader_path")
   else()
@@ -1309,7 +1352,9 @@ function(cpkt_add_libxml2)
     list(APPEND libxml2_static_iconv_link_libraries iconv)
     list(APPEND libxml2_shared_iconv_link_libraries iconv)
   endif()
-  file(MAKE_DIRECTORY "${install_dir}/include/libxml2" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include/libxml2" "${install_dir}/lib")
+  endif()
 
   set(libxml2_static_library "${install_dir}/lib/libxml2${CMAKE_STATIC_LIBRARY_SUFFIX}")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -1467,7 +1512,9 @@ function(cpkt_add_lua)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(lua_shared_library "liblua.${CPKT_LUA_VERSION}${CMAKE_SHARED_LIBRARY_SUFFIX}")
@@ -1626,7 +1673,9 @@ function(cpkt_add_mqttc)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib" "${build_dir}")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib" "${build_dir}")
+  endif()
 
   set(mqttc_static_library "${install_dir}/lib/libmqttc${CMAKE_STATIC_LIBRARY_SUFFIX}")
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -1704,7 +1753,8 @@ function(cpkt_add_mqttc)
         COMMAND ${CMAKE_COMMAND} -E env ${mqttc_env_args}
           ${CMAKE_C_COMPILER} ${mqttc_shared_link_flags} ${mqttc_shared_extra_link_flags} -o "${mqttc_shared_library}" "${build_dir}/mqtt.c.o" "${build_dir}/mqtt_pal.c.o" ${mqttc_link_flags}
       INSTALL_COMMAND
-        ${CMAKE_COMMAND} -E true
+        ${CMAKE_COMMAND} -E copy_directory "${source_dir}/src" "${install_dir}/share/cpkt/mqtt-c/src"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${source_dir}/include" "${install_dir}/share/cpkt/mqtt-c/include"
         COMMAND ${CMAKE_COMMAND} -E rm -f "${install_dir}/lib/${mqttc_shared_soname}" "${install_dir}/lib/${mqttc_shared_link}"
         COMMAND ${CMAKE_COMMAND} -E create_symlink "${mqttc_shared_library_name}" "${install_dir}/lib/${mqttc_shared_soname}"
         COMMAND ${CMAKE_COMMAND} -E create_symlink "${mqttc_shared_soname}" "${install_dir}/lib/${mqttc_shared_link}"
@@ -1745,7 +1795,7 @@ function(cpkt_add_mqttc)
     cpkt_require_dependency_file("${install_dir}/include/mqtt_pal.h" "MQTT-C PAL header")
   endif()
 
-  set(CPKT_MQTTC_SOURCE_DIR "${source_dir}" PARENT_SCOPE)
+  set(CPKT_MQTTC_SOURCE_DIR "${install_dir}/share/cpkt/mqtt-c" PARENT_SCOPE)
   set(CPKT_MQTTC_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
@@ -1758,7 +1808,9 @@ function(cpkt_add_miniaudio)
   set(stamp_dir "${prefix_dir}/stamp")
   set(tmp_dir "${prefix_dir}/tmp")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include/miniaudio" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include/miniaudio" "${install_dir}/lib")
+  endif()
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     set(miniaudio_shared_library "${install_dir}/lib/libminiaudio${CMAKE_SHARED_LIBRARY_SUFFIX}")
@@ -1894,7 +1946,9 @@ function(cpkt_add_whisper)
   cpkt_append_common_external_cxx_cmake_args(common_cmake_args)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
 
   set(whisper_static_library "${install_dir}/lib/libwhisper${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(whisper_shared_library "${install_dir}/lib/libwhisper${CMAKE_SHARED_LIBRARY_SUFFIX}")
@@ -2053,6 +2107,7 @@ function(cpkt_add_whisper)
 endfunction()
 
 function(cpkt_add_open62541)
+  cpkt_component_producer_prerequisites(producer_prerequisites open62541 cpkt_openssl_project cpkt_mqttc_project)
   set(project_name_shared "cpkt_open62541_shared_project")
   set(project_name_static "cpkt_open62541_static_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/open62541")
@@ -2068,7 +2123,9 @@ function(cpkt_add_open62541)
   cpkt_append_common_external_cmake_args(common_cmake_args)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
 
   set(open62541_static_library "${install_dir}/lib/libopen62541${CMAKE_STATIC_LIBRARY_SUFFIX}")
   set(open62541_static_system_libs "m")
@@ -2143,7 +2200,7 @@ function(cpkt_add_open62541)
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS cpkt_openssl_project cpkt_mqttc_project
+      DEPENDS ${producer_prerequisites}
       PATCH_COMMAND
         ${CMAKE_COMMAND} -E copy_directory
           "${CPKT_MQTTC_SOURCE_DIR}"
@@ -2176,7 +2233,7 @@ function(cpkt_add_open62541)
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS cpkt_openssl_project cpkt_mqttc_project
+      DEPENDS ${producer_prerequisites}
       PATCH_COMMAND
         ${CMAKE_COMMAND} -E copy_directory
           "${CPKT_MQTTC_SOURCE_DIR}"
@@ -2336,11 +2393,13 @@ function(cpkt_add_krb5)
         -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
   endif()
+  if(CPKT_BUILD_DEPENDENCIES)
   file(MAKE_DIRECTORY
     "${install_dir}/include"
     "${install_dir}/include/gssapi"
     "${install_dir}/include/krb5"
     "${install_dir}/lib")
+  endif()
 
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name_static}
@@ -2620,9 +2679,10 @@ function(cpkt_add_cyrus_sasl)
         -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
   endif()
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   set(cyrus_sasl_md5_header_dir "${prefix_dir}/generated")
-  file(MAKE_DIRECTORY "${cyrus_sasl_md5_header_dir}")
   if(CMAKE_SIZEOF_VOID_P EQUAL 4)
     set(CPKT_CYRUS_SASL_MD5_INT8_TYPE "long long")
     set(CPKT_CYRUS_SASL_MD5_UINT8_TYPE "unsigned long long")
@@ -2632,10 +2692,13 @@ function(cpkt_add_cyrus_sasl)
   else()
     message(FATAL_ERROR "Cyrus SASL has no md5global.h recipe for ${CMAKE_SIZEOF_VOID_P}-byte pointers")
   endif()
+  if(CPKT_BUILD_DEPENDENCIES)
+  file(MAKE_DIRECTORY "${cyrus_sasl_md5_header_dir}")
   configure_file(
     "${CMAKE_SOURCE_DIR}/cmake/cyrus_sasl_md5global.h.in"
     "${cyrus_sasl_md5_header_dir}/md5global.h"
     @ONLY)
+  endif()
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/cyrusimap/cyrus-sasl/releases/download/cyrus-sasl-${CPKT_CYRUS_SASL_VERSION}/cyrus-sasl-${CPKT_CYRUS_SASL_VERSION}.tar.gz"
@@ -2795,7 +2858,9 @@ function(cpkt_add_openldap)
         -DCPKT_DARWIN_OTOOL=${CPKT_OTOOL}
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
   endif()
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://www.openldap.org/software/download/OpenLDAP/openldap-release/openldap-${CPKT_OPENLDAP_VERSION}.tgz"
@@ -2902,6 +2967,7 @@ function(cpkt_add_openldap)
 endfunction()
 
 function(cpkt_add_postgresql)
+  cpkt_component_producer_prerequisites(producer_prerequisites postgresql cpkt_openldap_project cpkt_cyrus_sasl_project cpkt_krb5_shared_project cpkt_curl_project cpkt_zlib_project cpkt_openssl_project)
   set(project_name "cpkt_postgresql_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/postgresql")
   set(source_dir "${prefix_dir}/src")
@@ -3011,7 +3077,9 @@ function(cpkt_add_postgresql)
   # Each invocation supplies an explicit -j setting below.
   set(postgresql_make_env_args ${env_args} "MAKEFLAGS=")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://ftp.postgresql.org/pub/source/v${CPKT_POSTGRESQL_VERSION}/postgresql-${CPKT_POSTGRESQL_VERSION}.tar.bz2"
@@ -3025,7 +3093,7 @@ function(cpkt_add_postgresql)
       TMP_DIR "${tmp_dir}"
       TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
       INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      DEPENDS cpkt_openldap_project cpkt_cyrus_sasl_project cpkt_krb5_shared_project cpkt_curl_project cpkt_zlib_project cpkt_openssl_project
+      DEPENDS ${producer_prerequisites}
       PATCH_COMMAND ${CMAKE_COMMAND}
         -DCPKT_PATCH_WORKING_DIRECTORY=${source_dir}
         -DCPKT_PATCH_SERIES=${CMAKE_SOURCE_DIR}/cmake/patches/postgresql.series
@@ -3159,7 +3227,9 @@ function(cpkt_add_iodbc)
         -P ${CMAKE_SOURCE_DIR}/cmake/normalize_darwin_dylib_install_names.cmake)
   endif()
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   if(CPKT_BUILD_DEPENDENCIES)
     cpkt_cached_external_project_add(${project_name}
       URL "https://github.com/openlink/iODBC/releases/download/v${CPKT_IODBC_VERSION}/libiodbc-${CPKT_IODBC_VERSION}.tar.gz"
@@ -3341,7 +3411,9 @@ function(cpkt_add_sqlite)
     COMMAND ${CMAKE_COMMAND} -E create_symlink "${sqlite_shared_abi_library}"
       "${shared_library}")
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  if(CPKT_BUILD_DEPENDENCIES)
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+  endif()
   if(CPKT_BUILD_DEPENDENCIES)
     # The official amalgamation is the supported no-generator build input, but
     # it deliberately omits the public session and RTree extension headers.
@@ -3444,60 +3516,76 @@ function(cpkt_add_sqlite)
 endfunction()
 
 function(cpkt_add_cmocka)
-  set(project_name "cpkt_cmocka_project")
   set(prefix_dir "${CPKT_DEPENDENCY_BUILD_ROOT}/cmocka")
   set(source_dir "${prefix_dir}/src")
-  set(build_dir "${prefix_dir}/build")
   set(install_dir "${CPKT_EXTERNAL_ROOT}/cmocka/install")
-  set(stamp_dir "${prefix_dir}/stamp")
-  set(tmp_dir "${prefix_dir}/tmp")
   cpkt_append_common_external_cmake_args(common_cmake_args)
   cpkt_get_external_cmake_step_commands(cmake_build_command cmake_install_command)
   cpkt_get_strip_dependency_install_command(strip_install_command "${install_dir}")
-  file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
-
   if(CPKT_BUILD_DEPENDENCIES)
-    cpkt_cached_external_project_add(${project_name}
+    file(MAKE_DIRECTORY "${install_dir}/include" "${install_dir}/lib")
+    cpkt_cached_external_project_add(cpkt_cmocka_static_project
       URL "https://cmocka.org/files/2.0/cmocka-${CPKT_CMOCKA_VERSION}.tar.xz"
       URL_HASH "SHA256=39f92f366bdf3f1a02af4da75b4a5c52df6c9f7e736c7d65de13283f9f0ef416"
-      PREFIX "${prefix_dir}"
-      DOWNLOAD_DIR "${CPKT_DOWNLOAD_ROOT}"
+      PREFIX "${prefix_dir}/static"
       SOURCE_DIR "${source_dir}"
-      BINARY_DIR "${build_dir}"
-      STAMP_DIR "${stamp_dir}"
-      TMP_DIR "${tmp_dir}"
-      TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_TIMEOUT}
-      INACTIVITY_TIMEOUT ${CPKT_DEPENDENCY_DOWNLOAD_INACTIVITY_TIMEOUT}
-      CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${install_dir}
+      BINARY_DIR "${prefix_dir}/static/build"
+      CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${install_dir}
         -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
-        -DBUILD_SHARED_LIBS=OFF
-        -DBUILD_TESTING=OFF
-        -DWITH_EXAMPLES=OFF
-        -DPICKY_DEVELOPER=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DBUILD_SHARED_LIBS=OFF -DUNIT_TESTING=OFF -DWITH_EXAMPLES=OFF
+        -DPICKY_DEVELOPER=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
         ${common_cmake_args}
       BUILD_COMMAND ${cmake_build_command}
       INSTALL_COMMAND ${cmake_install_command}
+      BUILD_BYPRODUCTS "${install_dir}/lib/libcmocka${CMAKE_STATIC_LIBRARY_SUFFIX}"
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    # One immutable extracted source, ordered variant installs, shared-default
+    # upstream metadata written last. No independent consumer EP stamps.
+    ExternalProject_Add(cpkt_cmocka_shared_project
+      PREFIX "${prefix_dir}/shared"
+      SOURCE_DIR "${source_dir}"
+      BINARY_DIR "${prefix_dir}/shared/build"
+      DOWNLOAD_COMMAND "" UPDATE_COMMAND ""
+      DEPENDS cpkt_cmocka_static_project
+      CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${install_dir}
+        -DCMAKE_BUILD_TYPE=${CPKT_DEPENDENCY_BUILD_TYPE}
+        -DBUILD_SHARED_LIBS=ON -DUNIT_TESTING=OFF -DWITH_EXAMPLES=OFF
+        -DPICKY_DEVELOPER=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        ${common_cmake_args}
+      BUILD_COMMAND ${cmake_build_command}
+      INSTALL_COMMAND ${cmake_install_command}
+        COMMAND "${CMAKE_COMMAND}" -DCPKT_PREFIX=${install_dir}
+          -DCPKT_SHARED_SUFFIX=${CMAKE_SHARED_LIBRARY_SUFFIX}
+          -P "${CMAKE_SOURCE_DIR}/cmake/cmocka_metadata.cmake"
         COMMAND ${strip_install_command}
-      BUILD_BYPRODUCTS
-        "${install_dir}/lib/libcmocka${CMAKE_STATIC_LIBRARY_SUFFIX}"
-      DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    )
+      BUILD_BYPRODUCTS "${install_dir}/lib/libcmocka${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    cpkt_record_dependency_target(cpkt_cmocka_static_project)
+    cpkt_record_dependency_target(cpkt_cmocka_shared_project)
   endif()
-
-  add_library(cpkt::cmocka STATIC IMPORTED GLOBAL)
-  set_target_properties(cpkt::cmocka
-    PROPERTIES
-      IMPORTED_LOCATION "${install_dir}/lib/libcmocka${CMAKE_STATIC_LIBRARY_SUFFIX}"
-      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include"
-  )
-  if(CPKT_BUILD_DEPENDENCIES)
-    add_dependencies(cpkt::cmocka ${project_name})
-    cpkt_record_dependency_target(${project_name})
-  else()
-    cpkt_require_dependency_file("${install_dir}/lib/libcmocka${CMAKE_STATIC_LIBRARY_SUFFIX}" "cmocka")
-  endif()
+  foreach(_variant static shared)
+    if(_variant STREQUAL "static")
+      set(_type STATIC)
+      set(_suffix "${CMAKE_STATIC_LIBRARY_SUFFIX}")
+    else()
+      set(_type SHARED)
+      set(_suffix "${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    endif()
+    add_library(cpkt::cmocka_${_variant} ${_type} IMPORTED GLOBAL)
+    set_target_properties(cpkt::cmocka_${_variant} PROPERTIES
+      IMPORTED_LOCATION "${install_dir}/lib/libcmocka${_suffix}"
+      INTERFACE_INCLUDE_DIRECTORIES "${install_dir}/include")
+    if(_variant STREQUAL "static")
+      set_property(TARGET cpkt::cmocka_static PROPERTY INTERFACE_COMPILE_DEFINITIONS CMOCKA_STATIC)
+    endif()
+    if(CPKT_BUILD_DEPENDENCIES)
+      add_dependencies(cpkt::cmocka_${_variant} cpkt_cmocka_${_variant}_project)
+    else()
+      cpkt_require_dependency_file("${install_dir}/lib/libcmocka${_suffix}" "cmocka ${_variant}")
+    endif()
+  endforeach()
+  add_library(cpkt::cmocka ALIAS cpkt::cmocka_static)
+  add_library(cmocka::cmocka ALIAS cpkt::cmocka_shared)
+  set(CPKT_CMOCKA_PREFIX "${install_dir}" PARENT_SCOPE)
 endfunction()
 
 function(cpkt_configure_dependencies)
@@ -3660,6 +3748,7 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0025-preserve-accept-all-certificate-logger.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0026-count-json-string-closing-quote.patch"
       "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0027-block-on-posix-stdout-lock.patch"
+      "${CMAKE_SOURCE_DIR}/vendor/open62541/patches/0028-keep-disabled-lock-assert-warning-clean.patch"
     RECIPE_FUNCTIONS cpkt_add_open62541)
   cpkt_prepare_dependency_component(
     NAME krb5
@@ -3750,66 +3839,59 @@ function(cpkt_configure_dependencies)
       "${CMAKE_SOURCE_DIR}/src/sqlite_native_amalgamation.c"
     RECIPE_FUNCTIONS cpkt_add_sqlite)
 
-  cpkt_add_openssl()
-  cpkt_add_zlib()
-  cpkt_add_libssh2()
-  cpkt_add_nghttp2()
-  cpkt_add_curl()
-  cpkt_add_libpng()
-  cpkt_add_libharu()
-  cpkt_add_libxml2()
-  cpkt_add_lua()
-  cpkt_add_miniaudio()
-  cpkt_add_whisper()
-  cpkt_add_mqttc()
-  cpkt_add_open62541()
-  cpkt_add_krb5()
-  cpkt_add_cyrus_sasl()
-  cpkt_add_openldap()
-  cpkt_add_postgresql()
-  cpkt_add_iodbc()
-  cpkt_add_sqlite()
+  cpkt_prepare_dependency_component(
+    NAME cmocka
+    BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/cmocka"
+    INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/cmocka/install"
+    VARIABLES CPKT_CMOCKA_VERSION
+    INPUT_FILES
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
+      "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
+    RECIPE_FUNCTIONS cpkt_add_cmocka)
 
-  if(CPKT_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    cpkt_prepare_dependency_component(
-      NAME cmocka
-      BUILD_ROOT "${CPKT_DEPENDENCY_BUILD_ROOT}/cmocka"
-      INSTALL_ROOT "${CPKT_EXTERNAL_ROOT}/cmocka/install"
-      VARIABLES CPKT_CMOCKA_VERSION
-      INPUT_FILES
-        "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyContract.cmake"
-        "${CMAKE_SOURCE_DIR}/cmake/CpktDependencyArchiveCache.cmake"
-      RECIPE_FUNCTIONS cpkt_add_cmocka)
-    cpkt_add_cmocka()
-  endif()
 
-  if(CPKT_BUILD_DEPENDENCIES)
-    get_property(dep_targets GLOBAL PROPERTY CPKT_DEPENDENCY_TARGETS)
-    if(dep_targets)
-      add_custom_target(cpkt_deps_all DEPENDS ${dep_targets})
-      add_custom_target(cpkt_deps DEPENDS cpkt_deps_all)
-      add_custom_target(cpkt_deps_openssl DEPENDS cpkt_openssl_project)
-      add_custom_target(cpkt_deps_zlib DEPENDS cpkt_zlib_project)
-      add_custom_target(cpkt_deps_nghttp2 DEPENDS cpkt_nghttp2_project)
-      add_custom_target(cpkt_deps_libssh2 DEPENDS cpkt_libssh2_project)
-      add_custom_target(cpkt_deps_curl DEPENDS cpkt_curl_project)
-      add_custom_target(cpkt_deps_libpng DEPENDS cpkt_libpng_project)
-      add_custom_target(cpkt_deps_libharu DEPENDS cpkt_libharu_static_project)
-      add_custom_target(cpkt_deps_iodbc DEPENDS cpkt_iodbc_project)
-      add_custom_target(cpkt_deps_libxml2 DEPENDS cpkt_libxml2_static_project)
-      add_custom_target(cpkt_deps_lua DEPENDS cpkt_lua_project)
-      add_custom_target(cpkt_deps_miniaudio DEPENDS cpkt_miniaudio_project)
-      add_custom_target(cpkt_deps_whisper DEPENDS cpkt_whisper_static_project cpkt_whisper_shared_project)
-      add_custom_target(cpkt_deps_mqttc DEPENDS cpkt_mqttc_project)
-      add_custom_target(cpkt_deps_open62541 DEPENDS cpkt_open62541_static_project cpkt_open62541_shared_project)
-      add_custom_target(cpkt_deps_krb5 DEPENDS cpkt_krb5_shared_project)
-      add_custom_target(cpkt_deps_cyrus_sasl DEPENDS cpkt_cyrus_sasl_project)
-      add_custom_target(cpkt_deps_openldap DEPENDS cpkt_openldap_project)
-      add_custom_target(cpkt_deps_postgresql DEPENDS cpkt_postgresql_project)
-      add_custom_target(cpkt_deps_sqlite DEPENDS cpkt_sqlite_project)
-      if(TARGET cpkt_cmocka_project)
-        add_custom_target(cpkt_deps_cmocka DEPENDS cpkt_cmocka_project)
+  set(_all_dependency_targets "")
+  foreach(_component IN LISTS CPKT_ACTIVE_COMPONENTS)
+    string(JSON _owner GET "${CPKT_INVENTORY}" components "${_component}" group)
+    string(REPLACE "-" "_" _function "cpkt_add_${_component}")
+    set(CPKT_BUILD_DEPENDENCIES OFF)
+    if(CPKT_DEPENDENCY_PRODUCER AND _owner STREQUAL CPKT_GROUP)
+      set(CPKT_BUILD_DEPENDENCIES ON)
+    endif()
+    if(NOT CPKT_BUILD_DEPENDENCIES)
+      execute_process(COMMAND "${CPKT_OPERATION_PYTHON}" "${CMAKE_SOURCE_DIR}/scripts/cpkt_receipt_cli.py"
+        --root "${CMAKE_SOURCE_DIR}" --group "${CPKT_GROUP}" --target "${CPKT_TARGET_ID}"
+        --component "${_component}" --preset "$ENV{CPKT_PRESET}"
+        RESULT_VARIABLE _receipt_status)
+      if(NOT _receipt_status EQUAL 0)
+        message(FATAL_ERROR "Unverified dependency import: ${_component}")
       endif()
     endif()
+    get_property(_before GLOBAL PROPERTY CPKT_DEPENDENCY_TARGETS)
+    cmake_language(CALL "${_function}")
+    get_property(_after GLOBAL PROPERTY CPKT_DEPENDENCY_TARGETS)
+    set(_component_targets "${_after}")
+    if(_before)
+      list(REMOVE_ITEM _component_targets ${_before})
+    endif()
+    set_property(GLOBAL PROPERTY "CPKT_PRODUCER_TARGETS_${_component}" "${_component_targets}")
+    if(_component_targets)
+      # Completion belongs to the producer step, not an aggregate invocation.
+      # Earlier completed components remain reusable if a later one fails.
+      set(_remaining "${_component_targets}")
+      list(POP_BACK _remaining _last_project)
+      ExternalProject_Add_Step(${_last_project} cpkt-receipt
+        COMMAND "${CPKT_OPERATION_PYTHON}" "${CMAKE_SOURCE_DIR}/scripts/cpkt_receipt_cli.py"
+          --root "${CMAKE_SOURCE_DIR}" --group "${CPKT_GROUP}" --target "${CPKT_TARGET_ID}"
+          --component "${_component}" --publish
+        DEPENDEES install DEPENDS ${_remaining}
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+      add_custom_target(cpkt_deps_${_component} DEPENDS ${_component_targets})
+      list(APPEND _all_dependency_targets ${_component_targets})
+    endif()
+  endforeach()
+  if(CPKT_DEPENDENCY_PRODUCER)
+    add_custom_target(cpkt_deps_all DEPENDS ${_all_dependency_targets})
+    add_custom_target(cpkt_deps DEPENDS cpkt_deps_all)
   endif()
 endfunction()
