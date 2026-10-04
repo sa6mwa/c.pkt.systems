@@ -41,7 +41,17 @@ def owned_definitions(text, data, group):
         if not tokens:
             continue
         candidates = []
-        if name in ('add_test', 'cpkt_group_add_test') and tokens[0] == 'NAME':
+        if name == 'set' and tokens[0].startswith('CPKT_') and (
+                tokens[0].endswith(('_ABI_VERSION', '_GENERATED_DIR')) or '_FACADE_' in tokens[0]):
+            component = tokens[0][5:].split('_ABI_VERSION')[0].split('_GENERATED_DIR')[0].split('_FACADE_')[0]
+            candidates = [('targets', 'cpkt_' + component.lower() + '_shared')]
+        elif name == 'add_custom_command':
+            component = re.search(r'CPKT_([A-Z0-9_]+)_(?:FACADE_|GENERATED_DIR)', definition)
+            if component:
+                candidates = [('targets', 'cpkt_' + component.group(1).lower() + '_shared')]
+            elif '_cpkt_fixture_dir' in definition and 'tools/opcua/' in definition:
+                candidates = [('targets', 'cpkt_opcua_shared')]
+        elif name in ('add_test', 'cpkt_group_add_test') and tokens[0] == 'NAME':
             candidates = [('tests', tokens[1])]
         elif name in ('add_library','add_executable','add_custom_target',
                      'cpkt_group_add_library','cpkt_group_add_executable','cpkt_group_add_custom_target'):

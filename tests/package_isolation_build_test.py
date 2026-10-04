@@ -298,6 +298,26 @@ include(cmake/CpktPackage.cmake)
         top.write_text(top.read_text().replace('-std=c99','-std=c89'))
         self.assertNotEqual(before,verification_inputs(self.root,'core',configured))
 
+    def test_verification_tracks_owned_abi_and_generator_inputs(self):
+        from cpkt_receipts import verification_inputs
+        top=ROOT/'CMakeLists.txt'
+        original=top.read_text()
+        configured={'CPKT_TARGET_ID':'x86_64-linux-gnu','CMAKE_BUILD_TYPE':'Debug','CPKT_BUILD_TESTS':'ON'}
+        read_text=Path.read_text
+        with patch('cpkt_receipts.component_input_id',return_value='unchanged recipe'):
+            before=verification_inputs(ROOT,'core',configured)
+            changes=(
+                (original.replace('set(CPKT_LUA_ABI_VERSION "0"','set(CPKT_LUA_ABI_VERSION "1"'),True),
+                (original.replace('--include-dir "$<TARGET_PROPERTY:cpkt::nghttp2_static,INTERFACE_INCLUDE_DIRECTORIES>"',
+                                  '--include-dir "/changed/nghttp2/header"'),True),
+                (original.replace('set(CPKT_OPCUA_ABI_VERSION "0"','set(CPKT_OPCUA_ABI_VERSION "1"'),False))
+            for changed,affects_core in changes:
+                self.assertNotEqual(original,changed)
+                def replacement(path,*args,**kwargs):
+                    return changed if path==top else read_text(path,*args,**kwargs)
+                with patch.object(Path,'read_text',replacement):
+                    self.assertEqual(affects_core,verification_inputs(ROOT,'core',configured)!=before)
+
     def test_osxcross_link_launcher_preserves_quoted_paths(self):
         original=(ROOT/'CMakeLists.txt').read_text()
         block=re.search(r'if\(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CPKT_OSXCROSS_ROOT\).*?endif\(\)',

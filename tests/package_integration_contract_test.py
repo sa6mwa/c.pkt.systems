@@ -214,6 +214,20 @@ class Fixtures(unittest.TestCase):
         self.assertEqual(calls[1],base+['--list',str(binary)])
         self.assertEqual(calls[2],base+[str(binary),'argument'])
 
+    def test_sqlite_module_uses_generated_target_filename(self):
+        from cpkt_sdk_consumer import sqlite_module_path
+        build=self.work/'module-build';build.mkdir()
+        module=build/'libsqlite_extension_from_package.so'
+        module.write_bytes(b'Darwin MODULE suffix fixture')
+        (build/'sqlite-module-path.txt').write_text(str(module))
+        self.assertEqual(module,sqlite_module_path(build))
+        module.unlink()
+        with self.assertRaisesRegex(ValueError,'MODULE output missing'):
+            sqlite_module_path(build)
+        (build/'sqlite-module-path.txt').write_text(str(self.work/'outside.so'))
+        with self.assertRaisesRegex(ValueError,'MODULE output missing'):
+            sqlite_module_path(build)
+
     def test_missing_notice_directory_fails_inventory_preflight(self):
         from cpkt_inventory import load,validate_inputs
         data=copy.deepcopy(load(ROOT))
