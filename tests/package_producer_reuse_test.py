@@ -123,6 +123,7 @@ else()
     "${CMAKE_SOURCE_DIR}/scripts/cpkt_operation.py" --root "${CMAKE_SOURCE_DIR}" --group "${CPKT_GROUP}" --check)
   cpkt_group_add_executable(cpkt_${CPKT_GROUP}_probe main.c)
   cpkt_group_add_test(NAME ${CPKT_GROUP}_behavior COMMAND cpkt_${CPKT_GROUP}_probe)
+  cpkt_group_set_tests_properties(${CPKT_GROUP}_behavior PROPERTIES LABELS example)
   cmake_language(DEFER CALL cpkt_validate_owned_graph)
 endif()
 '''
@@ -209,6 +210,18 @@ endif()
         # readiness, then only the missing optional producer closure.
         invoke(root,'deps','--group','all','--preset','debug',env=env)
         assert (root/'events').read_text()[len(before):].splitlines()==['miscdep:extract','miscdep:configure','miscdep:build','miscdep:install']
+        # Aggregate filters need complete Core readiness even though the
+        # optional focused suites must never become full readiness.
+        before=(root/'events').read_text()
+        for selection in (('--regex','behavior'),('--label','example')):
+            core_receipt.unlink(missing_ok=True)
+            invoke(root,'test','--group','all','--preset','debug',*selection,env=env)
+            assert json.loads(core_receipt.read_text())['coverage']==['core_behavior']
+            for optional in ('db','misc'):
+                assert not (root/'build/verification/x86_64-linux-gnu'/optional/'Debug-development.json').exists()
+                assert (root/'build/x86_64-linux-gnu'/optional/'Debug/cpkt-test-results.xml').is_file()
+            assert not (root/'build/x86_64-linux-gnu/all/Debug').exists()
+        assert before==(root/'events').read_text()
         # Group cleanup leaves core, sibling state and persistent control inode.
         inode=(root/'build/control/operation.lock').stat().st_ino
         invoke(root,'clean','--group','db',env=env)

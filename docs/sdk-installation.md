@@ -50,6 +50,12 @@ verified archive without running core tests or touching sibling products. Full
 binary scope contains 21 group tarballs plus the Darwin smoke ZIP. Release scope
 also requires the current successful independent source reconstruction; its sole
 checksum manifest is written only after all 23 payloads are present and verified.
+Standalone `make verify-release-archives` and release-scope checksum commands
+accept prior successful source reconstruction for the identical archive digest.
+Release production requires source reconstruction from its current operation.
+Filtered all-group tests run complete Core coverage once to establish the
+optional suites' prerequisite; optional filtered coverage never supplies full
+readiness or runs the unfiltered composition suite.
 
 The native workflow has separate source and final tagged producer-artifact lanes.
 Artifact handoff requires an unpublished authenticated draft, exact producer

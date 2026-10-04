@@ -77,13 +77,16 @@ def perform(action,group,preset,explicit,scope,scope_explicit,dependency):
         ver=subprocess.check_output(['bash',ROOT/'scripts/release-version.sh',ROOT],text=True).strip()
         command(['bash',ROOT/'scripts/source-archive-verify.sh',ROOT/'dist'/f'c.pkt.systems-{ver}.tar.gz',ver],'all')
     elif action in ('release-matrix','release-final-matrix'):
+        if action=='release-final-matrix':os.environ['CPKT_RELEASE_PRODUCTION']='1'
         child('package',scope='binary',explicit=False)
         if action=='release-final-matrix':child('package-source-smoke',explicit=False)
         final_scope='release' if action=='release-final-matrix' else 'binary'
         child('package-checksums',scope=final_scope,explicit=False)
         child('package-verify',scope=final_scope,explicit=False)
     elif action in ('release-pipeline','release','test-all'):
-        if action=='release':child('lifecycle-version-contract');child('clean')
+        if action=='release':
+            os.environ['CPKT_RELEASE_PRODUCTION']='1'
+            child('lifecycle-version-contract');child('clean')
         if action!='test-all':child('format');child('format-check')
         backend('preflight','all','debug')
         child('debug',preset='debug',explicit=False);child('e2e-postgres',preset='debug',explicit=False)
@@ -137,7 +140,7 @@ def main():
     if args.action in COMPLETE|SOURCE and (args.group!='all' or explicit):parser.error(args.action+' requires GROUP=all with no explicit PRESET narrowing')
     expected_scope='release' if args.action in ('release','release-final-matrix','verify-release-archives','verify-release-privacy') else 'binary' if args.action in COMPLETE else None
     if scope_explicit and expected_scope and args.scope!=expected_scope:parser.error(args.action+' requires SCOPE='+expected_scope)
-    if args.action in NATIVE and (args.preset not in ('debug','arm64-apple-darwin-native-debug') or configuration!='Debug'):parser.error(args.action+' requires native Debug PRESET')
+    if args.action in NATIVE and (args.preset not in ('debug','arm64-apple-darwin-debug') or configuration!='Debug'):parser.error(args.action+' requires native Debug PRESET')
     if args.action in ('package','package-verify','package-checksums','test-install-tree'):
         if args.group!='all' and (not explicit or configuration!='Release'):parser.error('selected packaging requires explicit release PRESET')
         if args.group=='all' and explicit:parser.error('all packaging rejects PRESET narrowing')

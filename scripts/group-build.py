@@ -494,7 +494,12 @@ def main():
             targets = (selected_targets[group] or None) if args.group == 'all' else args.target
             build(args.preset, group, targets, args.fresh)
         elif args.action == 'test':
-            test(args.preset, group, args.regex, args.label)
+            # Complete Core coverage supplies the prerequisite for optional
+            # filtered suites. Run it once; partial coverage cannot replace it.
+            if args.group == 'all' and group == 'core' and (args.regex or args.label):
+                test(args.preset, group)
+            else:
+                test(args.preset, group, args.regex, args.label)
         elif args.action == 'deps':
             prepare(args.preset, group, args.dependency)
             if args.group == 'all' and group == 'core' and not args.dependency:
@@ -505,7 +510,7 @@ def main():
         elif args.action == 'memcheck':
             memcheck(group,args.regex)
     if args.group == 'all' and args.action in ('configure', 'build', 'test', 'composition') and (
-            not args.target or selected_targets['all']):
+            not args.target or selected_targets['all']) and not (args.regex or args.label):
         environment(args.preset, 'all')
         directory = binary_dir(args.preset, 'all')
         arguments = configure_command(args.preset, 'all', directory)

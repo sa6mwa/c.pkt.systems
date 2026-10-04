@@ -15,6 +15,7 @@ import tempfile
 import unittest
 import urllib.error
 import zipfile
+from contextlib import nullcontext
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -414,6 +415,52 @@ class Fixtures(unittest.TestCase):
             self.assertNotEqual(result.returncode,0,args)
         after=(ROOT/'build/control/operation.lock').stat().st_ino if (ROOT/'build/control/operation.lock').exists() else None
         self.assertEqual(before,after)
+
+    def test_native_darwin_debug_uses_the_declared_preset(self):
+        import cpkt_lifecycle as lifecycle
+        for action in ('debug','build-debug','clangd-surface'):
+            with patch.object(sys,'argv',['lifecycle',action,'--group','core','--preset','arm64-apple-darwin-debug']),patch.dict(os.environ,{'CPKT_OPERATION_FD':'fixture'}),patch.object(lifecycle,'delegated'),patch.object(lifecycle,'backend') as backend,patch.object(lifecycle,'command'):
+                lifecycle.main()
+            backend.assert_called_once_with('test' if action=='debug' else 'build','core','arm64-apple-darwin-debug')
+
+    def test_release_production_enforces_same_run_source_evidence(self):
+        import cpkt_lifecycle as lifecycle
+        calls=[]
+        with patch.dict(os.environ,{},clear=False),patch.object(lifecycle,'command',side_effect=lambda args,group:calls.append((list(map(str,args)),os.environ.get('CPKT_RELEASE_PRODUCTION')))),patch.object(lifecycle,'backend'),patch.object(lifecycle.subprocess,'check_output',return_value='1.2.3\n'),patch.object(lifecycle,'child_delegation',side_effect=lambda root,group:nullcontext((dict(os.environ),()))),patch.object(lifecycle.subprocess,'run') as direct:
+            os.environ.pop('CPKT_RELEASE_PRODUCTION',None)
+            lifecycle.perform('release','all','debug',False,'',False,'')
+            self.assertTrue(all(call.kwargs['env']['CPKT_RELEASE_PRODUCTION']=='1' for call in direct.call_args_list))
+        self.assertTrue(calls)
+        self.assertTrue(all(flag=='1' for _,flag in calls))
+        for action in ('checksums','verify'):
+            self.assertTrue(any(action in args and 'release' in args for args,_ in calls))
+
+    def test_standalone_release_verification_accepts_prior_matching_source_proof(self):
+        import cpkt_packages as packages
+        root=self.work/'release-verification';dist=root/'dist';dist.mkdir(parents=True)
+        (root/'cmake').mkdir();shutil.copy2(ROOT/'cmake/components.json',root/'cmake/components.json')
+        ver='1.2.3'
+        for name in artifacts(ver,'release'):(dist/name).write_bytes(b'fixture '+name.encode())
+        source=dist/f'c.pkt.systems-{ver}.tar.gz'
+        proof={'schema_version':1,'status':'passed','kind':'source-reconstruction','archive_sha256':digest(source.read_bytes()),'release_version':ver,'run':'prior-run','coverage':{g:{'outputs':{'fixture':'compiled'},'tests':['executed'],'consumer_cases':[{'status':'passed','runtime':'native'}]} for g in ('core','db','misc')},'composition':{'status':'passed','combinations':[{'order':order,'consumer_cases':[{'status':'passed','runtime':'native'}]} for order in (['core'],['core','db'],['core','misc'],['core','db','misc'],['core','misc','db'])]}}
+        path=root/'build/verification/source'/ver/'proof.json';path.parent.mkdir(parents=True);path.write_text(json.dumps(proof))
+        with patch.object(packages,'ROOT',root),patch.object(packages,'delegated'),patch.object(packages,'privacy'),patch.object(packages,'combinations') as combinations,patch.dict(os.environ,{'CPKT_OPERATION_FD':'fixture','CPKT_OPERATION_RUN':'new-run'}):
+            os.environ.pop('CPKT_RELEASE_PRODUCTION',None)
+            for action in ('checksums','verify'):
+                with patch.object(sys,'argv',['packages',action,'--scope','release','--version',ver]):packages.main()
+            self.assertEqual(combinations.call_count,7)
+            self.assertEqual(json.loads(path.read_text())['run'],'prior-run')
+            artifact=root/'build/verification/release'/ver/'proof.json'
+            self.assertEqual(json.loads(artifact.read_text())['run'],'new-run')
+            combinations.reset_mock();os.environ['CPKT_RELEASE_PRODUCTION']='1'
+            for action in ('checksums','verify'):
+                with patch.object(sys,'argv',['packages',action,'--scope','release','--version',ver]),self.assertRaisesRegex(ValueError,'current successful independent source'):
+                    packages.main()
+            combinations.assert_not_called()
+            os.environ.pop('CPKT_RELEASE_PRODUCTION',None)
+            source.write_bytes(b'corrupted source archive')
+            with patch.object(sys,'argv',['packages','verify','--scope','release','--version',ver]),self.assertRaisesRegex(ValueError,'checksum mismatch'):
+                packages.main()
     def test_first_parent_cmake_priority(self):
         (self.work/'CMakePresets.json').write_text(json.dumps({'version':3,'configurePresets':[{'name':'first','hidden':True,'cacheVariables':{'CPKT_TARGET_ARCH':'x86_64','CPKT_TARGET_OS':'linux','CPKT_TARGET_LIBC':'gnu','CMAKE_BUILD_TYPE':'Release','FIXTURE':'first'}},{'name':'second','hidden':True,'cacheVariables':{'CPKT_TARGET_ARCH':'armhf','CPKT_TARGET_OS':'linux','CPKT_TARGET_LIBC':'musl','CMAKE_BUILD_TYPE':'Debug','FIXTURE':'second'}},{'name':'selected','inherits':['first','second'],'generator':'Ninja','binaryDir':str(self.work/'binary')}]}))
         (self.work/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.21)\nproject(priority NONE)\nfile(WRITE "${CMAKE_BINARY_DIR}/answer" "${FIXTURE};${CPKT_TARGET_ARCH};${CMAKE_BUILD_TYPE};${CPKT_TARGET_OS};${CPKT_TARGET_LIBC}")\n')

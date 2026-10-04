@@ -456,14 +456,14 @@ def source_proof(ver, current_run=True):
     return proof
 
 
-def checksum_snapshot(ver,scope,group=None,target=None):
+def checksum_snapshot(ver,scope,group=None,target=None,current_run=True):
     if scope=='selected':
         base=selected_archive(ver,target,group).parent
         names=[archive_name(ver,target,group)]
         destination=ROOT/'build/verification'/target/group/'CHECKSUMS'
     else:
         base=ROOT/'dist';names=artifacts(ver,scope)
-        if scope=='release':source_proof(ver)
+        if scope=='release':source_proof(ver,current_run)
         destination=base/f'c.pkt.systems-{ver}-CHECKSUMS' if scope=='release' else ROOT/'build/verification/binary'/ver/'CHECKSUMS'
     destination.parent.mkdir(parents=True,exist_ok=True)
     content=''.join(sha(base/name)+'  '+name+'\n' for name in names)
@@ -692,9 +692,10 @@ def main():
     delegated(ROOT,args.group)
     if args.preset:os.environ['CPKT_PRESET']=args.preset
     ver=args.version or version()
+    current_run=os.environ.get('CPKT_RELEASE_PRODUCTION')=='1'
     if args.action=='checksums':
-        snapshot,base=checksum_snapshot(ver,scope,args.group,target if args.preset else None)
-        check_snapshot(snapshot,base,ver,scope,args.group,target if args.preset else None);return
+        snapshot,base=checksum_snapshot(ver,scope,args.group,target if args.preset else None,current_run=current_run)
+        check_snapshot(snapshot,base,ver,scope,args.group,target if args.preset else None,current_run=current_run);return
     if args.action=='compose':
         if not args.preset or args.group!='all':parser.error('compose requires all and one release PRESET')
         combinations(args.preset,ver,args.base or ROOT/'dist');return
@@ -736,10 +737,10 @@ def main():
     else:
         base=ROOT/'dist'
         snapshot=base/f'c.pkt.systems-{ver}-CHECKSUMS' if scope=='release' else ROOT/'build/verification/binary'/ver/'CHECKSUMS'
-        check_snapshot(snapshot,base,ver,scope)
+        check_snapshot(snapshot,base,ver,scope,current_run=current_run)
         for target in data['package_targets']:combinations(target+'-release',ver,base)
         privacy([snapshot]+[base/name for name in artifacts(ver,scope)])
-        write_json(ROOT/'build/verification'/scope/ver/'proof.json',dict(schema_version=1,status='passed',kind='artifact-'+scope,scope=scope,run=os.environ['CPKT_OPERATION_RUN'],manifest_sha256=sha(snapshot),artifacts=check_snapshot(snapshot,base,ver,scope)))
+        write_json(ROOT/'build/verification'/scope/ver/'proof.json',dict(schema_version=1,status='passed',kind='artifact-'+scope,scope=scope,run=os.environ['CPKT_OPERATION_RUN'],manifest_sha256=sha(snapshot),artifacts=check_snapshot(snapshot,base,ver,scope,current_run=current_run)))
 
 
 if __name__=='__main__':
