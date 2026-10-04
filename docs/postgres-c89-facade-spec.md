@@ -26,6 +26,41 @@ also available for every supported connection, result, COPY, pipeline,
 prepared statement, escaping, notification, large-object, and fast-path
 operation.
 
+## Checked asynchronous results
+
+After `cpkt_postgres_send_query()`, use
+`cpkt_postgres_get_result_checked(connection, &result, &error)` when a NULL
+result cannot be mistaken for successful completion. It returns
+`CPKT_POSTGRES_RETRIEVAL_RESULT` with one owned result,
+`CPKT_POSTGRES_RETRIEVAL_DRAINED` at libpq's result-sequence boundary, or
+`CPKT_POSTGRES_RETRIEVAL_FAILED` for a connection or facade bookkeeping
+failure. On the last two outcomes, `result` is set to NULL. On every call the
+caller-owned `error` is reset; it can be omitted by passing NULL.
+For nonblocking connections, call `cpkt_postgres_consume_input()` and require
+`cpkt_postgres_is_busy()` to return 0 before retrieval. A checked retrieval
+called while busy can block waiting for the next complete result; it does not
+introduce a new readiness state. The existing socket poll, flush, consume,
+and busy methods remain the readiness interface.
+
+A server error is normally a **result**, with its status and SQLSTATE accessed
+through `cpkt_postgres_result_status_get()` and
+`cpkt_postgres_result_error_field()`. If the facade must discard that result
+because notice binding or event preparation failed, the checked call instead
+returns `FAILED`, sets `result_discarded`, and copies the result status,
+SQLSTATE (when present), and up to 511 bytes of server error text into
+`error`. `message_truncated` reports text truncation. This error record does
+not allocate memory. A failed call is not latched: another call can fetch a
+later result, but it cannot recover the discarded one and must not treat the
+query as successful. Drain to the next native NULL boundary, reset, or close
+the connection before reuse. A pipeline boundary can have further results.
+
+For a receiver, call `cpkt_postgres_receive_checked(pg, &result, &error)`;
+it has the same contract and delegates through its owned connection. Existing `pg->receive(pg)` and
+`cpkt_postgres_get_result()` return NULL for both drainage and an internal
+retrieval failure; do not use their NULL return as proof of successful async
+completion. Each returned result remains owned until
+`cpkt_postgres_result_free()` and may outlive its connection.
+
 ## Diagnostic and trace delivery
 
 Register `cpkt_postgres_set_default_diagnostic_sink()` before creating a

@@ -22,6 +22,8 @@ void cpkt_postgres_notice_callback_end(cpkt_postgres_callback_result *scope);
 
 /* Private allocation boundary used by native-peer fault regressions. */
 void *cpkt_postgres_event_allocate(size_t size);
+/* Private result binding allocation boundary for native-peer fault tests. */
+void *cpkt_postgres_result_binding_allocate(size_t size);
 
 /* Prepare result state without firing RESULTCREATE for application-created
  * results. These helpers are private to the PostgreSQL facade. */

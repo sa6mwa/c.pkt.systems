@@ -4,6 +4,106 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(CPKT_POSTGRES_RETRIEVAL_E2E_FAULT)
+static int fail_next_binding;
+void *__real_cpkt_postgres_result_binding_allocate(size_t size);
+void *__wrap_cpkt_postgres_result_binding_allocate(size_t size) {
+  if (fail_next_binding) {
+    fail_next_binding = 0;
+    return NULL;
+  }
+  return __real_cpkt_postgres_result_binding_allocate(size);
+}
+#endif
+
+static int checked_result_retrieval(cpkt_postgres *receiver) {
+  cpkt_postgres_connection *connection;
+  cpkt_postgres_retrieval_error error;
+  cpkt_postgres_retrieval_status status;
+  cpkt_postgres_result *result;
+  int rows;
+  int terminals;
+  int ok;
+
+  connection = receiver->connection;
+  if (!cpkt_postgres_send_query(connection, "SELECT 1 UNION ALL SELECT 2") ||
+      !cpkt_postgres_set_single_row_mode(connection))
+    return 0;
+  rows = terminals = 0;
+  ok = 1;
+  do {
+    result = (cpkt_postgres_result *)1;
+    status = cpkt_postgres_receive_checked(receiver, &result, &error);
+    if (status == CPKT_POSTGRES_RETRIEVAL_RESULT) {
+      if (result == NULL || error.code != CPKT_POSTGRES_RETRIEVAL_ERROR_NONE)
+        ok = 0;
+      else if (cpkt_postgres_result_status_get(result) ==
+               CPKT_POSTGRES_RESULT_SINGLE_TUPLE)
+        ++rows;
+      else if (cpkt_postgres_result_status_get(result) ==
+               CPKT_POSTGRES_RESULT_TUPLES_OK)
+        ++terminals;
+      else
+        ok = 0;
+      cpkt_postgres_result_free(result);
+    } else if (status != CPKT_POSTGRES_RETRIEVAL_DRAINED || result != NULL ||
+               error.code != CPKT_POSTGRES_RETRIEVAL_ERROR_NONE)
+      ok = 0;
+  } while (status == CPKT_POSTGRES_RETRIEVAL_RESULT);
+  if (rows != 2 || terminals != 1)
+    ok = 0;
+  if (!ok)
+    fprintf(stderr,
+            "checked retrieval rows=%d terminals=%d final_status=%d error=%d\n",
+            rows, terminals, (int)status, (int)error.code);
+
+  if (!cpkt_postgres_send_query(connection, "SELECT 1/0"))
+    return 0;
+  status = cpkt_postgres_get_result_checked(connection, &result, &error);
+  if (status != CPKT_POSTGRES_RETRIEVAL_RESULT || result == NULL ||
+      cpkt_postgres_result_status_get(result) !=
+          CPKT_POSTGRES_RESULT_FATAL_ERROR ||
+      cpkt_postgres_result_error_field(result, CPKT_POSTGRES_DIAG_SQLSTATE) ==
+          NULL ||
+      strcmp(
+          cpkt_postgres_result_error_field(result, CPKT_POSTGRES_DIAG_SQLSTATE),
+          "22012") != 0)
+    ok = 0;
+  cpkt_postgres_result_free(result);
+  status = cpkt_postgres_get_result_checked(connection, &result, &error);
+  if (status != CPKT_POSTGRES_RETRIEVAL_DRAINED || result != NULL)
+    ok = 0;
+  if (!ok)
+    fprintf(stderr, "checked retrieval server status=%d error=%d\n",
+            (int)status, (int)error.code);
+
+#if defined(CPKT_POSTGRES_RETRIEVAL_E2E_FAULT)
+  if (!cpkt_postgres_send_query(connection, "SELECT 1/0"))
+    return 0;
+  fail_next_binding = 1;
+  result = (cpkt_postgres_result *)1;
+  status = cpkt_postgres_get_result_checked(connection, &result, &error);
+  if (status != CPKT_POSTGRES_RETRIEVAL_FAILED || result != NULL ||
+      error.code != CPKT_POSTGRES_RETRIEVAL_ERROR_NOTICE_BINDING ||
+      !error.result_discarded ||
+      error.discarded_status != CPKT_POSTGRES_RESULT_FATAL_ERROR ||
+      strcmp(error.sqlstate, "22012") != 0 || error.server_message[0] == '\0' ||
+      fail_next_binding)
+    ok = 0;
+  if (!ok)
+    fprintf(stderr,
+            "checked retrieval fault status=%d error=%d discarded=%d "
+            "result_status=%d sqlstate=%s\n",
+            (int)status, (int)error.code, error.result_discarded,
+            (int)error.discarded_status, error.sqlstate);
+  status = cpkt_postgres_get_result_checked(connection, &result, &error);
+  if (status != CPKT_POSTGRES_RETRIEVAL_DRAINED || result != NULL ||
+      error.code != CPKT_POSTGRES_RETRIEVAL_ERROR_NONE)
+    ok = 0;
+#endif
+  return ok;
+}
+
 static int require_value(const cpkt_postgres_result *result,
                          const char *expected) {
   char *value;
@@ -605,11 +705,13 @@ static int run_integration(const char *server_name,
                                    &events) == NULL)
     ok = 0;
   if (!shared_metadata_and_errors(pg->connection) ||
-      !protocol_trace_smoke(pg->connection) ||
+      !protocol_trace_smoke(pg->connection) || !checked_result_retrieval(pg) ||
       !shared_single_rows(pg->connection) ||
       !shared_chunked_rows(pg->connection) ||
       !shared_escaping(pg->connection) || !shared_nonblocking(pg->connection))
     ok = 0;
+  if (!ok)
+    fprintf(stderr, "%s: initial integration stage failed\n", server_name);
   result = pg->tx(pg, "SELECT 1");
   if (!require_value(result, "1")) {
     ok = 0;
@@ -664,12 +766,25 @@ static int run_integration(const char *server_name,
   }
   cpkt_postgres_result_free(result);
 
-  if (strcmp(server_name, "postgresql") == 0 &&
-      (!postgres_pipeline(pg->connection) || !postgres_copy(pg->connection) ||
-       !postgres_large_object(pg->connection) ||
-       !postgres_notice_and_notify(pg->connection, &notice_copy, &notice) ||
-       !postgres_cancel_and_reset(pg->connection)))
-    ok = 0;
+  if (strcmp(server_name, "postgresql") == 0) {
+    const char *extended_failure;
+    extended_failure = NULL;
+    if (!postgres_pipeline(pg->connection))
+      extended_failure = "pipeline";
+    else if (!postgres_copy(pg->connection))
+      extended_failure = "copy";
+    else if (!postgres_large_object(pg->connection))
+      extended_failure = "large object";
+    else if (!postgres_notice_and_notify(pg->connection, &notice_copy, &notice))
+      extended_failure = "notice/notify";
+    else if (!postgres_cancel_and_reset(pg->connection))
+      extended_failure = "cancel/reset";
+    if (extended_failure != NULL) {
+      fprintf(stderr, "%s: extended integration failure: %s\n", server_name,
+              extended_failure);
+      ok = 0;
+    }
+  }
 
   pg->close(pg);
   if (notice_copy != NULL) {
@@ -682,6 +797,12 @@ static int run_integration(const char *server_name,
   if (events.registrations != 1 || events.results < 5 ||
       events.destroyed != events.results || events.failures != 0)
     ok = 0;
+  if (!ok)
+    fprintf(stderr,
+            "%s: event counts registrations=%d results=%d destroyed=%d "
+            "failures=%d\n",
+            server_name, events.registrations, events.results, events.destroyed,
+            events.failures);
   if (!ok) {
     fprintf(stderr, "%s: PostgreSQL-wire integration assertion failed\n",
             server_name);

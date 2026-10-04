@@ -3209,6 +3209,17 @@
         "tests/postgres_tracking_lifetime_test.c"
       ]
     },
+    "cpkt_postgres_result_retrieval_native_peer": {
+      "group": "db",
+      "kind": "add_executable",
+      "public": false,
+      "requires": [
+        "core"
+      ],
+      "source_inputs": [
+        "tests/postgres_result_retrieval_native_peer.c"
+      ]
+    },
     "cpkt_postgres_event_address_reuse_test": {
       "group": "db",
       "kind": "add_executable",
@@ -5966,6 +5977,26 @@
       "registrations": [
         {
           "name": "postgres_event_allocation",
+          "conditions": [
+            "CPKT_BUILD_TESTS",
+            "CPKT_CAN_RUN_TARGET_EXECUTABLES",
+            "CPKT_BUILD_TESTS",
+            "CMAKE_SYSTEM_NAME STREQUAL \"Linux\""
+          ]
+        }
+      ],
+      "target_sensitive": false
+    },
+    "postgres_result_retrieval_native_peer": {
+      "group": "db",
+      "command_inputs": [],
+      "execution": "runtime",
+      "requires": [
+        "core"
+      ],
+      "registrations": [
+        {
+          "name": "postgres_result_retrieval_native_peer",
           "conditions": [
             "CPKT_BUILD_TESTS",
             "CPKT_CAN_RUN_TARGET_EXECUTABLES",

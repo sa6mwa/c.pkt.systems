@@ -320,9 +320,43 @@ static void cpkt_postgres_release_detached_notice_binding(
 
 /* A PGresult copies libpq's notice arguments when it is created. Keep every
  * snapshot for a connection until that connection and its results are gone. */
+static void
+cpkt_postgres_record_retrieval_failure(cpkt_postgres_retrieval_error *error,
+                                       cpkt_postgres_retrieval_error_code code,
+                                       const PGresult *result) {
+  const char *sqlstate;
+  const char *message;
+  size_t length;
+  if (error == NULL)
+    return;
+  error->code = code;
+  if (result == NULL)
+    return;
+  error->result_discarded = 1;
+  error->discarded_status = (cpkt_postgres_result_status)PQresultStatus(result);
+  sqlstate = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+  if (sqlstate != NULL) {
+    length = strlen(sqlstate);
+    if (length >= sizeof(error->sqlstate))
+      length = sizeof(error->sqlstate) - 1U;
+    memcpy(error->sqlstate, sqlstate, length);
+    error->sqlstate[length] = '\0';
+  }
+  message = PQresultErrorMessage(result);
+  if (message != NULL) {
+    length = strlen(message);
+    error->message_truncated = length >= sizeof(error->server_message);
+    if (error->message_truncated)
+      length = sizeof(error->server_message) - 1U;
+    memcpy(error->server_message, message, length);
+    error->server_message[length] = '\0';
+  }
+}
+
 static cpkt_postgres_result *
-cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
-                           const PGresult *source) {
+cpkt_postgres_track_result_checked(PGresult *result, const PGconn *connection,
+                                   const PGresult *source,
+                                   cpkt_postgres_retrieval_error *error) {
   cpkt_postgres_notice_binding *binding;
   cpkt_postgres_result_binding *entry;
   cpkt_postgres_pending_clear pending;
@@ -337,7 +371,9 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
     binding = cpkt_postgres_find_result_notice_owner_locked(source);
   entry = NULL;
   if (binding != NULL) {
-    entry = (cpkt_postgres_result_binding *)malloc(sizeof(*entry));
+    entry =
+        (cpkt_postgres_result_binding *)cpkt_postgres_result_binding_allocate(
+            sizeof(*entry));
     if (entry != NULL) {
       entry->result = result;
       entry->owner = binding;
@@ -350,16 +386,26 @@ cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
   }
   cpkt_postgres_hook_lock_release();
   if (binding != NULL && entry == NULL) {
+    cpkt_postgres_record_retrieval_failure(
+        error, CPKT_POSTGRES_RETRIEVAL_ERROR_NOTICE_BINDING, result);
     cpkt_postgres_event_release_uninitialized(result);
     PQclear(result);
     cpkt_postgres_pending_clear_end(&pending);
     return NULL;
   }
   if (!cpkt_postgres_event_prepare_result((PGconn *)connection, result)) {
+    cpkt_postgres_record_retrieval_failure(
+        error, CPKT_POSTGRES_RETRIEVAL_ERROR_EVENT_PREPARATION, result);
     cpkt_postgres_result_free((cpkt_postgres_result *)result);
     return NULL;
   }
   return (cpkt_postgres_result *)result;
+}
+
+static cpkt_postgres_result *
+cpkt_postgres_track_result(PGresult *result, const PGconn *connection,
+                           const PGresult *source) {
+  return cpkt_postgres_track_result_checked(result, connection, source, NULL);
 }
 
 static void cpkt_postgres_native_notice_receiver(void *argument,
@@ -1782,6 +1828,46 @@ cpkt_postgres_get_result(cpkt_postgres_connection *connection) {
   native_connection = cpkt_postgres_native_connection(connection);
   return cpkt_postgres_track_result(PQgetResult(native_connection),
                                     native_connection, NULL);
+}
+/** Checked asynchronous retrieval preserves the native one-result-at-a-time
+ * mechanism while making facade failures distinct from drainage. */
+cpkt_postgres_retrieval_status
+cpkt_postgres_get_result_checked(cpkt_postgres_connection *connection,
+                                 cpkt_postgres_result **result_out,
+                                 cpkt_postgres_retrieval_error *error_out) {
+  PGconn *native_connection;
+  PGresult *native_result;
+  if (result_out != NULL)
+    *result_out = NULL;
+  if (error_out != NULL)
+    memset(error_out, 0, sizeof(*error_out));
+  if (connection == NULL || result_out == NULL) {
+    cpkt_postgres_record_retrieval_failure(
+        error_out, CPKT_POSTGRES_RETRIEVAL_ERROR_ARGUMENT, NULL);
+    return CPKT_POSTGRES_RETRIEVAL_FAILED;
+  }
+  native_connection = cpkt_postgres_native_connection(connection);
+  native_result = PQgetResult(native_connection);
+  if (native_result == NULL) {
+    if (PQstatus(native_connection) == CONNECTION_BAD) {
+      cpkt_postgres_record_retrieval_failure(
+          error_out, CPKT_POSTGRES_RETRIEVAL_ERROR_CONNECTION, NULL);
+      return CPKT_POSTGRES_RETRIEVAL_FAILED;
+    }
+    return CPKT_POSTGRES_RETRIEVAL_DRAINED;
+  }
+  *result_out = cpkt_postgres_track_result_checked(
+      native_result, native_connection, NULL, error_out);
+  return *result_out != NULL ? CPKT_POSTGRES_RETRIEVAL_RESULT
+                             : CPKT_POSTGRES_RETRIEVAL_FAILED;
+}
+/** Receiver entry point for the checked asynchronous retrieval contract. */
+cpkt_postgres_retrieval_status
+cpkt_postgres_receive_checked(cpkt_postgres *receiver,
+                              cpkt_postgres_result **result_out,
+                              cpkt_postgres_retrieval_error *error_out) {
+  return cpkt_postgres_get_result_checked(
+      receiver == NULL ? NULL : receiver->connection, result_out, error_out);
 }
 /** Implements the documented public C89 PostgreSQL facade operation
  * cpkt_postgres_is_busy. */

@@ -223,6 +223,36 @@ typedef enum cpkt_postgres_result_status {
   CPKT_POSTGRES_RESULT_TUPLES_CHUNK = 12
 } cpkt_postgres_result_status;
 
+/** Outcome of one checked asynchronous result retrieval. A drained boundary
+ * ends the current native result sequence; pipeline mode can have more later.
+ */
+typedef enum cpkt_postgres_retrieval_status {
+  CPKT_POSTGRES_RETRIEVAL_FAILED = -1,
+  CPKT_POSTGRES_RETRIEVAL_DRAINED = 0,
+  CPKT_POSTGRES_RETRIEVAL_RESULT = 1
+} cpkt_postgres_retrieval_status;
+
+/** Allocation and transport failures reported without another allocation. */
+typedef enum cpkt_postgres_retrieval_error_code {
+  CPKT_POSTGRES_RETRIEVAL_ERROR_NONE = 0,
+  CPKT_POSTGRES_RETRIEVAL_ERROR_ARGUMENT = 1,
+  CPKT_POSTGRES_RETRIEVAL_ERROR_CONNECTION = 2,
+  CPKT_POSTGRES_RETRIEVAL_ERROR_NOTICE_BINDING = 3,
+  CPKT_POSTGRES_RETRIEVAL_ERROR_EVENT_PREPARATION = 4
+} cpkt_postgres_retrieval_error_code;
+
+/** Caller-owned, allocation-free diagnostic for checked retrieval. SQLSTATE
+ * and server_message come from a discarded native result if available. Empty
+ * SQLSTATE means the server supplied none. Text may be truncated. */
+typedef struct cpkt_postgres_retrieval_error {
+  cpkt_postgres_retrieval_error_code code;
+  cpkt_postgres_result_status discarded_status;
+  int result_discarded;
+  int message_truncated;
+  char sqlstate[6];
+  char server_message[512];
+} cpkt_postgres_retrieval_error;
+
 /** Transaction state of a live connection. */
 typedef enum cpkt_postgres_transaction_status {
   CPKT_POSTGRES_TRANSACTION_IDLE = 0,
@@ -340,7 +370,8 @@ struct cpkt_postgres {
                      const char *const *parameter_values,
                      const int *parameter_lengths, const int *parameter_formats,
                      int result_format);
-  /** Returns the next owned result, or NULL after all results are drained. */
+  /** Legacy retrieval: NULL also covers client/facade failure. Prefer
+   * cpkt_postgres_receive_checked(self, ...) for async work. */
   cpkt_postgres_result *(*receive)(cpkt_postgres *self);
   /** Reads available network input into connection state. */
   int (*consume)(cpkt_postgres *self);
@@ -758,9 +789,30 @@ int cpkt_postgres_set_single_row_mode(cpkt_postgres_connection *connection);
 /** Requests results in bounded row chunks for the active async query. */
 int cpkt_postgres_set_chunked_rows_mode(cpkt_postgres_connection *connection,
                                         int chunk_size);
-/** Returns the next owned async result; NULL means the query is drained. */
+/** Legacy retrieval: NULL can mean drainage or an unrecoverable client/facade
+ * retrieval failure. Prefer the checked operation for async queries. */
 cpkt_postgres_result *
 cpkt_postgres_get_result(cpkt_postgres_connection *connection);
+/** Retrieve one owned result, a native drainage boundary, or a failure. Call
+ * consume_input() and require is_busy() == 0 first for nonblocking connections;
+ * retrieval may otherwise block waiting for a complete result. Set
+ * *result_out to NULL for both non-result outcomes. error_out may be NULL;
+ * when supplied it is fully reset on each call. A discarded result's status,
+ * SQLSTATE and server message are copied before destruction. After FAILED,
+ * retrying may fetch a later result but cannot recover the discarded one; the
+ * caller must not treat that sequence as successful. Drain to a native NULL
+ * boundary, reset, or close the connection. Failure is per-call, not latched.
+ * The same function accepts receiver->connection without changing shell ABI. */
+cpkt_postgres_retrieval_status
+cpkt_postgres_get_result_checked(cpkt_postgres_connection *connection,
+                                 cpkt_postgres_result **result_out,
+                                 cpkt_postgres_retrieval_error *error_out);
+/** Receiver form of checked retrieval with the same result and error contract.
+ * No receiver shell layout change is required. */
+cpkt_postgres_retrieval_status
+cpkt_postgres_receive_checked(cpkt_postgres *receiver,
+                              cpkt_postgres_result **result_out,
+                              cpkt_postgres_retrieval_error *error_out);
 /** Reports whether more input is needed before get_result() can proceed. */
 int cpkt_postgres_is_busy(cpkt_postgres_connection *connection);
 /** Reads pending socket data into the provider's connection state. */

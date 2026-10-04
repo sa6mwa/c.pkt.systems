@@ -2107,6 +2107,18 @@ if(CPKT_BUILD_TESTS)
         CPKT_POSTGRES_NOTICE_FAULT_INJECTION=1)
       cpkt_group_target_command(target_link_libraries cpkt_postgres_event_allocation_test PRIVATE
         cpkt_postgres_static)
+      cpkt_group_add_executable(cpkt_postgres_result_retrieval_native_peer
+        tests/postgres_result_retrieval_native_peer.c)
+      cpkt_group_use_local_runtime(cpkt_postgres_result_retrieval_native_peer)
+      cpkt_add_repo_warning_errors(cpkt_postgres_result_retrieval_native_peer)
+      cpkt_group_target_command(target_include_directories cpkt_postgres_result_retrieval_native_peer PRIVATE
+        "$<TARGET_PROPERTY:cpkt::postgresql_static,INTERFACE_INCLUDE_DIRECTORIES>")
+      cpkt_group_target_command(target_link_options cpkt_postgres_result_retrieval_native_peer PRIVATE
+        "-Wl,--wrap=PQgetResult" "-Wl,--wrap=PQstatus"
+        "-Wl,--wrap=cpkt_postgres_result_binding_allocate"
+        "-Wl,--wrap=cpkt_postgres_event_prepare_result")
+      cpkt_group_target_command(target_link_libraries cpkt_postgres_result_retrieval_native_peer PRIVATE
+        cpkt_postgres_static)
       cpkt_group_add_executable(cpkt_postgres_event_address_reuse_test
         tests/postgres_event_address_reuse_test.c)
       cpkt_group_use_local_runtime(cpkt_postgres_event_address_reuse_test)
@@ -2134,6 +2146,12 @@ if(CPKT_BUILD_TESTS)
     cpkt_group_target_command(target_compile_options cpkt_postgres_integration_test PRIVATE -std=c89)
     cpkt_add_repo_warning_errors(cpkt_postgres_integration_test)
     cpkt_group_target_command(target_link_libraries cpkt_postgres_integration_test PRIVATE cpkt_postgres_static)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      cpkt_group_target_command(target_compile_definitions cpkt_postgres_integration_test PRIVATE
+        CPKT_POSTGRES_RETRIEVAL_E2E_FAULT=1)
+      cpkt_group_target_command(target_link_options cpkt_postgres_integration_test PRIVATE
+        "-Wl,--wrap=cpkt_postgres_result_binding_allocate")
+    endif()
     cpkt_group_add_executable(cpkt_postgres_oauth_module_test
       tests/postgres_oauth_module_test.c)
     if(CPKT_BUILD_DEPENDENCIES)
@@ -3006,6 +3024,8 @@ if(CPKT_BUILD_TESTS)
           COMMAND cpkt_postgres_notice_event_lifetime_test)
         cpkt_group_add_test(NAME postgres_event_allocation
           COMMAND cpkt_postgres_event_allocation_test)
+        cpkt_group_add_test(NAME postgres_result_retrieval_native_peer
+          COMMAND cpkt_postgres_result_retrieval_native_peer)
         cpkt_group_add_test(NAME postgres_event_address_reuse
           COMMAND cpkt_postgres_event_address_reuse_test)
         cpkt_group_add_test(NAME postgres_oauth_cleanup
@@ -3369,6 +3389,7 @@ if(CPKT_BUILD_TESTS)
           LABELS "facade;memcheck")
         cpkt_group_set_tests_properties(sqlite_auto_extension_lock_order
           postgres_oauth_cleanup postgres_event_allocation
+          postgres_result_retrieval_native_peer
           postgres_event_address_reuse PROPERTIES
           LABELS "facade;memcheck")
       endif()

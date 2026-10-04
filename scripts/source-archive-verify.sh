@@ -192,6 +192,7 @@ for required in \
   tests/db_export_policy_test.sh \
   tests/postgres_events_test.c \
   tests/postgres_event_allocation_test.c \
+  tests/postgres_result_retrieval_native_peer.c \
   tests/postgres_event_concurrent_release_test.c \
   tests/sqlite_native_views_test.c \
   tests/sqlite_completion_test.c \
