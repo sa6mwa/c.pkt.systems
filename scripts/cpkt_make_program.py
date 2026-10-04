@@ -12,7 +12,6 @@ from cpkt_inventory import components_for, load
 def main():
     root = Path(__file__).resolve().parent.parent
     group = os.environ['CPKT_OPERATION_SCOPE']
-    delegated(root, group)
     configured = None
     for directory in (Path.cwd(), *Path.cwd().parents):
         if not directory.is_relative_to(root):
@@ -27,6 +26,9 @@ def main():
         configured = {'CPKT_NATIVE_MAKE_PROGRAM': os.environ['CPKT_NATIVE_MAKE_PROGRAM']}
     if configured is None:
         raise RuntimeError('configured native build tool is missing')
+    # Generated clean rules have no later launcher. Authenticate the graph's
+    # actual owner before allowing either cleanup or ordinary native builds.
+    delegated(root, configured.get('CPKT_GROUP', group))
     native = Path(configured['CPKT_NATIVE_MAKE_PROGRAM']).resolve()
     if native == Path(__file__).resolve() or not native.is_file():
         raise RuntimeError('configured native build tool is invalid')

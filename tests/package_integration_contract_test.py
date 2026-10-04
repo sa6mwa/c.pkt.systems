@@ -304,6 +304,19 @@ class Fixtures(unittest.TestCase):
         for prop in ('IMPORTED_LOCATION_RELEASE','IMPORTED_IMPLIB_RELEASE'):
             (source/'CMakeLists.txt').write_text(base+'cpkt_sdk_validate(core)\nadd_library(configured_host STATIC IMPORTED)\nset_target_properties(configured_host PROPERTIES IMPORTED_CONFIGURATIONS RELEASE '+prop+' "'+str(self.work/'host/libcore.a')+'")\ncpkt_sdk_assert_targets(core)\n')
             result=configure(prop);self.assertNotEqual(result.returncode,0);self.assertIn('outside validated prefix',' '.join(result.stderr.split()))
+        (source/'host').mkdir()
+        (source/'consumer').mkdir()
+        (source/'host/CMakeLists.txt').write_text('add_library(sibling_host STATIC IMPORTED GLOBAL)\n'
+            'set_target_properties(sibling_host PROPERTIES IMPORTED_LOCATION "'+str(self.work/'host/libcore.a')+'")\n')
+        (source/'consumer/CMakeLists.txt').write_text('include("'+str(module)+'")\ncpkt_sdk_assert_targets(core)\n')
+        (source/'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.21)\nproject(sibling_import NONE)\n'
+            'add_subdirectory(host)\nadd_subdirectory(consumer)\n')
+        result=configure('sibling-global-host')
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('outside validated prefix',' '.join(result.stderr.split()))
+        (source/'host/CMakeLists.txt').write_text((source/'host/CMakeLists.txt').read_text().replace('IMPORTED GLOBAL','IMPORTED'))
+        result=configure('sibling-local-host')
+        self.assertEqual(result.returncode,0,result.stderr)
         # A literal comma is valid in an ordinary installed prefix.
         comma=p.with_name(p.name+',installed');p.rename(comma)
         comma_module=comma/module.relative_to(p);comma_library=comma/library.relative_to(p)

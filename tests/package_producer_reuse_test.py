@@ -252,6 +252,13 @@ endif()
         for selected_group in ('core','db','misc'):
             invoke(root,'test','--group',selected_group,'--preset','debug',env=env)
         ordinary={g:(root/'build/verification/x86_64-linux-gnu'/g/'Debug-development.json').read_bytes() for g in ('core','db','misc')}
+        misc_binary=root/'build/x86_64-linux-gnu/misc/Debug/cpkt_misc_probe'
+        crossed=subprocess.run([sys.executable,str(root/'scripts/cpkt_operation.py'),
+            '--group','core','--','cmake','--build',str(misc_binary.parent),'--target','clean'],
+            cwd=root,env=env,text=True,capture_output=True)
+        assert crossed.returncode and 'child scope widens' in crossed.stdout+crossed.stderr
+        assert misc_binary.is_file()
+        assert ordinary['misc']==(root/'build/verification/x86_64-linux-gnu/misc/Debug-development.json').read_bytes()
         invoke(root,'configure','--group','all','--preset','valgrind',env=env)
         invoke(root,'build','--group','core','--preset','fuzz',env=env)
         for repetition in range(2):
