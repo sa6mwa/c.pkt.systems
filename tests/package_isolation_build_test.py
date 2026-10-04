@@ -30,7 +30,7 @@ class Isolation(unittest.TestCase):
         (self.root / 'cmake').mkdir()
         shutil.copy(ROOT / 'cmake/components.json', self.root / 'cmake/components.json')
         (self.root / 'scripts').mkdir()
-        for name in ('cpkt_operation.py','cpkt_inventory.py','cpkt_receipts.py','cpkt_helper_proof.py','cpkt_helper_dispatch.py','cpkt_cmake_inputs.py','cpkt_clangd_check.py'):
+        for name in ('cpkt_operation.py','cpkt_inventory.py','cpkt_receipts.py','cpkt_helper_proof.py','cpkt_helper_dispatch.py','cpkt_cmake_inputs.py','cpkt_clangd_check.py','cpkt_make_program.py'):
             shutil.copy(ROOT / 'scripts' / name, self.root / 'scripts' / name)
 
     def tearDown(self):
@@ -184,7 +184,7 @@ class Isolation(unittest.TestCase):
         self.assertEqual(before,events.read_bytes() if events.is_file() else None)
 
     def test_public_graph_omissions_link_edges_and_mock_privacy(self):
-        for name in ('CpktGroups.cmake','CpktOperation.cmake'):
+        for name in ('CpktGroups.cmake','CpktOperation.cmake','CpktPackage.cmake'):
             shutil.copy(ROOT/'cmake'/name,self.root/'cmake'/name)
         shutil.copy(ROOT/'scripts/cpkt_configure_guard.py',self.root/'scripts/cpkt_configure_guard.py')
         data={'schema_version':1,'components':{},
@@ -192,6 +192,7 @@ class Isolation(unittest.TestCase):
             'targets':{name:{'group':owner,'public':public,'kind':'facade'} for name,owner,public in (
                 ('cpkt_public','core',True),('cpkt_optional','misc',False),('cpkt_cmocka_mock','core',False))},
             'tests':{'unused':{'group':'core','execution':'compile','requires':[]}}}
+        data['targets']['package-bundle']={'group':'all','public':False,'kind':'add_custom_target'}
         (self.root/'cmake/components.json').write_text(json.dumps(data))
         (self.root/'probe.c').write_text('int probe(void) { return 0; }\n')
         prefix='''cmake_minimum_required(VERSION 3.21)
@@ -200,6 +201,7 @@ include(cmake/CpktOperation.cmake)
 project(graph C)
 set(CPKT_BUILD_TESTS OFF)
 add_custom_target(cpkt_operation_guard)
+include(cmake/CpktPackage.cmake)
 '''
         cases=[('', 'Missing required public inventory target'),
             ('add_library(cpkt_public STATIC probe.c)\nadd_library(cpkt_optional STATIC probe.c)\ntarget_link_libraries(cpkt_public PUBLIC cpkt_optional)\n','Forbidden group linkage'),
@@ -214,6 +216,9 @@ add_custom_target(cpkt_operation_guard)
                 self.assertIn(failure,result.stdout+result.stderr)
             else:
                 self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+                available=self.command('core','cmake','--build',str(self.root/'build'/str(index)),'--target','help')
+                self.assertEqual(0,available.returncode,available.stdout+available.stderr)
+                self.assertIn('package-bundle',available.stdout)
         result=self.command('db','cmake','-S',str(self.root),'-B',
             str(self.root/'build/x86_64-linux-gnu/core/Debug'),'-DCPKT_GROUP=db',
             '-DCPKT_TARGET_ID=x86_64-linux-gnu')
@@ -327,6 +332,14 @@ add_custom_target(cpkt_operation_guard)
             str(osxcross)+'/lib'])
         result=subprocess.run(command,shell=True,capture_output=True,text=True)
         self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+
+    def test_darwin_package_preset_uses_registered_target(self):
+        presets=json.loads((ROOT/'CMakePresets.json').read_text())
+        selected=next(item for item in presets['buildPresets']
+                      if item['name']=='package-arm64-apple-darwin-release')
+        self.assertEqual(['package-bundle'],selected['targets'])
+        self.assertIn('add_custom_target(package-bundle',
+                      (ROOT/'cmake/CpktPackage.cmake').read_text())
 
     def test_output_content_symlink_and_partial_records(self):
         install = self.root / 'install'

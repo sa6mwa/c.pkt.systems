@@ -50,3 +50,25 @@ string(STRIP "${_cpkt_build_launcher}" _cpkt_build_launcher)
 set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${_cpkt_build_launcher}")
 set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${_cpkt_build_launcher}")
 set_property(GLOBAL PROPERTY RULE_LAUNCH_CUSTOM "${_cpkt_build_launcher}")
+
+# CMake's generated clean rules do not use RULE_LAUNCH_*. Route cmake --build
+# through a delegated make program so clean and --clean-first cannot mutate
+# this repository without the same operation lock as ordinary build rules.
+if(CMAKE_GENERATOR STREQUAL "Ninja" OR CMAKE_GENERATOR STREQUAL "Unix Makefiles")
+  set(_cpkt_make_wrapper "${CMAKE_SOURCE_DIR}/scripts/cpkt_make_program.py")
+  if(NOT CPKT_NATIVE_MAKE_PROGRAM)
+    if(CMAKE_MAKE_PROGRAM AND NOT CMAKE_MAKE_PROGRAM STREQUAL _cpkt_make_wrapper)
+      set(_cpkt_native_make_program "${CMAKE_MAKE_PROGRAM}")
+    elseif(CMAKE_GENERATOR STREQUAL "Ninja")
+      find_program(_cpkt_native_make_program NAMES ninja REQUIRED)
+    else()
+      find_program(_cpkt_native_make_program NAMES gmake make REQUIRED)
+    endif()
+    set(CPKT_NATIVE_MAKE_PROGRAM "${_cpkt_native_make_program}" CACHE FILEPATH
+      "Native build tool behind the repository operation guard")
+  endif()
+  # Compiler probes run before the parent CMakeCache is written.
+  set(ENV{CPKT_NATIVE_MAKE_PROGRAM} "${CPKT_NATIVE_MAKE_PROGRAM}")
+  set(CMAKE_MAKE_PROGRAM "${_cpkt_make_wrapper}" CACHE FILEPATH
+    "Delegated build tool for this repository" FORCE)
+endif()

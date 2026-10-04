@@ -3044,15 +3044,6 @@
         "tests/openssl_record_boundary_test.c"
       ]
     },
-    "package-darwin-smoke-test": {
-      "group": "misc",
-      "kind": "add_custom_target",
-      "public": false,
-      "requires": [
-        "core"
-      ],
-      "source_inputs": []
-    },
     "cpkt_abi_test_shared": {
       "group": "misc",
       "kind": "add_executable",

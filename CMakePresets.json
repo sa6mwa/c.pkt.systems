@@ -270,8 +270,7 @@
       "name": "package-arm64-apple-darwin-release",
       "configurePreset": "arm64-apple-darwin-release",
       "targets": [
-        "package-bundle",
-        "package-darwin-smoke-test"
+        "package-bundle"
       ]
     },
     {

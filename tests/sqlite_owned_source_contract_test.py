@@ -91,7 +91,9 @@ with tempfile.TemporaryDirectory(prefix="sqlite-owned-input-", dir=configured) a
             + registration("zlib") + "\n" + registration("sqlite") + "\n"
             "add_custom_target(contract_probe COMMAND ${CMAKE_COMMAND} -E true)\n"
             "add_custom_target(recipe_probe COMMAND \"${CPKT_TEST_COMPILER}\" -c \"${CMAKE_SOURCE_DIR}/src/sqlite_native_amalgamation.c\" -o \"${CMAKE_BINARY_DIR}/fixture.o\")\n")
-        make_program = (cache_value(configured, "CMAKE_MAKE_PROGRAM")
+        # This standalone source fixture has no repository operation guard.
+        # Use the configured graph's native tool, not its delegated wrapper.
+        make_program = (cache_value(configured, "CPKT_NATIVE_MAKE_PROGRAM")
                         if cache_value(configured, "CMAKE_GENERATOR") == generator
                         else shutil.which(program))
         if not make_program:

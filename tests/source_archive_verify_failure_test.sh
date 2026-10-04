@@ -333,6 +333,7 @@ scripts/cpkt_afl_discover.py
 scripts/cpkt_archive_assert.py
 scripts/cpkt_archive_extract.py
 scripts/cpkt_build_guard.py
+scripts/cpkt_make_program.py
 scripts/cpkt_clangd_check.py
 scripts/cpkt_cmake_inputs.py
 scripts/cpkt_configure_guard.py

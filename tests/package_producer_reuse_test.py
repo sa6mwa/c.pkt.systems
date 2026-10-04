@@ -147,6 +147,13 @@ endif()
             if key.startswith('CPKT_OPERATION_'):del env[key]
         # Core bootstraps itself; built-only evidence cannot satisfy db.
         invoke(root,'build','--group','core','--preset','debug',env=env)
+        core_binary=root/'build/x86_64-linux-gnu/core/Debug/cpkt_core_probe'
+        assert core_binary.is_file()
+        for clean_arguments in (('--target','clean'),('--clean-first',)):
+            direct=subprocess.run(['cmake','--build',str(core_binary.parent),*clean_arguments],
+                                  cwd=root,env=env,text=True,capture_output=True)
+            assert direct.returncode and 'operation delegation' in direct.stdout+direct.stderr
+            assert core_binary.is_file()
         before=(root/'events').read_text()
         failed=invoke(root,'build','--group','db','--preset','debug',success=False,env=env)
         assert 'make test GROUP=core PRESET=debug' in failed.stderr
