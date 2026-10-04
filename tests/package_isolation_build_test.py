@@ -30,16 +30,40 @@ class Isolation(unittest.TestCase):
         (self.root / 'cmake').mkdir()
         shutil.copy(ROOT / 'cmake/components.json', self.root / 'cmake/components.json')
         (self.root / 'scripts').mkdir()
-        for name in ('cpkt_operation.py','cpkt_inventory.py','cpkt_receipts.py','cpkt_helper_proof.py','cpkt_helper_dispatch.py','cpkt_cmake_inputs.py','cpkt_clangd_check.py','cpkt_make_program.py'):
+        for name in ('cpkt_operation.py','cpkt_inventory.py','cpkt_receipts.py','cpkt_helper_proof.py','cpkt_helper_dispatch.py','cpkt_cmake_inputs.py','cpkt_clangd_check.py','cpkt_make_program.py','cpkt_build_guard.py'):
             shutil.copy(ROOT / 'scripts' / name, self.root / 'scripts' / name)
 
     def tearDown(self):
         self.temp.cleanup()
 
-    def command(self, group, *arguments, timeout='0.3', env=None):
+    def command(self, group, *arguments, timeout='0.3', env=None, cwd=None):
         return subprocess.run([sys.executable, str(self.root / 'scripts/cpkt_operation.py'),
             '--root', str(self.root), '--group', group, '--timeout', timeout, '--', *arguments],
-            capture_output=True, text=True, env=env if env is not None else self.environment)
+            capture_output=True, text=True, env=env if env is not None else self.environment, cwd=cwd)
+
+    def test_package_stage_launcher_preserves_release_readiness(self):
+        target='x86_64-linux-gnu';group='core'
+        binary=self.root/'build'/target/group/'Release';binary.mkdir(parents=True)
+        (binary/'CMakeCache.txt').write_text('CPKT_TARGET_ID:INTERNAL='+target+'\n'
+            'CPKT_GROUP:STRING='+group+'\nCMAKE_BUILD_TYPE:STRING=Release\n')
+        ready=self.root/'build/verification'/target/group/'Release-development.json'
+        ready.parent.mkdir(parents=True);ready.write_text('passed')
+        staged=self.root/'staged.txt'
+        package=self.root/'scripts/cpkt_packages.py'
+        package.write_text('import pathlib,sys\npathlib.Path('+repr(str(staged))+').write_text(" ".join(sys.argv[1:]))\n')
+        guard=str(self.root/'scripts/cpkt_build_guard.py')
+        result=self.command(group,sys.executable,guard,str(self.root),group,
+                            sys.executable,str(package),'stage','--group',group,'--preset','release',
+                            cwd=binary)
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+        self.assertTrue(ready.exists())
+        self.assertEqual('stage --group core --preset release',staged.read_text())
+        ready.write_text('passed')
+        result=self.command(group,sys.executable,guard,str(self.root),group,
+                            sys.executable,str(package),'stage','--group','db','--preset','release',
+                            cwd=binary)
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+        self.assertFalse(ready.exists(),'a different group cannot retain this graph readiness')
 
     def test_compiler_and_default_temporary_files_stay_in_repository(self):
         code='import os,tempfile,pathlib; p=tempfile.NamedTemporaryFile(delete=False); p.close(); print(p.name); pathlib.Path(p.name).unlink()'

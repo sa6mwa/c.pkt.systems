@@ -14,7 +14,14 @@ try:
     # The generated command runs this launcher only for actual build work.
     # A no-op graph/lock query must not revoke completed verification.
     checking = any(Path(value).name == 'cpkt_operation.py' for value in arguments) and '--check' in arguments
-    if not checking:
+    # CMake's package target only consumes verified outputs. Its custom rule
+    # passes through this same launcher, but does not rebuild the graph.
+    staging = (len(arguments) == 7
+        and Path(arguments[1]).resolve() == root / 'scripts/cpkt_packages.py'
+        and arguments[2] == ('stage-target' if group == 'all' else 'stage')
+        and arguments[3:5] == ['--group', group]
+        and arguments[5] == '--preset')
+    if not checking and not staging:
         cwd = Path.cwd()
         component_base = root / '.cache/deps-build'
         if cwd.is_relative_to(component_base):

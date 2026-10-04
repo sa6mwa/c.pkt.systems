@@ -699,6 +699,9 @@ def main():
     if args.preset:os.environ['CPKT_PRESET']=args.preset
     ver=args.version or version()
     current_run=os.environ.get('CPKT_RELEASE_PRODUCTION')=='1'
+    if args.group=='all' and args.action in ('package','checksums','verify'):
+        # A failed rerun must not leave an earlier aggregate proof publishable.
+        (ROOT/'build/verification'/scope/ver/'proof.json').unlink(missing_ok=True)
     if args.action=='checksums':
         snapshot,base=checksum_snapshot(ver,scope,args.group,target if args.preset else None,current_run=current_run)
         check_snapshot(snapshot,base,ver,scope,args.group,target if args.preset else None,current_run=current_run);return

@@ -456,6 +456,24 @@ class Fixtures(unittest.TestCase):
                 packages.main()
         privacy.assert_not_called();consumers.assert_not_called()
         self.assertFalse((root/'build/verification/binary'/ver/'proof.json').exists())
+    def test_failed_aggregate_verification_revokes_prior_publication_proof(self):
+        import cpkt_packages as packages
+        root=self.work/'stale-proof';root.mkdir()
+        (root/'cmake').mkdir();shutil.copy2(ROOT/'cmake/components.json',root/'cmake/components.json')
+        ver='1.2.3'
+        for scope,action,failure in (('binary','verify','checksum mismatch'),
+                                     ('release','verify','consumer failed'),
+                                     ('release','checksums','source proof failed')):
+            proof=root/'build/verification'/scope/ver/'proof.json'
+            proof.parent.mkdir(parents=True,exist_ok=True)
+            proof.write_text('{"kind":"artifact-'+scope+'","status":"passed"}')
+            with patch.object(packages,'ROOT',root),patch.object(packages,'delegated'),\
+                 patch.object(packages,'check_snapshot' if action=='verify' else 'checksum_snapshot',
+                              side_effect=ValueError(failure)),\
+                 patch.object(sys,'argv',['packages',action,'--scope',scope,'--version',ver]),\
+                 patch.dict(os.environ,{'CPKT_OPERATION_FD':'fixture','CPKT_OPERATION_RUN':'fixture'}):
+                with self.assertRaisesRegex(ValueError,failure):packages.main()
+            self.assertFalse(proof.exists(),scope+' '+action+' retained stale publication proof')
     def test_release_rejects_narrowing_before_clean(self):
         before=(ROOT/'build/control/operation.lock').stat().st_ino if (ROOT/'build/control/operation.lock').exists() else None
         for args in (['release','GROUP=db'],['release','PRESET=debug'],['release','SCOPE=binary'],['package','GROUP=db'],['fuzz','GROUP=db'],['clean','GROUP=bogus']):
