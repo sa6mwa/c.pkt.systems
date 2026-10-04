@@ -2952,11 +2952,24 @@ if(CPKT_BUILD_TESTS)
     if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       cpkt_group_set_tests_properties(whisper_example_shared PROPERTIES
         ENVIRONMENT "DYLD_LIBRARY_PATH=${CPKT_EXTERNAL_ROOT}/whisper/install/lib")
+      if(CPKT_SELECT_misc)
+        # The shipped smoke binary searches only its sibling lib directory.
+        # The build-tree test instead resolves the same bundled libraries from
+        # their verified dependency prefixes without changing the binary.
+        file(GLOB _cpkt_abi_runtime_dirs LIST_DIRECTORIES TRUE
+          "${CPKT_EXTERNAL_ROOT}/*/install/lib")
+        if(NOT _cpkt_abi_runtime_dirs)
+          message(FATAL_ERROR "Darwin ABI smoke test has no bundled runtime libraries")
+        endif()
+        list(JOIN _cpkt_abi_runtime_dirs ":" _cpkt_abi_runtime_path)
+        cpkt_group_set_tests_properties(abi_example_shared PROPERTIES
+          ENVIRONMENT "DYLD_LIBRARY_PATH=${_cpkt_abi_runtime_path}")
+      endif()
     elseif(NOT CPKT_NATIVE_BOOTLIN_RUNTIME)
       cpkt_group_set_tests_properties(whisper_example_shared PROPERTIES
         ENVIRONMENT "LD_LIBRARY_PATH=${CPKT_EXTERNAL_ROOT}/whisper/install/lib")
     endif()
-    if(CPKT_BUILD_TESTS)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
       cpkt_group_add_test(NAME audio_facade_unit COMMAND cpkt_audio_facade_test)
       cpkt_group_add_test(
         NAME audio_process_capture_realtime
