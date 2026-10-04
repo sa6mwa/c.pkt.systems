@@ -176,6 +176,10 @@ def configure_consumer(prefix,workspace,target,configured,records,data):
         directory=next((item.get('package_directory',package) for item in records.values() if item['package']==package),package)
         lines+=['set('+package+'_DIR "'+str(prefix/'lib/cmake'/directory)+'")']
         lines+=['find_package('+package+' CONFIG REQUIRED PATHS "'+str(prefix)+'" NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)']
+    if 'cmocka' in packages:
+        lines+=['if(NOT CMOCKA_LIBRARY STREQUAL "cmocka::cmocka" OR NOT CMOCKA_LIBRARIES STREQUAL "cmocka::cmocka")',
+                '  message(FATAL_ERROR "cmocka upstream discovery result variables are missing")',
+                'endif()']
     if any(item['group']=='all' for item in records.values()):
         for component in data['components'].values():
             for directory in component['package']['cmake']:

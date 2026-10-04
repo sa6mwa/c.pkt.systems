@@ -24,6 +24,17 @@ class Contracts(unittest.TestCase):
         (ROOT/'build/package-isolation-work/fixtures').mkdir(parents=True,exist_ok=True)
         self.tmp=tempfile.TemporaryDirectory(dir=ROOT/'build/package-isolation-work/fixtures');self.work=Path(self.tmp.name)
     def tearDown(self):self.tmp.cleanup()
+    def test_native_cmocka_config_preserves_upstream_result_variables(self):
+        prefix=self.work/'sdk'
+        (prefix/'lib/cmake').mkdir(parents=True)
+        (prefix/'lib/pkgconfig').mkdir(parents=True)
+        configured={'CPKT_TARGET_ID':'x86_64-linux-gnu',
+            'CPKT_CMOCKA_VERSION':'1.1.7','CPKT_BUNDLE_VERSION':'0.12.0'}
+        with patch('cpkt_packages.command',return_value=''):
+            metadata(prefix,self.work,configured,load(ROOT),'core')
+        config=(prefix/'lib/cmake/cmocka/cmocka-config.cmake').read_text()
+        self.assertIn('set(CMOCKA_LIBRARY cmocka::cmocka)',config)
+        self.assertIn('set(CMOCKA_LIBRARIES cmocka::cmocka)',config)
     def test_discovery_only_pinned_tools(self):
         report='status=ready\ncc=/verified/bin/gcc\ncxx=/verified/bin/g++\nnm=/verified/bin/nm\nar=/verified/bin/ar\nreadelf=/verified/bin/readelf\nsysroot=/verified/sysroot\n'
         calls=[]
@@ -57,6 +68,8 @@ class Contracts(unittest.TestCase):
         self.assertIn('cpkt_use_local_runtime(',text)
         self.assertIn('-Wall -Wextra -Wpedantic -Werror',text)
         self.assertIn('CpktLocalRuntime.cmake',text)
+        self.assertIn('cmocka upstream discovery result variables are missing',text)
+        self.assertIn('target_link_libraries(cmocka_native_shared PRIVATE ${CMOCKA_LIBRARIES})',text)
         self.assertIn('--parallel',calls[1][0]);self.assertIn('8',calls[1][0])
         self.assertIn('CpktReadOnlyToolchain.cmake',' '.join(calls[0][0]))
         self.assertEqual(calls[0][1]['env']['CPKT_RESOLVED_TARGET'],'x86_64-linux-gnu')

@@ -36,6 +36,34 @@ class Isolation(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_linux_only_runtime_inventory_does_not_require_darwin_cases(self):
+        source=(ROOT/'CMakeLists.txt').read_text()
+        start=source.index('    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")')
+        lines=source[start:].splitlines(keepends=True)
+        depth=0
+        end=start
+        for line in lines:
+            stripped=line.strip()
+            if re.match(r'^if\s*\(',stripped,re.I):depth+=1
+            elif re.match(r'^endif\s*\(',stripped,re.I):depth-=1
+            end+=len(line)
+            if depth==0:break
+        self.assertEqual(0,depth)
+        block=source[start:end]
+        templates=[match.group(1).strip('"') for match in
+            re.finditer(r'cpkt_group_add_test\s*\(\s*NAME\s+([^\s\)]+)',block)]
+        inventory=json.loads((ROOT/'cmake/components.json').read_text())['tests']
+        for template in templates:
+            pattern=re.compile('^'+re.sub(r'\\\$\\\{[^}]+\\\}',r'.*',re.escape(template))+'$')
+            matching=[registration for item in inventory.values()
+                for registration in item.get('registrations',[])
+                if pattern.fullmatch(registration['name'])
+                and not any('CPKT_FACADE_ONLY' in condition for condition in registration['conditions'])]
+            self.assertTrue(matching,template+' is absent from the test inventory')
+            for registration in matching:
+                self.assertIn('CMAKE_SYSTEM_NAME STREQUAL "Linux"',registration['conditions'],
+                    registration['name']+' is required on Darwin despite Linux-only registration')
+
     def command(self, group, *arguments, timeout='0.3', env=None, cwd=None):
         return subprocess.run([sys.executable, str(self.root / 'scripts/cpkt_operation.py'),
             '--root', str(self.root), '--group', group, '--timeout', timeout, '--', *arguments],

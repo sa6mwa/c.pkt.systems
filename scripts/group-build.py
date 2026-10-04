@@ -222,6 +222,11 @@ def producer_flags(preset,group):
         if key=='CMAKE_CXX_FLAGS' and value is None and key not in previous and key not in produced:
             continue  # Do not introduce a C++ cache variable into a C-only graph.
         result[key]=preset_cache_value(value,preset) if value is not None else previous.get(key,preset_cache_value('$env{'+environment_key+'}',preset))
+    for key in ('CMAKE_EXE_LINKER_FLAGS','CMAKE_SHARED_LINKER_FLAGS',
+                'CMAKE_MODULE_LINKER_FLAGS','CMAKE_STATIC_LINKER_FLAGS'):
+        value=item['cacheVariables'].get(key)
+        fallback='' if key=='CMAKE_STATIC_LINKER_FLAGS' else preset_cache_value('$env{LDFLAGS}',preset)
+        result[key]=preset_cache_value(value,preset) if value is not None else previous.get(key,fallback)
     return result
 
 

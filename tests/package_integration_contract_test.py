@@ -526,6 +526,28 @@ class Fixtures(unittest.TestCase):
             consumer.write_text('CMAKE_C_FLAGS:STRING=-DCACHED_FLAGS=1\n')
             self.assertEqual(module.producer_flags('debug','core')['CMAKE_C_FLAGS'],'-DCACHED_FLAGS=1')
 
+    def test_producer_preset_switch_resets_linker_flags(self):
+        module_spec=importlib.util.spec_from_file_location('producer_linker_flag_fixture',ROOT/'scripts/group-build.py')
+        module=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(module)
+        definitions=json.loads((ROOT/'CMakePresets.json').read_text())
+        release=next(p for p in definitions['configurePresets'] if p['name']=='release')
+        release.setdefault('cacheVariables',{})
+        release['cacheVariables'].pop('CMAKE_SHARED_LINKER_FLAGS',None)
+        release['cacheVariables'].pop('CMAKE_EXE_LINKER_FLAGS',None)
+        release['cacheVariables'].pop('CMAKE_MODULE_LINKER_FLAGS',None)
+        (self.work/'CMakePresets.json').write_text(json.dumps(definitions))
+        producer=self.work/'.cache/deps-build/x86_64-linux-gnu/core/producer'
+        producer.mkdir(parents=True)
+        (producer/'CMakeCache.txt').write_text('CMAKE_SHARED_LINKER_FLAGS:STRING=-Wl,old\n'
+            'CMAKE_EXE_LINKER_FLAGS:STRING=-Wl,old\n'
+            'CMAKE_MODULE_LINKER_FLAGS:STRING=-Wl,old\n')
+        with patch.object(module,'ROOT',self.work),patch.dict(os.environ,{'LDFLAGS':''}):
+            flags=module.producer_flags('release','core')
+            for key in ('CMAKE_SHARED_LINKER_FLAGS','CMAKE_EXE_LINKER_FLAGS',
+                    'CMAKE_MODULE_LINKER_FLAGS','CMAKE_STATIC_LINKER_FLAGS'):
+                self.assertEqual('',flags[key])
+            self.assertTrue(module.requested_producer_change('release','core',producer))
+
     def test_release_production_enforces_same_run_source_evidence(self):
         import cpkt_lifecycle as lifecycle
         calls=[]

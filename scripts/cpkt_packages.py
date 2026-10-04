@@ -241,6 +241,8 @@ endforeach()
 if(NOT TARGET cmocka::cmocka)
   add_library(cmocka::cmocka ALIAS cpkt::cmocka_shared)
 endif()
+set(CMOCKA_LIBRARY cmocka::cmocka)
+set(CMOCKA_LIBRARIES cmocka::cmocka)
 '''.replace('${v} IMPORTED','${_cpkt_cmocka_type} IMPORTED').replace('  if(NOT TARGET cpkt::cmocka_${v})','  string(TOUPPER "${v}" _cpkt_cmocka_type)\n  if(NOT TARGET cpkt::cmocka_${v})'))
         native_version = configured['CPKT_CMOCKA_VERSION']
         version_template = 'set(PACKAGE_VERSION "{version}")\nif(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION)\n set(PACKAGE_VERSION_COMPATIBLE FALSE)\nelse()\n set(PACKAGE_VERSION_COMPATIBLE TRUE)\n if(PACKAGE_FIND_VERSION VERSION_EQUAL PACKAGE_VERSION)\n  set(PACKAGE_VERSION_EXACT TRUE)\n endif()\nendif()\n'
