@@ -485,6 +485,12 @@ def check_snapshot(manifest,base,ver,scope,group=None,target=None, current_run=T
     if set(actual)!=expected:raise ValueError('checksum inventory does not match '+scope+' scope')
     for name,digest in actual.items():
         if sha(base/name)!=digest:raise ValueError('checksum mismatch: '+name)
+    if scope!='selected':
+        allowed=expected|{f'c.pkt.systems-{ver}-CHECKSUMS'}
+        if scope=='binary':
+            allowed|={f'c.pkt.systems-{ver}.tar.gz',f'c.pkt.systems-{ver}-CHECKSUMS'}
+        unexpected=sorted(path.name for path in base.iterdir() if path.name not in allowed)
+        if unexpected:raise ValueError('unexpected distribution payloads: '+','.join(unexpected))
     if scope=='release':source_proof(ver,current_run)
     return actual
 

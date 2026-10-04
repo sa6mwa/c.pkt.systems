@@ -271,6 +271,16 @@ endif()
             prior=(root/'events').read_text()
             invoke(root,'test','--group','core','--preset',selected,env=env)
             assert prior==(root/'events').read_text()
+        # A fresh aggregate build must reprove core before db/misc import it.
+        # The core producer itself stays reusable when its inputs match.
+        prior=(root/'events').read_text()
+        invoke(root,'build','--group','all','--preset','debug','--fresh',env=env)
+        assert (root/'build/verification/x86_64-linux-gnu/core/Debug-development.json').exists()
+        assert (root/'events').read_text()[len(prior):].splitlines()==[
+            component+':'+phase for component in ('dbdep','miscdep')
+            for phase in ('extract','configure','build','install')]
+        assert not misc_state.exists()
+        misc_state.write_text('unchanged')
         # Group cleanup leaves core, sibling state and persistent control inode.
         inode=(root/'build/control/operation.lock').stat().st_ino
         invoke(root,'clean','--group','db',env=env)

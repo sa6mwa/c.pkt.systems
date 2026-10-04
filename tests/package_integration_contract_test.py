@@ -404,10 +404,31 @@ class Fixtures(unittest.TestCase):
                 safe_extract(archive,self.work/'extract','sdk');self.fails(lambda:safe_extract(archive,self.work/'extract','sdk'))
     def test_exact_checksum_scopes(self):
         self.assertEqual(len(artifacts('1.2.3','binary')),22);self.assertEqual(len(artifacts('1.2.3','release')),23)
-        for name in artifacts('1.2.3','binary'):(self.work/name).write_text(name)
-        manifest=self.work/'CHECKSUMS';manifest.write_text(''.join(digest((self.work/name).read_bytes())+'  '+name+'\n' for name in artifacts('1.2.3','binary')))
-        check_snapshot(manifest,self.work,'1.2.3','binary')
-        manifest.write_text(manifest.read_text().splitlines()[0]+'\n');self.fails(lambda:check_snapshot(manifest,self.work,'1.2.3','binary'))
+        base=self.work/'dist';base.mkdir()
+        for name in artifacts('1.2.3','binary'):(base/name).write_text(name)
+        manifest=self.work/'verification/CHECKSUMS';manifest.parent.mkdir()
+        manifest.write_text(''.join(digest((base/name).read_bytes())+'  '+name+'\n' for name in artifacts('1.2.3','binary')))
+        check_snapshot(manifest,base,'1.2.3','binary')
+        for name in ('unlisted.tar.gz','CHECKSUMS'):
+            extra=base/name;extra.write_bytes(b'unlisted')
+            with self.assertRaisesRegex(ValueError,'unexpected distribution payloads'):
+                check_snapshot(manifest,base,'1.2.3','binary')
+            extra.unlink()
+        manifest.write_text(manifest.read_text().splitlines()[0]+'\n');self.fails(lambda:check_snapshot(manifest,base,'1.2.3','binary'))
+    def test_binary_verify_rejects_extra_payload_before_consumers(self):
+        import cpkt_packages as packages
+        root=self.work/'extra-payload';dist=root/'dist';dist.mkdir(parents=True)
+        (root/'cmake').mkdir();shutil.copy2(ROOT/'cmake/components.json',root/'cmake/components.json')
+        ver='1.2.3';names=artifacts(ver,'binary')
+        for name in names:(dist/name).write_bytes(name.encode())
+        manifest=root/'build/verification/binary'/ver/'CHECKSUMS';manifest.parent.mkdir(parents=True)
+        manifest.write_text(''.join(digest((dist/name).read_bytes())+'  '+name+'\n' for name in names))
+        (dist/'stale.tar.gz').write_bytes(b'unlisted payload')
+        with patch.object(packages,'ROOT',root),patch.object(packages,'delegated'),patch.object(packages,'privacy') as privacy,patch.object(packages,'combinations') as consumers,patch.object(sys,'argv',['packages','verify','--scope','binary','--version',ver]),patch.dict(os.environ,{'CPKT_OPERATION_FD':'fixture','CPKT_OPERATION_RUN':'fixture'}):
+            with self.assertRaisesRegex(ValueError,'unexpected distribution payloads'):
+                packages.main()
+        privacy.assert_not_called();consumers.assert_not_called()
+        self.assertFalse((root/'build/verification/binary'/ver/'proof.json').exists())
     def test_release_rejects_narrowing_before_clean(self):
         before=(ROOT/'build/control/operation.lock').stat().st_ino if (ROOT/'build/control/operation.lock').exists() else None
         for args in (['release','GROUP=db'],['release','PRESET=debug'],['release','SCOPE=binary'],['package','GROUP=db'],['fuzz','GROUP=db'],['clean','GROUP=bogus']):

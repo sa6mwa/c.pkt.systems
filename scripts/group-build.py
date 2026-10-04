@@ -296,10 +296,10 @@ def build(preset, group, targets=None, fresh=False):
     return directory
 
 
-def test(preset, group, regex=None, label=None):
+def test(preset, group, regex=None, label=None, fresh=False):
     _, target, configuration = preset_info(preset)
     readiness_path(ROOT, target, group, configuration).unlink(missing_ok=True)
-    directory = build(preset, group)
+    directory = build(preset, group, fresh=fresh)
     _, target, configuration = preset_info(preset)
     readiness_path(ROOT, target, group, configuration).unlink(missing_ok=True)
     inventory = json.loads(command([CTEST, '--test-dir', directory, '--show-only=json-v1'], group, target, 'test-inventory', True))
@@ -550,6 +550,9 @@ def main():
     for group in groups:
         if args.action in ('configure','build') and args.group == 'all' and group == 'core':
             # All-group coordination may prepare core readiness for downstreams.
+            if args.fresh and any(item in ('db', 'misc') for item in groups):
+                test(args.preset, group, fresh=True)
+                continue
             try:
                 validate_core(ROOT, target, configuration, args.preset)
             except RuntimeError:
