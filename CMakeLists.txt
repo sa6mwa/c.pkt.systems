@@ -20,8 +20,14 @@ endif()
 project(c_pkt_systems VERSION "${CPKT_PROJECT_VERSION}" LANGUAGES C CXX)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CPKT_OSXCROSS_ROOT)
+  set(_cpkt_osxcross_link_launcher "${_cpkt_build_launcher}")
+  foreach(_cpkt_argument IN ITEMS "${CMAKE_COMMAND}" "-E" "env"
+      "LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}")
+    string(REPLACE "'" "'\"'\"'" _cpkt_quoted_argument "${_cpkt_argument}")
+    string(APPEND _cpkt_osxcross_link_launcher " '${_cpkt_quoted_argument}'")
+  endforeach()
   set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK
-    "${CPKT_OPERATION_PYTHON} ${CMAKE_SOURCE_DIR}/scripts/cpkt_build_guard.py ${CMAKE_SOURCE_DIR} ${CPKT_GROUP} ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${CPKT_OSXCROSS_ROOT}/lib:$ENV{LD_LIBRARY_PATH}")
+    "${_cpkt_osxcross_link_launcher}")
 endif()
 
 include(CTest)

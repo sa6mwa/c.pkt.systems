@@ -4,6 +4,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -273,6 +275,58 @@ add_custom_target(cpkt_operation_guard)
         path.write_text(path.read_text().replace('function(cpkt_add_a)\n  set(value one)',
                                                 'function(cpkt_add_a)\n  set(value relevant)'))
         self.assertNotEqual(before,verification_inputs(self.root,'core',configured))
+
+    def test_core_verification_tracks_runtime_mock_helper(self):
+        from cpkt_receipts import verification_inputs
+        data={'schema_version':1,
+              'groups':{group:{'requires':[] if group=='core' else ['core']}
+                        for group in ('core','db','misc')},
+              'components':{},'targets':{},'tests':{}}
+        (self.root/'cmake/components.json').write_text(json.dumps(data))
+        top=self.root/'CMakeLists.txt'
+        original=(ROOT/'CMakeLists.txt').read_text()
+        helper=re.search(r'function\(cpkt_add_lua_runtime_mock_test\b.*?endfunction\(\)',original,re.S)
+        self.assertIsNotNone(helper)
+        top.write_text(helper.group(0)+'\n')
+        configured={'CPKT_TARGET_ID':'synthetic','CMAKE_BUILD_TYPE':'Debug'}
+        before=verification_inputs(self.root,'core',configured)
+        top.write_text(top.read_text().replace('-std=c99','-std=c89'))
+        self.assertNotEqual(before,verification_inputs(self.root,'core',configured))
+
+    def test_osxcross_link_launcher_preserves_quoted_paths(self):
+        original=(ROOT/'CMakeLists.txt').read_text()
+        block=re.search(r'if\(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CPKT_OSXCROSS_ROOT\).*?endif\(\)',
+                        original,re.S)
+        self.assertIsNotNone(block)
+        source=self.root/"source's directory"
+        source.mkdir()
+        osxcross=self.root/"osxcross's directory"
+        osxcross.mkdir()
+        guard=source/'guard.py'
+        guard.write_text('import subprocess,sys\n'
+                         'assert sys.argv[1:3]=='+repr([str(source),'core'])+'\n'
+                         'raise SystemExit(subprocess.call(sys.argv[3:]))\n')
+        launcher_prefix=' '.join(shlex.quote(arg) for arg in
+            (sys.executable,str(guard),str(source),'core'))
+        script=self.root/'launcher.cmake'
+        output=self.root/'launcher.txt'
+        script.write_text('set(CMAKE_SYSTEM_NAME Darwin)\n'
+                          'set(CPKT_OSXCROSS_ROOT [=['+str(osxcross)+']=])\n'
+                          'set(_cpkt_build_launcher [=['+launcher_prefix+']=])\n'
+                          +block.group(0)+'\n'
+                          'get_property(_launcher GLOBAL PROPERTY RULE_LAUNCH_LINK)\n'
+                          'file(WRITE [=['+str(output)+']=] "${_launcher}")\n')
+        result=subprocess.run(['cmake','-P',str(script)],capture_output=True,text=True)
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+        launcher=output.read_text()
+        self.assertEqual([sys.executable,str(guard),str(source),'core',shutil.which('cmake'),'-E','env',
+                          'LD_LIBRARY_PATH='+str(osxcross)+'/lib:'+os.environ.get('LD_LIBRARY_PATH','')],
+                         shlex.split(launcher))
+        command=launcher+' '+shlex.join([sys.executable,'-c',
+            'import os,sys; sys.exit(os.environ["LD_LIBRARY_PATH"].split(":")[0] != sys.argv[1])',
+            str(osxcross)+'/lib'])
+        result=subprocess.run(command,shell=True,capture_output=True,text=True)
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
 
     def test_output_content_symlink_and_partial_records(self):
         install = self.root / 'install'

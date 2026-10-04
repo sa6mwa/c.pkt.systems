@@ -297,7 +297,7 @@ def verification_inputs(root, group, configured):
     top = (root / 'CMakeLists.txt').read_text()
     for name in ('cpkt_add_repo_warning_errors', 'cpkt_configure_c89_target',
                  'cpkt_apply_auth_export_catalog', 'cpkt_configure_c89_lua_native_header_target',
-                 'cpkt_register_local_runtime_checks'):
+                 'cpkt_add_lua_runtime_mock_test', 'cpkt_register_local_runtime_checks'):
         found = re.search(r'function\(' + name + r'\b.*?endfunction\(\)', top, re.S)
         if found:
             helpers[name] = found.group(0)
