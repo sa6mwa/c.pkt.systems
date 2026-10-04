@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-mode=${1:-${PRESET:-debug}}
+default_mode=release
+if [[ ${GROUP:-all} != all ]]; then default_mode=debug; fi
+mode=${1:-${PRESET:-$default_mode}}
 if [[ $mode == --* && $mode != --matrix ]]; then
   exec python3 "$script_dir/group-build.py" build "$@"
 fi

@@ -56,6 +56,12 @@ Release production requires source reconstruction from its current operation.
 Filtered all-group tests run complete Core coverage once to establish the
 optional suites' prerequisite; optional filtered coverage never supplies full
 readiness or runs the unfiltered composition suite.
+Unqualified `scripts/build.sh` and `scripts/test.sh` retain the six-target Linux
+Release matrix. Selected groups default to native Debug; an explicit `PRESET`
+selects that configuration. Aggregate configuration establishes complete Core
+readiness before optional configuration. Producer reuse compares the requested
+preset flags with the selected consumer configuration before accepting cached
+producer inputs; changed flags rebuild the affected producer once.
 
 The native workflow has separate source and final tagged producer-artifact lanes.
 Artifact handoff requires an unpublished authenticated draft, exact producer

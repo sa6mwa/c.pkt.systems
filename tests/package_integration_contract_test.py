@@ -423,6 +423,43 @@ class Fixtures(unittest.TestCase):
                 lifecycle.main()
             backend.assert_called_once_with('test' if action=='debug' else 'build','core','arm64-apple-darwin-debug')
 
+    def test_shell_defaults_preserve_matrix_and_selected_scope(self):
+        tools=self.work/'dispatch-tools';tools.mkdir();record=self.work/'dispatch.jsonl'
+        executable=tools/'python3'
+        executable.write_text('#!'+sys.executable+'\nimport json,os,sys,subprocess\nfrom pathlib import Path\nargs=sys.argv[1:]\nwith open(os.environ["CPKT_DISPATCH_RECORD"],"a") as stream:stream.write(json.dumps(args)+"\\n")\nif Path(args[0]).name=="cpkt_operation.py":sys.exit(subprocess.run(args[args.index("--")+1:]).returncode)\n')
+        executable.chmod(0o755)
+        base={k:v for k,v in os.environ.items() if k not in ('GROUP','PRESET') and not k.startswith('CPKT_OPERATION_')}
+        base.update(PATH=str(tools)+os.pathsep+base['PATH'],CPKT_DISPATCH_RECORD=str(record))
+        targets=[t for t in json.loads((ROOT/'cmake/components.json').read_text())['package_targets'] if '-linux-' in t]
+        for script,action in (('build.sh','build'),('test.sh','test')):
+            for env,arguments,presets in ((base,[],[t+'-release' for t in targets]),(dict(base,GROUP='core'),[],['debug']),(dict(base,GROUP='db',PRESET='armhf-linux-musl-release'),[],['armhf-linux-musl-release']),(dict(base,GROUP='core'),['release'],['release'])):
+                record.unlink(missing_ok=True)
+                result=subprocess.run(['bash',str(ROOT/'scripts'/script),*arguments],env=env,text=True,capture_output=True)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                calls=[json.loads(line) for line in record.read_text().splitlines()]
+                dispatched=[args for args in calls if Path(args[0]).name=='group-build.py']
+                self.assertEqual([args[args.index('--preset')+1] for args in dispatched],presets)
+                self.assertTrue(all(args[1]==action for args in dispatched))
+                self.assertEqual(sum(Path(args[0]).name=='cpkt_operation.py' for args in calls),int(len(presets)==6))
+
+    def test_requested_flags_expand_typed_macros_and_preset_environment(self):
+        module_spec=importlib.util.spec_from_file_location('producer_flag_fixture',ROOT/'scripts/group-build.py')
+        module=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(module)
+        definitions=json.loads((ROOT/'CMakePresets.json').read_text())
+        base=next(p for p in definitions['configurePresets'] if p['name']=='base')
+        base['environment']={'CPKT_FLAG_VALUE':'$penv{CPKT_PARENT_FLAG}','CFLAGS':'-DPRESET_ENVIRONMENT=1'}
+        debug=next(p for p in definitions['configurePresets'] if p['name']=='debug')
+        debug['cacheVariables']['CMAKE_C_FLAGS']={'type':'STRING','value':'-DVALUE=$env{CPKT_FLAG_VALUE} -DPARENT=$penv{CPKT_FLAG_VALUE} -DROOT=${sourceDirName} -DLITERAL=${dollar}{sourceDir}'}
+        (self.work/'CMakePresets.json').write_text(json.dumps(definitions))
+        with patch.object(module,'ROOT',self.work),patch.dict(os.environ,{'CPKT_PARENT_FLAG':'chosen','CPKT_FLAG_VALUE':'parent'}):
+            self.assertEqual(module.producer_flags('debug','core')['CMAKE_C_FLAGS'],'-DVALUE=chosen -DPARENT=parent -DROOT='+self.work.name+' -DLITERAL=${sourceDir}')
+            del debug['cacheVariables']['CMAKE_C_FLAGS']
+            (self.work/'CMakePresets.json').write_text(json.dumps(definitions))
+            self.assertEqual(module.producer_flags('debug','core')['CMAKE_C_FLAGS'],'-DPRESET_ENVIRONMENT=1')
+            consumer=self.work/'build/x86_64-linux-gnu/core/Debug/CMakeCache.txt';consumer.parent.mkdir(parents=True)
+            consumer.write_text('CMAKE_C_FLAGS:STRING=-DCACHED_FLAGS=1\n')
+            self.assertEqual(module.producer_flags('debug','core')['CMAKE_C_FLAGS'],'-DCACHED_FLAGS=1')
+
     def test_release_production_enforces_same_run_source_evidence(self):
         import cpkt_lifecycle as lifecycle
         calls=[]

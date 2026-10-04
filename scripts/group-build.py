@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import re
 import subprocess
 import sys
 import time
@@ -92,6 +93,7 @@ def configure_command(preset, group, directory, producer=False):
     if producer:
         arguments += ['-G', 'Ninja', '-DCMAKE_BUILD_TYPE=Release', '-DCPKT_BUILD_TESTS=OFF',
                       '-DCPKT_FACADE_ONLY=OFF', '-DCPKT_ENABLE_FUZZING=OFF']
+        arguments += ['-D'+key+'='+value for key,value in producer_flags(preset,group).items()]
     if target.endswith(('-gnu', '-musl')) and preset not in ('fuzz', 'opcua-fuzz'):
         arguments += ['-DCMAKE_TOOLCHAIN_FILE=' + str(ROOT / 'cmake/CpktReadOnlyToolchain.cmake')]
     elif preset in ('fuzz', 'opcua-fuzz'):
@@ -139,6 +141,11 @@ def prepare(preset, group, dependency=None):
                 add(child)
         add(dependency)
         names = [name for name in names if name in needed]
+    directory = producer_dir(ROOT, target, group)
+    if (directory/'CMakeCache.txt').is_file() and requested_producer_change(preset,group,directory):
+        # Presets override cached values during configure. Apply those settings
+        # before comparing receipts, rather than validating the previous request.
+        command(configure_command(preset,group,directory,True),group,target,'producer-request-refresh')
     stale = []
     for name in names:
         try:
@@ -179,6 +186,65 @@ def prepare(preset, group, dependency=None):
         if not component_receipt(ROOT, target, name).exists():
             publish_component(ROOT, target, name)
         validate_component(ROOT, target, name)
+
+
+def preset_cache_value(value,preset):
+    if isinstance(value,dict):value=value['value']
+    if isinstance(value,bool):value='TRUE' if value else 'FALSE'
+    item,_,_=preset_info(preset)
+    macros={'sourceDir':str(ROOT),'sourceParentDir':str(ROOT.parent),
+            'sourceDirName':ROOT.name,'presetName':preset,'generator':item.get('generator','Ninja'),
+            'hostSystemName':os.uname().sysname,'dollar':'$','pathListSep':os.pathsep}
+    def expand(text,visited):
+        def replace(match):
+            if match[1]:
+                if match[1] not in macros:raise RuntimeError('unsupported cache macro: '+match[1])
+                return macros[match[1]]
+            key=match[3]
+            environment=item.get('environment',{})
+            if match[2]=='penv' or key not in environment:return os.environ.get(key,'')
+            if key in visited:raise RuntimeError('cyclic preset environment: '+key)
+            if environment[key] is None:return ''
+            return expand(str(environment[key]),visited|{key})
+        return re.sub(r'\$\{([^}]+)\}|\$(p?env)\{([^}]+)\}',replace,text)
+    return expand(str(value),set())
+
+
+def producer_flags(preset,group):
+    item,_,_=preset_info(preset)
+    consumer=binary_dir(preset,group)/'CMakeCache.txt'
+    previous=cache(consumer) if consumer.is_file() else {}
+    producer=producer_dir(ROOT,preset_info(preset)[1],group)/'CMakeCache.txt'
+    produced=cache(producer) if producer.is_file() else {}
+    result={}
+    for key,environment_key in (('CMAKE_C_FLAGS','CFLAGS'),('CMAKE_CXX_FLAGS','CXXFLAGS')):
+        value=item['cacheVariables'].get(key)
+        if key=='CMAKE_CXX_FLAGS' and value is None and key not in previous and key not in produced:
+            continue  # Do not introduce a C++ cache variable into a C-only graph.
+        result[key]=preset_cache_value(value,preset) if value is not None else previous.get(key,preset_cache_value('$env{'+environment_key+'}',preset))
+    return result
+
+
+def requested_producer_change(preset,group,directory):
+    item,_,_=preset_info(preset)
+    existing=cache(directory/'CMakeCache.txt')
+    managed={'CMAKE_BUILD_TYPE','CPKT_BUILD_TESTS','CPKT_FACADE_ONLY',
+             'CPKT_ENABLE_FUZZING','CPKT_BUILD_DEPENDENCIES','CPKT_GROUP',
+             'CPKT_DEPENDENCY_PRODUCER','CPKT_PREREQUISITE_CONFIGURATION',
+             'CPKT_DEPENDENCY_BUILD_JOBS','CMAKE_EXPORT_COMPILE_COMMANDS'}
+    def equivalent(left,right):
+        truth={'on':True,'true':True,'yes':True,'1':True,
+               'off':False,'false':False,'no':False,'0':False}
+        if left.lower() in truth and right.lower() in truth:
+            return truth[left.lower()]==truth[right.lower()]
+        return left==right
+    flags=producer_flags(preset,group)
+    variables=dict(item['cacheVariables'],**flags)
+    for key,value in variables.items():
+        if key in managed or value is None:continue
+        value=value if key in flags else preset_cache_value(value,preset)
+        if not equivalent(value,existing.get(key,'')):return True
+    return False
 
 
 def configure(preset, group, fresh=False, prepare_outputs=True):
@@ -489,7 +555,11 @@ def main():
                 test(args.preset, group)
                 continue
         if args.action == 'configure':
-            configure(args.preset, group, args.fresh)
+            if args.group == 'all' and group == 'core':
+                if args.fresh:configure(args.preset,group,True)
+                test(args.preset,group)
+            else:
+                configure(args.preset, group, args.fresh)
         elif args.action == 'build':
             targets = (selected_targets[group] or None) if args.group == 'all' else args.target
             build(args.preset, group, targets, args.fresh)

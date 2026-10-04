@@ -118,6 +118,9 @@ endif()
     list(APPEND CPKT_ACTIVE_COMPONENTS ${CPKT_GROUP}dep)
   endif()
   cpkt_synthetic_producer()
+elseif(CPKT_COMPOSITION_ONLY)
+  # This fixture has no mixed executable; real compositions have their own
+  # installed-consumer contract tests.
 else()
   add_custom_target(cpkt_operation_guard COMMAND "${CPKT_OPERATION_PYTHON}"
     "${CMAKE_SOURCE_DIR}/scripts/cpkt_operation.py" --root "${CMAKE_SOURCE_DIR}" --group "${CPKT_GROUP}" --check)
@@ -222,6 +225,37 @@ endif()
                 assert (root/'build/x86_64-linux-gnu'/optional/'Debug/cpkt-test-results.xml').is_file()
             assert not (root/'build/x86_64-linux-gnu/all/Debug').exists()
         assert before==(root/'events').read_text()
+        # Repeated aggregate configure must restore Core readiness after its
+        # configure guard revokes the preceding proof.
+        invoke(root,'configure','--group','all','--preset','debug',env=env)
+        invoke(root,'configure','--group','all','--preset','debug',env=env)
+        assert core_receipt.exists()
+        assert before==(root/'events').read_text()
+        # A typed preset flag overrides the previous producer cache. A warm
+        # retry then reuses the rebuilt producer rather than looping on an
+        # incompatible consumer contract.
+        requested=json.loads((root/'CMakePresets.json').read_text())
+        requested['configurePresets'][0]['cacheVariables']['CMAKE_C_FLAGS']={'type':'STRING','value':'-DREQUESTED_PRODUCER_FLAG=1'}
+        (root/'CMakePresets.json').write_text(json.dumps(requested))
+        invoke(root,'test','--group','core','--preset','debug',env=env)
+        refreshed=(root/'events').read_text()
+        assert refreshed[len(before):].splitlines()==['coredep:extract','coredep:configure','coredep:build','coredep:install']
+        configured=(root/'build/x86_64-linux-gnu/core/producer/CMakeCache.txt').read_text()
+        assert 'CMAKE_C_FLAGS:STRING=-DREQUESTED_PRODUCER_FLAG=1' in configured
+        invoke(root,'test','--group','core','--preset','debug',env=env)
+        assert refreshed==(root/'events').read_text()
+        # A different consumer configuration has its own effective default
+        # flags. Switching back applies the still-explicit Debug flags.
+        for selected in ('release','debug'):
+            prior=(root/'events').read_text()
+            invoke(root,'test','--group','core','--preset',selected,env=env)
+            assert (root/'events').read_text()[len(prior):].splitlines()==['coredep:extract','coredep:configure','coredep:build','coredep:install']
+            expected='-DREQUESTED_PRODUCER_FLAG=1' if selected=='debug' else ''
+            configured=(root/'build/x86_64-linux-gnu/core/producer/CMakeCache.txt').read_text()
+            assert 'CMAKE_C_FLAGS:STRING='+expected+'\n' in configured
+            prior=(root/'events').read_text()
+            invoke(root,'test','--group','core','--preset',selected,env=env)
+            assert prior==(root/'events').read_text()
         # Group cleanup leaves core, sibling state and persistent control inode.
         inode=(root/'build/control/operation.lock').stat().st_ino
         invoke(root,'clean','--group','db',env=env)

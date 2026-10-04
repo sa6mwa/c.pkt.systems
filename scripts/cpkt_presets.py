@@ -9,14 +9,16 @@ def preset_info(root, preset):
         raise RuntimeError('unknown preset: ' + preset)
     def resolve(name):
         item = definitions[name]
-        result = {'cacheVariables': {}}
+        result = {'cacheVariables': {}, 'environment': {}}
         parents = item.get('inherits', [])
         for parent in reversed([parents] if isinstance(parents, str) else parents):
             inherited = resolve(parent)
-            result.update({k: v for k, v in inherited.items() if k != 'cacheVariables'})
+            result.update({k: v for k, v in inherited.items() if k not in ('cacheVariables','environment')})
             result['cacheVariables'].update(inherited['cacheVariables'])
-        result.update({k: v for k, v in item.items() if k != 'cacheVariables'})
+            result['environment'].update(inherited.get('environment',{}))
+        result.update({k: v for k, v in item.items() if k not in ('cacheVariables','environment')})
         result['cacheVariables'].update(item.get('cacheVariables', {}))
+        result['environment'].update(item.get('environment', {}))
         return result
     item = resolve(preset)
     variables = item['cacheVariables']
