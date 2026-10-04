@@ -575,9 +575,21 @@ include(cmake/CpktPackage.cmake)
             'add_test(NAME exact_helper COMMAND '+' '.join('"'+value+'"' for value in dispatch)+')\n')
         subprocess.run(['cmake','-S',str(source),'-B',str(self.root/'binary')],check=True,capture_output=True)
         runner=self.root/'helper-runner.py'
-        runner.write_text('import os,subprocess\nfds=tuple(int(os.environ[key]) for key in ("CPKT_OPERATION_FD","CPKT_OPERATION_CAP_FD"))\n'
+        ctest_wrapper=self.root/'ctest-wrapper.py'
+        ctest_wrapper.write_text('#!'+sys.executable+'\nimport os,subprocess,sys\n'
+            'from pathlib import Path\n'
+            'if "--show-only=json-v1" not in sys.argv:\n'
+            '  for key in ("CPKT_OPERATION_FD","CPKT_OPERATION_CAP_FD"):\n'
+            '    os.close(int(os.environ[key]))\n'
+            'raise SystemExit(subprocess.call(["ctest",*sys.argv[1:]]))\n')
+        ctest_wrapper.chmod(0o755)
+        runner.write_text('import os,subprocess,sys\nfrom pathlib import Path\n'
+            'sys.path.insert(0,'+repr(str(ROOT/'scripts'))+')\n'
+            'from cpkt_preflight_runner import run_registered_fixtures\n'
+            'fds=tuple(int(os.environ[key]) for key in ("CPKT_OPERATION_FD","CPKT_OPERATION_CAP_FD"))\n'
             'subprocess.run('+repr(dispatch)+',check=True,pass_fds=fds)\n'
-            'subprocess.run('+repr(['ctest','--test-dir',str(self.root/'binary'),'--no-tests=error'])+',check=True,pass_fds=fds)\n')
+            'run_registered_fixtures(Path('+repr(str(self.root/'binary'))+'),["exact_helper"],'
+            'ctest='+repr(str(ctest_wrapper))+')\n')
         result=self.command('core',sys.executable,str(runner))
         self.assertEqual(0,result.returncode,result.stdout+result.stderr)
         self.assertEqual('x',counter.read_text())

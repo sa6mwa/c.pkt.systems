@@ -10,6 +10,7 @@ import sys
 from cpkt_cmake_inputs import commands
 from cpkt_inventory import load, record
 from cpkt_operation import operation_fds, delegated, run
+from cpkt_preflight_runner import run_registered_fixtures
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--root', type=Path, required=True)
@@ -84,8 +85,7 @@ endfunction()
         command += ['-DCMAKE_OSX_DEPLOYMENT_TARGET=15.0']
     subprocess.run(command, check=True, pass_fds=operation_fds())
     if cases:
-        subprocess.run([os.environ.get('CTEST','ctest'), '--test-dir', str(directory/'binary'),
-                        '--no-tests=error','--output-on-failure'],check=True,pass_fds=operation_fds())
+        run_registered_fixtures(directory/'binary', cases, os.environ.get('CTEST', 'ctest'))
     print('standalone preflight passed: '+args.target+' '+','.join(cases))
 except (RuntimeError, OSError, subprocess.CalledProcessError) as error:
     sys.exit(str(error))
