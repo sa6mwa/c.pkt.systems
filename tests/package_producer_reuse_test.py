@@ -178,6 +178,12 @@ endif()
         assert before==(root/'events').read_text()
         assert core_identity==core_receipt.read_bytes()
         assert misc_state.read_text()=='unchanged'
+        # A mixed targeted build must preserve valid Core readiness before it
+        # dispatches the optional target, including on a no-op Core rebuild.
+        invoke(root,'build','--group','all','--preset','debug',
+               '--target','cpkt_core_probe','--target','cpkt_db_probe',env=env)
+        assert before==(root/'events').read_text()
+        assert json.loads(core_identity)['verification_id']==json.loads(core_receipt.read_text())['verification_id']
         # Direct/standalone failed reconfiguration must revoke previous success.
         original_project=(root/'CMakeLists.txt').read_text()
         (root/'CMakeLists.txt').write_text(original_project+'\nmessage(FATAL_ERROR "intentional configure failure")\n')

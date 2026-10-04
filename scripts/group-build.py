@@ -283,11 +283,10 @@ def build(preset, group, targets=None, fresh=False):
     if targets:
         arguments += ['--target'] + targets
     command(arguments, group, target, 'consumer-build')
-    if targets:
-        return directory
-    publish(ROOT / 'build/verification' / target / group / (configuration + '-built.json'),
-            {'kind': 'built', 'target': target, 'group': group, 'configuration': configuration,
-             'outputs': group_outputs(directory), 'coverage': []})
+    if not targets:
+        publish(ROOT / 'build/verification' / target / group / (configuration + '-built.json'),
+                {'kind': 'built', 'target': target, 'group': group, 'configuration': configuration,
+                 'outputs': group_outputs(directory), 'coverage': []})
     if previous and previous['outputs'] == group_outputs(directory) and previous['verification_id'] == verification_inputs(ROOT, group, configured):
         current = {name: validate_component(ROOT, target, name)['input_id']
                    for name in components_for(load(ROOT), group, True)}
@@ -567,6 +566,11 @@ def main():
         elif args.action == 'build':
             targets = (selected_targets[group] or None) if args.group == 'all' else args.target
             build(args.preset, group, targets, args.fresh)
+            if args.group == 'all' and group == 'core' and any(item in ('db','misc') for item in groups):
+                try:
+                    validate_core(ROOT, target, configuration, args.preset)
+                except RuntimeError:
+                    test(args.preset, 'core')
         elif args.action == 'test':
             # Complete Core coverage supplies the prerequisite for optional
             # filtered suites. Run it once; partial coverage cannot replace it.
