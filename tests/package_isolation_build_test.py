@@ -183,6 +183,19 @@ class Isolation(unittest.TestCase):
             self.assertNotEqual(0,result.returncode)
         self.assertEqual(before,events.read_bytes() if events.is_file() else None)
 
+    def test_aggregate_examples_skip_groups_without_example_tests(self):
+        module_spec=importlib.util.spec_from_file_location('lifecycle_backend',ROOT/'scripts/cpkt_lifecycle.py')
+        module=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(module)
+        with patch.object(module,'backend') as backend:
+            module.perform('examples','all','debug',False,None,False,None)
+            self.assertEqual([('test','core','debug'),
+                              ('test','misc','debug','--regex','example')],
+                             [call.args for call in backend.call_args_list])
+            backend.reset_mock()
+            with self.assertRaisesRegex(ValueError,'no example tests for GROUP=db'):
+                module.perform('examples','db','debug',True,None,False,None)
+            backend.assert_not_called()
+
     def test_public_graph_omissions_link_edges_and_mock_privacy(self):
         for name in ('CpktGroups.cmake','CpktOperation.cmake','CpktPackage.cmake'):
             shutil.copy(ROOT/'cmake'/name,self.root/'cmake'/name)

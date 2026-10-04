@@ -107,7 +107,7 @@ typedef struct CpktCMockaValueData {
             if wide and not re.search(r'intmax_t|uintmax_t', parameters):
                 continue
             function = 'cpkt_cmocka' + name + ('_words' if wide else '')
-            declarations_params, calls, before = [], [], []
+            declarations_params, calls, before, cleanup = [], [], [], []
             for parameter in params:
                 param_name = re.search(r'(\w+)\s*(?:\[\])?$', parameter).group(1)
                 typ = 'uintmax_t' if 'uintmax_t' in parameter else 'intmax_t' if 'intmax_t' in parameter else None
@@ -115,9 +115,11 @@ typedef struct CpktCMockaValueData {
                 declarations_params.append(converted)
                 if typ and '[]' in parameter:
                     count = 'number_of_values'
-                    before += [f'{typ} native_{param_name}[{count} ? {count} : 1];', 'size_t i;',
+                    before += [f'{typ} *native_{param_name};', 'size_t i;',
+                               f'native_{param_name} = cpkt_set_buffer_alloc({count}, sizeof(*native_{param_name}), file, (int)line);',
                                f'for (i = 0; i < {count}; ++i) native_{param_name}[i] = ' + (f'({typ})cpkt_words_native({param_name}[i]);' if wide else f'({typ}){param_name}[i];')]
                     calls.append('native_' + param_name)
+                    cleanup.append('cpkt_set_buffer_free(native_' + param_name + ');')
                 elif typ:
                     calls.append(f'({typ})cpkt_words_native({param_name})' if wide else f'({typ}){param_name}')
                 elif 'CMockaValueData' in parameter:
@@ -130,7 +132,9 @@ typedef struct CpktCMockaValueData {
             native_name = '_expect_uint_in_range' if name == '_expect_in_range' else name
             call = native_name + '(' + ', '.join(calls) + ')'
             action = ('return cpkt_value_public(' + call + ');' if result == 'CMockaValueData' else ('return ' if result != 'void' else '') + call + ';')
-            bridge.append(signature + ' {\n' + '\n'.join(before) + '\n' + action + '\n}')
+            if cleanup and result != 'void':
+                raise RuntimeError('array bridge requires explicit result cleanup: ' + name)
+            bridge.append(signature + ' {\n' + '\n'.join(before) + '\n' + action + '\n' + '\n'.join(cleanup) + '\n}')
             exports.append(function)
         text = re.sub(r'\b' + re.escape(name) + r'\b', 'cpkt_cmocka' + name, text)
     # Replace type block with the standalone private C89 definitions and aliases.
@@ -160,7 +164,7 @@ typedef struct CpktCMockaValueData {
             return '#define ' + name + '(f) {#f, f, UNIT_TEST_FUNCTION_TYPE_' + kind + '}'
         if name.startswith('assert_') and '_set' in name and name.split('_')[1] in ('int','uint','float'):
             # Public arrays have the documented facade element type. Native C99
-            # bridges use bounded stack conversion and native set diagnostics.
+            # bridges use checked heap conversion and native set diagnostics.
             epsilon = ', epsilon' if name.startswith('assert_float') else ''
             return '#define ' + name + '(value, values, count' + epsilon + ') do { if ((count) > 0) ' + ('_' + name if name.startswith('assert_float') else 'cpkt_cmocka_' + name) + '(value, values, count' + epsilon + ', __FILE__, __LINE__); } while (0)'
         return '#define ' + name + '(' + params + ')' + body

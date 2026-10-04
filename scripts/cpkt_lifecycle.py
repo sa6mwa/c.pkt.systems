@@ -45,7 +45,16 @@ def perform(action,group,preset,explicit,scope,scope_explicit,dependency):
             if action=='deps-cross' and target.startswith('x86_64'):continue
             if action=='deps-release' and target.endswith('darwin'):continue
             backend('configure',group,target+'-release')
-    elif action=='examples':backend('test',group,preset,'--regex','example')
+    elif action=='examples':
+        examples={item['group'] for name,item in load(ROOT)['tests'].items() if 'example' in name}
+        selected=[item for item in ('core','db','misc') if item in examples] if group=='all' else [group]
+        if any(item not in examples for item in selected):
+            raise ValueError('no example tests for GROUP='+group)
+        for item in selected:
+            if group=='all' and item=='core' and any(other!='core' for other in selected):
+                backend('test','core',preset)
+            else:
+                backend('test',item,preset,'--regex','example')
     elif action=='clangd-surface':
         backend('build',group,preset)
         _,target,configuration=preset_info(ROOT,preset)

@@ -130,6 +130,45 @@ void cpkt_cmocka_fail_msg(const char *format, ...) {
   _fail(cpkt_cmocka_file, cpkt_cmocka_line);
 }
 
+/* Native set assertions may longjmp on failure. Keep converted heap arrays
+ * registered until their native call returns or the enclosing group ends. */
+struct CpktSetBuffer {
+  struct CpktSetBuffer *next;
+  void *data;
+};
+static __thread struct CpktSetBuffer *cpkt_owned_set_buffers;
+
+static void *cpkt_set_buffer_alloc(size_t count, size_t element_size,
+                                   const char *file, int line) {
+  struct CpktSetBuffer *buffer;
+  if (count > (size_t)-1 / element_size)
+    _fail(file, line);
+  buffer = malloc(sizeof(*buffer));
+  if (!buffer)
+    _fail(file, line);
+  buffer->data = malloc((count ? count : 1) * element_size);
+  if (!buffer->data) {
+    free(buffer);
+    _fail(file, line);
+  }
+  buffer->next = cpkt_owned_set_buffers;
+  cpkt_owned_set_buffers = buffer;
+  return buffer->data;
+}
+
+static void cpkt_set_buffer_free(void *data) {
+  struct CpktSetBuffer **cursor = &cpkt_owned_set_buffers;
+  struct CpktSetBuffer *buffer;
+  while (*cursor && (*cursor)->data != data)
+    cursor = &(*cursor)->next;
+  if (!*cursor)
+    abort();
+  buffer = *cursor;
+  *cursor = buffer->next;
+  free(buffer->data);
+  free(buffer);
+}
+
 /* Native owns its own queue event. The C89 event and conversion context are
  * facade-owned, including when a callback fails or reenters a second check. */
 struct CpktCheckContext {
@@ -245,6 +284,7 @@ int cpkt_cmocka_run_group_tests(const char *group_name,
                                 CpktCMFixtureFunction group_teardown) {
   struct CMUnitTest *native;
   struct CpktCheckContext *previous = cpkt_owned_check_contexts;
+  struct CpktSetBuffer *previous_sets = cpkt_owned_set_buffers;
   size_t index;
   int result;
   if (num_tests > (size_t)-1 / sizeof(*native))
@@ -260,8 +300,12 @@ int cpkt_cmocka_run_group_tests(const char *group_name,
     native[index].initial_state = tests[index].initial_state;
   }
   cpkt_owned_check_contexts = NULL;
+  cpkt_owned_set_buffers = NULL;
   result = _cmocka_run_group_tests(group_name, native, num_tests, group_setup,
                                    group_teardown);
+  while (cpkt_owned_set_buffers)
+    cpkt_set_buffer_free(cpkt_owned_set_buffers->data);
+  cpkt_owned_set_buffers = previous_sets;
   while (cpkt_owned_check_contexts)
     cpkt_release_check_context(cpkt_owned_check_contexts);
   cpkt_owned_check_contexts = previous;

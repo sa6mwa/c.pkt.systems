@@ -1,4 +1,5 @@
 #include <cpkt/cmocka.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int setups;
@@ -73,6 +74,19 @@ static void behavioral(void **state) {
                                         __LINE__);
     cpkt_cmocka_assert_int_in_set_words(signed_words, set, 2, __FILE__,
                                         __LINE__);
+  }
+  {
+    const size_t count = 2000000;
+    unsigned long *large = calloc(count, sizeof(*large));
+    CpktCmockaWords *large_words;
+    assert_non_null(large);
+    assert_uint_in_set(0, large, count);
+    free(large);
+    large_words = calloc(count, sizeof(*large_words));
+    assert_non_null(large_words);
+    cpkt_cmocka_assert_uint_in_set_words(cpkt_cmocka_words(0, 0), large_words,
+                                         count, __FILE__, __LINE__);
+    free(large_words);
   }
   assert_string_equal("fixture", "fixture");
 }
