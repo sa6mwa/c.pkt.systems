@@ -175,6 +175,7 @@ typedef struct CpktCMockaValueData {
                      'void cpkt_cmocka_expect_check(const char *, const char *, const char *, int, CpktCheckParameterValue, unsigned long, CpktCheckParameterEvent *, int);']
     text = text.replace('cpkt_cmocka_expect_check(', 'cpkt_cmocka_expect_check(')
     text = re.sub(r'\b_has_mock\b', 'cpkt_cmocka_has_mock', text)
+    text = re.sub(r'\b_cmocka_run_group_tests\b', 'cpkt_cmocka_run_group_tests', text)
     text = text.replace('mock_type(type) ((type) mock())', 'mock_type(function, type) ((type) mock(function))')
     text = text.replace('mock_parameter_type(name, type) ((type) mock_parameter(#name))', 'mock_parameter_type(function, name, type) ((type) mock_parameter(function, name))')
     text = re.sub(r'void cmocka_set_message_output\([^;]+;', 'void cpkt_cmocka_set_message_output(unsigned long output);\n#define cmocka_set_message_output cpkt_cmocka_set_message_output', text)
@@ -189,6 +190,9 @@ typedef struct CpktCMockaValueData {
             'mock':'Retrieve the native return queue value for an explicitly named function.',
             'mock_parameter':'Retrieve a native parameter queue value for an explicitly named function.',
             'unit_test_dummy':'Provide the no-op C89 setup/teardown callback for native test descriptors.'}
+        descriptions['run group tests']='Run native tests with converted descriptors; transferred check-event storage remains alive through callbacks and is freed after consumption or runner cleanup.'
+        descriptions['expect check data']='Transfer a supplied heap event to the facade; callback data may point into that allocation. Native queue behavior is preserved; storage is freed after consumption or runner cleanup.'
+        descriptions['expect check']='Transfer a supplied heap event for a legacy scalar callback; retain its storage until consumption or runner cleanup.'
         description=descriptions.get(operation,'Bridge native cmocka '+operation+' with its assertion/queue diagnostics and ownership.')
         return '/** '+detail+description+' */\n'+match.group(1)
     declarations=[document(re.match(r'(.*?\b(cpkt_cmocka_\w+)\s*\(.*)',d)) if re.match(r'(.*?\b(cpkt_cmocka_\w+)\s*\(.*)',d) else d for d in declarations]

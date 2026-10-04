@@ -130,20 +130,55 @@ void cpkt_cmocka_fail_msg(const char *format, ...) {
   _fail(cpkt_cmocka_file, cpkt_cmocka_line);
 }
 
-/* Native owns and frees the whole event allocation, including adapter context,
- * on success, failure and repeated/always expectations. */
+/* Native owns its own queue event. The C89 event and conversion context are
+ * facade-owned, including when a callback fails or reenters a second check. */
 struct CpktCheckContext {
-  CheckParameterEventData native;
+  struct CpktCheckContext *previous;
+  struct CpktCheckContext *next;
   CpktCheckParameterValueData callback;
   CpktCheckParameterValue old_callback;
   CpktCMockaValueData data;
+  void *event;
+  int remaining;
+  unsigned int active;
 };
+static __thread struct CpktCheckContext *cpkt_owned_check_contexts;
+static void cpkt_release_check_context(struct CpktCheckContext *context) {
+  if (context->previous)
+    context->previous->next = context->next;
+  else
+    cpkt_owned_check_contexts = context->next;
+  if (context->next)
+    context->next->previous = context->previous;
+  free(context->event);
+  free(context);
+}
+static void cpkt_retain_check_context(struct CpktCheckContext *context,
+                                      void *event, int count) {
+  context->event = event;
+  context->remaining = count;
+  context->active = 0;
+  context->previous = NULL;
+  context->next = cpkt_owned_check_contexts;
+  if (context->next)
+    context->next->previous = context;
+  cpkt_owned_check_contexts = context;
+}
 static int cpkt_check_callback(CMockaValueData value, CMockaValueData data) {
-  const struct CpktCheckContext *context = data.const_ptr;
+  struct CpktCheckContext *context = data.ptr;
+  int result;
+  ++context->active;
   if (context->callback)
-    return context->callback(cpkt_value_public(value), context->data);
-  return context->old_callback((unsigned long)value.uint_val,
-                               context->data.uint_val);
+    result = context->callback(cpkt_value_public(value), context->data);
+  else
+    result = context->old_callback((unsigned long)value.uint_val,
+                                   context->data.uint_val);
+  if (context->remaining > 0)
+    --context->remaining;
+  --context->active;
+  if (context->remaining == 0 && context->active == 0)
+    cpkt_release_check_context(context);
+  return result;
 }
 /** Queue a typed C89 callback through the native event/diagnostic machinery. */
 void cpkt_cmocka_expect_check_data(const char *function, const char *parameter,
@@ -154,17 +189,24 @@ void cpkt_cmocka_expect_check_data(const char *function, const char *parameter,
                                    int count) {
   struct CpktCheckContext *context = malloc(sizeof(*context));
   CMockaValueData native = {0};
-  if (!context)
+  if (!context) {
+    free(event);
     _fail(file, line);
+  }
   context->callback = callback;
   context->old_callback = NULL;
   context->data = data;
-  /* A supplied facade event transfers heap ownership, as the native API does.
-   */
-  free(event);
+  cpkt_retain_check_context(context, event, count);
+  if (event) {
+    event->location.file = file;
+    event->location.line = line;
+    event->parameter_name = parameter;
+    event->check_value = callback;
+    event->check_value_data = data;
+  }
   native.ptr = context;
   _expect_check_data(function, parameter, file, line, cpkt_check_callback,
-                     native, &context->native, count);
+                     native, NULL, count);
 }
 /** Queue a legacy scalar callback without an incompatible function-pointer
  * cast. */
@@ -175,15 +217,56 @@ void cpkt_cmocka_expect_check(const char *function, const char *parameter,
                               CpktCheckParameterEvent *event, int count) {
   struct CpktCheckContext *context = malloc(sizeof(*context));
   CMockaValueData native = {0};
-  if (!context)
+  if (!context) {
+    free(event);
     _fail(file, line);
+  }
   context->callback = NULL;
   context->old_callback = callback;
   context->data = cpkt_cmocka_value_uint(data);
-  free(event);
+  cpkt_retain_check_context(context, event, count);
+  if (event) {
+    event->location.file = file;
+    event->location.line = line;
+    event->parameter_name = parameter;
+    event->check_value = callback;
+    event->check_value_data = data;
+  }
   native.ptr = context;
   _expect_check_data(function, parameter, file, line, cpkt_check_callback,
-                     native, &context->native, count);
+                     native, NULL, count);
+}
+/** Run native cmocka tests, converting descriptors and releasing transferred
+ * C89 check events after native success, failure and optional queue cleanup. */
+int cpkt_cmocka_run_group_tests(const char *group_name,
+                                const struct CpktCMUnitTest *tests,
+                                size_t num_tests,
+                                CpktCMFixtureFunction group_setup,
+                                CpktCMFixtureFunction group_teardown) {
+  struct CMUnitTest *native;
+  struct CpktCheckContext *previous = cpkt_owned_check_contexts;
+  size_t index;
+  int result;
+  if (num_tests > (size_t)-1 / sizeof(*native))
+    _fail(__FILE__, __LINE__);
+  native = malloc((num_tests ? num_tests : 1) * sizeof(*native));
+  if (!native)
+    _fail(__FILE__, __LINE__);
+  for (index = 0; index < num_tests; ++index) {
+    native[index].name = tests[index].name;
+    native[index].test_func = tests[index].test_func;
+    native[index].setup_func = tests[index].setup_func;
+    native[index].teardown_func = tests[index].teardown_func;
+    native[index].initial_state = tests[index].initial_state;
+  }
+  cpkt_owned_check_contexts = NULL;
+  result = _cmocka_run_group_tests(group_name, native, num_tests, group_setup,
+                                   group_teardown);
+  while (cpkt_owned_check_contexts)
+    cpkt_release_check_context(cpkt_owned_check_contexts);
+  cpkt_owned_check_contexts = previous;
+  free(native);
+  return result;
 }
 /** Configure native diagnostic output through the fixed-width private boundary.
  */

@@ -1,6 +1,123 @@
 #include <cpkt/cmocka.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
+
+struct owned_typed_event {
+  CheckParameterEventData event;
+  unsigned long expected;
+};
+struct owned_legacy_event {
+  CheckParameterEvent event;
+  unsigned long expected;
+};
+static int check_owned_typed(CMockaValueData value, CMockaValueData data) {
+  const struct owned_typed_event *event = data.const_ptr;
+  assert_string_equal(event->event.parameter_name, "argument");
+  assert_string_equal(event->event.location.file, __FILE__);
+  assert_ptr_equal(event->event.check_value_data.const_ptr, event);
+  return value.uint_val == event->expected;
+}
+static int check_owned_legacy(unsigned long value, unsigned long data) {
+  const struct owned_legacy_event *event = (const void *)data;
+  assert_string_equal(event->event.parameter_name, "argument");
+  assert_uint_equal(event->event.check_value_data, data);
+  return value == event->expected;
+}
+static int typed_reentry_count;
+static int legacy_reentry_count;
+static int check_reentrant_typed(CMockaValueData value, CMockaValueData data) {
+  const struct owned_typed_event *event = data.const_ptr;
+  ++typed_reentry_count;
+  if (typed_reentry_count == 1)
+    cpkt_cmocka_check_expected("typed_reentry", "argument", __FILE__, __LINE__,
+                               cpkt_cmocka_value_uint(7));
+  return event->expected == value.uint_val;
+}
+static int check_reentrant_legacy(unsigned long value, unsigned long data) {
+  const struct owned_legacy_event *event = (const void *)data;
+  ++legacy_reentry_count;
+  if (legacy_reentry_count == 1)
+    cpkt_cmocka_check_expected("legacy_reentry", "argument", __FILE__, __LINE__,
+                               cpkt_cmocka_value_uint(7));
+  return event->expected == value;
+}
+static void reentrant_events(void **state) {
+  struct owned_typed_event *typed = calloc(1, sizeof(*typed));
+  struct owned_legacy_event *legacy = calloc(1, sizeof(*legacy));
+  (void)state;
+  assert_non_null(typed);
+  assert_non_null(legacy);
+  typed->expected = 7;
+  legacy->expected = 7;
+  typed_reentry_count = legacy_reentry_count = 0;
+  cpkt_cmocka_expect_check_data("typed_reentry", "argument", __FILE__, __LINE__,
+                                check_reentrant_typed,
+                                cpkt_cmocka_value_ptr(typed), &typed->event, 2);
+  cpkt_cmocka_expect_check("legacy_reentry", "argument", __FILE__, __LINE__,
+                           check_reentrant_legacy, (unsigned long)legacy,
+                           &legacy->event, 2);
+  cpkt_cmocka_check_expected("typed_reentry", "argument", __FILE__, __LINE__,
+                             cpkt_cmocka_value_uint(7));
+  cpkt_cmocka_check_expected("legacy_reentry", "argument", __FILE__, __LINE__,
+                             cpkt_cmocka_value_uint(7));
+  assert_int_equal(typed_reentry_count, 2);
+  assert_int_equal(legacy_reentry_count, 2);
+}
+static void queue_owned_checks(int count) {
+  struct owned_typed_event *typed = calloc(1, sizeof(*typed));
+  struct owned_legacy_event *legacy = calloc(1, sizeof(*legacy));
+  assert_non_null(typed);
+  assert_non_null(legacy);
+  typed->expected = 7;
+  legacy->expected = 7;
+  cpkt_cmocka_expect_check_data("typed", "argument", __FILE__, __LINE__,
+                                check_owned_typed, cpkt_cmocka_value_ptr(typed),
+                                &typed->event, count);
+  cpkt_cmocka_expect_check("legacy", "argument", __FILE__, __LINE__,
+                           check_owned_legacy, (unsigned long)legacy,
+                           &legacy->event, count);
+}
+static void consume_owned_checks(void) {
+  cpkt_cmocka_check_expected("typed", "argument", __FILE__, __LINE__,
+                             cpkt_cmocka_value_uint(7));
+  cpkt_cmocka_check_expected("legacy", "argument", __FILE__, __LINE__,
+                             cpkt_cmocka_value_uint(7));
+}
+static void owned_events(void **state) {
+  (void)state;
+  queue_owned_checks(1);
+  consume_owned_checks();
+  queue_owned_checks(2);
+  consume_owned_checks();
+  consume_owned_checks();
+  queue_owned_checks(EXPECT_ALWAYS);
+  consume_owned_checks();
+  consume_owned_checks();
+}
+static void optional_events(void **state) {
+  (void)state;
+  queue_owned_checks(EXPECT_MAYBE);
+}
+static void unused_events(void **state) {
+  (void)state;
+  queue_owned_checks(2);
+  consume_owned_checks();
+  /* Native cmocka must report the remaining required expectations as a failed
+   * test. The facade still owns both caller allocations during cleanup. */
+}
+static void failed_event(void **state) {
+  (void)state;
+  queue_owned_checks(1);
+  cpkt_cmocka_check_expected("typed", "argument", __FILE__, __LINE__,
+                             cpkt_cmocka_value_uint(8));
+}
+static void failed_repeated_event(void **state) {
+  (void)state;
+  queue_owned_checks(2);
+  cpkt_cmocka_check_expected("legacy", "argument", __FILE__, __LINE__,
+                             cpkt_cmocka_value_uint(8));
+}
 
 static int check_scalar(unsigned long value, unsigned long data) {
   return value == data;
@@ -89,6 +206,17 @@ static void surface(void **state) {
   test_free(allocation);
 }
 int main(void) {
-  const struct CMUnitTest tests[] = {cmocka_unit_test(surface)};
-  return cmocka_run_group_tests_name("complete-c89-surface", tests, NULL, NULL);
+  const struct CMUnitTest tests[] = {
+      cmocka_unit_test(surface), cmocka_unit_test(owned_events),
+      cmocka_unit_test(reentrant_events), cmocka_unit_test(optional_events)};
+  const struct CMUnitTest failed[] = {cmocka_unit_test(unused_events),
+                                      cmocka_unit_test(failed_event),
+                                      cmocka_unit_test(failed_repeated_event)};
+  int result =
+      cmocka_run_group_tests_name("complete-c89-surface", tests, NULL, NULL);
+  if (result)
+    return result;
+  result = cmocka_run_group_tests_name("expected-unused-event-failure", failed,
+                                       NULL, NULL);
+  return result == 3 ? 0 : 2;
 }

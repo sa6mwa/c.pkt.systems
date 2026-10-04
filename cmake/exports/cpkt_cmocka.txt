@@ -72,6 +72,7 @@ cpkt_cmocka_has_mock
 cpkt_cmocka_location
 cpkt_cmocka_mock
 cpkt_cmocka_mock_parameter
+cpkt_cmocka_run_group_tests
 cpkt_cmocka_set_message_output
 cpkt_cmocka_unit_test_dummy
 cpkt_cmocka_value_double

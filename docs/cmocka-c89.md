@@ -34,6 +34,20 @@ ARM and 64-bit targets without `long long`. For full-width queues, use
 expose `.words`. Typed callbacks use `CpktCMockaValueData` through the native
 callback adapter; native headers and names remain separately available.
 
+`cpkt_cmocka_expect_check_data` and its legacy scalar counterpart transfer any
+non-null heap event to the facade. Callback data may point into that allocation;
+the event must be the first member of the allocation, as with native cmocka's
+event types. The native queue stores a separate native event, while
+the facade fills its event metadata and retains it until the final required
+callback returns, including reentrant checks. Always/optional events and unconsumed events remain alive
+through native queue cleanup and are freed when the facade runner returns,
+including failed tests. Run C89 tests through `cmocka_run_group_tests`,
+`cmocka_run_group_tests_name` or `cpkt_cmocka_run_group_tests`; these convert test
+descriptors and manage transferred C89 event storage. Do not free transferred
+events or mix their queue lifetime with a direct native C99 runner.
+The surface tests intentionally leave required checks unconsumed and verify the
+native failure result; that expected diagnostic is also exercised under Valgrind.
+
 CMake imports `cpkt::cmocka_facade_static` or `cpkt::cmocka_facade_shared` from
 `CpktCmocka`; native variants are `cpkt::cmocka_static` and
 `cpkt::cmocka_shared`. The upstream `cmocka::cmocka` shared target is preserved.
