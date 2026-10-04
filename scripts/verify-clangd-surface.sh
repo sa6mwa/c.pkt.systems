@@ -283,7 +283,7 @@ if ! command -v clangd >/dev/null 2>&1; then
   printf 'clangd is required; install it with the host OS package manager\n' >&2
   exit 1
 fi
-mapfile -t hover_inputs < <(python3 - "$SOURCE_DIR" "$group" <<'PYTHON'
+hover_inputs=$(python3 - "$SOURCE_DIR" "$group" <<'PYTHON'
 import json,sys
 from pathlib import Path
 inventory=json.loads((Path(sys.argv[1]) / 'cmake/components.json').read_text())
@@ -292,9 +292,10 @@ for owner, paths in inventory['hover'].items():
         print('\n'.join(paths))
 PYTHON
 )
-for source_file in "${hover_inputs[@]}"; do
+while IFS= read -r source_file; do
+  [[ -n $source_file ]] || continue
   require_compile_command "$source_file"
   python3 "$SOURCE_DIR/scripts/cpkt_clangd_check.py" --root "$SOURCE_DIR" \
     --group "$group" --build "$BUILD_DIR" --source "$SOURCE_DIR/$source_file" \
     --gate "$0" --checker "$(command -v clangd)" >/dev/null
-done
+done <<< "$hover_inputs"

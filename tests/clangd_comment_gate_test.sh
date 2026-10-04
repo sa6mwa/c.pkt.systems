@@ -29,8 +29,14 @@ hover=['examples/abi_smoke.c']
     'hover':{group:hover for group in ('core','db','misc')}}))
 PY
 
-printf '#!/usr/bin/env bash\nexit 0\n' > "$work_dir/bin/clangd"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$CPKT_CLANGD_FIXTURE_RECORD"\nexit 0\n' > "$work_dir/bin/clangd"
 chmod +x "$work_dir/bin/clangd"
+export CPKT_CLANGD_FIXTURE_RECORD="$work_dir/clangd-calls"
+# Simulate the macOS system shell's unavailable Bash-4 builtin. The real gate
+# must execute all hover inputs without relying on mapfile or readarray.
+mapfile() { printf 'mapfile is unavailable in system Bash 3.2\n' >&2; return 127; }
+readarray() { printf 'readarray is unavailable in system Bash 3.2\n' >&2; return 127; }
+export -f mapfile readarray
 
 write_header() {
   local comment=$1
@@ -98,6 +104,8 @@ write_source '/** Public facade definition. */'
 : > "$source_dir/src/private.c"
 write_lua_header '/** Generated Lua facade declaration. */'
 run_gate
+test "$(wc -l < "$CPKT_CLANGD_FIXTURE_RECORD")" -eq 2
+grep -F -- "$source_dir/examples/abi_smoke.c" "$CPKT_CLANGD_FIXTURE_RECORD" >/dev/null
 
 # Cross-file helpers have private visibility, so they are not public API.
 printf 'CPKT_OPCUA_PRIVATE void cpkt_private_helper(void);\n' > "$source_dir/src/opcua_facade_internal.h"
