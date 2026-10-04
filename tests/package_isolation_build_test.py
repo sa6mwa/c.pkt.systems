@@ -70,7 +70,7 @@ class Isolation(unittest.TestCase):
         result=self.command('db',sys.executable,'-c',code)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(Path(result.stdout.strip()).is_relative_to(self.root/'build/control/tmp'))
-        root=self.root/'build/control';(root/'tmp').rename(root/'real-tmp');(root/'tmp').symlink_to(root/'real-tmp',target_is_directory=True)
+        root=self.root/'build/control';(root/'tmp').mkdir();(root/'tmp').rename(root/'real-tmp');(root/'tmp').symlink_to(root/'real-tmp',target_is_directory=True)
         result=self.command('db',sys.executable,'-c',code)
         self.assertNotEqual(result.returncode,0);self.assertIn('temporary ancestry',result.stderr)
 
@@ -459,6 +459,14 @@ include(cmake/CpktPackage.cmake)
         self.assertEqual(0, result.returncode, result.stderr)
         result = self.command('db', sys.executable, check, '--root', str(self.root), '--group', 'core', '--check')
         self.assertNotEqual(0, result.returncode)
+        closed=self.root/'closed-scope.py'
+        closed.write_text('import os,subprocess,sys\n'
+            'for key in ("CPKT_OPERATION_FD","CPKT_OPERATION_CAP_FD"):\n'
+            '  os.close(int(os.environ[key]))\n'
+            'raise SystemExit(subprocess.call([sys.executable,*sys.argv[1:]]))\n')
+        result=self.command('db',sys.executable,str(closed),check,'--root',str(self.root),
+                            '--group','core','--check')
+        self.assertNotEqual(0,result.returncode,'descriptor recovery widened db into core')
 
     def test_reopened_fd_and_separate_source_context(self):
         check = str(self.root/'scripts/cpkt_operation.py')
@@ -530,14 +538,60 @@ include(cmake/CpktPackage.cmake)
     def test_cmake_descriptor_inheritance_and_direct_rejection(self):
         source = self.root / 'source'
         source.mkdir()
+        closed=self.root/'closed-descriptors.py'
+        closed.write_text('import os,subprocess,sys\n'
+            'for key in ("CPKT_OPERATION_FD","CPKT_OPERATION_CAP_FD"):\n'
+            '  os.close(int(os.environ[key]))\n'
+            'raise SystemExit(subprocess.call([sys.executable,*sys.argv[1:]]))\n')
         (source / 'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.21)\nproject(lock NONE)\n'
             'execute_process(COMMAND "' + sys.executable + '" "' + str(self.root / 'scripts/cpkt_operation.py') +
             '" --root "' + str(self.root) + '" --group db --check RESULT_VARIABLE status)\n'
             'if(NOT status EQUAL 0)\nmessage(FATAL_ERROR "delegation missing")\nendif()\n')
         result = self.command('db', 'cmake','-S',str(source),'-B',str(self.root/'binary'))
         self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+        (source / 'CMakeLists.txt').write_text('cmake_minimum_required(VERSION 3.21)\nproject(lock NONE)\n'
+            'execute_process(COMMAND "'+sys.executable+'" "'+str(closed)+'" "'
+            +str(self.root/'scripts/cpkt_operation.py')+'" --root "'+str(self.root)
+            +'" --group db --check RESULT_VARIABLE status)\n'
+            'if(NOT status EQUAL 0)\nmessage(FATAL_ERROR "delegation missing")\nendif()\n')
+        result = self.command('db','cmake','-S',str(source),'-B',str(self.root/'binary-closed'))
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
         result = subprocess.run(['cmake','-S',str(source),'-B',str(self.root/'direct')],capture_output=True,text=True)
         self.assertNotEqual(0,result.returncode)
+
+    def test_clean_retains_live_broker_for_later_children(self):
+        runner=self.root/'clean-broker.py'
+        runner.write_text('import importlib.util,os,sys\nfrom pathlib import Path\n'
+            'from unittest.mock import patch\n'
+            'sys.path.insert(0,'+repr(str(ROOT/'scripts'))+')\n'
+            'from cpkt_operation import delegated\n'
+            'spec=importlib.util.spec_from_file_location("clean_backend",'+repr(str(ROOT/'scripts/group-build.py'))+')\n'
+            'module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)\n'
+            'root=Path('+repr(str(self.root))+')\n'
+            'with patch.object(module,"ROOT",root):module.clean("all")\n'
+            'assert (root/"build/control/.operation.sock").is_socket()\n'
+            'assert (root/"build/control/tmp"/os.environ["CPKT_OPERATION_RUN"]).is_dir()\n'
+            'for key in ("CPKT_OPERATION_FD","CPKT_OPERATION_CAP_FD"):\n'
+            '  os.close(int(os.environ[key]))\n'
+            'delegated(root,"all")\n')
+        result=self.command('all',sys.executable,str(runner))
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
+
+    def test_broker_recovers_in_long_source_reconstruction_root(self):
+        extracted=self.root/('reconstructed-source-'*6)
+        extracted.mkdir()
+        self.assertGreater(len(str(extracted/'build/control/.operation.sock').encode()),107)
+        closed=self.root/'close-long-root.py'
+        closed.write_text('import os,subprocess,sys\n'
+            'for key in ("CPKT_OPERATION_FD","CPKT_OPERATION_CAP_FD"):\n'
+            '  os.close(int(os.environ[key]))\n'
+            'raise SystemExit(subprocess.call([sys.executable,*sys.argv[1:]]))\n')
+        operation=str(self.root/'scripts/cpkt_operation.py')
+        result=subprocess.run([sys.executable,operation,'--root',str(extracted),
+            '--group','core','--',sys.executable,str(closed),operation,
+            '--root',str(extracted),'--group','core','--check'],
+            capture_output=True,text=True,env=self.environment)
+        self.assertEqual(0,result.returncode,result.stdout+result.stderr)
 
     def test_helper_dedup_same_run_and_changed_input(self):
         fixture = self.root / 'fixture'

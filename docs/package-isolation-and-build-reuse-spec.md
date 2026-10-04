@@ -299,6 +299,12 @@ string alone cannot authorize bypass. Scope may narrow in a child but cannot
 widen an optional-only operation into core/all. Source reconstruction creates
 an explicitly authorized separate context for its extracted root, retaining
 the outer repository lock until it completes.
+When CMake or CTest closes inherited descriptors while spawning a child, the
+outer lock owner serves the live lock and an issued read-only scope capability
+over a repository-local Unix socket. A random scope token lets that child
+recover the descriptors; the broker rejects scope widening and disappears when
+the owner exits. A wrong but open descriptor remains an error. Managed clean
+preserves the live socket and current operation temporary directory.
 
 Supported direct scripts enter through the same outer operation wrapper when
 no delegation exists. Mutation-capable direct repository CMake configure/build

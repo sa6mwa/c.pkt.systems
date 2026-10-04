@@ -425,7 +425,11 @@ def clean(group, dist_only=False):
             if path.name != 'control':
                 remove(path)
         for path in (ROOT / 'build/control').iterdir():
-            if path.name not in ('operation.lock', 'reserved-tag.json'):
+            if path.name == 'tmp':
+                for child in path.iterdir():
+                    if child.name != os.environ.get('CPKT_OPERATION_RUN'):
+                        remove(child)
+            elif path.name not in ('operation.lock', 'reserved-tag.json', '.operation.sock'):
                 remove(path)
         remove(ROOT / '.cache')
         remove(ROOT / 'dist')
