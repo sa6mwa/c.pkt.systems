@@ -38,10 +38,15 @@ if(NOT _cpkt_prerequisite_status EQUAL 0)
 endif()
 # A launcher checks delegation even when cmake --build names an individual
 # target (or invokes Ninja/Make directly). Custom commands have explicit guards.
-set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE
-  "${CPKT_OPERATION_PYTHON} ${CMAKE_SOURCE_DIR}/scripts/cpkt_build_guard.py ${CMAKE_SOURCE_DIR} ${CPKT_GROUP}")
-set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK
-  "${CPKT_OPERATION_PYTHON} ${CMAKE_SOURCE_DIR}/scripts/cpkt_build_guard.py ${CMAKE_SOURCE_DIR} ${CPKT_GROUP}")
-
-set_property(GLOBAL PROPERTY RULE_LAUNCH_CUSTOM
-  "${CPKT_OPERATION_PYTHON} ${CMAKE_SOURCE_DIR}/scripts/cpkt_build_guard.py ${CMAKE_SOURCE_DIR} ${CPKT_GROUP}")
+set(_cpkt_build_launcher "")
+foreach(_cpkt_argument IN ITEMS "${CPKT_OPERATION_PYTHON}"
+    "${CMAKE_SOURCE_DIR}/scripts/cpkt_build_guard.py" "${CMAKE_SOURCE_DIR}" "${CPKT_GROUP}")
+  # RULE_LAUNCH_* is a shell command, not an argv list. Single quotes protect
+  # spaces and substitutions; escape embedded apostrophes for POSIX shells.
+  string(REPLACE "'" "'\"'\"'" _cpkt_quoted_argument "${_cpkt_argument}")
+  string(APPEND _cpkt_build_launcher " '${_cpkt_quoted_argument}'")
+endforeach()
+string(STRIP "${_cpkt_build_launcher}" _cpkt_build_launcher)
+set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${_cpkt_build_launcher}")
+set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${_cpkt_build_launcher}")
+set_property(GLOBAL PROPERTY RULE_LAUNCH_CUSTOM "${_cpkt_build_launcher}")

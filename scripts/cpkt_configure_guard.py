@@ -50,9 +50,11 @@ try:
         validate_core(root,target,args.prerequisite or configuration,os.environ.get('CPKT_PRESET','debug'))
     if target:
         directory = root/'build/verification'/target/args.group
+        receipt_configuration = configuration
+        if args.binary.is_relative_to(root/'build'/target/args.group):
+            receipt_configuration = args.binary.name
         names = ('*-development.json','*-built.json') if args.producer == 'ON' else (
-            args.binary.name+'-development.json',args.binary.name+'-built.json',
-            configuration+'-development.json',configuration+'-built.json')
+            receipt_configuration+'-development.json',receipt_configuration+'-built.json')
         for name in names:
             for path in directory.glob(name):
                 path.unlink(missing_ok=True)

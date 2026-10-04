@@ -413,14 +413,15 @@ def clean(group, dist_only=False):
             path.unlink()
         elif path.exists():
             shutil.rmtree(path) if path.is_dir() else path.unlink()
-    if group in ('all', 'db') and (ROOT / 'build/devenv').exists():
-        command(['bash', ROOT / 'scripts/devenv.sh', 'down'], group, 'native', 'devenv-teardown')
-        remove(ROOT / 'build/devenv')
     if dist_only:
         if group != 'all':
             raise RuntimeError('clean dist requires GROUP=all')
         remove(ROOT / 'dist')
-    elif group == 'all':
+        return
+    if group in ('all', 'db') and (ROOT / 'build/devenv').exists():
+        command(['bash', ROOT / 'scripts/devenv.sh', 'down'], group, 'native', 'devenv-teardown')
+        remove(ROOT / 'build/devenv')
+    if group == 'all':
         for path in (ROOT / 'build').iterdir():
             if path.name != 'control':
                 remove(path)

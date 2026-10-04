@@ -48,6 +48,35 @@ class Isolation(unittest.TestCase):
         result=self.command('db',sys.executable,'-c',code)
         self.assertNotEqual(result.returncode,0);self.assertIn('temporary ancestry',result.stderr)
 
+    def test_dist_cleanup_preserves_database_and_build_state(self):
+        module_spec=importlib.util.spec_from_file_location('dist_cleanup_backend',ROOT/'scripts/group-build.py')
+        module=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(module)
+        state=self.root/'build/devenv/data';state.mkdir(parents=True)
+        (state/'database').write_bytes(b'important database state')
+        dist=self.root/'dist';dist.mkdir();(dist/'package').write_bytes(b'obsolete package')
+        before=tree_identity(self.root/'build')
+        with patch.object(module,'ROOT',self.root),patch.object(module,'command') as command:
+            module.clean('all',dist_only=True)
+        self.assertFalse(dist.exists())
+        self.assertEqual(before,tree_identity(self.root/'build'))
+        command.assert_not_called()
+
+    def test_hardening_configure_revokes_only_its_owned_proof(self):
+        shutil.copy(ROOT/'scripts/cpkt_configure_guard.py',self.root/'scripts/cpkt_configure_guard.py')
+        target='x86_64-linux-gnu'
+        receipts=self.root/'build/verification'/target/'core';receipts.mkdir(parents=True)
+        for configuration in ('Debug','Valgrind','Fuzz'):
+            for suffix in ('development','built'):
+                (receipts/(configuration+'-'+suffix+'.json')).write_bytes(b'existing proof')
+        for configuration in ('Valgrind','Fuzz','Debug'):
+            before={path.name:path.read_bytes() for path in receipts.iterdir()}
+            result=self.command('core',sys.executable,str(self.root/'scripts/cpkt_configure_guard.py'),
+                '--root',str(self.root),'--binary',str(self.root/'build'/target/'core'/configuration),
+                '--group','core','--target',target,'--configuration','Debug')
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            after={path.name:path.read_bytes() for path in receipts.iterdir()}
+            self.assertEqual(after,{name:value for name,value in before.items() if not name.startswith(configuration+'-')})
+
     def test_inventory_closure_and_ownership(self):
         data = load(self.root)
         for section in ('groups','components','targets','tests'):

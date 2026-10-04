@@ -62,6 +62,9 @@ selects that configuration. Aggregate configuration establishes complete Core
 readiness before optional configuration. Producer reuse compares the requested
 preset flags with the selected consumer configuration before accepting cached
 producer inputs; changed flags rebuild the affected producer once.
+Valgrind and Fuzz borrow ordinary Debug verification without revoking it when
+their separate graphs are configured. `make clean-dist` removes distribution
+artifacts only and preserves development database state and running services.
 
 The native workflow has separate source and final tagged producer-artifact lanes.
 Artifact handoff requires an unpublished authenticated draft, exact producer

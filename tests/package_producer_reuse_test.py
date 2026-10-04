@@ -22,7 +22,7 @@ def invoke(root, *arguments, success=True, env=None):
 
 with tempfile.TemporaryDirectory(prefix='producer-reuse-',dir=ROOT/'build') as temporary:
     for generator in ('Ninja', 'Unix Makefiles'):
-        root = Path(temporary) / generator.replace(' ','-')
+        root = Path(temporary) / (generator.replace(' ','-')+" checkout's files")
         (root / 'scripts').mkdir(parents=True)
         (root / 'cmake').mkdir()
         (root / 'tests').mkdir()
@@ -37,6 +37,7 @@ with tempfile.TemporaryDirectory(prefix='producer-reuse-',dir=ROOT/'build') as t
         resolver.write_text('#!/bin/sh\nprintf "status=ready\\nsource=synthetic-fixture\\n"\n')
         resolver.chmod(0o755)
         (root/'cmake/CpktReadOnlyToolchain.cmake').write_text('# synthetic native graph\n')
+        (root/'cmake/CpktReadOnlyAflToolchain.cmake').write_text('# synthetic native hardening graph\n')
         (root/'main.c').write_text('int main(void) { return 0; }\n')
         components={}
         targets={}
@@ -58,6 +59,8 @@ with tempfile.TemporaryDirectory(prefix='producer-reuse-',dir=ROOT/'build') as t
             presets['configurePresets'].append({'name':preset,'generator':generator,'binaryDir':'${sourceDir}/unused',
                 'cacheVariables':{'CMAKE_BUILD_TYPE':kind,'CPKT_TARGET_ARCH':'x86_64','CPKT_TARGET_OS':'linux',
                     'CPKT_TARGET_LIBC':'gnu','CPKT_BUILD_TESTS':'ON'}})
+        for preset in ('valgrind','fuzz','opcua-fuzz'):
+            presets['configurePresets'].append({'name':preset,'inherits':'debug'})
         (root/'CMakePresets.json').write_text(json.dumps(presets))
         (root/'tests/phase.py').write_text('''from pathlib import Path
 import sys
@@ -123,7 +126,7 @@ elseif(CPKT_COMPOSITION_ONLY)
   # installed-consumer contract tests.
 else()
   add_custom_target(cpkt_operation_guard COMMAND "${CPKT_OPERATION_PYTHON}"
-    "${CMAKE_SOURCE_DIR}/scripts/cpkt_operation.py" --root "${CMAKE_SOURCE_DIR}" --group "${CPKT_GROUP}" --check)
+    "${CMAKE_SOURCE_DIR}/scripts/cpkt_operation.py" --root "${CMAKE_SOURCE_DIR}" --group "${CPKT_GROUP}" --check VERBATIM)
   cpkt_group_add_executable(cpkt_${CPKT_GROUP}_probe main.c)
   cpkt_group_add_test(NAME ${CPKT_GROUP}_behavior COMMAND cpkt_${CPKT_GROUP}_probe)
   cpkt_group_set_tests_properties(${CPKT_GROUP}_behavior PROPERTIES LABELS example)
@@ -230,6 +233,18 @@ endif()
         invoke(root,'configure','--group','all','--preset','debug',env=env)
         invoke(root,'configure','--group','all','--preset','debug',env=env)
         assert core_receipt.exists()
+        assert before==(root/'events').read_text()
+        # Hardening borrows ordinary Debug proofs. Configuring all Memcheck
+        # graphs and repeatedly building misc Fuzz must preserve those proofs.
+        for selected_group in ('core','db','misc'):
+            invoke(root,'test','--group',selected_group,'--preset','debug',env=env)
+        ordinary={g:(root/'build/verification/x86_64-linux-gnu'/g/'Debug-development.json').read_bytes() for g in ('core','db','misc')}
+        invoke(root,'configure','--group','all','--preset','valgrind',env=env)
+        invoke(root,'build','--group','core','--preset','fuzz',env=env)
+        for repetition in range(2):
+            invoke(root,'build','--group','misc','--preset','opcua-fuzz',env=env)
+        for selected_group,proof in ordinary.items():
+            assert proof==(root/'build/verification/x86_64-linux-gnu'/selected_group/'Debug-development.json').read_bytes()
         assert before==(root/'events').read_text()
         # A typed preset flag overrides the previous producer cache. A warm
         # retry then reuses the rebuilt producer rather than looping on an
