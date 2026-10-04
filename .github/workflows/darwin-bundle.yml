@@ -2,7 +2,7 @@ name: Native Darwin bundle verification
 
 on:
   push:
-    branches: [feat/postgres-client, trunk]
+    branches: [feat/postgres-client, feat/package-isolation, trunk]
   pull_request:
   workflow_dispatch:
     inputs:

@@ -30,7 +30,7 @@ class Workflow(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'duplicate JSON key'):validator.decode(raw)
     def test_exact_native_routes_and_pins(self):
         text=(ROOT/'.github/workflows/darwin-bundle.yml').read_text()
-        for value in ('workflow_dispatch:', 'branches: [feat/postgres-client, trunk]', 'pull_request:', '  arm64:', '  arm64-artifact:', 'make test-darwin-native', 'make test-darwin-sdk', 'CPKT_DRAFT_TOKEN: ${{ secrets.CPKT_DRAFT_TOKEN }}', 'CPKT_EXPECTED_PRODUCER_COMMIT: ${{ inputs.producer_commit }}', 'test "${GITHUB_REF_TYPE}" = tag', 'preflight --handoff', 'download --handoff', 'persist-credentials: false'):
+        for value in ('workflow_dispatch:', 'branches: [feat/postgres-client, feat/package-isolation, trunk]', 'pull_request:', '  arm64:', '  arm64-artifact:', 'make test-darwin-native', 'make test-darwin-sdk', 'CPKT_DRAFT_TOKEN: ${{ secrets.CPKT_DRAFT_TOKEN }}', 'CPKT_EXPECTED_PRODUCER_COMMIT: ${{ inputs.producer_commit }}', 'test "${GITHUB_REF_TYPE}" = tag', 'preflight --handoff', 'download --handoff', 'persist-credentials: false'):
             self.assertIn(value,text)
         self.assertEqual(text.count('runs-on: macos-26'),2)
         self.assertEqual(text.count('timeout-minutes: 120'),2)
