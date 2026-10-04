@@ -323,17 +323,35 @@ include(cmake/CpktPackage.cmake)
         data={'schema_version':1,
               'groups':{group:{'requires':[] if group=='core' else ['core']}
                         for group in ('core','db','misc')},
-              'components':{},'targets':{},'tests':{}}
+              'components':{},'targets':{'cpkt_lua_runtime_mock_test':{'group':'core'}},'tests':{}}
         (self.root/'cmake/components.json').write_text(json.dumps(data))
         top=self.root/'CMakeLists.txt'
         original=(ROOT/'CMakeLists.txt').read_text()
         helper=re.search(r'function\(cpkt_add_lua_runtime_mock_test\b.*?endfunction\(\)',original,re.S)
         self.assertIsNotNone(helper)
-        top.write_text(helper.group(0)+'\n')
+        invocation='cpkt_add_lua_runtime_mock_test(cpkt_lua_runtime_mock_test tests/lua_runtime_mock_test.c)'
+        top.write_text(helper.group(0)+'\n'+invocation+'\n')
         configured={'CPKT_TARGET_ID':'synthetic','CMAKE_BUILD_TYPE':'Debug'}
         before=verification_inputs(self.root,'core',configured)
+        db_before=verification_inputs(self.root,'db',configured)
         top.write_text(top.read_text().replace('-std=c99','-std=c89'))
         self.assertNotEqual(before,verification_inputs(self.root,'core',configured))
+        top.write_text(helper.group(0)+'\n'+invocation.replace('lua_runtime_mock_test.c','lua_facade_test.c')+'\n')
+        self.assertNotEqual(before,verification_inputs(self.root,'core',configured))
+        self.assertEqual(db_before,verification_inputs(self.root,'db',configured))
+
+    def test_managed_graph_directory_cannot_be_a_symlink(self):
+        module_spec=importlib.util.spec_from_file_location('group_build_path_fixture',ROOT/'scripts/group-build.py')
+        module=importlib.util.module_from_spec(module_spec);module_spec.loader.exec_module(module)
+        graph=self.root/'build/x86_64-linux-gnu/core/Release'
+        graph.parent.mkdir(parents=True)
+        sibling=self.root/'build/sibling';sibling.mkdir(parents=True)
+        graph.symlink_to(sibling,target_is_directory=True)
+        with patch.object(module,'ROOT',self.root):
+            with self.assertRaisesRegex(RuntimeError,'symlink'):
+                module.owned_path(graph)
+            graph.unlink()
+            self.assertEqual(graph,module.owned_path(graph))
 
     def test_verification_tracks_owned_abi_and_generator_inputs(self):
         from cpkt_receipts import verification_inputs

@@ -27,7 +27,7 @@ def owned_path(path):
     path = Path(path)
     if not path.is_relative_to(ROOT):
         raise RuntimeError('owned mutation escaped repository: ' + str(path))
-    for parent in path.parents:
+    for parent in (path, *path.parents):
         if parent == ROOT:
             break
         if parent.is_symlink():
@@ -250,6 +250,8 @@ def requested_producer_change(preset,group,directory):
 def configure(preset, group, fresh=False, prepare_outputs=True):
     environment(preset, group)
     _, target, configuration = preset_info(preset)
+    directory = binary_dir(preset, group)
+    owned_path(directory)
     if preset in ('fuzz', 'opcua-fuzz', 'valgrind'):
         validate_core(ROOT, target, 'Debug', 'debug')
         if group == 'misc':
@@ -260,8 +262,6 @@ def configure(preset, group, fresh=False, prepare_outputs=True):
         prepare(preset, group)
     elif group in ('db', 'misc'):
         validate_core(ROOT, target, configuration, preset)
-    directory = binary_dir(preset, group)
-    owned_path(directory)
     if fresh and directory.exists():
         shutil.rmtree(directory)
     command(configure_command(preset, group, directory), group, target, 'consumer-configure')

@@ -58,6 +58,10 @@ def owned_definitions(text, data, group):
             candidates = [('targets',tokens[0])]
         elif name == 'cpkt_group_target_command' and len(tokens)>1:
             candidates = [('targets',tokens[1])]
+        elif name.startswith('cpkt_add_'):
+            # Repository target helpers can create a target without an
+            # add_library/add_executable call at their invocation site.
+            candidates = [('targets',tokens[0])]
         elif name.startswith(('target_', 'cpkt_configure_', 'cpkt_add_repo_warning', 'cpkt_apply_auth_export', 'cpkt_group_use_local_runtime')):
             candidates = [('targets',tokens[0])]
         elif name in ('set_tests_properties','cpkt_group_set_tests_properties'):
